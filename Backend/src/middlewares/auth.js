@@ -225,7 +225,7 @@ export async function requireAuth(req, res, next) {
  * Exige los roles del sistema y detiene el flujo cuando la condición no se cumple.
  * Participa en la cadena HTTP y continúa o rechaza la solicitud según el resultado.
  *
- * @param {Array<unknown>} ...allowedRoles - Valor de `allowedRoles` requerido por esta operación.
+ * @param {...unknown} allowedRoles - Valor de `allowedRoles` requerido por esta operación.
  * @returns {unknown} Resultado producido por la operación.
  */
 export function requireRoles(...allowedRoles) {
@@ -260,7 +260,7 @@ export function requireRoles(...allowedRoles) {
  * Exige los permisos del sistema y detiene el flujo cuando la condición no se cumple.
  * Participa en la cadena HTTP y continúa o rechaza la solicitud según el resultado.
  *
- * @param {Array<unknown>} ...requiredPermissions - Valor de `requiredPermissions` requerido por esta operación.
+ * @param {...unknown} requiredPermissions - Valor de `requiredPermissions` requerido por esta operación.
  * @returns {unknown} Resultado producido por la operación.
  */
 export function requirePermissions(...requiredPermissions) {
