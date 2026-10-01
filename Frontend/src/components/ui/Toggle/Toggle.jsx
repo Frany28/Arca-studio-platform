@@ -1,3 +1,4 @@
+/* Renderiza un interruptor accesible con estado controlado o interno y soporte de tema oscuro. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
@@ -68,6 +69,7 @@ const TOGGLE_NODE_IDS = {
   },
 };
 
+// Detecta si el documento está usando el tema oscuro.
 function getDocumentDarkMode() {
   if (typeof document === "undefined") {
     return false;
@@ -76,11 +78,13 @@ function getDocumentDarkMode() {
   return document.documentElement.classList.contains("dark");
 }
 
+// Obtiene la referencia visual correspondiente a tamaño, estado, valor y tema.
 function getToggleNodeId(size, state, active, isDarkMode) {
   const themeKey = isDarkMode ? "dark" : "light";
   return TOGGLE_NODE_IDS[themeKey]?.[size]?.[state]?.[String(active)] ?? null;
 }
 
+// Resuelve los estilos del track, thumb y foco según el estado actual.
 function getToggleVisualSpec(size, active, state, isDarkMode) {
   const sizeStyles = TOGGLE_SIZE_STYLES[size];
   const isDisabled = state === "Disabled";
@@ -183,6 +187,7 @@ function getToggleVisualSpec(size, active, state, isDarkMode) {
   };
 }
 
+// Coordina interacción, estado visual y atributos accesibles del interruptor.
 function Toggle({
   className,
   active,
