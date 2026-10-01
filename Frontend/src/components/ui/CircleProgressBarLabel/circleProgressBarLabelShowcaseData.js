@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de porcentajes y tamaños del progreso circular para documentación visual. */
 import {
   createCircleProgressBarLabelProps,
   createCircleProgressBarLabelShowcaseItem,
