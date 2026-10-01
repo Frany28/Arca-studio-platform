@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de estructura, estados y feedback del TextArea para el sistema de diseño. */
 import {
   createTextAreaProps,
   createTextAreaShowcaseItem,
