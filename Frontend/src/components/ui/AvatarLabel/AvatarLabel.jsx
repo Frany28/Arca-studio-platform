@@ -1,3 +1,4 @@
+/* Combina un Avatar con nombre y subtítulo para identificar usuarios de forma consistente. */
 import clsx from "clsx";
 import Avatar from "../Avatar/Avatar.jsx";
 import {
@@ -5,6 +6,7 @@ import {
   AVATAR_LABEL_SIZE_STYLES,
 } from "./avatarLabelConfig.js";
 
+// Normaliza texto, tamaño y contenido del avatar antes de renderizar la etiqueta.
 function AvatarLabel({
   className,
   size = AVATAR_LABEL_DEFAULT_PROPS.size,
@@ -29,6 +31,7 @@ function AvatarLabel({
     : AVATAR_LABEL_DEFAULT_PROPS.size;
   const styles = AVATAR_LABEL_SIZE_STYLES[resolvedSize];
   const hasText = showLabel || showSubtitle;
+  // Convierte valores inesperados a texto seguro para evitar renderizados inválidos.
   const resolveString = (value) => {
     if (value == null) return "";
     if (typeof value === "string") return value;
