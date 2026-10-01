@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de estados del Accordion usados en documentación y showcase. */
 import {
   createAccordionProps,
   createAccordionShowcaseItem,
