@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de tamaños, estados y estilos del TabItem para el sistema de diseño. */
 import {
   createTabItemProps,
   createTabItemShowcaseItem,
