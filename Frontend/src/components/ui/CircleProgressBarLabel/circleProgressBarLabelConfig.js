@@ -1,3 +1,4 @@
+/* Define tamaños, valores por defecto y helpers de CircleProgressBarLabel. */
 export const CIRCLE_PROGRESS_BAR_LABEL_SIZES = ["S", "M", "L"];
 
 export const CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS = {
@@ -10,6 +11,7 @@ export const CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS = {
   "aria-label": "Circle progress bar label",
 };
 
+// Combina las propiedades base del progreso con sobrescrituras específicas.
 export function createCircleProgressBarLabelProps(overrides = {}) {
   return {
     ...CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS,
@@ -17,6 +19,7 @@ export function createCircleProgressBarLabelProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del progreso circular.
 export function createCircleProgressBarLabelShowcaseItem(
   label,
   overrides = {},
