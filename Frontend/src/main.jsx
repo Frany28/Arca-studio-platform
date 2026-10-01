@@ -1,6 +1,6 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./index.css";
 import { AuthProvider } from "./auth/AuthContext.jsx";
 import { RecentProjectsProvider } from "./auth/RecentProjectsContext.jsx";
@@ -44,9 +44,6 @@ const Requests = lazy(() => import("./pages/Home.jsx"));
 const Home = lazy(() => import("./pages/Home.jsx"));
 const InactiveAccount = lazy(() => import("./pages/InactiveAccount.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));
-const OpeningHome = lazy(
-  () => import("./pages/publicSite/home/OpeningHome.jsx"),
-);
 const NewArchitectProjectPage = lazy(
   () => import("./pages/architect-dashboard/NewArchitectProjectPage.jsx"),
 );
@@ -72,8 +69,7 @@ createRoot(document.getElementById("root")).render(
           <Suspense fallback={<RouteFallback />}>
             <Routes>
             <Route element={<PublicOnlyRoute />}>
-              <Route path="/" element={<OpeningHome />} />
-              <Route path="/servicios" element={<Navigate to="/#services" replace />} />
+              <Route path="/" element={<Login />} />
               <Route path="/login" element={<Login />} />
               <Route path="/crear-cuenta" element={<CreateAccount />} />
               <Route path="/crear-contrasena" element={<CreatePassword />} />

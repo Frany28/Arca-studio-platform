@@ -12,8 +12,6 @@ export { default as Home } from "./Home.jsx";
 export { default as InactiveAccount } from "./InactiveAccount.jsx";
 export { default as Login } from "./Login.jsx";
 export { default as NewPassword } from "./NewPassword.jsx";
-export { default as OpeningHome } from "./publicSite/home/OpeningHome.jsx";
-export { default as ServicesPage } from "./publicSite/services/ServicesPage.jsx";
 export { default as ProjectDetails } from "./ProjectDetails.jsx";
 export { default as RecoverAccount } from "./RecoverAccount.jsx";
 export { default as Settings } from "./Settings.jsx";

@@ -16,6 +16,15 @@ El proyecto está dividido en dos aplicaciones:
 
 La documentación técnica completa está disponible en [DOCUMENTACION.md](DOCUMENTACION.md).
 
+## Desarrollo en equipo
+
+`Frontend/` y `Backend/` son aplicaciones independientes. Los cambios en contratos HTTP requieren coordinación entre ambas partes. Cada desarrollador debe evitar modificar la aplicación de la otra parte salvo que el cambio sea necesario y esté coordinado.
+
+- [Contrato HTTP actual](docs/API_CONTRACT.md)
+- [Baseline de desarrollo](docs/DEVELOPMENT_BASELINE.md)
+- [Arquitectura del backend](Backend/ARCHITECTURE.md)
+- [Sistema de diseño del frontend](Frontend/DESIGN_SYSTEM.md)
+
 ## Tecnologías
 
 ### Frontend

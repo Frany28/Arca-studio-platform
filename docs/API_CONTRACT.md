@@ -290,17 +290,10 @@ Sin consumidor frontend actual identificado: GET `/health`, GET `/health/databas
 
 Variables API relevantes: frontend VITE_API_URL; backend PORT, NODE_ENV, AUTH_TOKEN_SECRET (privado), AUTH_TOKEN_EXPIRES_IN_SECONDS, AUTH_TOKEN_CLOCK_TOLERANCE_MS, AUTH_COOKIE_*, AUTH_LOGIN_RATE_LIMIT_*, AUTH_CACHE_*, CORS_*, CSRF_ALLOW_NO_ORIGIN, FRONTEND_URL, FILE_UPLOAD_MAX_BYTES, PROFILE_PHOTO_MAX_BYTES, SSE_MAX_CONNECTIONS_PER_USER/PROJECT y límites de acciones. GEOAPIFY_API_KEY (fallback VITE_GEOAPIFY_API_KEY en backend) no forma parte del request frontend. URLs/tokens SMTP de registro/reset se mantienen en backend. FILE_UPLOAD_LIMIT figura en ejemplo, pero el límite efectivo de los streams auditados es MAX_BYTES. ROUTE_AUTH_DISABLED_FOR_TESTS y PUBLIC_TEST_* son excepciones temporales backend fuera de NODE_ENV production; bypass de protección frontend solo está habilitado en DEV y no sustituye la sesión real del servidor.
 
-## Verificación de esta entrega
+## Alcance de la verificación
 
-Solo se añadió este documento; no se modificaron endpoints, respuestas, código, estilos, dependencias ni configuración. No se hicieron commit ni PR.
+La auditoría contrastó el código con búsquedas de llamadas HTTP, rutas, consumidores y variables, y lecturas de validaciones, controles de acceso y serializaciones. Las inconsistencias descritas permanecen sin corregir; este documento no modifica el comportamiento del sistema.
 
-Comandos de auditoría: `rg --files`, `rg -n` para llamadas/rutas/consumidores y variables; `Get-Content -Encoding utf8` y lecturas selectivas para contrastar implementación; `git status --short` y revisión del diff. Se ejecutaron los scripts existentes:
+El resultado de las comprobaciones posteriores a la instalación de dependencias con lockfiles congelados está registrado en [DEVELOPMENT_BASELINE.md](DEVELOPMENT_BASELINE.md). Ese baseline sustituye los resultados iniciales afectados por dependencias incompletas.
 
-| Comando | Resultado en esta copia local |
-| --- | --- |
-| Backend: `pnpm verify` | Falla en lint:docs: Cannot find module debug de ESLint; no alcanza Prisma validate/migrate status ni siguientes pasos |
-| Backend: `pnpm test` | Tras repetir fuera del sandbox por spawn EPERM: 64 aprobados, 9 fallidos; dependencias ausentes (incluidas zod, pg y @aws-sdk/client-s3) impiden cargar varias suites |
-| Frontend: `pnpm test` | Tras repetir fuera del sandbox por spawn EPERM: 312 aprobados, 59 fallidos; incluye ReferenceError createAboutStoryController y aserciones de UI existentes |
-| Frontend: `pnpm build` | Primer intento falla con spawn EPERM al cargar configuración/dependencias nativas. Repetido fuera del sandbox: aprobado |
-
-No se validaron migraciones, conectividad de base de pruebas, integración con cookies reales, proveedor de almacenamiento, correo o entrega SSE en despliegues: no se alcanzó esa fase del verify y esta auditoría no cambia ni inicializa servicios remotos. El build pasó, pero las suites completas y verify no están aprobados. Los logs de esta ejecución se conservaron en el directorio temporal local `arca-api-contract-audit-20261001`, fuera del repositorio.
+No se validaron migraciones, conectividad de base de pruebas, integración con cookies reales, proveedor de almacenamiento, correo ni entrega SSE en despliegues. La auditoría es del contrato implementado en el código local, sin garantizar su operación en servicios remotos.
