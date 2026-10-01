@@ -1,7 +1,9 @@
+/* Muestra notificaciones temporales relacionadas con autenticación y actualiza su tiempo transcurrido. */
 import { useEffect, useRef, useState } from "react";
 
 import Notification from "../Notification/Notification.jsx";
 
+// Convierte una marca de tiempo en una etiqueta legible de tiempo transcurrido.
 function buildElapsedLabel(timestamp) {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
 
@@ -23,6 +25,7 @@ function buildElapsedLabel(timestamp) {
   return `Hace ${hours} h`;
 }
 
+// Coordina montaje, animación, autoocultado y contador temporal del toast.
 function AuthToast({
   trigger = null,
   title,
@@ -130,6 +133,7 @@ function AuthToast({
   );
 }
 
+// Icono reutilizable para notificaciones relacionadas con correo.
 export function AuthToastMailIcon() {
   return (
     <span className="inline-flex items-center justify-center rounded-[var(--radius-2)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[8px] shadow-[var(--shadow-e1)]">
@@ -162,6 +166,7 @@ export function AuthToastMailIcon() {
   );
 }
 
+// Icono reutilizable para notificaciones relacionadas con seguridad o contraseña.
 export function AuthToastLockIcon() {
   return (
     <span className="inline-flex items-center justify-center rounded-[var(--radius-2)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[8px] shadow-[var(--shadow-e1)]">

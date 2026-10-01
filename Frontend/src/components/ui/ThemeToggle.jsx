@@ -1,14 +1,17 @@
+/* Permite alternar manualmente entre tema claro y oscuro y persiste la preferencia elegida. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 
 const STORAGE_KEY = "arca-theme";
 
+// Obtiene el tema preferido por el sistema operativo.
 function getSystemTheme() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
 }
 
+// Resuelve el tema inicial usando primero la preferencia guardada.
 function getInitialTheme() {
   if (typeof window === "undefined") {
     return "light";
@@ -23,6 +26,7 @@ function getInitialTheme() {
   return getSystemTheme();
 }
 
+// Icono mostrado cuando el tema activo es claro.
 function SunIcon() {
   return (
     <svg
@@ -89,6 +93,7 @@ function SunIcon() {
   );
 }
 
+// Icono mostrado cuando el tema activo es oscuro.
 function MoonIcon() {
   return (
     <svg
@@ -109,6 +114,7 @@ function MoonIcon() {
   );
 }
 
+// Coordina estado local, persistencia y sincronización visual del selector de tema.
 function ThemeToggle() {
   const [theme, setTheme] = useState(getInitialTheme);
   const [hasManualPreference, setHasManualPreference] = useState(() => {
