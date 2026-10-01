@@ -1,7 +1,9 @@
+/* Sincroniza el tema claro/oscuro entre preferencias del sistema, almacenamiento local y pestañas. */
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "arca-theme";
 
+// Recupera una preferencia manual válida guardada en localStorage.
 function getStoredTheme() {
   if (typeof window === "undefined") {
     return null;
@@ -13,12 +15,14 @@ function getStoredTheme() {
     : null;
 }
 
+// Obtiene el tema preferido por el sistema operativo.
 function getSystemTheme() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
 }
 
+// Resuelve el tema inicial priorizando la preferencia manual sobre la del sistema.
 function getInitialTheme() {
   if (typeof window === "undefined") {
     return "light";
@@ -27,6 +31,7 @@ function getInitialTheme() {
   return getStoredTheme() ?? getSystemTheme();
 }
 
+// Mantiene la clase global del documento y escucha cambios externos de tema.
 function ThemeSync() {
   const [theme, setTheme] = useState(getInitialTheme);
 
