@@ -1,3 +1,4 @@
+/* Define elementos, tamaños y valores por defecto del componente AvatarGroup. */
 export const AVATAR_GROUP_DEFAULT_ITEMS = [
   { content: "Icon", theme: "Neutral" },
   { content: "Icon", theme: "Neutral" },
@@ -33,6 +34,7 @@ export const AVATAR_GROUP_SIZE_STYLES = {
   },
 };
 
+// Combina las propiedades base del grupo con variantes específicas.
 export function createAvatarGroupProps(overrides = {}) {
   return {
     ...AVATAR_GROUP_DEFAULT_PROPS,
@@ -40,6 +42,7 @@ export function createAvatarGroupProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de AvatarGroup.
 export function createAvatarGroupShowcaseItem(label, overrides = {}) {
   return {
     label,
