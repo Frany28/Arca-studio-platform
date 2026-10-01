@@ -1,3 +1,4 @@
+/* Mantiene y reutiliza los proyectos recientes del usuario para la navegación. */
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
@@ -26,6 +27,7 @@ const RecentProjectsContext = createContext({
   projects: [],
 });
 
+// Genera una clave de caché aislada por usuario.
 function getUserCacheKey(user) {
   const userId = user?.id;
 
@@ -34,6 +36,7 @@ function getUserCacheKey(user) {
     : `${RECENT_PROJECTS_CACHE_PREFIX}:${userId}`;
 }
 
+// Recupera proyectos recientes válidos desde sessionStorage.
 function readCachedProjects(cacheKey) {
   if (!cacheKey || typeof window === "undefined") {
     return null;
@@ -54,6 +57,7 @@ function readCachedProjects(cacheKey) {
   }
 }
 
+// Guarda una versión segura de los proyectos recientes en sessionStorage.
 function writeCachedProjects(cacheKey, projects) {
   if (!cacheKey || typeof window === "undefined") {
     return;
@@ -71,6 +75,7 @@ function writeCachedProjects(cacheKey, projects) {
   }
 }
 
+// Deduplica solicitudes concurrentes de proyectos recientes para el mismo usuario y alcance.
 function requestRecentProjects(cacheKey, scope) {
   const requestKey = `${cacheKey}:${scope}`;
 
@@ -86,6 +91,7 @@ function requestRecentProjects(cacheKey, scope) {
   return pendingRequests.get(requestKey);
 }
 
+// Mantiene la sesión de caché, revalida datos y expone el estado al contexto.
 function RecentProjectsSession({ cacheKey, children, scope }) {
   const [cachedValue] = useState(() => readCachedProjects(cacheKey));
   const [projects, setProjects] = useState(cachedValue?.projects || []);
@@ -133,6 +139,7 @@ function RecentProjectsSession({ cacheKey, children, scope }) {
   );
 }
 
+// Selecciona el alcance de proyectos según el usuario y limpia cachés antiguas.
 export function RecentProjectsProvider({ children }) {
   const { user } = useAuth();
   const userId = user?.id;
@@ -173,6 +180,7 @@ export function RecentProjectsProvider({ children }) {
   );
 }
 
+// Hook para consumir proyectos recientes y su estado de carga.
 export function useRecentProjects() {
   return useContext(RecentProjectsContext);
 }

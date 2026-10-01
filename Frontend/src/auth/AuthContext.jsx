@@ -1,3 +1,4 @@
+/* Gestiona la sesión autenticada global y expone acciones de login, logout y restauración. */
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
@@ -16,6 +17,7 @@ import {
 
 const AuthContext = createContext(null);
 
+// Construye la URL versionada de la foto de perfil para evitar caché obsoleta.
 function buildProfilePhotoImageUrl(profilePhotoUrl, version) {
   if (!profilePhotoUrl) {
     return "";
@@ -34,6 +36,7 @@ function buildProfilePhotoImageUrl(profilePhotoUrl, version) {
   return getApiUrl(`/auth/profile-photo/image?${params.toString()}`);
 }
 
+// Normaliza la forma del usuario que consume el resto del frontend.
 function normalizeUser(user) {
   if (!user) {
     return null;
@@ -49,6 +52,7 @@ function normalizeUser(user) {
   };
 }
 
+// Proveedor principal que sincroniza el estado de autenticación con el backend y el navegador.
 export function AuthProvider({ children }) {
   const [sessionStatus, setSessionStatus] = useState(
     AUTH_SESSION_STATUS.LOADING,
@@ -202,6 +206,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// Hook de acceso seguro al contexto de autenticación.
 export function useAuth() {
   const auth = useContext(AuthContext);
 

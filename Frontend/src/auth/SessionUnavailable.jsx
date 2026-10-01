@@ -1,3 +1,5 @@
+/* Muestra el estado de error temporal cuando no se puede verificar la sesión. */
+// Presenta el mensaje y permite volver a intentar la restauración de sesión.
 function SessionUnavailable({ onRetry }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--color-neutral-bg)] px-[16px]">
