@@ -45,62 +45,17 @@ import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx
 import VRModelViewer from "./VRModelViewer.jsx";
 import ObservationTooltip from "../ObservationTooltip/ObservationTooltip.jsx";
 import FileAttachmentIcons from "../FileAttachmentIcons/FileAttachmentIcons.jsx";
-export const MODEL_3D_NAVIGATION_MODES = {
-  drag: {
-    id: "drag",
-    label: "Arrastre",
-    cameraOrbit: "0deg 82deg 70%",
-    fieldOfView: "44deg",
-    interactionPrompt: "auto",
-  },
-  gyroscope: {
-    id: "gyroscope",
-    label: "Giroscopio",
-    cameraOrbit: "0deg 82deg 70%",
-    fieldOfView: "44deg",
-    interactionPrompt: "none",
-  },
-  autorotate: {
-    id: "autorotate",
-    label: "Autorrotación",
-    cameraOrbit: "0deg 82deg 70%",
-    fieldOfView: "40deg",
-    interactionPrompt: "none",
-  },
-};
-export const MODEL_3D_TEXTURE_PRESETS = {
-  auto: {
-    id: "auto",
-    label: "Automática",
-    environmentImage: "neutral",
-    shadowIntensity: "1",
-    shadowSoftness: "0.6",
-    exposure: "1",
-    filter: "none",
-    toneMapping: "neutral",
-  },
-  hd: {
-    id: "hd",
-    label: "HD",
-    environmentImage: "neutral",
-    shadowIntensity: "1",
-    shadowSoftness: "0.4",
-    exposure: "1",
-    filter: "none",
-    toneMapping: "neutral",
-  },
-  saver: {
-    id: "saver",
-    label: "Ahorro de datos",
-    environmentImage: "neutral",
-    shadowIntensity: "1",
-    shadowSoftness: "1",
-    exposure: "1",
-    filter: "none",
-    toneMapping: "neutral",
-  },
-};
-
+import {
+  MODEL_3D_NAVIGATION_MODES,
+  MODEL_3D_TEXTURE_PRESETS,
+  MODEL_3D_CAMERA_CONTROLS,
+} from "./model3DViewerConfig.js";
+import { useSketchfabLikeModelWheel } from "../../../hooks/useSketchfabLikeModelWheel.js";
+import {
+  getFiniteVector,
+  getFiniteCameraOrbit,
+  getModelViewerDimensions,
+} from "../../../utils/modelViewerCamera.js";
 const VIEWER_3D_OBSERVATION_LABEL = getObservationTypeLabel("panorama");
 
 function CloseIcon({ className }) {
@@ -694,12 +649,6 @@ const MODEL_LOAD_TIMEOUT_MS = 45000;
 const MODEL_VIEWER_BACKGROUND =
   "radial-gradient(circle at 50% 38%, #3b3b3b 0%, #232323 48%, #101010 100%)";
 const MODEL_VIEWER_BACKGROUND_COLOR = "#171717";
-export const MODEL_3D_CAMERA_CONTROLS = {
-  interpolationDecay: "300",
-  orbitSensitivity: "0.62",
-  panSensitivity: "0.72",
-  zoomSensitivity: "0.16",
-};
 function ReplyArrowIcon({ className }) {
   return (
     <svg
@@ -1336,115 +1285,6 @@ function formatModelViewerPosition(vector) {
   }
 
   return `${x}m ${y}m ${z}m`;
-}
-
-function getFiniteVector(vector) {
-  if (!vector || typeof vector === "string") {
-    return null;
-  }
-
-  const { x, y, z } = vector;
-
-  return [x, y, z].every((value) => Number.isFinite(value))
-    ? { x, y, z }
-    : null;
-}
-
-function getFiniteCameraOrbit(orbit) {
-  if (!orbit || typeof orbit === "string") {
-    return null;
-  }
-
-  const { phi, radius, theta } = orbit;
-
-  return [phi, radius, theta].every((value) => Number.isFinite(value))
-    ? { phi, radius, theta }
-    : null;
-}
-
-function getModelViewerDimensions(modelViewer) {
-  const dimensions = modelViewer?.getDimensions?.();
-  const values = [dimensions?.x, dimensions?.y, dimensions?.z].filter(
-    (value) => Number.isFinite(value) && value > 0,
-  );
-
-  if (!values.length) {
-    return null;
-  }
-
-  return {
-    max: Math.max(...values),
-    min: Math.min(...values),
-  };
-}
-
-function getOrbitForwardVector(orbit) {
-  if (!orbit || !Number.isFinite(orbit.radius) || orbit.radius <= 0) {
-    return null;
-  }
-
-  const sinPhiRadius = Math.sin(orbit.phi);
-  const x = -(sinPhiRadius * Math.sin(orbit.theta));
-  const y = -Math.cos(orbit.phi);
-  const z = -(sinPhiRadius * Math.cos(orbit.theta));
-  const length = Math.hypot(x, y, z);
-
-  return length > 0
-    ? {
-        x: x / length,
-        y: y / length,
-        z: z / length,
-      }
-    : null;
-}
-
-export function useSketchfabLikeModelWheel(modelViewerRef, enabled) {
-  useEffect(() => {
-    const modelViewer = modelViewerRef.current;
-
-    if (!enabled || !modelViewer) {
-      return undefined;
-    }
-
-    const handleWheel = (event) => {
-      const orbit = getFiniteCameraOrbit(modelViewer.getCameraOrbit?.());
-      const target = getFiniteVector(modelViewer.getCameraTarget?.());
-      const dimensions = getModelViewerDimensions(modelViewer);
-      const forward = getOrbitForwardVector(orbit);
-      const isZoomingIn = event.deltaY < 0;
-
-      if (!isZoomingIn || !orbit || !target || !dimensions || !forward) {
-        return;
-      }
-
-      const closeRadius = Math.max(dimensions.max * 0.18, dimensions.min * 0.9, 0.35);
-
-      if (orbit.radius > closeRadius) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const wheelStrength = Math.min(Math.abs(event.deltaY) / 90, 2.25);
-      const step = Math.max(dimensions.max * 0.018, orbit.radius * 0.1, 0.08);
-      const distance = step * wheelStrength;
-      const nextTarget = {
-        x: target.x + forward.x * distance,
-        y: target.y + forward.y * distance,
-        z: target.z + forward.z * distance,
-      };
-
-      modelViewer.cameraTarget = `${nextTarget.x}m ${nextTarget.y}m ${nextTarget.z}m`;
-      modelViewer.cameraOrbit = `${orbit.theta}rad ${orbit.phi}rad ${orbit.radius}m`;
-    };
-
-    modelViewer.addEventListener("wheel", handleWheel, { capture: true, passive: false });
-
-    return () => {
-      modelViewer.removeEventListener("wheel", handleWheel, { capture: true });
-    };
-  }, [enabled, modelViewerRef]);
 }
 
 function getModelViewerDimensionRadius(modelViewer) {
@@ -2239,57 +2079,6 @@ export default function Model3DViewerModal({
     vrLaunch.open();
   }
 
-  useEffect(() => {
-    if (!showPanoramaAnnotations || !focusedAnnotationId) {
-      return;
-    }
-
-    const comment = comments.find(
-      (currentComment) =>
-        String(currentComment.id) === String(focusedAnnotationId),
-    );
-
-    if (isPanoramaPointSelection(comment?.selection)) {
-      restoreViewerCamera(comment.selection);
-    }
-  }, [comments, focusedAnnotationId, showPanoramaAnnotations]);
-
-  if (!shouldRender || !displayItem || typeof document === "undefined") {
-    return null;
-  }
-
-  const transitionStyle = {
-    transitionDuration: `${MODAL_TRANSITION_MS}ms`,
-    transitionTimingFunction: MODAL_EASING,
-  };
-
-  function handleSelectionChange(selection) {
-    if (readOnly) return;
-    const previewImage = displayItem.image || displayItem.poster || null;
-
-    setFocusedSelectionCommentId(null);
-    setPendingSelection({
-      ...selection,
-      image: {
-        id: displayItem.id,
-        src: previewImage,
-        title: displayItem.title,
-      },
-      imageSrc: previewImage,
-    });
-  }
-
-  function getViewerCameraSnapshot() {
-    const modelViewer = modelViewerRef.current;
-    const cameraOrbit = getFiniteCameraOrbit(modelViewer?.getCameraOrbit?.());
-    const fieldOfView = modelViewer?.getFieldOfView?.();
-
-    return {
-      cameraOrbit,
-      fieldOfView: Number.isFinite(fieldOfView) ? fieldOfView : null,
-    };
-  }
-
   function restoreViewerCamera(selection) {
     const modelViewer = modelViewerRef.current;
     const viewerPoint = selection?.viewerPoint;
@@ -2356,6 +2145,57 @@ export default function Model3DViewerModal({
     window.requestAnimationFrame(() => {
       modelViewer.jumpCameraToGoal?.();
     });
+  }
+
+  useEffect(() => {
+    if (!showPanoramaAnnotations || !focusedAnnotationId) {
+      return;
+    }
+
+    const comment = comments.find(
+      (currentComment) =>
+        String(currentComment.id) === String(focusedAnnotationId),
+    );
+
+    if (isPanoramaPointSelection(comment?.selection)) {
+      restoreViewerCamera(comment.selection);
+    }
+  }, [comments, focusedAnnotationId, showPanoramaAnnotations]);
+
+  if (!shouldRender || !displayItem || typeof document === "undefined") {
+    return null;
+  }
+
+  const transitionStyle = {
+    transitionDuration: `${MODAL_TRANSITION_MS}ms`,
+    transitionTimingFunction: MODAL_EASING,
+  };
+
+  function handleSelectionChange(selection) {
+    if (readOnly) return;
+    const previewImage = displayItem.image || displayItem.poster || null;
+
+    setFocusedSelectionCommentId(null);
+    setPendingSelection({
+      ...selection,
+      image: {
+        id: displayItem.id,
+        src: previewImage,
+        title: displayItem.title,
+      },
+      imageSrc: previewImage,
+    });
+  }
+
+  function getViewerCameraSnapshot() {
+    const modelViewer = modelViewerRef.current;
+    const cameraOrbit = getFiniteCameraOrbit(modelViewer?.getCameraOrbit?.());
+    const fieldOfView = modelViewer?.getFieldOfView?.();
+
+    return {
+      cameraOrbit,
+      fieldOfView: Number.isFinite(fieldOfView) ? fieldOfView : null,
+    };
   }
 
   function handleModelPointerDown(event) {

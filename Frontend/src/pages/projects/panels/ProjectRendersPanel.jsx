@@ -14,14 +14,17 @@ import GalleryImagesModal from "../../../components/ui/Gallery/GalleryImagesModa
 import SharedGalleryImageCard from "../../../components/ui/Gallery/GalleryImageCard.jsx";
 import GalleryVideosModal from "../../../components/ui/Gallery/GalleryVideosModal.jsx";
 import ImageViewerModal from "../../../components/ui/Gallery/ImageViewerModal.jsx";
+import RenderLoadingState from "../components/renders/RenderLoadingState.jsx";
 import Model3DViewerModal, {
+  Model3DViewerControls,
+} from "../../../components/ui/Gallery/Model3DViewerModal.jsx";
+import {
   MODEL_3D_CAMERA_CONTROLS,
   MODEL_3D_NAVIGATION_MODES,
   MODEL_3D_TEXTURE_PRESETS,
-  Model3DViewerControls,
-  useSketchfabLikeModelWheel,
-} from "../../../components/ui/Gallery/Model3DViewerModal.jsx";
-import Model3DThumbnail from "../../../components/ui/Gallery/Model3DThumbnail.jsx";
+} from "../../../components/ui/Gallery/model3DViewerConfig.js";
+import { useSketchfabLikeModelWheel } from "../../../hooks/useSketchfabLikeModelWheel.js";
+import RenderThumbnailRail from "../components/renders/RenderThumbnailRail.jsx";
 import VideoViewerModal from "../../../components/ui/Gallery/VideoViewerModal.jsx";
 import VideoThumbnail from "../../../components/ui/Gallery/VideoThumbnail.jsx";
 import VRModelViewer from "../../../components/ui/Gallery/VRModelViewer.jsx";
@@ -115,68 +118,6 @@ function EmptyRenderOverview() {
         className="border-b border-[var(--color-neutral-200)] pb-[2px]"
       />
     </section>
-  );
-}
-
-function RenderLoadingState({ image, onRetry, progress, state = "loading" }) {
-  const isError = state === "error";
-  const isSlow = state === "slow";
-  const title = isError
-    ? "No se pudo cargar la panorámica"
-    : isSlow
-      ? "La panorámica sigue cargando"
-      : "Cargando panorámica 360";
-  const description = isError
-    ? "Revisa la conexión o intenta cargar el visor nuevamente."
-    : isSlow
-      ? "La imagen panorámica puede ser pesada o la conexión puede estar lenta."
-      : "";
-
-  return (
-    <div className="pointer-events-auto absolute inset-0 z-10 h-full w-full overflow-hidden rounded-[var(--radius-3)]">
-      {image ? (
-        <img
-          src={image}
-          alt=""
-          className="absolute inset-[-18px] h-[calc(100%+36px)] w-[calc(100%+36px)] object-cover blur-[14px] scale-105"
-          aria-hidden="true"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_43%,#3a3a3a_0%,#262626_44%,#121212_100%)]" />
-      )}
-      <div className="absolute inset-0 rounded-[var(--radius-3)] bg-[rgba(0,0,0,0.58)] backdrop-blur-[12px]" />
-
-      <div className="absolute left-1/2 top-1/2 flex w-[320px] max-w-[calc(100%-48px)] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-[8px] text-center">
-        <div className="flex w-full items-start justify-center">
-          <p className="text-heading-8 text-[var(--color-neutral-100-uniform)]">
-            {title}
-          </p>
-        </div>
-
-        {description ? (
-          <p className="text-body-3 text-[rgba(255,255,255,0.78)]">
-            {description}
-          </p>
-        ) : null}
-
-        {!isError ? (
-          <div className="relative h-[8px] w-full overflow-hidden rounded-full bg-[var(--color-neutral-200)]">
-            <div
-              className="h-full rounded-full bg-[var(--color-accent-300)] transition-[width] duration-300 ease-out"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="mt-[4px] h-[36px] cursor-pointer rounded-[var(--radius-2)] bg-[var(--color-neutral-100)] px-[14px] text-heading-8 text-[var(--color-text-300)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-300)]"
-            onClick={onRetry}
-          >
-            Reintentar
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -389,49 +330,6 @@ function RenderStage({
         {getFileDisplayName(activeRender.title)}
       </h2>
     </div>
-  );
-}
-
-function RenderThumbnail({ item, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={clsx(
-        "group relative h-[150px] w-full cursor-pointer overflow-hidden rounded-[var(--radius-2)] text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-neutral-bg)]",
-        selected
-          ? "ring-1 ring-[var(--color-neutral-300)]"
-          : "hover:opacity-90",
-      )}
-      aria-pressed={selected}
-    >
-      <Model3DThumbnail
-        item={item}
-        alt={item.title}
-        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.02]"
-      />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02)_0%,rgba(0,0,0,0.12)_35%,rgba(0,0,0,0.52)_100%)]" />
-      <span className="absolute inset-x-[8px] bottom-[8px] text-heading-8 text-[var(--color-neutral-100-uniform)]">
-        {getFileDisplayName(item.title)}
-      </span>
-    </button>
-  );
-}
-
-function RenderThumbnailRail({ items, activeRenderId, onSelect }) {
-  return (
-    <aside className="flex h-[480px] w-[200px] shrink-0 flex-col overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] max-[1024px]:h-auto max-[1024px]:w-full [&::-webkit-scrollbar]:hidden">
-      <div className="flex flex-col gap-[12px] pr-[4px]">
-        {items.map((item) => (
-          <RenderThumbnail
-            key={item.id}
-            item={item}
-            selected={item.id === activeRenderId}
-            onSelect={() => onSelect(item.id)}
-          />
-        ))}
-      </div>
-    </aside>
   );
 }
 

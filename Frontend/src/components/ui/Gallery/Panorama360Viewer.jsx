@@ -10,7 +10,7 @@ function normalizeAngle(value) {
   return ((value + 180) % 360 + 360) % 360 - 180;
 }
 
-export function directionToPanoramaPoint(direction) {
+function directionToPanoramaPoint(direction) {
   const normalized = direction.clone().normalize();
   return {
     kind: "panorama-point",
