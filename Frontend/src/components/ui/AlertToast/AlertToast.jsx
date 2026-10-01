@@ -1,3 +1,4 @@
+/* Muestra alertas temporales en un portal y controla su ciclo de entrada, salida y autoocultado. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -6,6 +7,7 @@ import Alert from "../Alert/Alert.jsx";
 
 const EXIT_DURATION_MS = 320;
 
+// Coordina timers, montaje, visibilidad y acciones de una alerta flotante.
 function AlertToast({
   trigger = null,
   title,
@@ -29,6 +31,7 @@ function AlertToast({
   const hideTimerRef = useRef(null);
   const unmountTimerRef = useRef(null);
 
+  // Cancela timers activos para evitar transiciones o callbacks obsoletos.
   const clearTimers = useCallback(() => {
     window.clearTimeout(mountTimerRef.current);
     window.clearTimeout(showTimerRef.current);
@@ -36,6 +39,7 @@ function AlertToast({
     window.clearTimeout(unmountTimerRef.current);
   }, []);
 
+  // Inicia la animación de salida y desmonta el toast al terminar.
   const dismiss = useCallback(() => {
     clearTimers();
     setVisible(false);
