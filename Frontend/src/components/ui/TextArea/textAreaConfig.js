@@ -1,3 +1,4 @@
+/* Define estados visuales, valores por defecto y helpers del componente TextArea. */
 export const TEXT_AREA_DEFAULT_PROPS = {
   label: "Descripción",
   hintText: "Texto de ayuda para los usuarios",
@@ -76,6 +77,7 @@ export const TEXT_AREA_STATE_STYLES = {
   },
 };
 
+// Prioriza estado deshabilitado/error y luego deriva foco, hover o contenido.
 export function resolveTextAreaState({
   disabled = false,
   state = "Default",
@@ -110,6 +112,7 @@ export function resolveTextAreaState({
   return "Default";
 }
 
+// Combina las propiedades base del textarea con sobrescrituras específicas.
 export function createTextAreaProps(overrides = {}) {
   return {
     ...TEXT_AREA_DEFAULT_PROPS,
@@ -117,6 +120,7 @@ export function createTextAreaProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del textarea.
 export function createTextAreaShowcaseItem(label, overrides = {}) {
   return {
     label,
