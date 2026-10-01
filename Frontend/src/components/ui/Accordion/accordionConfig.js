@@ -1,3 +1,4 @@
+/* Define estados visuales, valores por defecto y helpers del componente Accordion. */
 export const ACCORDION_STATES = ["Default", "Hover", "Open"];
 
 export const ACCORDION_DEFAULT_PROPS = {
@@ -28,6 +29,7 @@ export const ACCORDION_STATE_STYLES = {
   },
 };
 
+// Combina las propiedades base del acordeón con sobrescrituras específicas.
 export function createAccordionProps(overrides = {}) {
   return {
     ...ACCORDION_DEFAULT_PROPS,
@@ -35,6 +37,7 @@ export function createAccordionProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del acordeón.
 export function createAccordionShowcaseItem(label, overrides = {}) {
   return {
     label,

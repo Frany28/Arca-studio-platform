@@ -1,3 +1,4 @@
+/* Renderiza un acordeón accesible con estado controlado o interno y animación de apertura. */
 import { useId, useState } from "react";
 import clsx from "clsx";
 import {
@@ -6,6 +7,7 @@ import {
   ACCORDION_STATE_STYLES,
 } from "./accordionConfig.js";
 
+// Icono usado cuando el acordeón está cerrado.
 function AddIcon({ className }) {
   return (
     <svg
@@ -31,6 +33,7 @@ function AddIcon({ className }) {
   );
 }
 
+// Icono usado cuando el acordeón está abierto.
 function MinusIcon({ className }) {
   return (
     <svg
@@ -50,6 +53,7 @@ function MinusIcon({ className }) {
   );
 }
 
+// Icono auxiliar mostrado opcionalmente al lado derecho.
 function QuestionCircleIcon({ className }) {
   return (
     <svg
@@ -82,6 +86,7 @@ function QuestionCircleIcon({ className }) {
   );
 }
 
+// Coordina estado abierto/cerrado, hover y atributos accesibles del acordeón.
 function Accordion({
   className,
   title = ACCORDION_DEFAULT_PROPS.title,

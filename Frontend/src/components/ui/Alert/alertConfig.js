@@ -1,3 +1,4 @@
+/* Define temas, layouts, valores por defecto y helpers del componente Alert. */
 export const ALERT_THEMES = [
   "Brand",
   "Warning",
@@ -25,6 +26,7 @@ export const ALERT_DEFAULT_PROPS = {
   "aria-label": "Alert",
 };
 
+// Combina las propiedades base de la alerta con sobrescrituras específicas.
 export function createAlertProps(overrides = {}) {
   return {
     ...ALERT_DEFAULT_PROPS,
@@ -32,6 +34,7 @@ export function createAlertProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de Alert.
 export function createAlertShowcaseItem(label, overrides = {}) {
   return {
     label,
