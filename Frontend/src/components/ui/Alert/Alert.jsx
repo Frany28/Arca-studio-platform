@@ -1,3 +1,4 @@
+/* Renderiza alertas temáticas con acciones, cierre opcional y soporte de ancho completo. */
 import { useState } from "react";
 import clsx from "clsx";
 import Button from "../Button/Button.jsx";
@@ -73,6 +74,7 @@ const ALERT_THEME_STYLES = {
   },
 };
 
+// Icono informativo usado por la mayoría de temas de alerta.
 function InfoCircleIcon({ className }) {
   return (
     <svg
@@ -98,6 +100,7 @@ function InfoCircleIcon({ className }) {
   );
 }
 
+// Icono específico para alertas de éxito.
 function TickCircleIcon({ className }) {
   return (
     <svg
@@ -125,6 +128,7 @@ function TickCircleIcon({ className }) {
   );
 }
 
+// Icono usado por el botón para cerrar la alerta.
 function CloseIcon({ className }) {
   return (
     <svg
@@ -150,14 +154,17 @@ function CloseIcon({ className }) {
   );
 }
 
+// Valida el tema solicitado y aplica el valor por defecto si es inválido.
 function getResolvedTheme(theme) {
   return ALERT_THEMES.includes(theme) ? theme : ALERT_DEFAULT_PROPS.theme;
 }
 
+// Valida el layout solicitado y aplica el valor por defecto si es inválido.
 function getResolvedLayout(layout) {
   return ALERT_LAYOUTS.includes(layout) ? layout : ALERT_DEFAULT_PROPS.layout;
 }
 
+// Selecciona el icono principal según el tema de la alerta.
 function getAlertIcon(theme, className) {
   if (theme === "Success") {
     return <TickCircleIcon className={className} />;
@@ -166,6 +173,7 @@ function getAlertIcon(theme, className) {
   return <InfoCircleIcon className={className} />;
 }
 
+// Adapta el tema de los botones de acción al tipo de alerta.
 function getAlertButtonTheme(theme) {
   if (theme === "Danger") {
     return "Danger";
@@ -178,6 +186,7 @@ function getAlertButtonTheme(theme) {
   return "Primary";
 }
 
+// Coordina visibilidad, tema, layout, acciones y accesibilidad del mensaje.
 function Alert({
   className,
   title = ALERT_DEFAULT_PROPS.title,
