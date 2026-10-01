@@ -1,3 +1,4 @@
+/* Renderiza un progreso circular accesible con porcentaje animado y texto opcional. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
@@ -47,10 +48,12 @@ const CIRCLE_PROGRESS_BAR_SIZE_STYLES = {
   },
 };
 
+// Limita un valor al rango indicado antes de usarlo en el progreso.
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+// Convierte value/max en un porcentaje seguro entre 0 y 100.
 function getPercentage(value, max) {
   const safeMax = typeof max === "number" && max > 0 ? max : 100;
   const safeValue = typeof value === "number" ? value : 0;
@@ -58,14 +61,17 @@ function getPercentage(value, max) {
   return clamp((safeValue / safeMax) * 100, 0, 100);
 }
 
+// Redondea el porcentaje para mostrarlo en texto y referencias visuales.
 function getRoundedPercentage(percentage) {
   return Math.round(percentage);
 }
 
+// Obtiene la referencia visual asociada al tamaño y porcentaje conocido.
 function getNodeId(size, roundedPercentage) {
   return CIRCLE_PROGRESS_BAR_LABEL_NODE_IDS[size]?.[roundedPercentage];
 }
 
+// Coordina tamaño, animación SVG y atributos accesibles del progreso.
 function CircleProgressBarLabel({
   className,
   "aria-label": ariaLabel = CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS["aria-label"],

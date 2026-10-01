@@ -1,3 +1,4 @@
+/* Define tamaños, estados interactivos, valores por defecto y helpers del componente Tag. */
 export const TAG_DEFAULT_PROPS = {
   label: "Label",
   size: "M",
@@ -62,6 +63,7 @@ export const TAG_INTERACTIVE_STYLES = {
   disabled: "cursor-not-allowed opacity-60",
 };
 
+// Combina las propiedades base del tag con sobrescrituras específicas.
 export function createTagProps(overrides = {}) {
   return {
     ...TAG_DEFAULT_PROPS,
@@ -69,6 +71,7 @@ export function createTagProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del Tag.
 export function createTagShowcaseItem(label, overrides = {}) {
   return {
     label,
