@@ -1,3 +1,4 @@
+/* Renderiza items seleccionables y grupos de botones con estado controlado o interno. */
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import Tooltip from "../Tooltip/Tooltip.jsx";
@@ -8,6 +9,7 @@ import {
   BUTTON_GROUP_WRAPPER_STYLES,
 } from "./buttonGroupItemConfig.js";
 
+// Icono visual predeterminado usado cuando el item no recibe uno personalizado.
 function LocationSearchingIcon({ className }) {
   return (
     <svg
@@ -30,6 +32,7 @@ function LocationSearchingIcon({ className }) {
   );
 }
 
+// Resuelve el estado efectivo del item priorizando el estado deshabilitado.
 function resolveItemState(state, disabled) {
   if (disabled) {
     return "Disabled";
@@ -38,6 +41,7 @@ function resolveItemState(state, disabled) {
   return BUTTON_GROUP_ITEM_VISUALS[state] ? state : "Default";
 }
 
+// Gestiona selección individual, estado visual e interacción de cada item del grupo.
 function ButtonGroupItem({
   className,
   label = "Text",
@@ -120,6 +124,7 @@ function ButtonGroupItem({
   );
 }
 
+// Coordina selección, normalización y renderizado de múltiples ButtonGroupItem.
 export function ButtonGroup({
   className,
   items,
