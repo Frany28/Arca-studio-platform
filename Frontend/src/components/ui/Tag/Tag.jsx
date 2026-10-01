@@ -1,3 +1,4 @@
+/* Renderiza tags configurables con avatar, bandera, estado, contador y acción de eliminación opcional. */
 import clsx from "clsx";
 import Flag from "../../Flag.jsx";
 import Avatar from "../Avatar/Avatar.jsx";
@@ -7,6 +8,7 @@ import {
   TAG_SIZE_STYLES,
 } from "./tagConfig.js";
 
+// Icono visual usado para cerrar o eliminar un tag.
 function CloseIcon({ className }) {
   return (
     <svg
@@ -32,6 +34,7 @@ function CloseIcon({ className }) {
   );
 }
 
+// Indicador de estado simple mostrado dentro del tag.
 function DotIndicator() {
   return (
     <span className="inline-flex size-4 items-center justify-center" aria-hidden="true">
@@ -40,6 +43,7 @@ function DotIndicator() {
   );
 }
 
+// Representación visual opcional de checkbox dentro del tag.
 function Checkbox({ className }) {
   return (
     <span
@@ -52,6 +56,7 @@ function Checkbox({ className }) {
   );
 }
 
+// Coordina contenido, interacción, selección y acciones disponibles del tag.
 function Tag({
   className,
   label = "Label",
