@@ -1,3 +1,4 @@
+/* Renderiza items de navegación seleccionables con estilos Brand, Underline y Divider. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import * as IconsaxIcons from "iconsax-react";
@@ -47,6 +48,7 @@ const TAB_ITEM_NODE_IDS = {
   },
 };
 
+// Detecta si el documento está usando el tema oscuro.
 function getDocumentDarkMode() {
   if (typeof document === "undefined") {
     return false;
@@ -55,6 +57,7 @@ function getDocumentDarkMode() {
   return document.documentElement.classList.contains("dark");
 }
 
+// Icono izquierdo predeterminado tomado de la librería de iconos.
 function Box2Icon({ className }) {
   const Box2 = IconsaxIcons.Box2;
 
@@ -72,6 +75,7 @@ function Box2Icon({ className }) {
   return null;
 }
 
+// Icono derecho predeterminado usado en variantes con acción secundaria.
 function WindowIcon({ className }) {
   return (
     <svg
@@ -95,6 +99,7 @@ function WindowIcon({ className }) {
   );
 }
 
+// Resuelve el estado visual efectivo según selección, hover o estado forzado.
 function getResolvedState({
   state,
   selected,
@@ -115,6 +120,7 @@ function getResolvedState({
   return "Default";
 }
 
+// Selecciona clases visuales según estilo, estado y tema actual.
 function getTabItemVisualSpec(style, state, isDarkMode) {
   if (style === "Underline") {
     if (state === "Selected") {
@@ -209,6 +215,7 @@ function getTabItemVisualSpec(style, state, isDarkMode) {
   };
 }
 
+// Coordina estado controlado/interno, interacción y apariencia del item de navegación.
 function TabItem({
   className,
   label = TAB_ITEM_DEFAULT_PROPS.label,
