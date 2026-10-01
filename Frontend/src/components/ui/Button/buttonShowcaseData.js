@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de tamaños, iconos y estilos del Button para el sistema de diseño. */
 import {
   createButtonProps,
   createButtonShowcaseItem,
