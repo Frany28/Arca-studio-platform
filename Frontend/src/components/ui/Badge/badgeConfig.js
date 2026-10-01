@@ -1,3 +1,4 @@
+/* Define temas, tamaños, variantes y helpers reutilizables del componente Badge. */
 export const BADGE_DEFAULT_PROPS = {
   label: "Label",
   theme: "Brand 1",
@@ -103,6 +104,7 @@ export const BADGE_VARIATION_CLASSNAMES = {
   "Flag / Avatar": "justify-center",
 };
 
+// Combina las propiedades base del badge con sobrescrituras específicas.
 export function createBadgeProps(overrides = {}) {
   return {
     ...BADGE_DEFAULT_PROPS,
@@ -110,6 +112,7 @@ export function createBadgeProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del badge.
 export function createBadgeShowcaseItem(label, overrides = {}) {
   return {
     label,

@@ -1,3 +1,4 @@
+/* Renderiza botones reutilizables con variantes visuales, iconos, estados y tooltip opcional. */
 import clsx from "clsx";
 import Tooltip from "../Tooltip/Tooltip.jsx";
 import { resolveIconButtonTooltip } from "./buttonTooltip.js";
@@ -7,6 +8,7 @@ import {
   BUTTON_VISUALS,
 } from "./buttonConfig.js";
 
+// Normaliza tema, tipo, tamaño y estado antes de construir las clases y accesibilidad del botón.
 function Button({
   className,
   children = "Button",

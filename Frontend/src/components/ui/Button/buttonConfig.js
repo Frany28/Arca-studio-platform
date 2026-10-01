@@ -1,3 +1,4 @@
+/* Centraliza tamaños, estados visuales e interacciones del componente Button. */
 export const BUTTON_SIZE_STYLES = {
   S: {
     default:
@@ -165,6 +166,7 @@ export const BUTTON_INTERACTIVE_STYLES = {
   },
 };
 
+// Combina las propiedades base del botón con una variante concreta.
 export function createButtonProps(overrides = {}) {
   return {
     ...BUTTON_DEFAULT_PROPS,
@@ -172,6 +174,7 @@ export function createButtonProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del botón.
 export function createButtonShowcaseItem(label, overrides = {}) {
   return {
     label,
@@ -179,6 +182,7 @@ export function createButtonShowcaseItem(label, overrides = {}) {
   };
 }
 
+// Construye pares activo/deshabilitado para documentar cada estilo visual.
 export function createButtonStyleSection(title, overrides = {}) {
   return {
     title,

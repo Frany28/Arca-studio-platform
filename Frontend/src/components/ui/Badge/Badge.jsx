@@ -1,3 +1,4 @@
+/* Renderiza etiquetas de estado con texto, punto, bandera o iconos según su variante. */
 import clsx from "clsx";
 import Flag from "../../Flag.jsx";
 import {
@@ -6,6 +7,7 @@ import {
   BADGE_VARIATION_CLASSNAMES,
 } from "./badgeConfig.js";
 
+// Icono de respaldo usado en los laterales del badge cuando no se proporciona otro.
 function CloseIcon({ className }) {
   return (
     <svg
@@ -31,6 +33,7 @@ function CloseIcon({ className }) {
   );
 }
 
+// Valida tema, variante y tamaño usando valores seguros por defecto.
 function resolveBadgeProps(theme, variation, size) {
   const resolvedTheme = BADGE_THEME_STYLES[theme] ? theme : "Brand 1";
   const resolvedVariation = BADGE_VARIATION_CLASSNAMES[variation]
@@ -41,6 +44,7 @@ function resolveBadgeProps(theme, variation, size) {
   return { resolvedTheme, resolvedVariation, resolvedSize };
 }
 
+// Resuelve la apariencia final del badge y renderiza solo los elementos de la variante activa.
 function Badge({
   className,
   label = "Label",

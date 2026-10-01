@@ -1,3 +1,4 @@
+/* Contiene ejemplos de estados, cantidades y variantes del grupo de botones. */
 import {
   createButtonGroupItemProps,
   createButtonGroupProps,
