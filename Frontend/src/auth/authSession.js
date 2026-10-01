@@ -1,3 +1,4 @@
+/* Gestiona la restauración de sesión, reintentos y cancelación de solicitudes de autenticación. */
 export const AUTH_SESSION_STATUS = Object.freeze({
   AUTHENTICATED: "authenticated",
   LOADING: "loading",
@@ -7,10 +8,12 @@ export const AUTH_SESSION_STATUS = Object.freeze({
 
 export const AUTH_RETRY_DELAYS_MS = Object.freeze([250, 750]);
 
+// Detecta cuando el backend confirma que ya no existe una sesión válida.
 export function isDefinitiveAuthenticationFailure(error) {
   return error?.status === 401 && error?.code === "UNAUTHENTICATED";
 }
 
+// Determina si un fallo temporal admite reintentos automáticos.
 export function isRetryableAuthenticationFailure(error) {
   return (
     !Number.isInteger(error?.status) ||
@@ -19,6 +22,7 @@ export function isRetryableAuthenticationFailure(error) {
   );
 }
 
+// Espera antes de un reintento y permite cancelar la espera mediante AbortSignal.
 export function waitForRetry(delayMs, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -38,6 +42,7 @@ export function waitForRetry(delayMs, signal) {
   });
 }
 
+// Intenta restaurar la sesión aplicando reintentos cortos y jitter ante fallos temporales.
 export async function restoreAuthSession({
   fetchSession,
   random = Math.random,
@@ -91,6 +96,7 @@ export async function restoreAuthSession({
   };
 }
 
+// Evita restauraciones duplicadas y expone una forma de cancelar la solicitud activa.
 export function createAuthSessionRestorer(options) {
   let controller = null;
   let inFlight = null;
