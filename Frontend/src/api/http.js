@@ -1,3 +1,4 @@
+/* Centraliza la comunicación HTTP del frontend con la API y adapta respuestas para la interfaz. */
 import { NETWORK_USER_ERROR_MESSAGE } from "../utils/userFacingError.js";
 
 const viteEnv = import.meta.env || {};
@@ -5,10 +6,12 @@ const API_BASE_URL = (
   (viteEnv.DEV ? viteEnv.VITE_API_URL : "") ||
   "/api"
 ).replace(/\/$/, "");
+// Construye URLs absolutas o relativas usando la base configurada para la API.
 export function getApiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
 
+// Ejecuta solicitudes JSON con credenciales y normaliza errores de red y de la API.
 async function apiRequest(path, options = {}) {
   let response;
 
@@ -52,6 +55,7 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+// Recorre todas las páginas de una colección con cursor y elimina elementos duplicados.
 async function collectCursorPages(fetchPage, collectionKey, limit = 100) {
   const items = [];
   const ids = new Set();
@@ -67,6 +71,7 @@ async function collectCursorPages(fetchPage, collectionKey, limit = 100) {
   return { [collectionKey]: items, nextCursor: null };
 }
 
+// Endpoints relacionados con registro, sesión, contraseña y foto de perfil.
 export const authApi = {
   startRegistration(payload) {
     return apiRequest("/auth/registration/start", {
@@ -228,6 +233,7 @@ export const authApi = {
   },
 };
 
+// Añade URLs de avatar a los responsables devueltos por endpoints administrativos.
 function withAdminAssigneeAvatars(payload) {
   const assignees = Array.isArray(payload?.assignees)
     ? payload.assignees.map((assignee) => ({
@@ -243,6 +249,7 @@ function withAdminAssigneeAvatars(payload) {
   return { ...payload, assignees };
 }
 
+// Normaliza la URL de avatar de un usuario listado en administración.
 function withAdminUserAvatar(listedUser) {
   if (!listedUser) return listedUser;
 
@@ -256,6 +263,7 @@ function withAdminUserAvatar(listedUser) {
   };
 }
 
+// Aplica la normalización de avatar a colecciones de usuarios administrativos.
 function withAdminUserAvatars(payload) {
   const users = Array.isArray(payload?.users)
     ? payload.users.map(withAdminUserAvatar)
@@ -264,6 +272,7 @@ function withAdminUserAvatars(payload) {
   return { ...payload, users };
 }
 
+// Endpoints del panel administrativo: métricas, usuarios, roles, notas y asignaciones.
 export const adminApi = {
   getDashboardMetrics({ signal } = {}) {
     return apiRequest("/admin/dashboard-metrics", { signal });
@@ -385,6 +394,7 @@ export const adminApi = {
   },
 };
 
+// Endpoints de proyectos, archivos, comentarios, publicación y eventos en tiempo real.
 export const projectsApi = {
   list({ cursor, limit, scope } = {}) {
     const params = new URLSearchParams();
@@ -541,6 +551,7 @@ export const projectsApi = {
   },
 };
 
+// Endpoints de comentarios generales del entorno colaborativo.
 export const environmentCommentsApi = {
   list({ cursor, limit } = {}) {
     const params = new URLSearchParams();
@@ -565,6 +576,7 @@ export const environmentCommentsApi = {
   },
 };
 
+// Sube archivos binarios con progreso, cancelación y manejo uniforme de errores.
 function uploadRawFile({ file, onUploadProgress, path, signal }) {
   const fileName = encodeURIComponent(file?.name || "archivo");
 
@@ -644,6 +656,7 @@ function uploadRawFile({ file, onUploadProgress, path, signal }) {
   });
 }
 
+// Endpoints para crear, revisar, actualizar y adjuntar archivos a solicitudes de proyecto.
 export const projectRequestsApi = {
   list({ cursor, limit = 25 } = {}) {
     const params = new URLSearchParams({ limit: String(limit) });
@@ -707,6 +720,7 @@ export const projectRequestsApi = {
   },
 };
 
+// Endpoints para solicitudes de soporte y sus archivos adjuntos.
 export const supportApi = {
   createRequest({ description, issueType, subject }) {
     return apiRequest("/support/requests", {
@@ -725,6 +739,7 @@ export const supportApi = {
   },
 };
 
+// Fachada única que agrupa todos los módulos de acceso a la API.
 export const api = {
   admin: adminApi,
   auth: authApi,
