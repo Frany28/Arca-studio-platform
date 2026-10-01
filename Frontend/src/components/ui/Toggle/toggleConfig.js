@@ -1,3 +1,4 @@
+/* Define tamaños, estados permitidos, valores por defecto y helpers del Toggle. */
 export const TOGGLE_SIZES = ["S", "M", "L"];
 export const TOGGLE_STATES = ["Default", "Hover", "Focused", "Disabled"];
 
@@ -30,6 +31,7 @@ export const TOGGLE_SIZE_STYLES = {
   },
 };
 
+// Combina las propiedades base del toggle con sobrescrituras específicas.
 export function createToggleProps(overrides = {}) {
   return {
     ...TOGGLE_DEFAULT_PROPS,
@@ -37,6 +39,7 @@ export function createToggleProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del toggle.
 export function createToggleShowcaseItem(label, overrides = {}) {
   return {
     label,
