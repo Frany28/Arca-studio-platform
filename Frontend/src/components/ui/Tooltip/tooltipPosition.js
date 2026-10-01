@@ -1,3 +1,5 @@
+/* Contiene cálculos puros para mantener tooltips visibles dentro del viewport. */
+// Calcula el desplazamiento necesario para evitar que el tooltip salga del viewport.
 export function getTooltipViewportOffset({
   bottom,
   left,
@@ -43,6 +45,7 @@ const OPPOSITE_SIDE = {
   Right: "Left",
 };
 
+// Conserva la alineación horizontal al cambiar el tooltip a otro lado.
 function getPositionForSide(side, preferredPosition) {
   if (side === "Left" || side === "Right") return side;
 
@@ -55,6 +58,7 @@ function getPositionForSide(side, preferredPosition) {
   return `${side} ${alignment}`;
 }
 
+// Busca la mejor posición disponible respetando primero la preferencia original.
 export function getAdaptiveTooltipPosition({
   anchorBottom,
   anchorLeft,
