@@ -1,3 +1,4 @@
+/* Agrupa configuraciones de ejemplo de AvatarGroup para documentación y showcases. */
 import {
   createAvatarGroupProps,
   createAvatarGroupShowcaseItem,

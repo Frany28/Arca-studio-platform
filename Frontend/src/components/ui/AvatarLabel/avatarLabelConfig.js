@@ -1,3 +1,4 @@
+/* Define valores por defecto y estilos responsivos del componente AvatarLabel. */
 export const AVATAR_LABEL_DEFAULT_PROPS = {
   size: "M",
   label: "Nombre aquí",
@@ -35,6 +36,7 @@ export const AVATAR_LABEL_SIZE_STYLES = {
   },
 };
 
+// Combina la configuración base con variantes específicas de la etiqueta.
 export function createAvatarLabelProps(overrides = {}) {
   return {
     ...AVATAR_LABEL_DEFAULT_PROPS,
@@ -42,6 +44,7 @@ export function createAvatarLabelProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de AvatarLabel.
 export function createAvatarLabelShowcaseItem(label, overrides = {}) {
   return {
     label,

@@ -1,3 +1,4 @@
+/* Renderiza avatares con imagen, iniciales o icono y aplica tamaños, temas y accesibilidad. */
 import { useId, useState } from "react";
 import clsx from "clsx";
 import {
@@ -6,6 +7,7 @@ import {
   AVATAR_THEME_STYLES,
 } from "./avatarConfig.js";
 
+// Icono de respaldo usado cuando el avatar no muestra imagen ni iniciales.
 function AvatarIcon({ className }) {
   const clipPathId = useId();
 
@@ -35,6 +37,7 @@ function AvatarIcon({ className }) {
   );
 }
 
+// Limpia y limita las iniciales a un máximo de dos caracteres.
 function normalizeInitials(initials) {
   const sanitized = String(initials ?? "")
     .trim()
@@ -45,6 +48,7 @@ function normalizeInitials(initials) {
   return sanitized || "JS";
 }
 
+// Obtiene iniciales a partir del nombre cuando no se proporcionan explícitamente.
 function getInitialsFromName(name) {
   const parts = String(name ?? "")
     .trim()
@@ -62,6 +66,7 @@ function getInitialsFromName(name) {
   return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
 
+// Resuelve contenido, estilos y atributos accesibles antes de renderizar el avatar.
 function Avatar({
   className,
   size = AVATAR_DEFAULT_PROPS.size,

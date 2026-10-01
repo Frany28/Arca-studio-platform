@@ -1,3 +1,4 @@
+/* Agrupa varios avatares superpuestos y permite mostrar un contador de usuarios adicionales. */
 import clsx from "clsx";
 import Avatar from "../Avatar/Avatar.jsx";
 import {
@@ -5,6 +6,7 @@ import {
   AVATAR_GROUP_SIZE_STYLES,
 } from "./avatarGroupConfig.js";
 
+// Normaliza tamaño e items antes de construir el grupo visual de avatares.
 function AvatarGroup({
   className,
   size = AVATAR_GROUP_DEFAULT_PROPS.size,

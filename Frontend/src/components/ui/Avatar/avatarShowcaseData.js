@@ -1,3 +1,4 @@
+/* Contiene ejemplos y variantes del Avatar usados en showcases del sistema de diseño. */
 import { createAvatarShowcaseItem } from "./avatarConfig.js";
 
 export const avatarTextItems = [
