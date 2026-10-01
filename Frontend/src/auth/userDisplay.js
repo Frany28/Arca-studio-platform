@@ -1,3 +1,5 @@
+/* Normaliza los datos del usuario para mostrarlos de forma consistente en la interfaz. */
+// Construye nombre, iniciales, rol, teléfono y foto con valores de respaldo seguros.
 export function getUserDisplay(user) {
   const firstName = String(user?.firstName || "").trim();
   const lastName = String(user?.lastName || "").trim();
