@@ -1,11 +1,14 @@
+/* Renderiza un scrollbar visual o interactivo y sincroniza su posición mediante callbacks. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { SCROLL_BAR_DEFAULT_PROPS } from "./scrollBarConfig.js";
 
+// Limita valores numéricos al rango permitido del scrollbar.
 function clamp(value, min = 0, max = 1) {
   return Math.min(Math.max(value, min), max);
 }
 
+// Calcula tamaño y posición del thumb y gestiona el arrastre cuando es interactivo.
 function ScrollBar({
   "aria-label": ariaLabel = "Control de desplazamiento",
   className,
@@ -34,6 +37,7 @@ function ScrollBar({
   const thumbTravel = Math.max(innerLength - thumbLength, 0);
   const thumbPosition = thumbTravel * resolvedPosition;
 
+  // Convierte la posición del puntero en un valor normalizado entre 0 y 1.
   const getNextPosition = useCallback(
     (pointerPosition, offset = thumbLength / 2) => {
       const rect = trackRef.current?.getBoundingClientRect();
@@ -50,6 +54,7 @@ function ScrollBar({
     [isHorizontal, resolvedPosition, thumbLength, thumbTravel],
   );
 
+  // Inicia el arrastre del thumb conservando el offset exacto del puntero.
   function beginDrag(event) {
     if (!interactive) {
       return;
