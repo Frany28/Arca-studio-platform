@@ -1,3 +1,4 @@
+/* Contiene ejemplos de longitud y posición del ScrollBar para documentación visual. */
 import {
   createScrollBarProps,
   createScrollBarShowcaseItem,
