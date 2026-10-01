@@ -1,3 +1,4 @@
+/* Contiene datos de referencia y variantes de AvatarLabel usadas en el sistema de diseño. */
 import avatarLabelFigmaAvatarSrc from "../../../assets/avatar-label-figma-40.svg";
 import {
   createAvatarLabelProps,
