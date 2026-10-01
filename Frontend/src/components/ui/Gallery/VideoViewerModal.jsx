@@ -10,7 +10,7 @@ import {
   formatVideoObservationTime,
   getVideoObservationTiming,
 } from "../../../utils/videoObservation.js";
-import { GeneralCommentsDrawer } from "./Model3DViewerModal.jsx";
+import GeneralCommentsDrawer from "./GeneralCommentsDrawer.jsx";
 import { useImageComments } from "./useImageComments.js";
 import { useVideoThumbnail } from "./useVideoThumbnail.js";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";

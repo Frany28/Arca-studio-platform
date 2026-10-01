@@ -5,7 +5,7 @@ import { getToggledCommentId } from "../../../utils/commentSelection.js";
 import MainLogo from "../../../assets/logos/MainLogo.jsx";
 import Button from "../../ui/Button/Button.jsx";
 import Tooltip from "../../ui/Tooltip/Tooltip.jsx";
-import { GeneralCommentsDrawer } from "./Model3DViewerModal.jsx";
+import GeneralCommentsDrawer from "./GeneralCommentsDrawer.jsx";
 import ImageHighlighter from "./ImageHighlighter.jsx";
 import { useImageComments } from "./useImageComments.js";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";

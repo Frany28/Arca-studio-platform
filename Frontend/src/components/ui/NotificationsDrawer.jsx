@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { orderCommentsByThread } from "../../utils/commentDisplay.js";
 import { getAvatarPresentation } from "../../utils/avatarPresentation.js";
 import { ENVIRONMENT_DRAWER_RECENT_ACTIVITY } from "../../data/environmentDrawerExamples.js";
-import { SelectionPreview } from "./Gallery/Model3DViewerModal.jsx";
+import SelectionPreview from "./Gallery/SelectionPreview.jsx";
 
 import Avatar from "./Avatar/Avatar.jsx";
 import Badge from "./Badge/Badge.jsx";

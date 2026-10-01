@@ -14,7 +14,7 @@ import Tooltip from "../../../components/ui/Tooltip/Tooltip.jsx";
 import ObservationTooltip from "../../../components/ui/ObservationTooltip/ObservationTooltip.jsx";
 import { getFileDisplayName } from "../../../utils/fileDisplayName.js";
 import { getToggledCommentId } from "../../../utils/commentSelection.js";
-import { GeneralCommentsDrawer } from "../../../components/ui/Gallery/Model3DViewerModal.jsx";
+import GeneralCommentsDrawer from "../../../components/ui/Gallery/GeneralCommentsDrawer.jsx";
 import { useDocumentComments } from "../../../hooks/useDocumentComments.js";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";
 import ProjectDocumentCard from "./ProjectDocumentCard.jsx";

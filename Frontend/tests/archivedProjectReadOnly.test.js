@@ -21,7 +21,7 @@ test("archived project details propagate one shared read-only policy", async () 
     readFile(new URL("../src/contexts/ProjectReadOnlyContext.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/utils/projectReadOnly.js", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/projects/ProjectDetailsPage.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/components/ui/Gallery/Model3DViewerModal.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/ui/Gallery/GeneralCommentsDrawer.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/projects/panels/ProjectUploadFilesPanel.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/ui/Gallery/ImageViewerModal.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/ui/Gallery/VideoViewerModal.jsx", import.meta.url), "utf8"),

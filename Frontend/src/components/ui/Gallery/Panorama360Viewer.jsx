@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import Button from "../Button/Button.jsx";
-import { GeneralCommentsDrawer } from "./Model3DViewerModal.jsx";
+import GeneralCommentsDrawer from "./GeneralCommentsDrawer.jsx";
 import { useImageComments } from "./useImageComments.js";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";
 

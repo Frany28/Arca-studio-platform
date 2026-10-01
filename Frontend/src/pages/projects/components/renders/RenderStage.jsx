@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "../../../../config/modelViewer.js";
 import MainLogo from "../../../../assets/logos/MainLogo.jsx";
-import { Model3DViewerControls } from "../../../../components/ui/Gallery/Model3DViewerModal.jsx";
+import Model3DViewerControls from "../../../../components/ui/Gallery/Model3DViewerControls.jsx";
 import {
   MODEL_3D_CAMERA_CONTROLS,
   MODEL_3D_NAVIGATION_MODES,
