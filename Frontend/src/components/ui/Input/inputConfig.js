@@ -1,3 +1,4 @@
+/* Centraliza tamaños, estados, tipos, tags y reglas de contraseña del componente Input. */
 import PHONE_COUNTRY_OPTIONS from "./phoneCountryOptions.js";
 
 export const INPUT_DEFAULT_PROPS = {
@@ -172,6 +173,7 @@ export const PASSWORD_REQUIREMENT_RULES = [
   },
 ];
 
+// Combina las propiedades base del input con sobrescrituras específicas.
 export function createInputProps(overrides = {}) {
   return {
     ...INPUT_DEFAULT_PROPS,
@@ -179,6 +181,7 @@ export function createInputProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del Input.
 export function createInputShowcaseItem(label, overrides = {}) {
   return {
     label,
