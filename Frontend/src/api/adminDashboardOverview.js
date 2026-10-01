@@ -1,3 +1,4 @@
+/* Gestiona la carga y caché temporal del resumen principal del dashboard administrativo. */
 import { api } from "./http.js";
 
 const CACHE_TTL_MS = 15000;
@@ -5,6 +6,7 @@ const CACHE_TTL_MS = 15000;
 const cacheByScope = new Map();
 const inFlightByScope = new Map();
 
+// Reutiliza datos recientes, deduplica solicitudes activas y permite forzar una recarga.
 export function loadAdminDashboardOverview({ force = false, scopeKey } = {}) {
   const now = Date.now();
   const resolvedScopeKey = String(scopeKey || "admin-session");
