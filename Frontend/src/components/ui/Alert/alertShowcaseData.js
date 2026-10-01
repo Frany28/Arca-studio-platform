@@ -1,3 +1,4 @@
+/* Contiene ejemplos de contenido, temas y layouts de Alert para el sistema de diseño. */
 import {
   createAlertProps,
   createAlertShowcaseItem,
