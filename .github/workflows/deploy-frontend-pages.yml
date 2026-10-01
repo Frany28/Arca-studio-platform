@@ -34,21 +34,11 @@ jobs:
         run: npm ci
         working-directory: Frontend
 
-      - name: Validate frontend API URL
-        run: |
-          if [ -z "${VITE_API_URL}" ]; then
-            echo "VITE_API_URL is required for the production frontend build."
-            exit 1
-          fi
-        env:
-          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL }}
-
       - name: Build frontend
         run: npm run build
         working-directory: Frontend
         env:
-          DEPLOY_BASE_PATH: /Sistema_Web_Arca_Studio/
-          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL }}
+          DEPLOY_BASE_PATH: /Arca-studio-platform/
 
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html
