@@ -1,3 +1,4 @@
+/* Contiene ejemplos de contenido y tamaños del Tag para el sistema de diseño. */
 import { createTagProps, createTagShowcaseItem } from "./tagConfig.js";
 
 export const tagQuickToggleItems = [
