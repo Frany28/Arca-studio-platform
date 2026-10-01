@@ -8,7 +8,7 @@ test("admin files page implements the Figma KPI section with live metrics", asyn
   const [page, kpi, http] = await Promise.all([
     readFile(new URL("../src/pages/admin-files/AdminFilesPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/AdminKpiMetric.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
   const labels = ["Archivos totales", "Espacio Usado", "Última carga"];

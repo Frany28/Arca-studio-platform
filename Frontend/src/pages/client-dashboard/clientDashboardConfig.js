@@ -1,0 +1,7 @@
+export const EXPANDED_SIDEBAR_WIDTH = 312;
+
+export const COLLAPSED_SIDEBAR_WIDTH = 76;
+
+export const TABLET_BREAKPOINT_PX = 768;
+
+export const REQUEST_SKELETON_COUNT = 2;

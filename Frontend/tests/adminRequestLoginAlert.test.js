@@ -1,3 +1,4 @@
+import { readSources } from "./helpers/readSources.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -13,13 +14,10 @@ test("admin request alert follows Figma and appears after every explicit login",
         "utf8",
       ),
       readFile(new URL("../src/auth/AuthContext.jsx", import.meta.url), "utf8"),
-      readFile(
-        new URL(
+      readSources(new URL(
           "../src/pages/architect-dashboard/ArchitectDashboard.jsx",
           import.meta.url,
-        ),
-        "utf8",
-      ),
+        ), new URL("../src/pages/architect-dashboard/hooks/useProjectRequestWorkflow.js", import.meta.url)),
       readFile(
         new URL(
           "../src/pages/architect-dashboard/components/AdminDashboardOverview.jsx",
@@ -43,13 +41,10 @@ test("admin request alert follows Figma and appears after every explicit login",
 
 test("assigning from the login alert uses a confirm-only modal flow", async () => {
   const [dashboardSource, modalSource] = await Promise.all([
-    readFile(
-      new URL(
+    readSources(new URL(
         "../src/pages/architect-dashboard/ArchitectDashboard.jsx",
         import.meta.url,
-      ),
-      "utf8",
-    ),
+      ), new URL("../src/pages/architect-dashboard/hooks/useProjectRequestWorkflow.js", import.meta.url)),
     readFile(
       new URL(
         "../src/pages/architect-dashboard/components/AdminRequestAssignmentModal.jsx",

@@ -98,7 +98,7 @@ test("admin user role cells use the filled brand badge from Figma", async () => 
 test("admin user rows use authenticated profile photos with avatar fallback", async () => {
   const [pageSource, httpSource] = await Promise.all([
     readFile(new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
   assert.match(pageSource, /src: listedUser\.profilePhotoUrl/);
@@ -126,7 +126,7 @@ test("admin user filters match the Figma control dimensions", async () => {
 test("admin user filters support multiple checkbox selections and four visible rows", async () => {
   const [source, httpSource] = await Promise.all([
     readFile(new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
   assert.equal((source.match(/\n\s+multiple\n/g) || []).length, 2);
@@ -143,7 +143,7 @@ test("the user details action opens the Figma drawer with live API data", async 
   const [pageSource, drawerSource, httpSource] = await Promise.all([
     readFile(new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-users/AdminUserDetailsDrawer.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
   const userNotesSource = drawerSource.slice(0, drawerSource.indexOf("function UserDetails"));
 

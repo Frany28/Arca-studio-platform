@@ -1,9 +1,9 @@
 {
   "summary": {
-    "files": 503,
-    "modules": 386,
-    "components": 213,
-    "reachableComponents": 177,
+    "files": 560,
+    "modules": 443,
+    "components": 226,
+    "reachableComponents": 190,
     "dormantModules": 90,
     "nativeControlsOutsideUI": 0,
     "missingImports": 0,
@@ -195,7 +195,6 @@
         "src/pages/CreatePassword.jsx",
         "src/pages/EmptyProjectRendersExample.jsx",
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/Login.jsx",
         "src/pages/ProjectRequestPage.jsx",
         "src/pages/PublicProjectsGallery.jsx",
@@ -203,6 +202,7 @@
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/architect-dashboard/ArchitectDashboard.jsx",
         "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/ProjectDetailsPage.jsx",
         "src/pages/settings/SettingsPage.jsx"
       ]
@@ -277,13 +277,13 @@
       "consumers": [
         "src/pages/EmptyProjectRendersExample.jsx",
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/ProjectRequestPage.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/admin-files/AdminFilesPage.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/architect-dashboard/ArchitectDashboard.jsx",
         "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/ProjectDetailsPage.jsx",
         "src/pages/settings/SettingsPage.jsx"
       ]
@@ -298,13 +298,13 @@
       "consumers": [
         "src/pages/EmptyProjectRendersExample.jsx",
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/ProjectRequestPage.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/admin-files/AdminFilesPage.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/architect-dashboard/ArchitectDashboard.jsx",
         "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/ProjectDetailsPage.jsx",
         "src/pages/settings/SettingsPage.jsx"
       ]
@@ -455,9 +455,9 @@
       "reachable": true,
       "consumers": [
         "src/pages/CreateAccount.jsx",
-        "src/pages/Home.jsx",
         "src/pages/Login.jsx",
         "src/pages/RecoverAccount.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/panels/ProjectUploadFilesPanel.jsx",
         "src/pages/settings/SettingsPage.jsx"
       ]
@@ -490,9 +490,9 @@
       "consumers": [
         "src/components/ui/AvatarGroup.jsx",
         "src/components/ui/ProjectsShowcaseCarousel.jsx",
-        "src/pages/Home.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectRow.jsx",
+        "src/pages/client-dashboard/components/ProjectRow.jsx",
         "src/pages/projects/components/ProjectDocumentPreview.jsx"
       ]
     },
@@ -565,11 +565,12 @@
         "src/components/ui/Badge.jsx",
         "src/components/ui/ListItem/ListItemContent.jsx",
         "src/components/ui/NotificationsDrawer.jsx",
-        "src/pages/Home.jsx",
         "src/pages/admin-users/AdminUserDetailsDrawer.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
         "src/pages/architect-dashboard/components/AdminDashboardMetrics.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
+        "src/pages/client-dashboard/components/ProjectStatusGroup.jsx",
         "src/pages/projects/panels/ProjectWarrantiesPanel.jsx",
         "src/pages/settings/panels/ProfilePanel.jsx"
       ]
@@ -620,11 +621,9 @@
         "src/pages/CreateAccount.jsx",
         "src/pages/CreatePassword.jsx",
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/InactiveAccount.jsx",
         "src/pages/Login.jsx",
         "src/pages/NewPassword.jsx",
-        "src/pages/ProjectRequestPage.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/RecoverAccount.jsx",
         "src/pages/admin-users/AdminUserActionsMenu.jsx",
@@ -641,6 +640,12 @@
         "src/pages/architect-dashboard/components/ProjectCreationTabs.jsx",
         "src/pages/architect-dashboard/components/ProjectRequestReviewQueue.jsx",
         "src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
+        "src/pages/client-dashboard/components/ProjectRequestRow.jsx",
+        "src/pages/client-dashboard/components/ProjectRow.jsx",
+        "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+        "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+        "src/pages/project-request/components/ProjectRequestForm.jsx",
         "src/pages/project-request/components/ProjectRequestReceivedView.jsx",
         "src/pages/projects/ProjectDetailsPage.jsx",
         "src/pages/projects/components/ProjectDocumentCard.jsx",
@@ -685,9 +690,10 @@
       "consumers": [
         "src/components/ui/Checkbox.jsx",
         "src/components/ui/DropdownMenu/DropdownMenu.jsx",
-        "src/pages/ProjectRequestPage.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
-        "src/pages/architect-dashboard/components/AdminActiveProjects.jsx"
+        "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+        "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+        "src/pages/project-request/components/ProjectRequestCheckboxField.jsx"
       ]
     },
     {
@@ -742,11 +748,11 @@
       "reachable": true,
       "consumers": [
         "src/components/ui/ProjectRequestFlow/ProjectRequestDetailsStep.jsx",
-        "src/pages/ProjectRequestPage.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/admin-users/CreateAdminUserModal.jsx",
         "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectInformationForm.jsx",
+        "src/pages/project-request/components/ProjectRequestSelectField.jsx",
         "src/pages/projects/components/tracking/ProjectTrackingComparisonGallery.jsx",
         "src/pages/projects/panels/ProjectWarrantiesPanel.jsx",
         "src/pages/settings/panels/PreferencesPanel.jsx",
@@ -762,8 +768,8 @@
       "reachable": true,
       "consumers": [
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/PublicProjectsGallery.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/components/tracking/ProjectTrackingComparisonGallery.jsx",
         "src/pages/projects/components/tracking/ProjectTrackingMilestonesCard.jsx",
         "src/pages/projects/components/tracking/ProjectTrackingStagesCard.jsx",
@@ -1063,10 +1069,14 @@
         "src/components/ui/ProjectRequestFlow/ProjectRequestReferencesStep.jsx",
         "src/components/ui/ProjectRequestFlow/ProjectRequestValidationStep.jsx",
         "src/components/ui/TextArea/TextArea.jsx",
-        "src/pages/ProjectRequestPage.jsx",
         "src/pages/admin-users/AdminUserDetailsDrawer.jsx",
         "src/pages/admin-users/CreateAdminUserModal.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectInformationForm.jsx",
+        "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+        "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+        "src/pages/project-request/components/ProjectRequestForm.jsx",
+        "src/pages/project-request/components/ProjectRequestSelectField.jsx",
+        "src/pages/project-request/components/ProjectRequestTextField.jsx",
         "src/pages/projects/panels/ProjectUploadFilesPanel.jsx",
         "src/pages/settings/panels/ProfilePanel.jsx",
         "src/pages/settings/panels/SupportPanel.jsx"
@@ -1154,12 +1164,13 @@
         "src/pages/CreatePassword.jsx",
         "src/pages/Login.jsx",
         "src/pages/NewPassword.jsx",
-        "src/pages/ProjectRequestPage.jsx",
         "src/pages/RecoverAccount.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/admin-users/CreateAdminUserModal.jsx",
         "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectInformationForm.jsx",
+        "src/pages/project-request/components/ProjectRequestForm.jsx",
+        "src/pages/project-request/components/ProjectRequestTextField.jsx",
         "src/pages/projects/components/ProjectDocumentPreview.jsx",
         "src/pages/projects/components/ProjectDocumentsToolbar.jsx",
         "src/pages/projects/panels/ProjectWarrantiesPanel.jsx",
@@ -1254,7 +1265,6 @@
         "src/components/ui/Loader/index.js",
         "src/components/ui/NotificationsDrawer.jsx",
         "src/components/ui/ProjectImage/ProjectImage.jsx",
-        "src/pages/Home.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/admin-files/AdminFilesPage.jsx",
         "src/pages/admin-users/AdminUserDetailsDrawer.jsx",
@@ -1265,6 +1275,7 @@
         "src/pages/architect-dashboard/components/AdminDashboardOperations.jsx",
         "src/pages/architect-dashboard/components/AdminDashboardOverview.jsx",
         "src/pages/architect-dashboard/components/ProjectRequestReviewQueue.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/ProjectDetailsPage.jsx",
         "src/pages/projects/components/ProjectDocumentPreview.jsx",
         "src/pages/projects/panels/ProjectDocumentsPanel.jsx",
@@ -1480,9 +1491,10 @@
         "src/components/ui/Gallery/GalleryImageCard.jsx",
         "src/components/ui/ProjectImage/index.js",
         "src/components/ui/ProjectsShowcaseCarousel.jsx",
-        "src/pages/Home.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectRow.jsx",
+        "src/pages/client-dashboard/components/ProjectRequestRow.jsx",
+        "src/pages/client-dashboard/components/ProjectRow.jsx",
         "src/pages/publicSite/featuredProjects/components/FeaturedProjectsGallery.jsx"
       ]
     },
@@ -1494,8 +1506,8 @@
       "forwarding": false,
       "reachable": true,
       "consumers": [
-        "src/pages/Home.jsx",
-        "src/pages/architect-dashboard/components/ArchitectProjectRow.jsx"
+        "src/pages/architect-dashboard/components/ArchitectProjectRow.jsx",
+        "src/pages/client-dashboard/components/ProjectRow.jsx"
       ]
     },
     {
@@ -1507,7 +1519,7 @@
       "reachable": true,
       "consumers": [
         "src/components/ui/ProjectRequestFlow/ProjectRequestDetailsStep.jsx",
-        "src/pages/ProjectRequestPage.jsx"
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
       ]
     },
     {
@@ -1595,7 +1607,7 @@
       "forwarding": false,
       "reachable": true,
       "consumers": [
-        "src/pages/Home.jsx"
+        "src/pages/client-dashboard/ClientDashboard.jsx"
       ]
     },
     {
@@ -1624,8 +1636,8 @@
         "src/components/ui/Input/Input.jsx",
         "src/components/ui/ProjectRequestFlow/ProjectRequestDetailsStep.jsx",
         "src/components/ui/ScrollBar.jsx",
-        "src/pages/Home.jsx",
-        "src/pages/architect-dashboard/components/AdminActiveProjects.jsx"
+        "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx"
       ]
     },
     {
@@ -1649,13 +1661,13 @@
       "consumers": [
         "src/pages/EmptyProjectRendersExample.jsx",
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/ProjectRequestPage.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/admin-files/AdminFilesPage.jsx",
         "src/pages/admin-users/AdminUsersPage.jsx",
         "src/pages/architect-dashboard/ArchitectDashboard.jsx",
         "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx",
         "src/pages/projects/ProjectDetailsPage.jsx",
         "src/pages/settings/SettingsPage.jsx"
       ]
@@ -1669,10 +1681,10 @@
       "reachable": true,
       "consumers": [
         "src/components/ui/NotificationsDrawer.jsx",
-        "src/pages/Home.jsx",
         "src/pages/ProjectRequestPage.jsx",
         "src/pages/PublicProjectsGallery.jsx",
-        "src/pages/admin-users/AdminUserDetailsDrawer.jsx"
+        "src/pages/admin-users/AdminUserDetailsDrawer.jsx",
+        "src/pages/client-dashboard/ClientDashboard.jsx"
       ]
     },
     {
@@ -1747,10 +1759,10 @@
         "src/components/ui/NotificationsDrawer.jsx",
         "src/components/ui/ProjectRequestFlow/ProjectRequestDetailsStep.jsx",
         "src/components/ui/TextArea.jsx",
-        "src/pages/ProjectRequestPage.jsx",
         "src/pages/admin-users/AdminUserDetailsDrawer.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectInformationForm.jsx",
         "src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx",
+        "src/pages/project-request/components/ProjectRequestTextField.jsx",
         "src/pages/settings/panels/SupportPanel.jsx"
       ]
     },
@@ -1805,9 +1817,9 @@
         "src/components/ui/ProjectsShowcaseCarousel.jsx",
         "src/components/ui/SideNavigation/SideNavigation.jsx",
         "src/pages/EmptyProjectsExample.jsx",
-        "src/pages/Home.jsx",
         "src/pages/PublicProjectsGallery.jsx",
         "src/pages/architect-dashboard/components/ArchitectProjectRow.jsx",
+        "src/pages/client-dashboard/components/ProjectRow.jsx",
         "src/pages/projects/components/ProjectDocumentPreview.jsx",
         "src/pages/projects/components/tracking/ProjectTrackingComparisonGallery.jsx",
         "src/pages/projects/panels/ProjectInfoPanel.jsx",
@@ -1953,7 +1965,7 @@
       "exports": [
         "default"
       ],
-      "forwarding": false,
+      "forwarding": true,
       "reachable": true,
       "consumers": [
         "src/main.jsx",
@@ -2316,6 +2328,122 @@
       ]
     },
     {
+      "file": "src/pages/client-dashboard/ClientDashboard.jsx",
+      "exports": [
+        "default"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/Home.jsx",
+        "src/pages/client-dashboard/ClientRequests.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/ClientRequests.jsx",
+      "exports": [
+        "default"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/main.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/components/ProjectRequestRow.jsx",
+      "exports": [
+        "ProjectRequestRow"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/client-dashboard/ClientDashboard.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/components/ProjectRow.jsx",
+      "exports": [
+        "ProjectRow"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/client-dashboard/components/ProjectStatusGroup.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/components/ProjectStatusGroup.jsx",
+      "exports": [
+        "ProjectStatusGroup"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/client-dashboard/ClientDashboard.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/FieldLabel.jsx",
+      "exports": [
+        "FieldLabel"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+        "src/pages/project-request/components/ProjectRequestCheckboxField.jsx",
+        "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+        "src/pages/project-request/components/ProjectRequestForm.jsx",
+        "src/pages/project-request/components/ProjectRequestSelectField.jsx",
+        "src/pages/project-request/components/ProjectRequestTextField.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+      "exports": [
+        "LegalDocumentTypesField"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestCheckboxField.jsx",
+      "exports": [
+        "CheckboxField"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+      "exports": [
+        "ChoiceGroup"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestForm.jsx",
+      "exports": [
+        "ProjectRequestForm"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/ProjectRequestPage.jsx"
+      ]
+    },
+    {
       "file": "src/pages/project-request/components/ProjectRequestReceivedView.jsx",
       "exports": [
         "default"
@@ -2324,6 +2452,41 @@
       "reachable": true,
       "consumers": [
         "src/pages/ProjectRequestPage.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestSection.jsx",
+      "exports": [
+        "FormDivider",
+        "FormSection"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/ProjectRequestPage.jsx",
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestSelectField.jsx",
+      "exports": [
+        "SelectField"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestTextField.jsx",
+      "exports": [
+        "TextField"
+      ],
+      "forwarding": false,
+      "reachable": true,
+      "consumers": [
+        "src/pages/project-request/components/ProjectRequestForm.jsx"
       ]
     },
     {
@@ -3577,6 +3740,22 @@
   ],
   "modules": [
     {
+      "file": "src/api/adminApi.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "adminApi"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
       "file": "src/api/adminDashboardOverview.js",
       "hasJSX": false,
       "forwarding": false,
@@ -3593,24 +3772,216 @@
       ]
     },
     {
-      "file": "src/api/http.js",
+      "file": "src/api/authApi.js",
       "hasJSX": false,
       "forwarding": false,
       "exports": [
+        "authApi"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/client.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "API_BASE_URL",
         "getApiUrl",
-        "authApi",
-        "adminApi",
-        "projectsApi",
-        "environmentCommentsApi",
-        "projectRequestsApi",
-        "supportApi",
-        "api"
+        "apiRequest",
+        "collectCursorPages"
       ],
       "dependencies": [
         {
           "source": "../utils/userFacingError.js",
           "target": "src/utils/userFacingError.js",
           "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/environmentCommentsApi.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "environmentCommentsApi"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/fileUploadClient.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "uploadRawFile"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/http.js",
+      "hasJSX": false,
+      "forwarding": true,
+      "exports": [
+        "api",
+        "authApi",
+        "adminApi",
+        "projectsApi",
+        "projectRequestsApi",
+        "environmentCommentsApi",
+        "supportApi",
+        "getApiUrl"
+      ],
+      "dependencies": [
+        {
+          "source": "./index.js",
+          "target": "src/api/index.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/index.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "authApi",
+        "adminApi",
+        "projectsApi",
+        "environmentCommentsApi",
+        "projectRequestsApi",
+        "supportApi",
+        "getApiUrl",
+        "api"
+      ],
+      "dependencies": [
+        {
+          "source": "./authApi.js",
+          "target": "src/api/authApi.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./adminApi.js",
+          "target": "src/api/adminApi.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "./projectsApi.js",
+          "target": "src/api/projectsApi.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "./environmentCommentsApi.js",
+          "target": "src/api/environmentCommentsApi.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "./projectRequestsApi.js",
+          "target": "src/api/projectRequestsApi.js",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "./supportApi.js",
+          "target": "src/api/supportApi.js",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 9,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/projectRequestsApi.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "projectRequestsApi"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./fileUploadClient.js",
+          "target": "src/api/fileUploadClient.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/projectsApi.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "projectsApi"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./fileUploadClient.js",
+          "target": "src/api/fileUploadClient.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/api/supportApi.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "supportApi"
+      ],
+      "dependencies": [
+        {
+          "source": "./client.js",
+          "target": "src/api/client.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./fileUploadClient.js",
+          "target": "src/api/fileUploadClient.js",
+          "line": 2,
           "dynamic": false
         }
       ]
@@ -8922,6 +9293,114 @@
       "dependencies": []
     },
     {
+      "file": "src/hooks/comments/useEnvironmentComments.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useEnvironmentComments"
+      ],
+      "dependencies": [
+        {
+          "source": "../../utils/commentCollection.js",
+          "target": "src/utils/commentCollection.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/commentMappers.js",
+          "target": "src/utils/commentMappers.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/hooks/comments/useProjectComments.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectComments"
+      ],
+      "dependencies": [
+        {
+          "source": "../../utils/commentCollection.js",
+          "target": "src/utils/commentCollection.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/commentMappers.js",
+          "target": "src/utils/commentMappers.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/hooks/comments/useRecentProjectComments.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useRecentProjectComments"
+      ],
+      "dependencies": [
+        {
+          "source": "../../utils/commentCollection.js",
+          "target": "src/utils/commentCollection.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/commentMappers.js",
+          "target": "src/utils/commentMappers.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/observationAccess.js",
+          "target": "src/utils/observationAccess.js",
+          "line": 5,
+          "dynamic": false
+        }
+      ]
+    },
+    {
       "file": "src/hooks/useAddressSuggestions.js",
       "hasJSX": false,
       "forwarding": false,
@@ -9054,7 +9533,7 @@
     {
       "file": "src/hooks/useProjectComments.js",
       "hasJSX": false,
-      "forwarding": false,
+      "forwarding": true,
       "exports": [
         "useProjectComments",
         "useRecentProjectComments",
@@ -9062,27 +9541,21 @@
       ],
       "dependencies": [
         {
-          "source": "react",
-          "target": null,
-          "line": 1,
+          "source": "./comments/useProjectComments.js",
+          "target": "src/hooks/comments/useProjectComments.js",
+          "line": 2,
           "dynamic": false
         },
         {
-          "source": "../api/http.js",
-          "target": "src/api/http.js",
+          "source": "./comments/useRecentProjectComments.js",
+          "target": "src/hooks/comments/useRecentProjectComments.js",
           "line": 3,
           "dynamic": false
         },
         {
-          "source": "../utils/observationAccess.js",
-          "target": "src/utils/observationAccess.js",
+          "source": "./comments/useEnvironmentComments.js",
+          "target": "src/hooks/comments/useEnvironmentComments.js",
           "line": 4,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/commentDisplay.js",
-          "target": "src/utils/commentDisplay.js",
-          "line": 5,
           "dynamic": false
         }
       ]
@@ -9119,6 +9592,22 @@
           "source": "motion/react",
           "target": null,
           "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/hooks/useSidebarViewportSync.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useSidebarViewportSync"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
           "dynamic": false
         }
       ]
@@ -9275,8 +9764,8 @@
           "dynamic": true
         },
         {
-          "source": "./pages/Home.jsx",
-          "target": "src/pages/Home.jsx",
+          "source": "./pages/client-dashboard/ClientRequests.jsx",
+          "target": "src/pages/client-dashboard/ClientRequests.jsx",
           "line": 43,
           "dynamic": true
         },
@@ -9746,202 +10235,16 @@
     },
     {
       "file": "src/pages/Home.jsx",
-      "hasJSX": true,
-      "forwarding": false,
+      "hasJSX": false,
+      "forwarding": true,
       "exports": [
         "default"
       ],
       "dependencies": [
         {
-          "source": "../components/EnvironmentNavigationBar.jsx",
-          "target": "src/components/EnvironmentNavigationBar.jsx",
-          "line": 1,
-          "dynamic": false
-        },
-        {
-          "source": "react",
-          "target": null,
+          "source": "./client-dashboard/ClientDashboard.jsx",
+          "target": "src/pages/client-dashboard/ClientDashboard.jsx",
           "line": 2,
-          "dynamic": false
-        },
-        {
-          "source": "react-router-dom",
-          "target": null,
-          "line": 3,
-          "dynamic": false
-        },
-        {
-          "source": "../api/http.js",
-          "target": "src/api/http.js",
-          "line": 5,
-          "dynamic": false
-        },
-        {
-          "source": "../auth/AuthContext.jsx",
-          "target": "src/auth/AuthContext.jsx",
-          "line": 6,
-          "dynamic": false
-        },
-        {
-          "source": "../auth/userDisplay.js",
-          "target": "src/auth/userDisplay.js",
-          "line": 7,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/AvatarGroup/AvatarGroup.jsx",
-          "target": "src/components/ui/AvatarGroup/AvatarGroup.jsx",
-          "line": 8,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Badge/Badge.jsx",
-          "target": "src/components/ui/Badge/Badge.jsx",
-          "line": 9,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/AuthToast/AuthToast.jsx",
-          "target": "src/components/ui/AuthToast/AuthToast.jsx",
-          "line": 10,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Button/Button.jsx",
-          "target": "src/components/ui/Button/Button.jsx",
-          "line": 11,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/EmptyState.jsx",
-          "target": "src/components/ui/EmptyState.jsx",
-          "line": 12,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Loader/Loader.jsx",
-          "target": "src/components/ui/Loader/Loader.jsx",
-          "line": 13,
-          "dynamic": false
-        },
-        {
-          "source": "../components/EnvironmentNotificationsDrawer.jsx",
-          "target": "src/components/EnvironmentNotificationsDrawer.jsx",
-          "line": 14,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/ProjectProgress/ProjectProgress.jsx",
-          "target": "src/components/ui/ProjectProgress/ProjectProgress.jsx",
-          "line": 15,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/ProjectImage/ProjectImage.jsx",
-          "target": "src/components/ui/ProjectImage/ProjectImage.jsx",
-          "line": 16,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/ProjectsShowcaseCarousel.jsx",
-          "target": "src/components/ui/ProjectsShowcaseCarousel.jsx",
-          "line": 17,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/ScrollBar/ScrollBar.jsx",
-          "target": "src/components/ui/ScrollBar/ScrollBar.jsx",
-          "line": 18,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/SideNavigation/SideNavigation.jsx",
-          "target": "src/components/ui/SideNavigation/SideNavigation.jsx",
-          "line": 19,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/SideOverlayDrawer.jsx",
-          "target": "src/components/ui/SideOverlayDrawer.jsx",
-          "line": 20,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Tooltip/Tooltip.jsx",
-          "target": "src/components/ui/Tooltip/Tooltip.jsx",
-          "line": 21,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Gallery/useImageComments.js",
-          "target": "src/components/ui/Gallery/useImageComments.js",
-          "line": 22,
-          "dynamic": false
-        },
-        {
-          "source": "../hooks/useProjectComments.js",
-          "target": "src/hooks/useProjectComments.js",
-          "line": 23,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/commentDisplay.js",
-          "target": "src/utils/commentDisplay.js",
-          "line": 27,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectRoutes.js",
-          "target": "src/utils/projectRoutes.js",
-          "line": 28,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/commentSelection.js",
-          "target": "src/utils/commentSelection.js",
-          "line": 29,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectImage.js",
-          "target": "src/utils/projectImage.js",
-          "line": 30,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectAssigneeDisplay.js",
-          "target": "src/utils/projectAssigneeDisplay.js",
-          "line": 31,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectReadOnly.js",
-          "target": "src/utils/projectReadOnly.js",
-          "line": 32,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectRequestStatus.js",
-          "target": "src/utils/projectRequestStatus.js",
-          "line": 33,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectStatusGroups.js",
-          "target": "src/utils/projectStatusGroups.js",
-          "line": 34,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/sideNavigationItems.js",
-          "target": "src/utils/sideNavigationItems.js",
-          "line": 35,
-          "dynamic": false
-        },
-        {
-          "source": "./clientDrawerData.js",
-          "target": "src/pages/clientDrawerData.js",
-          "line": 36,
           "dynamic": false
         }
       ]
@@ -10127,25 +10430,25 @@
       ],
       "dependencies": [
         {
-          "source": "../components/ui/Input/Input.jsx",
-          "target": "src/components/ui/Input/Input.jsx",
+          "source": "./project-request/components/ProjectRequestForm.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestForm.jsx",
           "line": 1,
           "dynamic": false
         },
         {
-          "source": "../components/ui/TextArea/TextArea.jsx",
-          "target": "src/components/ui/TextArea/TextArea.jsx",
+          "source": "./project-request/hooks/useProjectRequestForm.js",
+          "target": "src/pages/project-request/hooks/useProjectRequestForm.js",
           "line": 2,
           "dynamic": false
         },
         {
-          "source": "react",
-          "target": null,
+          "source": "./project-request/components/ProjectRequestSection.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestSection.jsx",
           "line": 3,
           "dynamic": false
         },
         {
-          "source": "iconsax-react",
+          "source": "react",
           "target": null,
           "line": 4,
           "dynamic": false
@@ -10165,157 +10468,103 @@
         {
           "source": "../auth/AuthContext.jsx",
           "target": "src/auth/AuthContext.jsx",
-          "line": 8,
-          "dynamic": false
-        },
-        {
-          "source": "../api/http.js",
-          "target": "src/api/http.js",
-          "line": 9,
+          "line": 7,
           "dynamic": false
         },
         {
           "source": "../auth/RecentProjectsContext.jsx",
           "target": "src/auth/RecentProjectsContext.jsx",
-          "line": 10,
+          "line": 8,
           "dynamic": false
         },
         {
           "source": "../auth/userDisplay.js",
           "target": "src/auth/userDisplay.js",
-          "line": 11,
+          "line": 9,
           "dynamic": false
         },
         {
           "source": "../components/ui/Alert/Alert.jsx",
           "target": "src/components/ui/Alert/Alert.jsx",
-          "line": 12,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Button/Button.jsx",
-          "target": "src/components/ui/Button/Button.jsx",
-          "line": 13,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/Checkbox/Checkbox.jsx",
-          "target": "src/components/ui/Checkbox/Checkbox.jsx",
-          "line": 14,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/DropdownMenu/DropdownMenu.jsx",
-          "target": "src/components/ui/DropdownMenu/DropdownMenu.jsx",
-          "line": 15,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/HintText/HintText.jsx",
-          "target": "src/components/ui/HintText/HintText.jsx",
-          "line": 16,
+          "line": 10,
           "dynamic": false
         },
         {
           "source": "../components/ui/Gallery/useImageComments.js",
           "target": "src/components/ui/Gallery/useImageComments.js",
-          "line": 17,
+          "line": 11,
           "dynamic": false
         },
         {
           "source": "../components/EnvironmentNavigationBar.jsx",
           "target": "src/components/EnvironmentNavigationBar.jsx",
-          "line": 18,
+          "line": 12,
           "dynamic": false
         },
         {
           "source": "../components/EnvironmentNotificationsDrawer.jsx",
           "target": "src/components/EnvironmentNotificationsDrawer.jsx",
-          "line": 19,
+          "line": 13,
           "dynamic": false
         },
         {
           "source": "../components/ui/ProjectRequestFlow/ProjectRequestCancelModal.jsx",
           "target": "src/components/ui/ProjectRequestFlow/ProjectRequestCancelModal.jsx",
-          "line": 20,
-          "dynamic": false
-        },
-        {
-          "source": "../components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx",
-          "target": "src/components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx",
-          "line": 21,
+          "line": 14,
           "dynamic": false
         },
         {
           "source": "../components/ui/ProjectRequestFlow/ProjectRequestValidationStep.jsx",
           "target": "src/components/ui/ProjectRequestFlow/ProjectRequestValidationStep.jsx",
-          "line": 22,
+          "line": 15,
           "dynamic": false
         },
         {
           "source": "../components/ui/SideNavigation/SideNavigation.jsx",
           "target": "src/components/ui/SideNavigation/SideNavigation.jsx",
-          "line": 23,
+          "line": 16,
           "dynamic": false
         },
         {
           "source": "../components/ui/SideOverlayDrawer.jsx",
           "target": "src/components/ui/SideOverlayDrawer.jsx",
-          "line": 24,
-          "dynamic": false
-        },
-        {
-          "source": "../hooks/useAddressSuggestions.js",
-          "target": "src/hooks/useAddressSuggestions.js",
-          "line": 25,
+          "line": 17,
           "dynamic": false
         },
         {
           "source": "../hooks/useProjectComments.js",
           "target": "src/hooks/useProjectComments.js",
-          "line": 26,
+          "line": 18,
           "dynamic": false
         },
         {
           "source": "../utils/commentDisplay.js",
           "target": "src/utils/commentDisplay.js",
-          "line": 27,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectRequestValidation.js",
-          "target": "src/utils/projectRequestValidation.js",
-          "line": 28,
-          "dynamic": false
-        },
-        {
-          "source": "../utils/projectRequestOptions.js",
-          "target": "src/utils/projectRequestOptions.js",
-          "line": 33,
+          "line": 19,
           "dynamic": false
         },
         {
           "source": "../utils/projectRoutes.js",
           "target": "src/utils/projectRoutes.js",
-          "line": 34,
+          "line": 20,
           "dynamic": false
         },
         {
           "source": "../utils/commentSelection.js",
           "target": "src/utils/commentSelection.js",
-          "line": 35,
+          "line": 21,
           "dynamic": false
         },
         {
           "source": "./project-request/components/ProjectRequestReceivedView.jsx",
           "target": "src/pages/project-request/components/ProjectRequestReceivedView.jsx",
-          "line": 36,
+          "line": 22,
           "dynamic": false
         },
         {
           "source": "../utils/sideNavigationItems.js",
           "target": "src/utils/sideNavigationItems.js",
-          "line": 37,
+          "line": 23,
           "dynamic": false
         }
       ]
@@ -11095,201 +11344,207 @@
       ],
       "dependencies": [
         {
+          "source": "../../hooks/useSidebarViewportSync.js",
+          "target": "src/hooks/useSidebarViewportSync.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useAdminProjectBulkActions.js",
+          "target": "src/pages/architect-dashboard/hooks/useAdminProjectBulkActions.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useProjectRequestWorkflow.js",
+          "target": "src/pages/architect-dashboard/hooks/useProjectRequestWorkflow.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useArchitectNotifications.js",
+          "target": "src/pages/architect-dashboard/hooks/useArchitectNotifications.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useProjectReviewQueue.js",
+          "target": "src/pages/architect-dashboard/hooks/useProjectReviewQueue.js",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useAdminAssignees.js",
+          "target": "src/pages/architect-dashboard/hooks/useAdminAssignees.js",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useAdminDashboardOverview.js",
+          "target": "src/pages/architect-dashboard/hooks/useAdminDashboardOverview.js",
+          "line": 7,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useAdminDashboardMetrics.js",
+          "target": "src/pages/architect-dashboard/hooks/useAdminDashboardMetrics.js",
+          "line": 8,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useArchitectProjects.js",
+          "target": "src/pages/architect-dashboard/hooks/useArchitectProjects.js",
+          "line": 9,
+          "dynamic": false
+        },
+        {
+          "source": "./architectDashboardConfig.js",
+          "target": "src/pages/architect-dashboard/architectDashboardConfig.js",
+          "line": 10,
+          "dynamic": false
+        },
+        {
           "source": "react",
           "target": null,
-          "line": 1,
+          "line": 11,
           "dynamic": false
         },
         {
           "source": "react-router-dom",
           "target": null,
-          "line": 2,
-          "dynamic": false
-        },
-        {
-          "source": "../../api/http.js",
-          "target": "src/api/http.js",
-          "line": 4,
-          "dynamic": false
-        },
-        {
-          "source": "../../api/adminDashboardOverview.js",
-          "target": "src/api/adminDashboardOverview.js",
-          "line": 5,
+          "line": 12,
           "dynamic": false
         },
         {
           "source": "../../auth/AuthContext.jsx",
           "target": "src/auth/AuthContext.jsx",
-          "line": 6,
+          "line": 13,
           "dynamic": false
         },
         {
           "source": "../../auth/userDisplay.js",
           "target": "src/auth/userDisplay.js",
-          "line": 7,
+          "line": 14,
           "dynamic": false
         },
         {
           "source": "../../components/EnvironmentNavigationBar.jsx",
           "target": "src/components/EnvironmentNavigationBar.jsx",
-          "line": 8,
+          "line": 15,
           "dynamic": false
         },
         {
           "source": "../../components/ui/EmptyState/EmptyState.jsx",
           "target": "src/components/ui/EmptyState/EmptyState.jsx",
-          "line": 9,
+          "line": 16,
           "dynamic": false
         },
         {
           "source": "../../components/ui/AlertToast/AlertToast.jsx",
           "target": "src/components/ui/AlertToast/AlertToast.jsx",
-          "line": 10,
+          "line": 17,
           "dynamic": false
         },
         {
           "source": "../../components/ui/Loader/Loader.jsx",
           "target": "src/components/ui/Loader/Loader.jsx",
-          "line": 11,
+          "line": 18,
           "dynamic": false
         },
         {
           "source": "../../components/EnvironmentNotificationsDrawer.jsx",
           "target": "src/components/EnvironmentNotificationsDrawer.jsx",
-          "line": 12,
+          "line": 19,
           "dynamic": false
         },
         {
           "source": "../../components/ui/SideNavigation/SideNavigation.jsx",
           "target": "src/components/ui/SideNavigation/SideNavigation.jsx",
-          "line": 13,
-          "dynamic": false
-        },
-        {
-          "source": "../../components/ui/Gallery/useImageComments.js",
-          "target": "src/components/ui/Gallery/useImageComments.js",
-          "line": 14,
-          "dynamic": false
-        },
-        {
-          "source": "../../hooks/useProjectComments.js",
-          "target": "src/hooks/useProjectComments.js",
-          "line": 15,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/commentDisplay.js",
-          "target": "src/utils/commentDisplay.js",
-          "line": 19,
+          "line": 20,
           "dynamic": false
         },
         {
           "source": "../../utils/projectRoutes.js",
           "target": "src/utils/projectRoutes.js",
-          "line": 20,
+          "line": 21,
           "dynamic": false
         },
         {
           "source": "../../utils/commentSelection.js",
           "target": "src/utils/commentSelection.js",
-          "line": 21,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/projectImage.js",
-          "target": "src/utils/projectImage.js",
           "line": 22,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/projectAssigneeDisplay.js",
-          "target": "src/utils/projectAssigneeDisplay.js",
-          "line": 23,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/projectStatusGroups.js",
-          "target": "src/utils/projectStatusGroups.js",
-          "line": 24,
           "dynamic": false
         },
         {
           "source": "../../utils/sideNavigationItems.js",
           "target": "src/utils/sideNavigationItems.js",
-          "line": 25,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/projectReadOnly.js",
-          "target": "src/utils/projectReadOnly.js",
-          "line": 26,
+          "line": 23,
           "dynamic": false
         },
         {
           "source": "./architectDashboardData.js",
           "target": "src/pages/architect-dashboard/architectDashboardData.js",
-          "line": 27,
+          "line": 24,
           "dynamic": false
         },
         {
           "source": "./components/AdminDashboardHeader.jsx",
           "target": "src/pages/architect-dashboard/components/AdminDashboardHeader.jsx",
-          "line": 28,
+          "line": 25,
           "dynamic": false
         },
         {
           "source": "./components/AdminDashboardMetrics.jsx",
           "target": "src/pages/architect-dashboard/components/AdminDashboardMetrics.jsx",
-          "line": 29,
+          "line": 26,
           "dynamic": false
         },
         {
           "source": "./components/AdminDashboardOperations.jsx",
           "target": "src/pages/architect-dashboard/components/AdminDashboardOperations.jsx",
-          "line": 30,
+          "line": 27,
           "dynamic": false
         },
         {
           "source": "./components/AdminDashboardOverview.jsx",
           "target": "src/pages/architect-dashboard/components/AdminDashboardOverview.jsx",
-          "line": 31,
+          "line": 28,
           "dynamic": false
         },
         {
           "source": "./components/AdminActiveProjects.jsx",
           "target": "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
-          "line": 32,
+          "line": 29,
           "dynamic": false
         },
         {
           "source": "./components/AdminRequestLoginAlert.jsx",
           "target": "src/pages/architect-dashboard/components/AdminRequestLoginAlert.jsx",
-          "line": 33,
+          "line": 30,
           "dynamic": false
         },
         {
           "source": "./components/AdminRequestAssignmentModal.jsx",
           "target": "src/pages/architect-dashboard/components/AdminRequestAssignmentModal.jsx",
-          "line": 34,
+          "line": 31,
           "dynamic": false
         },
         {
           "source": "./components/ArchitectProjectGroup.jsx",
           "target": "src/pages/architect-dashboard/components/ArchitectProjectGroup.jsx",
-          "line": 35,
+          "line": 32,
           "dynamic": false
         },
         {
           "source": "./components/ProjectRequestReviewQueue.jsx",
           "target": "src/pages/architect-dashboard/components/ProjectRequestReviewQueue.jsx",
-          "line": 36,
+          "line": 33,
           "dynamic": false
         },
         {
           "source": "./components/ProjectRequestWorkflowModal.jsx",
           "target": "src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx",
-          "line": 37,
+          "line": 34,
           "dynamic": false
         }
       ]
@@ -11369,6 +11624,15 @@
           "dynamic": false
         }
       ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/architectDashboardConfig.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "WEB_BREAKPOINT_PX"
+      ],
+      "dependencies": []
     },
     {
       "file": "src/pages/architect-dashboard/architectDashboardData.js",
@@ -12031,6 +12295,677 @@
       "dependencies": []
     },
     {
+      "file": "src/pages/architect-dashboard/hooks/useAdminAssignees.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useAdminAssignees"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useAdminDashboardMetrics.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useAdminDashboardMetrics"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useAdminDashboardOverview.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useAdminDashboardOverview"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/adminDashboardOverview.js",
+          "target": "src/api/adminDashboardOverview.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useAdminProjectBulkActions.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useAdminProjectBulkActions"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useArchitectNotifications.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useArchitectNotifications"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../utils/mergeNotificationComments.js",
+          "target": "src/utils/mergeNotificationComments.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Gallery/useImageComments.js",
+          "target": "src/components/ui/Gallery/useImageComments.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../hooks/useProjectComments.js",
+          "target": "src/hooks/useProjectComments.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/commentDisplay.js",
+          "target": "src/utils/commentDisplay.js",
+          "line": 8,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useArchitectProjects.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useArchitectProjects"
+      ],
+      "dependencies": [
+        {
+          "source": "../utils/architectProjectPresentation.js",
+          "target": "src/pages/architect-dashboard/utils/architectProjectPresentation.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectStatusGroups.js",
+          "target": "src/utils/projectStatusGroups.js",
+          "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useProjectRequestWorkflow.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectRequestWorkflow"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/hooks/useProjectReviewQueue.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectReviewQueue"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/architect-dashboard/utils/architectProjectPresentation.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "toProjectRow"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../utils/projectImage.js",
+          "target": "src/utils/projectImage.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectAssigneeDisplay.js",
+          "target": "src/utils/projectAssigneeDisplay.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectReadOnly.js",
+          "target": "src/utils/projectReadOnly.js",
+          "line": 3,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/ClientDashboard.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "default"
+      ],
+      "dependencies": [
+        {
+          "source": "../../hooks/useSidebarViewportSync.js",
+          "target": "src/hooks/useSidebarViewportSync.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useClientNotifications.js",
+          "target": "src/pages/client-dashboard/hooks/useClientNotifications.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useClientRequests.js",
+          "target": "src/pages/client-dashboard/hooks/useClientRequests.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useClientProjects.js",
+          "target": "src/pages/client-dashboard/hooks/useClientProjects.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "./clientDashboardConfig.js",
+          "target": "src/pages/client-dashboard/clientDashboardConfig.js",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useSyncedScrollBar.js",
+          "target": "src/pages/client-dashboard/hooks/useSyncedScrollBar.js",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "./components/ProjectStatusGroup.jsx",
+          "target": "src/pages/client-dashboard/components/ProjectStatusGroup.jsx",
+          "line": 7,
+          "dynamic": false
+        },
+        {
+          "source": "./components/ProjectRequestRow.jsx",
+          "target": "src/pages/client-dashboard/components/ProjectRequestRow.jsx",
+          "line": 8,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/EnvironmentNavigationBar.jsx",
+          "target": "src/components/EnvironmentNavigationBar.jsx",
+          "line": 9,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 10,
+          "dynamic": false
+        },
+        {
+          "source": "react-router-dom",
+          "target": null,
+          "line": 11,
+          "dynamic": false
+        },
+        {
+          "source": "../../auth/AuthContext.jsx",
+          "target": "src/auth/AuthContext.jsx",
+          "line": 12,
+          "dynamic": false
+        },
+        {
+          "source": "../../auth/userDisplay.js",
+          "target": "src/auth/userDisplay.js",
+          "line": 13,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/Badge/Badge.jsx",
+          "target": "src/components/ui/Badge/Badge.jsx",
+          "line": 14,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/AuthToast/AuthToast.jsx",
+          "target": "src/components/ui/AuthToast/AuthToast.jsx",
+          "line": 15,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 16,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/EmptyState.jsx",
+          "target": "src/components/ui/EmptyState.jsx",
+          "line": 17,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/Loader/Loader.jsx",
+          "target": "src/components/ui/Loader/Loader.jsx",
+          "line": 18,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/EnvironmentNotificationsDrawer.jsx",
+          "target": "src/components/EnvironmentNotificationsDrawer.jsx",
+          "line": 19,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/ProjectsShowcaseCarousel.jsx",
+          "target": "src/components/ui/ProjectsShowcaseCarousel.jsx",
+          "line": 20,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/ScrollBar/ScrollBar.jsx",
+          "target": "src/components/ui/ScrollBar/ScrollBar.jsx",
+          "line": 21,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/SideNavigation/SideNavigation.jsx",
+          "target": "src/components/ui/SideNavigation/SideNavigation.jsx",
+          "line": 22,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/SideOverlayDrawer.jsx",
+          "target": "src/components/ui/SideOverlayDrawer.jsx",
+          "line": 23,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/projectRoutes.js",
+          "target": "src/utils/projectRoutes.js",
+          "line": 24,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/commentSelection.js",
+          "target": "src/utils/commentSelection.js",
+          "line": 25,
+          "dynamic": false
+        },
+        {
+          "source": "../../utils/sideNavigationItems.js",
+          "target": "src/utils/sideNavigationItems.js",
+          "line": 26,
+          "dynamic": false
+        },
+        {
+          "source": "../clientDrawerData.js",
+          "target": "src/pages/clientDrawerData.js",
+          "line": 27,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/ClientRequests.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "default"
+      ],
+      "dependencies": [
+        {
+          "source": "./ClientDashboard.jsx",
+          "target": "src/pages/client-dashboard/ClientDashboard.jsx",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/clientDashboardConfig.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "EXPANDED_SIDEBAR_WIDTH",
+        "COLLAPSED_SIDEBAR_WIDTH",
+        "TABLET_BREAKPOINT_PX",
+        "REQUEST_SKELETON_COUNT"
+      ],
+      "dependencies": []
+    },
+    {
+      "file": "src/pages/client-dashboard/components/ProjectRequestRow.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "ProjectRequestRow"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/ProjectImage/ProjectImage.jsx",
+          "target": "src/components/ui/ProjectImage/ProjectImage.jsx",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRequestStatus.js",
+          "target": "src/utils/projectRequestStatus.js",
+          "line": 3,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/components/ProjectRow.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "ProjectRow"
+      ],
+      "dependencies": [
+        {
+          "source": "react-router-dom",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/AvatarGroup/AvatarGroup.jsx",
+          "target": "src/components/ui/AvatarGroup/AvatarGroup.jsx",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/ProjectProgress/ProjectProgress.jsx",
+          "target": "src/components/ui/ProjectProgress/ProjectProgress.jsx",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/ProjectImage/ProjectImage.jsx",
+          "target": "src/components/ui/ProjectImage/ProjectImage.jsx",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Tooltip/Tooltip.jsx",
+          "target": "src/components/ui/Tooltip/Tooltip.jsx",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRoutes.js",
+          "target": "src/utils/projectRoutes.js",
+          "line": 7,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/components/ProjectStatusGroup.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "ProjectStatusGroup"
+      ],
+      "dependencies": [
+        {
+          "source": "./ProjectRow.jsx",
+          "target": "src/pages/client-dashboard/components/ProjectRow.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Badge/Badge.jsx",
+          "target": "src/components/ui/Badge/Badge.jsx",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/hooks/useClientNotifications.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useClientNotifications"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../utils/mergeNotificationComments.js",
+          "target": "src/utils/mergeNotificationComments.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Gallery/useImageComments.js",
+          "target": "src/components/ui/Gallery/useImageComments.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../hooks/useProjectComments.js",
+          "target": "src/hooks/useProjectComments.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/commentDisplay.js",
+          "target": "src/utils/commentDisplay.js",
+          "line": 8,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/hooks/useClientProjects.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useClientProjects"
+      ],
+      "dependencies": [
+        {
+          "source": "../utils/clientProjectPresentation.js",
+          "target": "src/pages/client-dashboard/utils/clientProjectPresentation.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectReadOnly.js",
+          "target": "src/utils/projectReadOnly.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectStatusGroups.js",
+          "target": "src/utils/projectStatusGroups.js",
+          "line": 5,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/hooks/useClientRequests.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useClientRequests"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/hooks/useSyncedScrollBar.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useSyncedScrollBar"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/client-dashboard/utils/clientProjectPresentation.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "getProjectAssigneeAvatars",
+        "toProjectRow"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../utils/projectImage.js",
+          "target": "src/utils/projectImage.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectAssigneeDisplay.js",
+          "target": "src/utils/projectAssigneeDisplay.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
       "file": "src/pages/clientDrawerData.js",
       "hasJSX": false,
       "forwarding": false,
@@ -12183,6 +13118,224 @@
       ]
     },
     {
+      "file": "src/pages/project-request/components/FieldLabel.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "FieldLabel"
+      ],
+      "dependencies": [
+        {
+          "source": "iconsax-react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "LegalDocumentTypesField"
+      ],
+      "dependencies": [
+        {
+          "source": "./FieldLabel.jsx",
+          "target": "src/pages/project-request/components/FieldLabel.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "iconsax-react",
+          "target": null,
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "clsx",
+          "target": null,
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Checkbox/Checkbox.jsx",
+          "target": "src/components/ui/Checkbox/Checkbox.jsx",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/HintText/HintText.jsx",
+          "target": "src/components/ui/HintText/HintText.jsx",
+          "line": 7,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRequestOptions.js",
+          "target": "src/utils/projectRequestOptions.js",
+          "line": 8,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestCheckboxField.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "CheckboxField"
+      ],
+      "dependencies": [
+        {
+          "source": "./FieldLabel.jsx",
+          "target": "src/pages/project-request/components/FieldLabel.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Checkbox/Checkbox.jsx",
+          "target": "src/components/ui/Checkbox/Checkbox.jsx",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "ChoiceGroup"
+      ],
+      "dependencies": [
+        {
+          "source": "./FieldLabel.jsx",
+          "target": "src/pages/project-request/components/FieldLabel.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/HintText/HintText.jsx",
+          "target": "src/components/ui/HintText/HintText.jsx",
+          "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestForm.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "ProjectRequestForm"
+      ],
+      "dependencies": [
+        {
+          "source": "./ProjectRequestSection.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestSection.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./LegalDocumentTypesField.jsx",
+          "target": "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "./ProjectRequestCheckboxField.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestCheckboxField.jsx",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "./ProjectRequestChoiceGroup.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "./ProjectRequestSelectField.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestSelectField.jsx",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "./ProjectRequestTextField.jsx",
+          "target": "src/pages/project-request/components/ProjectRequestTextField.jsx",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "./FieldLabel.jsx",
+          "target": "src/pages/project-request/components/FieldLabel.jsx",
+          "line": 7,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Input/Input.jsx",
+          "target": "src/components/ui/Input/Input.jsx",
+          "line": 8,
+          "dynamic": false
+        },
+        {
+          "source": "iconsax-react",
+          "target": null,
+          "line": 9,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 10,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/HintText/HintText.jsx",
+          "target": "src/components/ui/HintText/HintText.jsx",
+          "line": 11,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx",
+          "target": "src/components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx",
+          "line": 12,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRequestOptions.js",
+          "target": "src/utils/projectRequestOptions.js",
+          "line": 13,
+          "dynamic": false
+        }
+      ]
+    },
+    {
       "file": "src/pages/project-request/components/ProjectRequestReceivedView.jsx",
       "hasJSX": true,
       "forwarding": false,
@@ -12211,16 +13364,26 @@
       ]
     },
     {
-      "file": "src/pages/projects/ProjectDetailsPage.jsx",
+      "file": "src/pages/project-request/components/ProjectRequestSection.jsx",
       "hasJSX": true,
       "forwarding": false,
       "exports": [
-        "default"
+        "FormDivider",
+        "FormSection"
+      ],
+      "dependencies": []
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestSelectField.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "SelectField"
       ],
       "dependencies": [
         {
-          "source": "../../components/ui/Button/Button.jsx",
-          "target": "src/components/ui/Button/Button.jsx",
+          "source": "./FieldLabel.jsx",
+          "target": "src/pages/project-request/components/FieldLabel.jsx",
           "line": 1,
           "dynamic": false
         },
@@ -12231,152 +13394,352 @@
           "dynamic": false
         },
         {
-          "source": "react-router-dom",
-          "target": null,
+          "source": "../../../components/ui/DropdownMenu/DropdownMenu.jsx",
+          "target": "src/components/ui/DropdownMenu/DropdownMenu.jsx",
           "line": 3,
           "dynamic": false
         },
         {
-          "source": "../../api/http.js",
-          "target": "src/api/http.js",
+          "source": "../../../components/ui/HintText/HintText.jsx",
+          "target": "src/components/ui/HintText/HintText.jsx",
+          "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/components/ProjectRequestTextField.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "TextField"
+      ],
+      "dependencies": [
+        {
+          "source": "./FieldLabel.jsx",
+          "target": "src/pages/project-request/components/FieldLabel.jsx",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Input/Input.jsx",
+          "target": "src/components/ui/Input/Input.jsx",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/TextArea/TextArea.jsx",
+          "target": "src/components/ui/TextArea/TextArea.jsx",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "clsx",
+          "target": null,
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/HintText/HintText.jsx",
+          "target": "src/components/ui/HintText/HintText.jsx",
           "line": 5,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/hooks/useProjectRequestFiles.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectRequestFiles"
+      ],
+      "dependencies": [
+        {
+          "source": "../utils/projectRequestFiles.js",
+          "target": "src/pages/project-request/utils/projectRequestFiles.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRequestValidation.js",
+          "target": "src/utils/projectRequestValidation.js",
+          "line": 3,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/hooks/useProjectRequestForm.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectRequestForm"
+      ],
+      "dependencies": [
+        {
+          "source": "./useProjectRequestSubmit.js",
+          "target": "src/pages/project-request/hooks/useProjectRequestSubmit.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./useProjectRequestFiles.js",
+          "target": "src/pages/project-request/hooks/useProjectRequestFiles.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../projectRequestFormConfig.js",
+          "target": "src/pages/project-request/projectRequestFormConfig.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../hooks/useAddressSuggestions.js",
+          "target": "src/hooks/useAddressSuggestions.js",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRequestValidation.js",
+          "target": "src/utils/projectRequestValidation.js",
+          "line": 6,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/hooks/useProjectRequestSubmit.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectRequestSubmit"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRequestValidation.js",
+          "target": "src/utils/projectRequestValidation.js",
+          "line": 3,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/project-request/projectRequestFormConfig.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "INITIAL_FORM"
+      ],
+      "dependencies": []
+    },
+    {
+      "file": "src/pages/project-request/utils/projectRequestFiles.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "toFileItems"
+      ],
+      "dependencies": []
+    },
+    {
+      "file": "src/pages/projects/ProjectDetailsPage.jsx",
+      "hasJSX": true,
+      "forwarding": false,
+      "exports": [
+        "default"
+      ],
+      "dependencies": [
+        {
+          "source": "../../hooks/useSidebarViewportSync.js",
+          "target": "src/hooks/useSidebarViewportSync.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useProjectDocumentSelection.js",
+          "target": "src/pages/projects/hooks/useProjectDocumentSelection.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useProjectNavigation.js",
+          "target": "src/pages/projects/hooks/useProjectNavigation.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useProjectNotifications.js",
+          "target": "src/pages/projects/hooks/useProjectNotifications.js",
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "./hooks/useProjectDetails.js",
+          "target": "src/pages/projects/hooks/useProjectDetails.js",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "./projectDetailsConfig.js",
+          "target": "src/pages/projects/projectDetailsConfig.js",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "./utils/projectPresentation.js",
+          "target": "src/pages/projects/utils/projectPresentation.js",
+          "line": 7,
+          "dynamic": false
+        },
+        {
+          "source": "../../components/ui/Button/Button.jsx",
+          "target": "src/components/ui/Button/Button.jsx",
+          "line": 8,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 9,
+          "dynamic": false
+        },
+        {
+          "source": "react-router-dom",
+          "target": null,
+          "line": 10,
           "dynamic": false
         },
         {
           "source": "../../auth/AuthContext.jsx",
           "target": "src/auth/AuthContext.jsx",
-          "line": 6,
+          "line": 11,
           "dynamic": false
         },
         {
           "source": "../../auth/userDisplay.js",
           "target": "src/auth/userDisplay.js",
-          "line": 7,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/commentDisplay.js",
-          "target": "src/utils/commentDisplay.js",
-          "line": 8,
+          "line": 12,
           "dynamic": false
         },
         {
           "source": "../../components/EnvironmentNavigationBar.jsx",
           "target": "src/components/EnvironmentNavigationBar.jsx",
-          "line": 9,
-          "dynamic": false
-        },
-        {
-          "source": "../../components/ui/Gallery/useImageComments.js",
-          "target": "src/components/ui/Gallery/useImageComments.js",
-          "line": 10,
+          "line": 13,
           "dynamic": false
         },
         {
           "source": "../../components/EnvironmentNotificationsDrawer.jsx",
           "target": "src/components/EnvironmentNotificationsDrawer.jsx",
-          "line": 11,
+          "line": 14,
           "dynamic": false
         },
         {
           "source": "../../components/ui/Loader/Loader.jsx",
           "target": "src/components/ui/Loader/Loader.jsx",
-          "line": 12,
+          "line": 15,
           "dynamic": false
         },
         {
           "source": "../../components/ui/TabPanel.jsx",
           "target": "src/components/ui/TabPanel.jsx",
-          "line": 13,
+          "line": 16,
           "dynamic": false
         },
         {
           "source": "../../components/ui/SideNavigation/SideNavigation.jsx",
           "target": "src/components/ui/SideNavigation/SideNavigation.jsx",
-          "line": 14,
+          "line": 17,
           "dynamic": false
         },
         {
           "source": "../clientDrawerData.js",
           "target": "src/pages/clientDrawerData.js",
-          "line": 15,
+          "line": 18,
           "dynamic": false
         },
         {
           "source": "./components/ProjectDetailTabMenu.jsx",
           "target": "src/pages/projects/components/ProjectDetailTabMenu.jsx",
-          "line": 16,
+          "line": 19,
           "dynamic": false
         },
         {
           "source": "./components/ProjectOverviewHeader.jsx",
           "target": "src/pages/projects/components/ProjectOverviewHeader.jsx",
-          "line": 17,
+          "line": 20,
           "dynamic": false
         },
         {
           "source": "./components/ProjectDocumentPreview.jsx",
           "target": "src/pages/projects/components/ProjectDocumentPreview.jsx",
-          "line": 18,
+          "line": 21,
           "dynamic": false
         },
         {
           "source": "./panels/ProjectDocumentsPanel.jsx",
           "target": "src/pages/projects/panels/ProjectDocumentsPanel.jsx",
-          "line": 19,
+          "line": 22,
           "dynamic": false
         },
         {
           "source": "./panels/ProjectInfoPanel.jsx",
           "target": "src/pages/projects/panels/ProjectInfoPanel.jsx",
-          "line": 20,
+          "line": 23,
           "dynamic": false
         },
         {
           "source": "./panels/ProjectRendersPanel.jsx",
           "target": "src/pages/projects/panels/ProjectRendersPanel.jsx",
-          "line": 21,
+          "line": 24,
           "dynamic": false
         },
         {
           "source": "./panels/ProjectTrackingPanel.jsx",
           "target": "src/pages/projects/panels/ProjectTrackingPanel.jsx",
-          "line": 22,
+          "line": 25,
           "dynamic": false
         },
         {
           "source": "./panels/ProjectUploadFilesPanel.jsx",
           "target": "src/pages/projects/panels/ProjectUploadFilesPanel.jsx",
-          "line": 23,
+          "line": 26,
           "dynamic": false
         },
         {
           "source": "./panels/ProjectWarrantiesPanel.jsx",
           "target": "src/pages/projects/panels/ProjectWarrantiesPanel.jsx",
-          "line": 24,
+          "line": 27,
           "dynamic": false
         },
         {
           "source": "./projectDetailsData.js",
           "target": "src/pages/projects/projectDetailsData.js",
-          "line": 25,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/projectRoutes.js",
-          "target": "src/utils/projectRoutes.js",
-          "line": 26,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/commentSelection.js",
-          "target": "src/utils/commentSelection.js",
-          "line": 27,
-          "dynamic": false
-        },
-        {
-          "source": "../../utils/projectTypeDisplay.js",
-          "target": "src/utils/projectTypeDisplay.js",
           "line": 28,
           "dynamic": false
         },
@@ -12835,6 +14198,136 @@
       ]
     },
     {
+      "file": "src/pages/projects/hooks/useProjectDetails.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectDetails"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRoutes.js",
+          "target": "src/utils/projectRoutes.js",
+          "line": 3,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/projects/hooks/useProjectDocumentSelection.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectDocumentSelection"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/projects/hooks/useProjectNavigation.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectNavigation"
+      ],
+      "dependencies": [
+        {
+          "source": "react",
+          "target": null,
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectRoutes.js",
+          "target": "src/utils/projectRoutes.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/commentSelection.js",
+          "target": "src/utils/commentSelection.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/sideNavigationItems.js",
+          "target": "src/utils/sideNavigationItems.js",
+          "line": 4,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/projects/hooks/useProjectNotifications.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "useProjectNotifications"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../utils/commentCollection.js",
+          "target": "src/utils/commentCollection.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../utils/projectCommentPresentation.js",
+          "target": "src/pages/projects/utils/projectCommentPresentation.js",
+          "line": 2,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/mergeNotificationComments.js",
+          "target": "src/utils/mergeNotificationComments.js",
+          "line": 3,
+          "dynamic": false
+        },
+        {
+          "source": "react",
+          "target": null,
+          "line": 4,
+          "dynamic": false
+        },
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 5,
+          "dynamic": false
+        },
+        {
+          "source": "../../../components/ui/Gallery/useImageComments.js",
+          "target": "src/components/ui/Gallery/useImageComments.js",
+          "line": 6,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectReadOnly.js",
+          "target": "src/utils/projectReadOnly.js",
+          "line": 7,
+          "dynamic": false
+        }
+      ]
+    },
+    {
       "file": "src/pages/projects/panels/ProjectDocumentsPanel.jsx",
       "hasJSX": true,
       "forwarding": false,
@@ -13285,6 +14778,16 @@
       ]
     },
     {
+      "file": "src/pages/projects/projectDetailsConfig.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "TABLET_BREAKPOINT_PX",
+        "PROJECT_DETAIL_LOADER_SECTIONS"
+      ],
+      "dependencies": []
+    },
+    {
       "file": "src/pages/projects/projectDetailsData.js",
       "hasJSX": false,
       "forwarding": false,
@@ -13397,6 +14900,57 @@
         "PROJECT_WARRANTIES"
       ],
       "dependencies": []
+    },
+    {
+      "file": "src/pages/projects/utils/projectCommentPresentation.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "toDrawerComment"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../utils/commentMappers.js",
+          "target": "src/utils/commentMappers.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/commentDisplay.js",
+          "target": "src/utils/commentDisplay.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/pages/projects/utils/projectPresentation.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "createProjectStages",
+        "formatFileSize",
+        "isImageFile",
+        "isVideoFile",
+        "isPanoramaFile",
+        "formatFileDate",
+        "toMediaFileItem",
+        "toProjectPresentation"
+      ],
+      "dependencies": [
+        {
+          "source": "../../../api/http.js",
+          "target": "src/api/http.js",
+          "line": 1,
+          "dynamic": false
+        },
+        {
+          "source": "../../../utils/projectTypeDisplay.js",
+          "target": "src/utils/projectTypeDisplay.js",
+          "line": 2,
+          "dynamic": false
+        }
+      ]
     },
     {
       "file": "src/pages/publicSite/about/aboutContent.js",
@@ -15626,6 +17180,17 @@
       "dependencies": []
     },
     {
+      "file": "src/utils/commentCollection.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "upsertCommentById",
+        "sortCommentsByCreatedAt",
+        "mergeCommentsById"
+      ],
+      "dependencies": []
+    },
+    {
       "file": "src/utils/commentDisplay.js",
       "hasJSX": false,
       "forwarding": false,
@@ -15647,6 +17212,25 @@
         {
           "source": "../api/http.js",
           "target": "src/api/http.js",
+          "line": 1,
+          "dynamic": false
+        }
+      ]
+    },
+    {
+      "file": "src/utils/commentMappers.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "getRelativeTimeLabel",
+        "toDrawerComment",
+        "getEnvironmentCommentId",
+        "normalizeProjectIds"
+      ],
+      "dependencies": [
+        {
+          "source": "./commentDisplay.js",
+          "target": "src/utils/commentDisplay.js",
           "line": 1,
           "dynamic": false
         }
@@ -15687,6 +17271,15 @@
       "forwarding": false,
       "exports": [
         "searchAddressSuggestions"
+      ],
+      "dependencies": []
+    },
+    {
+      "file": "src/utils/mergeNotificationComments.js",
+      "hasJSX": false,
+      "forwarding": false,
+      "exports": [
+        "mergeNotificationComments"
       ],
       "dependencies": []
     },
@@ -15989,8 +17582,17 @@
     }
   ],
   "files": [
+    "src/api/adminApi.js",
     "src/api/adminDashboardOverview.js",
+    "src/api/authApi.js",
+    "src/api/client.js",
+    "src/api/environmentCommentsApi.js",
+    "src/api/fileUploadClient.js",
     "src/api/http.js",
+    "src/api/index.js",
+    "src/api/projectRequestsApi.js",
+    "src/api/projectsApi.js",
+    "src/api/supportApi.js",
     "src/assets/about/about-hero.webp",
     "src/assets/avatar-label-figma-40.svg",
     "src/assets/circles.svg",
@@ -16310,6 +17912,9 @@
     "src/config/modelViewer.js",
     "src/contexts/ProjectReadOnlyContext.jsx",
     "src/data/environmentDrawerExamples.js",
+    "src/hooks/comments/useEnvironmentComments.js",
+    "src/hooks/comments/useProjectComments.js",
+    "src/hooks/comments/useRecentProjectComments.js",
     "src/hooks/useAddressSuggestions.js",
     "src/hooks/useAdminRecentActivity.js",
     "src/hooks/useBodyScrollLock.js",
@@ -16317,6 +17922,7 @@
     "src/hooks/useModelRenderSettings.js",
     "src/hooks/useProjectComments.js",
     "src/hooks/useScrollDirectionVisibility.js",
+    "src/hooks/useSidebarViewportSync.js",
     "src/hooks/useVrViewerLaunch.js",
     "src/index.css",
     "src/main.jsx",
@@ -16348,6 +17954,7 @@
     "src/pages/admin-users/adminUserStatusPolicy.js",
     "src/pages/architect-dashboard/ArchitectDashboard.jsx",
     "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
+    "src/pages/architect-dashboard/architectDashboardConfig.js",
     "src/pages/architect-dashboard/architectDashboardData.js",
     "src/pages/architect-dashboard/components/AdminActiveProjects.css",
     "src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
@@ -16366,9 +17973,42 @@
     "src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx",
     "src/pages/architect-dashboard/components/adminProjectBulkActions.js",
     "src/pages/architect-dashboard/components/adminProjectPagination.js",
+    "src/pages/architect-dashboard/hooks/useAdminAssignees.js",
+    "src/pages/architect-dashboard/hooks/useAdminDashboardMetrics.js",
+    "src/pages/architect-dashboard/hooks/useAdminDashboardOverview.js",
+    "src/pages/architect-dashboard/hooks/useAdminProjectBulkActions.js",
+    "src/pages/architect-dashboard/hooks/useArchitectNotifications.js",
+    "src/pages/architect-dashboard/hooks/useArchitectProjects.js",
+    "src/pages/architect-dashboard/hooks/useProjectRequestWorkflow.js",
+    "src/pages/architect-dashboard/hooks/useProjectReviewQueue.js",
+    "src/pages/architect-dashboard/utils/architectProjectPresentation.js",
+    "src/pages/client-dashboard/ClientDashboard.jsx",
+    "src/pages/client-dashboard/ClientRequests.jsx",
+    "src/pages/client-dashboard/clientDashboardConfig.js",
+    "src/pages/client-dashboard/components/ProjectRequestRow.jsx",
+    "src/pages/client-dashboard/components/ProjectRow.jsx",
+    "src/pages/client-dashboard/components/ProjectStatusGroup.jsx",
+    "src/pages/client-dashboard/hooks/useClientNotifications.js",
+    "src/pages/client-dashboard/hooks/useClientProjects.js",
+    "src/pages/client-dashboard/hooks/useClientRequests.js",
+    "src/pages/client-dashboard/hooks/useSyncedScrollBar.js",
+    "src/pages/client-dashboard/utils/clientProjectPresentation.js",
     "src/pages/clientDrawerData.js",
     "src/pages/pages.js",
+    "src/pages/project-request/components/FieldLabel.jsx",
+    "src/pages/project-request/components/LegalDocumentTypesField.jsx",
+    "src/pages/project-request/components/ProjectRequestCheckboxField.jsx",
+    "src/pages/project-request/components/ProjectRequestChoiceGroup.jsx",
+    "src/pages/project-request/components/ProjectRequestForm.jsx",
     "src/pages/project-request/components/ProjectRequestReceivedView.jsx",
+    "src/pages/project-request/components/ProjectRequestSection.jsx",
+    "src/pages/project-request/components/ProjectRequestSelectField.jsx",
+    "src/pages/project-request/components/ProjectRequestTextField.jsx",
+    "src/pages/project-request/hooks/useProjectRequestFiles.js",
+    "src/pages/project-request/hooks/useProjectRequestForm.js",
+    "src/pages/project-request/hooks/useProjectRequestSubmit.js",
+    "src/pages/project-request/projectRequestFormConfig.js",
+    "src/pages/project-request/utils/projectRequestFiles.js",
     "src/pages/projects/ProjectDetailsPage.jsx",
     "src/pages/projects/components/ProjectDetailTabMenu.jsx",
     "src/pages/projects/components/ProjectDocumentCard.jsx",
@@ -16381,17 +18021,24 @@
     "src/pages/projects/components/tracking/ProjectTrackingMilestonesCard.jsx",
     "src/pages/projects/components/tracking/ProjectTrackingStagesCard.jsx",
     "src/pages/projects/components/tracking/ProjectTrackingSummaryRow.jsx",
+    "src/pages/projects/hooks/useProjectDetails.js",
+    "src/pages/projects/hooks/useProjectDocumentSelection.js",
+    "src/pages/projects/hooks/useProjectNavigation.js",
+    "src/pages/projects/hooks/useProjectNotifications.js",
     "src/pages/projects/panels/ProjectDocumentsPanel.jsx",
     "src/pages/projects/panels/ProjectInfoPanel.jsx",
     "src/pages/projects/panels/ProjectRendersPanel.jsx",
     "src/pages/projects/panels/ProjectTrackingPanel.jsx",
     "src/pages/projects/panels/ProjectUploadFilesPanel.jsx",
     "src/pages/projects/panels/ProjectWarrantiesPanel.jsx",
+    "src/pages/projects/projectDetailsConfig.js",
     "src/pages/projects/projectDetailsData.js",
     "src/pages/projects/projectRenderGalleryData.js",
     "src/pages/projects/projectTrackingData.js",
     "src/pages/projects/projectVideoGalleryData.js",
     "src/pages/projects/projectWarrantyData.js",
+    "src/pages/projects/utils/projectCommentPresentation.js",
+    "src/pages/projects/utils/projectPresentation.js",
     "src/pages/publicSite/about/aboutContent.js",
     "src/pages/publicSite/about/components/AboutSection.jsx",
     "src/pages/publicSite/about/components/AboutStory.jsx",
@@ -16464,11 +18111,14 @@
     "src/utils/adminActivity.js",
     "src/utils/architecturalRendering.js",
     "src/utils/avatarPresentation.js",
+    "src/utils/commentCollection.js",
     "src/utils/commentDisplay.js",
+    "src/utils/commentMappers.js",
     "src/utils/commentSelection.js",
     "src/utils/fileDisplayName.js",
     "src/utils/fileMetrics.js",
     "src/utils/geoapify.js",
+    "src/utils/mergeNotificationComments.js",
     "src/utils/model3DThumbnail.js",
     "src/utils/observationAccess.js",
     "src/utils/panoramaCoordinates.js",

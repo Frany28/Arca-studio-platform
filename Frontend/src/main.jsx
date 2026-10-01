@@ -40,7 +40,7 @@ const EmptyProjectWarrantiesExample = lazy(
 const EmptyProjectsExample = lazy(
   () => import("./pages/EmptyProjectsExample.jsx"),
 );
-const Requests = lazy(() => import("./pages/Home.jsx"));
+const Requests = lazy(() => import("./pages/client-dashboard/ClientRequests.jsx"));
 const Home = lazy(() => import("./pages/Home.jsx"));
 const InactiveAccount = lazy(() => import("./pages/InactiveAccount.jsx"));
 const Login = lazy(() => import("./pages/Login.jsx"));

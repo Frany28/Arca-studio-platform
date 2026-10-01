@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const AUTHENTICATED_PAGE_FILES = [
-  "src/pages/Home.jsx",
+  "src/pages/client-dashboard/ClientDashboard.jsx",
   "src/pages/ProjectRequestPage.jsx",
   "src/pages/PublicProjectsGallery.jsx",
   "src/pages/EmptyProjectsExample.jsx",

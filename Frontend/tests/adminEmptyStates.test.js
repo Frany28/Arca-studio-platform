@@ -1,13 +1,11 @@
+import { readSources } from "./helpers/readSources.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("admin empty-state routes reuse the production pages without API data", async () => {
   const mainSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
-  const dashboardSource = await readFile(
-    new URL("../src/pages/architect-dashboard/ArchitectDashboard.jsx", import.meta.url),
-    "utf8",
-  );
+  const dashboardSource = await readSources(new URL("../src/pages/architect-dashboard/ArchitectDashboard.jsx", import.meta.url), new URL("../src/pages/architect-dashboard/hooks/useAdminDashboardMetrics.js", import.meta.url));
   const usersSource = await readFile(
     new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url),
     "utf8",

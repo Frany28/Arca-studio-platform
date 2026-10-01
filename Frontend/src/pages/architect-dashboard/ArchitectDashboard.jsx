@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useSidebarViewportSync } from "../../hooks/useSidebarViewportSync.js";
+import { useAdminProjectBulkActions } from "./hooks/useAdminProjectBulkActions.js";
+import { useProjectRequestWorkflow } from "./hooks/useProjectRequestWorkflow.js";
+import { useArchitectNotifications } from "./hooks/useArchitectNotifications.js";
+import { useProjectReviewQueue } from "./hooks/useProjectReviewQueue.js";
+import { useAdminAssignees } from "./hooks/useAdminAssignees.js";
+import { useAdminDashboardOverview } from "./hooks/useAdminDashboardOverview.js";
+import { useAdminDashboardMetrics } from "./hooks/useAdminDashboardMetrics.js";
+import { useArchitectProjects } from "./hooks/useArchitectProjects.js";
+import { WEB_BREAKPOINT_PX } from "./architectDashboardConfig.js";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { api } from "../../api/http.js";
-import { loadAdminDashboardOverview } from "../../api/adminDashboardOverview.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
@@ -11,19 +18,9 @@ import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
 import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
-import { useImageCommentNotifications } from "../../components/ui/Gallery/useImageComments.js";
-import {
-  useProjectComments,
-  useRecentProjectComments,
-} from "../../hooks/useProjectComments.js";
-import { getProjectNamesById } from "../../utils/commentDisplay.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../../utils/commentSelection.js";
-import { getProjectImageSource } from "../../utils/projectImage.js";
-import { getProjectAssigneeAvatar } from "../../utils/projectAssigneeDisplay.js";
-import { groupProjectsByStatus } from "../../utils/projectStatusGroups.js";
 import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.js";
-import { isProjectOperationallyReadOnly } from "../../utils/projectReadOnly.js";
 import { ARCHITECT_DRAWER_RECENT_ACTIVITY } from "./architectDashboardData.js";
 import AdminDashboardHeader from "./components/AdminDashboardHeader.jsx";
 import AdminDashboardMetrics from "./components/AdminDashboardMetrics.jsx";
@@ -36,40 +33,6 @@ import ArchitectProjectGroup from "./components/ArchitectProjectGroup.jsx";
 import ProjectRequestReviewQueue from "./components/ProjectRequestReviewQueue.jsx";
 import ProjectRequestWorkflowModal from "./components/ProjectRequestWorkflowModal.jsx";
 
-const WEB_BREAKPOINT_PX = 1280;
-
-function mergeNotificationComments(comments) {
-  const commentsById = new Map();
-
-  comments.forEach((comment) => {
-    if (comment?.id) {
-      commentsById.set(String(comment.id), comment);
-    }
-  });
-
-  return Array.from(commentsById.values());
-}
-
-function toProjectRow(project, user) {
-  const assigneeAvatar = getProjectAssigneeAvatar(project);
-  const isAssignedEmployee = (project.assignees || project.assignedArchitects || []).some(
-    (assignee) => Number(assignee.id) === Number(user?.id),
-  );
-
-  return {
-    ...project,
-    assigneeAvatars: assigneeAvatar ? [assigneeAvatar] : [],
-    editable:
-      !isProjectOperationallyReadOnly(project) && (
-        user?.role === "admin" ||
-        project.assignedArchitect?.id === user?.id ||
-        isAssignedEmployee
-      ),
-    image: getProjectImageSource(project),
-    title: project.name,
-  };
-}
-
 function ArchitectDashboard({ empty = false }) {
   const navigate = useNavigate();
   const { loginEventId, logout, user } = useAuth();
@@ -79,345 +42,88 @@ function ArchitectDashboard({ empty = false }) {
   );
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
-  const [projects, setProjects] = useState([]);
-  const [projectsError, setProjectsError] = useState("");
-  const [projectsLoading, setProjectsLoading] = useState(!empty);
-  const [projectsRequestKey, setProjectsRequestKey] = useState(0);
-  const [adminMetrics, setAdminMetrics] = useState(null);
-  const [adminMetricsError, setAdminMetricsError] = useState("");
-  const [adminMetricsLoading, setAdminMetricsLoading] = useState(
-    currentUser.roleCode === "admin" && !empty,
-  );
-  const [adminMetricsRequestKey, setAdminMetricsRequestKey] = useState(0);
-  const [adminOverview, setAdminOverview] = useState(null);
-  const [adminOverviewError, setAdminOverviewError] = useState("");
-  const [adminOverviewLoading, setAdminOverviewLoading] = useState(
-    currentUser.roleCode === "admin" && !empty,
-  );
-  const [adminOverviewRequestKey, setAdminOverviewRequestKey] = useState(0);
-  const [adminAssignees, setAdminAssignees] = useState([]);
-  const [adminAssigneesLoading, setAdminAssigneesLoading] = useState(
-    currentUser.roleCode === "admin" && !empty,
-  );
-  const [reviewRequests, setReviewRequests] = useState([]);
-  const [reviewRequestsError, setReviewRequestsError] = useState("");
-  const [reviewRequestsLoading, setReviewRequestsLoading] = useState(
-    ["admin", "architect"].includes(currentUser.roleCode) && !empty,
-  );
-  const [reviewRequestsRevision, setReviewRequestsRevision] = useState(0);
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [workflowError, setWorkflowError] = useState("");
-  const [workflowSubmitting, setWorkflowSubmitting] = useState(false);
-  const [assignmentModalRequest, setAssignmentModalRequest] = useState(null);
-  const [assignmentDraft, setAssignmentDraft] = useState([]);
-  const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
-  const [assignmentFeedback, setAssignmentFeedback] = useState(null);
-  const [assignmentModalRequested, setAssignmentModalRequested] = useState(false);
+  const {
+    setProjects,
+    projectsError,
+    projectsLoading,
+    setProjectsRequestKey,
+    projectRows,
+    commentProjectRows,
+    projectGroups,
+    upcomingDeliveries,
+    handlePublicationChange,
+    handleProjectAssigneesChange,
+  } = useArchitectProjects({ empty, user, currentUser });
+
+  const {
+    adminMetrics,
+    adminMetricsError,
+    adminMetricsLoading,
+    setAdminMetricsRequestKey,
+  } = useAdminDashboardMetrics({ empty, currentUser });
+
+  const {
+    adminOverview,
+    setAdminOverview,
+    adminOverviewError,
+    adminOverviewLoading,
+    setAdminOverviewRequestKey,
+  } = useAdminDashboardOverview({ empty, user, currentUser });
+
+  const { adminAssignees, adminAssigneesLoading } = useAdminAssignees({ empty, currentUser });
+
+  const {
+    reviewRequests,
+    reviewRequestsError,
+    reviewRequestsLoading,
+    setReviewRequestsRevision,
+  } = useProjectReviewQueue({ empty, currentUser });
+
+  const {
+    selectedRequest,
+    setSelectedRequest,
+    workflowError,
+    workflowSubmitting,
+    assignmentModalRequest,
+    assignmentDraft,
+    setAssignmentDraft,
+    assignmentSubmitting,
+    assignmentFeedback,
+    setAssignmentFeedback,
+    handleRequestAssigneesChange,
+    openRequestWorkflow,
+    handleLoginNotificationAssign,
+    handleLoginNotificationView,
+    closeAssignmentModal,
+    confirmRequestAssignment,
+    submitRequestWorkflow,
+  } = useProjectRequestWorkflow({
+    currentUser,
+    setProjectsRequestKey,
+    setAdminMetricsRequestKey,
+    adminOverview,
+    setAdminOverview,
+    setAdminOverviewRequestKey,
+    reviewRequests,
+    setReviewRequestsRevision,
+  });
+
   const canManagePublication =
     user?.permissionCodes?.includes("projects.publish");
 
-  const projectRows = useMemo(
-    () => projects.map((project) => toProjectRow(project, user)),
-    [projects, user],
-  );
-  const commentProjectRows = useMemo(
-    () =>
-      currentUser.roleCode === "admin"
-        ? []
-        : projectRows.filter((project) => project.editable),
-    [currentUser.roleCode, projectRows],
-  );
-  const projectGroups = useMemo(
-    () => groupProjectsByStatus(projectRows),
-    [projectRows],
-  );
-  const upcomingDeliveries = useMemo(
-    () =>
-      [...projectRows]
-        .filter(
-          (project) =>
-            !["archived", "completed", "cancelled"].includes(project.status),
-        )
-        .sort((first, second) => {
-          const firstDate = first.endDate
-            ? new Date(first.endDate).getTime()
-            : Number.POSITIVE_INFINITY;
-          const secondDate = second.endDate
-            ? new Date(second.endDate).getTime()
-            : Number.POSITIVE_INFINITY;
-
-          return firstDate - secondDate;
-        })
-        .slice(0, 3),
-    [projectRows],
-  );
   const navigationItems = useMemo(
     () => createUserSideNavigationItems(projectRows, currentUser.roleCode),
     [currentUser.roleCode, projectRows],
   );
-  const imageCommentNotifications = useImageCommentNotifications({
-    projectIds: commentProjectRows.map((project) => project.id),
-    projectNamesById: getProjectNamesById(commentProjectRows),
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
-  });
-  const commentsProjectId = commentProjectRows[0]?.id ?? null;
   const {
-    drawerComments: submittedDrawerComments,
+    commentsProjectId,
     submitComment,
-    refresh: refreshSubmittedComments,
-  } = useProjectComments({
-    enabled: false,
-    projectId: commentsProjectId,
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 0,
-    user,
-  });
-  const {
-    drawerComments: recentProjectComments,
-    error: recentProjectCommentsError,
-    loading: recentProjectCommentsLoading,
-    refresh: refreshRecentComments,
-  } = useRecentProjectComments({
-    enabled: commentProjectRows.length > 0,
-    projectIds: commentProjectRows.map((project) => project.id),
-    projectNamesById: getProjectNamesById(commentProjectRows),
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
-    user,
-  });
+    drawerCommentsError,
+    drawerCommentsLoading,
+    notificationComments,
+  } = useArchitectNotifications({ user, isNotificationsDrawerOpen, commentProjectRows });
 
-  const drawerComments = useMemo(() => {
-    const commentsById = new Map();
-
-    [...recentProjectComments, ...submittedDrawerComments].forEach(
-      (comment) => {
-        commentsById.set(String(comment.id), comment);
-      },
-    );
-
-    return Array.from(commentsById.values());
-  }, [recentProjectComments, submittedDrawerComments]);
-  const drawerCommentsError = recentProjectCommentsError;
-  const drawerCommentsLoading = recentProjectCommentsLoading;
-  const notificationComments = useMemo(
-    () => mergeNotificationComments([...drawerComments, ...imageCommentNotifications]),
-    [drawerComments, imageCommentNotifications],
-  );
-  useEffect(() => {
-    if (isNotificationsDrawerOpen) {
-      refreshRecentComments?.();
-      refreshSubmittedComments?.();
-    }
-  }, [
-    isNotificationsDrawerOpen,
-    refreshRecentComments,
-    refreshSubmittedComments,
-  ]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (empty) {
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    queueMicrotask(() => {
-      if (isMounted) {
-        setProjectsLoading(true);
-        setProjectsError("");
-      }
-    });
-
-    if (!user) {
-      queueMicrotask(() => {
-        if (isMounted) setProjectsLoading(false);
-      });
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    api.projects
-      .listAll()
-      .then((data) => {
-        if (isMounted) {
-          setProjects(data.projects || []);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setProjects([]);
-          setProjectsError("No se pudieron cargar los proyectos.");
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setProjectsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [empty, projectsRequestKey, user]);
-
-  useEffect(() => {
-    if (currentUser.roleCode !== "admin" || empty) {
-      return undefined;
-    }
-
-    const abortController = new AbortController();
-    Promise.resolve()
-      .then(() => {
-        if (abortController.signal.aborted) {
-          return null;
-        }
-
-        setAdminMetricsLoading(true);
-        setAdminMetricsError("");
-        return api.admin.getDashboardMetrics({
-          signal: abortController.signal,
-        });
-      })
-      .then((data) => {
-        if (data) {
-          setAdminMetrics(data.metrics || null);
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== "AbortError") {
-          setAdminMetricsError(
-            error?.message || "No se pudieron cargar las métricas.",
-          );
-        }
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setAdminMetricsLoading(false);
-        }
-      });
-
-    return () => abortController.abort();
-  }, [adminMetricsRequestKey, currentUser.roleCode, empty]);
-
-  useEffect(() => {
-    if (currentUser.roleCode !== "admin" || empty) {
-      return undefined;
-    }
-
-    const abortController = new AbortController();
-
-    Promise.resolve()
-      .then(() => {
-        if (abortController.signal.aborted) {
-          return null;
-        }
-
-        setAdminOverviewLoading(true);
-        setAdminOverviewError("");
-        return loadAdminDashboardOverview({
-          force: adminOverviewRequestKey > 0,
-          scopeKey: user?.id || user?.email,
-        });
-      })
-      .then((overview) => {
-        if (overview && !abortController.signal.aborted) {
-          setAdminOverview(overview);
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== "AbortError") {
-          setAdminOverviewError(
-            error?.message || "No se pudo cargar la actividad administrativa.",
-          );
-        }
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setAdminOverviewLoading(false);
-        }
-      });
-
-    return () => abortController.abort();
-  }, [adminOverviewRequestKey, currentUser.roleCode, empty, user]);
-
-  useEffect(() => {
-    if (!["admin", "architect"].includes(currentUser.roleCode) || empty) {
-      setReviewRequests([]);
-      setReviewRequestsLoading(false);
-      return undefined;
-    }
-
-    let active = true;
-    setReviewRequestsLoading(true);
-    setReviewRequestsError("");
-    api.projectRequests
-      .listReviewQueue()
-      .then((data) => {
-        if (active) setReviewRequests(data.projectRequests || []);
-      })
-      .catch((error) => {
-        if (active) {
-          setReviewRequests([]);
-          setReviewRequestsError(error?.message || "No se pudieron cargar las solicitudes.");
-        }
-      })
-      .finally(() => {
-        if (active) setReviewRequestsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [currentUser.roleCode, empty, reviewRequestsRevision]);
-
-  useEffect(() => {
-    if (currentUser.roleCode !== "admin" || empty) {
-      return undefined;
-    }
-
-    const abortController = new AbortController();
-    Promise.resolve()
-      .then(() => {
-        if (abortController.signal.aborted) return null;
-        setAdminAssigneesLoading(true);
-        return api.admin.listAssignees({ signal: abortController.signal });
-      })
-      .then((data) => {
-        if (data && !abortController.signal.aborted) {
-          setAdminAssignees(data.assignees || []);
-        }
-      })
-      .catch((error) => {
-        if (error?.name !== "AbortError") {
-          setAdminAssignees([]);
-        }
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setAdminAssigneesLoading(false);
-        }
-      });
-
-    return () => abortController.abort();
-  }, [currentUser.roleCode, empty]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${WEB_BREAKPOINT_PX - 1}px)`,
-    );
-
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
+  useSidebarViewportSync({ breakpoint: WEB_BREAKPOINT_PX, setIsSidebarExpanded });
 
   const handleSideNavigationSelect = (item) => {
     if (item?.to) {
@@ -499,194 +205,7 @@ function ArchitectDashboard({ empty = false }) {
     }
   };
 
-  const handlePublicationChange = async (project) => {
-    if (project.status === "archived") return;
-    const nextIsPublic = !project.isPublic;
-    const data = await api.projects.updatePublication({
-      isPublic: nextIsPublic,
-      projectId: project.id,
-    });
-
-    setProjects((currentProjects) =>
-      currentProjects.map((currentProject) =>
-        currentProject.id === project.id ? data.project : currentProject,
-      ),
-    );
-  };
-
-  const handleProjectAssigneesChange = async (project, assignees) => {
-    const data = await api.admin.updateProjectAssignees({
-      assigneeIds: assignees.map((assignee) => Number(assignee.id)),
-      projectId: project.id,
-    });
-
-    setProjects((currentProjects) =>
-      currentProjects.map((currentProject) =>
-        currentProject.id === project.id
-          ? {
-              ...currentProject,
-              assignees: data.assignees || [],
-              assignedArchitect: data.assignees?.[0] || null,
-              assignedArchitects: data.assignees || [],
-            }
-          : currentProject,
-      ),
-    );
-  };
-
-  const handleProjectBulkAction = async ({ action, projects: selectedProjects }) => {
-    const isPublic = action === "change_visibility"
-      ? !selectedProjects.every((project) => project.isPublic)
-      : undefined;
-    const data = await api.admin.updateProjects({
-      action,
-      isPublic,
-      projectIds: selectedProjects.map((project) => Number(project.id)),
-    });
-    const updatedProjects = new Map(
-      (data.projects || []).map((project) => [Number(project.id), project]),
-    );
-
-    setProjects((currentProjects) =>
-      currentProjects.map((project) => {
-        const updatedProject = updatedProjects.get(Number(project.id));
-        return updatedProject ? { ...project, ...updatedProject } : project;
-      }),
-    );
-    setAdminMetricsRequestKey((current) => current + 1);
-    setAdminOverviewRequestKey((current) => current + 1);
-
-    return data;
-  };
-
-  const handleRequestAssigneesChange = async (request, assignees) => {
-    const data = await api.admin.updateProjectRequestAssignees({
-      assigneeIds: assignees.map((assignee) => Number(assignee.id)),
-      projectRequestId: request.id,
-    });
-
-    setAdminOverview((currentOverview) => ({
-      ...currentOverview,
-      newRequests: (currentOverview?.newRequests || []).map((currentRequest) =>
-        currentRequest.id === request.id
-          ? { ...currentRequest, assignees: data.assignees || [] }
-          : currentRequest,
-      ),
-    }));
-    setReviewRequestsRevision((current) => current + 1);
-  };
-
-  const openRequestWorkflow = (request) => {
-    const detailedRequest = reviewRequests.find(
-      (candidate) => Number(candidate.id) === Number(request.id),
-    );
-    setWorkflowError("");
-    setSelectedRequest(detailedRequest || request);
-  };
-
-  const loginNotificationRequest =
-    adminOverview?.newRequests?.[0] || reviewRequests[0] || null;
-
-  useEffect(() => {
-    if (!assignmentModalRequested || !loginNotificationRequest) {
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    queueMicrotask(() => {
-      if (cancelled) return;
-
-      setAssignmentDraft(loginNotificationRequest.assignees || []);
-      setAssignmentModalRequest(loginNotificationRequest);
-      setAssignmentModalRequested(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [assignmentModalRequested, loginNotificationRequest]);
-
-  const handleLoginNotificationAssign = () => {
-    setAssignmentModalRequested(true);
-  };
-
-  const handleLoginNotificationView = () => {
-    if (loginNotificationRequest) {
-      openRequestWorkflow(loginNotificationRequest);
-    }
-  };
-
-  const closeAssignmentModal = () => {
-    if (assignmentSubmitting) return;
-
-    setAssignmentModalRequest(null);
-    setAssignmentDraft([]);
-  };
-
-  const confirmRequestAssignment = async () => {
-    if (!assignmentModalRequest || !assignmentDraft.length || assignmentSubmitting) {
-      return;
-    }
-
-    const request = assignmentModalRequest;
-    const selectedNames = assignmentDraft.map((assignee) => assignee.name).join(", ");
-
-    setAssignmentSubmitting(true);
-    try {
-      await handleRequestAssigneesChange(request, assignmentDraft);
-      setAssignmentModalRequest(null);
-      setAssignmentDraft([]);
-      setAssignmentFeedback({
-        id: `request-assignment-success-${Date.now()}`,
-        type: "success",
-        title: "Responsable asignado",
-        message: `${selectedNames} revisará ${request.projectName}.`,
-      });
-    } catch (error) {
-      setAssignmentModalRequest(null);
-      setAssignmentDraft([]);
-      setAssignmentFeedback({
-        id: `request-assignment-error-${Date.now()}`,
-        type: "error",
-        title: "No se pudo asignar al responsable",
-        message: error?.message || "Inténtalo nuevamente.",
-      });
-    } finally {
-      setAssignmentSubmitting(false);
-    }
-  };
-
-  const submitRequestWorkflow = async ({ action, note }) => {
-    if (!selectedRequest) return;
-    setWorkflowSubmitting(true);
-    setWorkflowError("");
-    try {
-      if (currentUser.roleCode === "admin") {
-        await api.admin.decideProjectRequest({
-          action: action === "changes_requested" ? "request_changes" : action,
-          internalNotes: action === "approve" ? note || undefined : undefined,
-          projectRequestId: selectedRequest.id,
-          reason: action === "approve" ? undefined : note,
-        });
-        setAdminOverviewRequestKey((current) => current + 1);
-        setAdminMetricsRequestKey((current) => current + 1);
-        setProjectsRequestKey((current) => current + 1);
-      } else {
-        await api.projectRequests.review({
-          note,
-          projectRequestId: selectedRequest.id,
-          recommendation: action,
-        });
-      }
-      setSelectedRequest(null);
-      setReviewRequestsRevision((current) => current + 1);
-    } catch (error) {
-      setWorkflowError(error?.message || "No se pudo guardar la revisión.");
-    } finally {
-      setWorkflowSubmitting(false);
-    }
-  };
+  const { handleProjectBulkAction } = useAdminProjectBulkActions({ setProjects, setAdminMetricsRequestKey, setAdminOverviewRequestKey });
 
   return (
     <main className="h-screen overflow-hidden bg-[var(--color-neutral-bg)] transition-colors duration-200">

@@ -1,3 +1,4 @@
+import { readSources } from "./helpers/readSources.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -43,10 +44,7 @@ test("composite checkbox options preserve selection while hovered", async () => 
     ),
     "utf8",
   );
-  const projectRequestSource = await readFile(
-    new URL("../src/pages/ProjectRequestPage.jsx", import.meta.url),
-    "utf8",
-  );
+  const projectRequestSource = await readSources(new URL("../src/pages/ProjectRequestPage.jsx", import.meta.url), new URL("../src/pages/project-request/components/LegalDocumentTypesField.jsx", import.meta.url));
 
   assert.match(
     dropdownSource,

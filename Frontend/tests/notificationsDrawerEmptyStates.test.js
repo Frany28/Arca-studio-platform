@@ -59,7 +59,7 @@ test("the shared environment drawer enforces the admin observation policy", asyn
     "utf8",
   );
   const hookSource = await readFile(
-    new URL("../src/hooks/useProjectComments.js", import.meta.url),
+    new URL("../src/hooks/comments/useRecentProjectComments.js", import.meta.url),
     "utf8",
   );
   const settingsSource = await readFile(

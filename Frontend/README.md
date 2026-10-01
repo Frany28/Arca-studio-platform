@@ -37,6 +37,17 @@ src/
   utils/        Utilidades de rutas y Geoapify
 ```
 
+La distribución interna de API, dashboards, solicitudes, detalle de proyectos y
+comentarios se describe en [FRONTEND_REFACTOR.md](docs/FRONTEND_REFACTOR.md).
+El inventario completo de módulos y consumidores está en
+[FRONTEND_MAP.md](docs/FRONTEND_MAP.md), generado con `pnpm audit:frontend`.
+
+`api/http.js`, `pages/Home.jsx` y `hooks/useProjectComments.js` conservan sus
+exportaciones públicas como fachadas de compatibilidad. Las páginas componen
+componentes de su flujo y delegan consultas, eventos y estado local a hooks;
+las transformaciones puras viven en `utils`. El estado global continúa en los
+contextos existentes, sin bibliotecas nuevas.
+
 ## Rutas principales
 
 - `/`: login, solo para usuarios sin sesion.
