@@ -1,3 +1,4 @@
+import Button from "../../../../components/ui/Button/Button.jsx";
 import { useRef } from "react";
 import clsx from "clsx";
 
@@ -57,12 +58,12 @@ function PublicSiteNavigationMenu({
         const isActive = item.id === activeNavigationId;
 
         return (
-          <button
+          <Button layout="content"
             key={item.id}
             ref={(node) => {
               itemRefs.current[index] = node;
             }}
-            type="button"
+            htmlType="button"
             className={clsx(
               "public-site-navigation__item inline-flex shrink-0 items-center justify-center whitespace-nowrap bg-transparent text-heading-8 outline-none transition-colors duration-150 motion-reduce:transition-none",
               isVertical
@@ -74,7 +75,7 @@ function PublicSiteNavigationMenu({
             onClick={() => onNavigate?.(item.id)}
           >
             {item.label}
-          </button>
+          </Button>
         );
       })}
     </div>

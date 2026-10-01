@@ -345,7 +345,7 @@ function normalizeTagItem(tag, fallbackId) {
   };
 }
 
-function Input({
+function InputField({
   className,
   id,
   label = "Label",
@@ -1233,6 +1233,16 @@ function Input({
       ) : null}
     </div>
   );
+}
+
+// La presentación control integra campos en composiciones existentes sin añadir wrappers.
+// Conserva atributos HTML, eventos y referencias; field mantiene las variantes de formulario.
+function Input({ presentation = "field", ...props }) {
+  if (presentation === "control") {
+    const { htmlType = "text", inputRef, ...attributes } = props;
+    return <input ref={inputRef} type={htmlType} {...attributes} />;
+  }
+  return <InputField {...props} />;
 }
 
 export default Input;

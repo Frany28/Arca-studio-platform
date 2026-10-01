@@ -1,3 +1,4 @@
+import Button from "../../../../components/ui/Button/Button.jsx";
 import { useRef } from "react";
 import useServicesCategoryScroll from "../hooks/useServicesCategoryScroll.js";
 import "./ServicesCategoryShowcase.css";
@@ -68,9 +69,9 @@ function ServicesCategoryShowcase({
           {categories.map((category, index) => {
             const isActive = index === activeIndex;
             return (
-              <button
+              <Button layout="content"
                 key={category.id}
-                type="button"
+                htmlType="button"
                 role="tab"
                 aria-selected={isActive}
                 aria-controls="services-category-panel"
@@ -84,7 +85,7 @@ function ServicesCategoryShowcase({
                 <span>
                   {category.label}
                 </span>
-              </button>
+              </Button>
             );
           })}
           </div>

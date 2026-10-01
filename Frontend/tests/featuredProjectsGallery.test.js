@@ -106,7 +106,7 @@ test("the expanded layout is a single larger Bento grid, not scattered cards", (
 });
 
 test("process videos retain their click and modal behavior", () => {
-  assert.match(processGridSource, /<button/);
+  assert.match(processGridSource, /<Button layout="content"/);
   assert.match(processGridSource, /onClick=\{\(event\) =>/);
   assert.match(processGridSource, /onVideoOpen\(video/);
   assert.match(processModalSource, /createPortal\(/);

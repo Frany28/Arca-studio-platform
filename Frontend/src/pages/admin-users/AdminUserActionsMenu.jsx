@@ -161,16 +161,16 @@ function AdminUserActionsMenu({ disabled = false, onStatusChange, user }) {
             {actions.map((action) => {
               const ActionIcon = action.icon;
               return (
-                <button
+                <Button layout="content"
                   key={action.label}
-                  type="button"
+                  htmlType="button"
                   role="menuitem"
                   className="text-heading-8 flex h-[36px] w-full items-center gap-[12px] rounded-[var(--radius-2)] px-[8px] text-left text-[var(--color-text-200)] transition-colors hover:bg-[var(--color-neutral-200)] focus:bg-[var(--color-neutral-200)] focus:outline-none"
                   onClick={() => selectStatus(action.status)}
                 >
                   <ActionIcon size="20" color="currentColor" aria-hidden="true" />
                   <span>{action.label}</span>
-                </button>
+                </Button>
               );
             })}
           </div>,

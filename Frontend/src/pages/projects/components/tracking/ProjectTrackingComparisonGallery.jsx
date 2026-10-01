@@ -1,3 +1,4 @@
+import Button from "../../../../components/ui/Button/Button.jsx";
 import { useState } from "react";
 import DropdownMenu from "../../../../components/ui/DropdownMenu/DropdownMenu.jsx";
 import EmptyState from "../../../../components/ui/EmptyState.jsx";
@@ -104,13 +105,13 @@ export default function ProjectTrackingComparisonGallery({ items = [] }) {
             portal
             tipPosition="Top center"
           >
-            <button
-              type="button"
+            <Button layout="content"
+              htmlType="button"
               className="inline-flex size-[18px] cursor-help items-center justify-center text-[var(--color-text-100)]"
               aria-label="Información sobre comparativa"
             >
               <InfoCircleIcon className="size-[15px] shrink-0" />
-            </button>
+            </Button>
           </Tooltip>
         </div>
       </div>

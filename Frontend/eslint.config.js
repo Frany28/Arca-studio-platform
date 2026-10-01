@@ -26,4 +26,14 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    files: ['src/**/*.{js,jsx}'],
+    ignores: ['src/components/ui/**'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: 'JSXOpeningElement[name.name=/^(button|input|textarea|select|dialog)$/]',
+        message: 'Reutiliza Button, Input, TextArea, DropdownMenu o Modal de components/ui; los controles nativos se implementan en ui.',
+      }],
+    },
+  },
 ])

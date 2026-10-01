@@ -133,6 +133,14 @@ La fuente de interfaz es Inter mediante `--font-sans`. Todo texto debe conservar
 
 ## Componentes base
 
+### Composición de controles especializados
+
+- Las páginas, layouts y componentes de producto usan los controles compartidos. ESLint impide declarar directamente `button`, `input`, `textarea`, `select` o `dialog` fuera de `components/ui`.
+- `Button` usa `layout="standard"` por defecto. `layout="content"` permite una card interactiva, un marcador, navegación o un control de visor cuya geometría ya esté definida por su composición. Conserva los hijos directos, referencias DOM, atributos ARIA y eventos sin añadir el span ni las dimensiones del botón convencional. Mantiene `disabled`, `htmlType` y el cursor compartido. Las acciones convencionales deben preferir las variantes estándar.
+- `Input` y `TextArea` usan `presentation="field"` por defecto. `presentation="control"` integra únicamente el campo HTML en una composición especializada existente; conserva eventos, valores controlados o no controlados, atributos nativos y `inputRef`. `Input` recibe el tipo HTML mediante `htmlType`. Esta presentación también admite inputs técnicos `file` y `hidden`.
+- Estas opciones permiten migrar controles existentes conservando su diseño. No autorizan copiar un formulario completo ni crear variantes visuales equivalentes en páginas; los patrones repetidos deben seguir centralizándose.
+- Ejecutar `pnpm audit:frontend` para regenerar `docs/FRONTEND_MAP.md` y `docs/FRONTEND_MAP.json`. El inventario distingue consumidores directos, rutas y módulos no alcanzables; no deben crearse usos artificiales ni eliminarse componentes únicamente por no ser alcanzables.
+
 Antes de desarrollar un equivalente, revisar especialmente:
 
 - Acciones: `Button`, `ButtonGroupItem`, `Toggle`, `Checkbox`.

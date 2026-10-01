@@ -167,13 +167,13 @@ function RenderLoadingState({ image, onRetry, progress, state = "loading" }) {
             />
           </div>
         ) : (
-          <button
-            type="button"
+          <Button layout="content"
+            htmlType="button"
             className="mt-[4px] h-[36px] cursor-pointer rounded-[var(--radius-2)] bg-[var(--color-neutral-100)] px-[14px] text-heading-8 text-[var(--color-text-300)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-300)]"
             onClick={onRetry}
           >
             Reintentar
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -340,8 +340,8 @@ function RenderStage({
             ) : null}
           </>
         ) : hasPreviewImage ? (
-          <button
-            type="button"
+          <Button layout="content"
+            htmlType="button"
             className="h-full w-full cursor-pointer text-left transition-opacity duration-150 hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-neutral-bg)]"
             onClick={onOpenModel}
             aria-label={`Abrir modelo 3D ${activeRender.title}`}
@@ -351,7 +351,7 @@ function RenderStage({
               alt={activeRender.title}
               className="h-full w-full object-cover"
             />
-          </button>
+          </Button>
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-[8px] bg-[var(--color-neutral-200)] px-[24px] text-center">
             <span className="text-heading-4 text-[var(--color-text-300)]">
@@ -394,8 +394,8 @@ function RenderStage({
 
 function RenderThumbnail({ item, selected, onSelect }) {
   return (
-    <button
-      type="button"
+    <Button layout="content"
+      htmlType="button"
       onClick={onSelect}
       className={clsx(
         "group relative h-[150px] w-full cursor-pointer overflow-hidden rounded-[var(--radius-2)] text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-neutral-bg)]",
@@ -414,7 +414,7 @@ function RenderThumbnail({ item, selected, onSelect }) {
       <span className="absolute inset-x-[8px] bottom-[8px] text-heading-8 text-[var(--color-neutral-100-uniform)]">
         {getFileDisplayName(item.title)}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -524,8 +524,8 @@ function ImageGallerySection({ items, onOpenGallery, onSelectImage = () => {} })
 
 function VideoPreviewCard({ item, onClick }) {
   return (
-    <button
-      type="button"
+    <Button layout="content"
+      htmlType="button"
       onClick={onClick}
       className="group relative h-[385px] w-full cursor-pointer overflow-hidden rounded-[var(--radius-2)] text-left shadow-[var(--shadow-e2)] transition-opacity duration-150 hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-neutral-bg)]"
     >
@@ -545,14 +545,14 @@ function VideoPreviewCard({ item, onClick }) {
           {getFileDisplayName(item.label ?? item.title)}
         </span>
       </div>
-    </button>
+    </Button>
   );
 }
 
 function VideoListItem({ item, active, onSelect }) {
   return (
-    <button
-      type="button"
+    <Button layout="content"
+      htmlType="button"
       onClick={() => onSelect(item.id)}
       className={clsx(
         "flex w-full cursor-pointer items-start gap-[12px] text-left transition-opacity duration-150",
@@ -580,7 +580,7 @@ function VideoListItem({ item, active, onSelect }) {
         </p>
         <p className="text-body-3 text-[var(--color-text-100)]">{item.size}</p>
       </div>
-    </button>
+    </Button>
   );
 }
 

@@ -1,3 +1,4 @@
+import Button from "../../components/ui/Button/Button.jsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -718,8 +719,8 @@ export default function ProjectDetailsPage({
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex min-h-screen w-full items-stretch">
         {isSidebarExpanded ? (
-          <button
-            type="button"
+          <Button layout="content"
+            htmlType="button"
             aria-label="Cerrar navegación lateral"
             className="fixed inset-0 z-40 cursor-pointer bg-[rgba(42,41,41,0.10)] backdrop-blur-[var(--effect-blur-b1)] min-[768px]:hidden"
             onClick={() => setIsSidebarExpanded(false)}

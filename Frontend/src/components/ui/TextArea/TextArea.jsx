@@ -40,7 +40,7 @@ function ResizeHandleIcon({ className }) {
   );
 }
 
-function TextArea({
+function TextAreaField({
   className,
   id,
   label = "Descripción",
@@ -171,6 +171,15 @@ function TextArea({
       ) : null}
     </div>
   );
+}
+
+// control conserva la composición de formularios existentes; field usa el sistema completo.
+function TextArea({ presentation = "field", ...props }) {
+  if (presentation === "control") {
+    const { inputRef, ...attributes } = props;
+    return <textarea ref={inputRef} {...attributes} />;
+  }
+  return <TextAreaField {...props} />;
 }
 
 export default TextArea;

@@ -1,3 +1,5 @@
+import Input from "../../../components/ui/Input/Input.jsx";
+import Button from "../../../components/ui/Button/Button.jsx";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
@@ -93,9 +95,9 @@ function DocumentMarker({ comment, focused, onSelect, style }) {
 
   return (
     <>
-      <button
+      <Button layout="content"
         ref={markerRef}
-        type="button"
+        htmlType="button"
         data-document-marker
         data-comment-id={isPending ? undefined : comment.id}
         aria-label={isPending ? "Ubicación de observación pendiente" : `Observación de ${authorName}`}
@@ -135,7 +137,7 @@ function DocumentMarker({ comment, focused, onSelect, style }) {
             decorative={isPending}
           />
         )}
-      </button>
+      </Button>
       <ObservationTooltip
         authorName={authorName}
         avatarSrc={avatarSrc}
@@ -164,9 +166,9 @@ const ViewerButton = forwardRef(function ViewerButton(
   ref,
 ) {
   const button = (
-    <button
+    <Button layout="content"
       ref={ref}
-      type="button"
+      htmlType="button"
       disabled={disabled}
       aria-label={label}
       onClick={onClick}
@@ -176,7 +178,7 @@ const ViewerButton = forwardRef(function ViewerButton(
       )}
     >
       {children}
-    </button>
+    </Button>
   );
 
   return showTooltip ? (
@@ -234,8 +236,8 @@ function PdfToolbar({
   return (
     <div className="flex h-[34px] shrink-0 items-center justify-center overflow-x-auto bg-[#333] px-[12px] text-[10px] text-[var(--color-neutral-100-uniform)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex min-w-max items-center gap-[8px]">
-        <input
-          type="number"
+        <Input presentation="control"
+          htmlType="number"
           min="1"
           max={pageCount}
           value={page}
@@ -755,9 +757,9 @@ function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, o
         className="flex shrink-0 gap-[4px] overflow-x-auto border-b border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[8px]"
       >
         {workbook.SheetNames.map((sheetName, index) => (
-          <button
+          <Button layout="content"
             key={sheetName}
-            type="button"
+            htmlType="button"
             role="tab"
             aria-selected={index === safeSheetIndex}
             className={clsx(
@@ -769,7 +771,7 @@ function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, o
             onClick={() => setActiveSheetIndex(index)}
           >
             {sheetName}
-          </button>
+          </Button>
         ))}
       </div>
       <div

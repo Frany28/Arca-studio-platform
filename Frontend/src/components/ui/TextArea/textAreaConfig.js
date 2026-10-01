@@ -1,4 +1,6 @@
 export const TEXT_AREA_DEFAULT_PROPS = {
+  // control renderiza únicamente el campo; field conserva las variantes visuales existentes.
+  presentation: "field",
   label: "Descripción",
   hintText: "Texto de ayuda para los usuarios",
   placeholder: "Texto de prueba",

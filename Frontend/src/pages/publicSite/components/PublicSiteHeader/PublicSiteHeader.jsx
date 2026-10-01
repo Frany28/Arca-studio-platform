@@ -103,8 +103,8 @@ function PublicSiteHeader({
           className="public-site-header__layout relative h-[52px] w-full"
           data-node-id="4487:112597"
         >
-          <button
-            type="button"
+          <Button layout="content"
+            htmlType="button"
             className="absolute left-0 top-[6px] flex h-[32px] w-[152px] cursor-pointer items-center justify-start border-0 bg-transparent p-0 md:relative md:left-auto md:top-[3.5px] md:shrink-0 lg:absolute lg:left-0"
             aria-label="Ir al inicio"
             onClick={() => onNavigate?.("home")}
@@ -116,7 +116,7 @@ function PublicSiteHeader({
               alt="ARCA Studio"
               className="h-[32px] w-[152px] justify-start"
             />
-          </button>
+          </Button>
 
           <div className="public-site-desktop-navigation hidden min-w-0 flex-1 justify-center md:flex lg:absolute lg:left-1/2 lg:top-0 lg:block lg:flex-none lg:-translate-x-1/2">
             <PublicSiteNavigationMenu

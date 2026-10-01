@@ -1,3 +1,4 @@
+import Button from "../components/ui/Button/Button.jsx";
 function SessionUnavailable({ onRetry }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--color-neutral-bg)] px-[16px]">
@@ -13,13 +14,13 @@ function SessionUnavailable({ onRetry }) {
           Tu información permanece protegida. Comprueba tu conexión e inténtalo
           nuevamente.
         </p>
-        <button
-          type="button"
+        <Button layout="content"
+          htmlType="button"
           className="rounded-[var(--radius-2)] bg-[var(--color-primary-300)] px-[16px] py-[12px] text-body-3 text-[var(--color-neutral-100-uniform)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]"
           onClick={onRetry}
         >
           Reintentar
-        </button>
+        </Button>
       </section>
     </main>
   );

@@ -1,6 +1,8 @@
 import PHONE_COUNTRY_OPTIONS from "./phoneCountryOptions.js";
 
 export const INPUT_DEFAULT_PROPS = {
+  // field incluye label, hint y variantes; control conserva una composición especializada.
+  presentation: "field",
   label: "Label",
   hintText: "Texto de ayuda para los usuarios",
   placeholder: "Texto de prueba",

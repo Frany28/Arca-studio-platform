@@ -61,15 +61,15 @@ function ProjectRequestWorkflowModal({
         aria-labelledby="project-request-workflow-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
+        <Button layout="content"
+          htmlType="button"
           aria-label="Cerrar revisión de solicitud"
           disabled={submitting}
           onClick={onClose}
           className="absolute right-[16px] top-[16px] inline-flex size-9 items-center justify-center rounded-[var(--radius-2)] text-[var(--color-text-100)] hover:bg-[var(--color-neutral-200)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <CloseIcon />
-        </button>
+        </Button>
 
         <header className="flex flex-col gap-[4px] pr-[40px]">
           <span className="text-body-4 text-[var(--color-text-100)]">{status.label}</span>

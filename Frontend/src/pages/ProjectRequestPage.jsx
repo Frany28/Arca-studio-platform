@@ -1,3 +1,5 @@
+import Input from "../components/ui/Input/Input.jsx";
+import TextArea from "../components/ui/TextArea/TextArea.jsx";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowDown2, CloudPlus, Edit2, InfoCircle, Link21, Location } from "iconsax-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -85,9 +87,9 @@ function TextField({ children, containerClassName, error = "", icon: Icon, input
       <div className="relative flex w-full">
         {Icon ? <Icon className="absolute left-[12px] top-[8px] size-[20px] text-[var(--color-text-100)]" aria-hidden="true" /> : null}
         {multiline ? (
-          <textarea ref={inputRef} className={`${controlClass} block min-h-[130px] resize-y py-[12px] ${Icon ? "pl-[40px]" : ""}`} required={!optional} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} {...props} />
+          <TextArea presentation="control" inputRef={inputRef} className={`${controlClass} block min-h-[130px] resize-y py-[12px] ${Icon ? "pl-[40px]" : ""}`} required={!optional} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} {...props} />
         ) : (
-          <input ref={inputRef} className={`${controlClass} block h-[36px] ${Icon ? "pl-[40px]" : ""}`} required={!optional} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} {...props} />
+          <Input presentation="control" inputRef={inputRef} className={`${controlClass} block h-[36px] ${Icon ? "pl-[40px]" : ""}`} required={!optional} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} {...props} />
         )}
         {children}
       </div>
@@ -143,15 +145,15 @@ function ChoiceGroup({ error = "", invalid = false, label, value, options, onCha
       <FieldLabel asSpan id={labelId} info={info} optional={optional}>{label}</FieldLabel>
       <div className={orientation === "vertical" ? "flex flex-col items-start gap-[8px]" : "flex flex-wrap gap-[8px]"}>
         {options.map((option) => (
-          <button
+          <Button layout="content"
             key={option.value}
-            type="button"
+            htmlType="button"
             aria-pressed={value === option.value}
             onClick={() => onChange(option.value)}
             className={`${orientation === "vertical" && value === option.value ? "h-[33px] py-[7px]" : "h-[36px] py-[8px]"} rounded-[8px] border px-[12px] text-[14px] font-medium leading-[17px] tracking-[-0.5px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)] ${value === option.value ? "border-transparent bg-[var(--color-neutral-200)] text-[var(--color-text-300)]" : invalid ? "border-[var(--color-danger-100)] bg-transparent text-[var(--color-text-100)]" : "border-[var(--color-neutral-200)] bg-transparent text-[var(--color-text-100)] hover:border-[var(--color-neutral-300)] hover:text-[var(--color-text-300)]"}`}
           >
             {option.label}
-          </button>
+          </Button>
         ))}
       </div>
       {error ? <HintText state="Error" hintText={error} className="w-full" role="alert" /> : null}
@@ -193,8 +195,8 @@ function LegalDocumentTypesField({ error = "", invalid = false, value, onChange,
     <div className="flex w-full flex-col gap-[8px]">
       <FieldLabel>Documentación disponible</FieldLabel>
       <div className="relative w-full">
-        <button
-          type="button"
+        <Button layout="content"
+          htmlType="button"
           disabled={disabled}
           aria-expanded={isOpen}
           aria-haspopup="listbox"
@@ -217,7 +219,7 @@ function LegalDocumentTypesField({ error = "", invalid = false, value, onChange,
             aria-hidden="true"
             className={clsx("shrink-0 transition-transform", isOpen && "rotate-180")}
           />
-        </button>
+        </Button>
         {isOpen && !disabled ? (
           <div
             role="listbox"
@@ -227,9 +229,9 @@ function LegalDocumentTypesField({ error = "", invalid = false, value, onChange,
             {PROJECT_REQUEST_OPTIONS.legalDocumentTypes.map((option) => {
               const selected = selectedValues.includes(option.value);
               return (
-                <button
+                <Button layout="content"
                   key={option.value}
-                  type="button"
+                  htmlType="button"
                   role="option"
                   aria-selected={selected}
                   onClick={() => toggleDocument(option.value)}
@@ -246,7 +248,7 @@ function LegalDocumentTypesField({ error = "", invalid = false, value, onChange,
                     state={hoveredDocumentType === option.value ? "Hover" : undefined}
                   />
                   <span>{option.label}</span>
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -833,7 +835,7 @@ export default function ProjectRequestPage() {
               <FormSection title="Referencias" description="Comparte imágenes, enlaces o cualquier material de referencia que represente tu visión del proyecto. Esto nos ayudará a comprender mejor el estilo, la atmósfera y los acabados que deseas lograr.">
                 <div className="flex flex-col gap-[8px]">
                   <FieldLabel optional>Subir imágenes o archivos (opcional)</FieldLabel>
-                  <button type="button" disabled={isSubmitting} onClick={() => fileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); handleFilesChange(event.dataTransfer.files); }} className="flex min-h-[177px] w-full flex-col items-center justify-center gap-[12px] rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] px-[24px] py-[32px] text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)] disabled:cursor-not-allowed disabled:opacity-60 min-[480px]:h-[177px]">
+                  <Button layout="content" htmlType="button" disabled={isSubmitting} onClick={() => fileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); handleFilesChange(event.dataTransfer.files); }} className="flex min-h-[177px] w-full flex-col items-center justify-center gap-[12px] rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] px-[24px] py-[32px] text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)] disabled:cursor-not-allowed disabled:opacity-60 min-[480px]:h-[177px]">
                     <span className="flex size-[40px] items-center justify-center rounded-[8px] border border-[var(--color-neutral-200)] text-[var(--color-text-100)] shadow-[var(--shadow-e1)]"><CloudPlus size="20" color="currentColor" /></span>
                     <span className="flex w-full flex-col items-center gap-[8px] text-[14px] leading-[17px] tracking-[-0.5px] text-[var(--color-text-100)]">
                       <span className="flex min-h-[36px] flex-wrap items-center justify-center gap-[8px]">
@@ -843,8 +845,8 @@ export default function ProjectRequestPage() {
                       </span>
                       <span>Formatos JPEG, PNG, PDF y MP4, hasta 50 MB.</span>
                     </span>
-                  </button>
-                  <input ref={fileInputRef} type="file" multiple accept=".jpeg,.jpg,.png,.pdf,.mp4" className="sr-only" onChange={(event) => handleFilesChange(event.target.files)} />
+                  </Button>
+                  <Input presentation="control" inputRef={fileInputRef} htmlType="file" multiple accept=".jpeg,.jpg,.png,.pdf,.mp4" className="sr-only" onChange={(event) => handleFilesChange(event.target.files)} />
                   {files.length ? (
                     <ul className="flex flex-col gap-[4px] text-[14px] text-[var(--color-text-200)]" aria-live="polite">
                       {files.map((item) => <li key={item.id}>{item.file.name} · {item.status === "uploading" ? `${item.progress}%` : item.status === "uploaded" ? "Cargado" : item.status === "error" ? item.error : "Listo para cargar"}</li>)}

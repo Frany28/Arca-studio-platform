@@ -16,6 +16,8 @@ El proyecto está dividido en dos aplicaciones:
 
 La documentación técnica completa está disponible en [DOCUMENTACION.md](DOCUMENTACION.md).
 
+El [mapeo del frontend](Frontend/docs/FRONTEND_MAP.md) enumera rutas, componentes y consumidores. La [revisión del frontend](Frontend/docs/FRONTEND_REVIEW.md) documenta los cambios y las verificaciones. Se regenera desde `Frontend` con `pnpm audit:frontend`.
+
 ## Tecnologías
 
 ### Frontend

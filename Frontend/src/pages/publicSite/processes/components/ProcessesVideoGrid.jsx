@@ -1,3 +1,4 @@
+import Button from "../../../../components/ui/Button/Button.jsx";
 function ProcessesVideoGrid({ active, inert, onVideoOpen, videos }) {
   return (
     <div
@@ -7,9 +8,9 @@ function ProcessesVideoGrid({ active, inert, onVideoOpen, videos }) {
       data-node-id="4845:5294"
     >
       {videos.map((video) => (
-        <button
+        <Button layout="content"
           key={video.id}
-          type="button"
+          htmlType="button"
           className="group relative aspect-[23/27] min-w-0 cursor-pointer overflow-hidden rounded-[var(--radius-2)] border-0 bg-[var(--color-neutral-200)] p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-neutral-950-uniform)]"
           aria-label={`Abrir video: ${video.title}`}
           onClick={(event) => {
@@ -46,7 +47,7 @@ function ProcessesVideoGrid({ active, inert, onVideoOpen, videos }) {
             />
           )}
           <span className="pointer-events-none absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/10 group-focus-visible:bg-black/10 motion-reduce:transition-none" />
-        </button>
+        </Button>
       ))}
     </div>
   );

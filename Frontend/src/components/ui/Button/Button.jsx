@@ -9,6 +9,7 @@ import {
 
 function Button({
   className,
+  layout = "standard",
   children = "Button",
   iconLeft = null,
   iconRight = null,
@@ -48,22 +49,25 @@ function Button({
     : undefined;
 
   const buttonClassName = clsx(
-    "flex items-center justify-center overflow-visible rounded-[var(--radius-2)] font-medium tracking-[-0.5px] transition-colors duration-150 motion-reduce:transition-none",
-    isDisabled ? "cursor-not-allowed" : "cursor-pointer",
-    iconOnly
-      ? BUTTON_SIZE_STYLES[resolvedSize].iconOnly
-      : isLink
-        ? fitContent
-          ? BUTTON_SIZE_STYLES[resolvedSize].linkFitContent
-          : BUTTON_SIZE_STYLES[resolvedSize].link
-        : fitContent
-          ? BUTTON_SIZE_STYLES[resolvedSize].defaultFitContent
-          : BUTTON_SIZE_STYLES[resolvedSize].default,
-    resolvedState === "Default" && visual.Default,
-    resolvedState === "Hover" && visual.Hover,
-    resolvedState === "Disabled" && visual.Disabled,
-    resolvedState === "Focused" && visual.FocusedInner,
-    resolvedState === "Default" && !disabled && interactiveClassName,
+    layout !== "content" && [
+      "flex items-center justify-center overflow-visible rounded-[var(--radius-2)] font-medium tracking-[-0.5px] transition-colors duration-150 motion-reduce:transition-none",
+      isDisabled ? "cursor-not-allowed" : "cursor-pointer",
+      iconOnly
+        ? BUTTON_SIZE_STYLES[resolvedSize].iconOnly
+        : isLink
+          ? fitContent
+            ? BUTTON_SIZE_STYLES[resolvedSize].linkFitContent
+            : BUTTON_SIZE_STYLES[resolvedSize].link
+          : fitContent
+            ? BUTTON_SIZE_STYLES[resolvedSize].defaultFitContent
+            : BUTTON_SIZE_STYLES[resolvedSize].default,
+      resolvedState === "Default" && visual.Default,
+      resolvedState === "Hover" && visual.Hover,
+      resolvedState === "Disabled" && visual.Disabled,
+      resolvedState === "Focused" && visual.FocusedInner,
+      resolvedState === "Default" && !disabled && interactiveClassName,
+    ],
+    layout === "content" && (isDisabled ? "cursor-not-allowed" : "cursor-pointer"),
     className,
   );
 
@@ -79,33 +83,37 @@ function Button({
       aria-label={ariaLabel}
       {...props}
     >
-      {showLeftIcon && iconLeft ? (
-        <span
-          className="inline-flex shrink-0 items-center justify-center"
-          aria-hidden="true"
-        >
-          {iconLeft}
-        </span>
-      ) : null}
-      {showText ? (
-        <span
-          className={clsx(
-            "inline-flex items-center justify-center",
-            fitContent && "whitespace-nowrap",
-            BUTTON_SIZE_STYLES[resolvedSize].text,
-          )}
-        >
-          {children}
-        </span>
-      ) : null}
-      {showText && showRightIcon && iconRight ? (
-        <span
-          className="inline-flex shrink-0 items-center justify-center"
-          aria-hidden="true"
-        >
-          {iconRight}
-        </span>
-      ) : null}
+      {layout === "content" ? children : (
+        <>
+          {showLeftIcon && iconLeft ? (
+            <span
+              className="inline-flex shrink-0 items-center justify-center"
+              aria-hidden="true"
+            >
+              {iconLeft}
+            </span>
+          ) : null}
+          {showText ? (
+            <span
+              className={clsx(
+                "inline-flex items-center justify-center",
+                fitContent && "whitespace-nowrap",
+                BUTTON_SIZE_STYLES[resolvedSize].text,
+              )}
+            >
+              {children}
+            </span>
+          ) : null}
+          {showText && showRightIcon && iconRight ? (
+            <span
+              className="inline-flex shrink-0 items-center justify-center"
+              aria-hidden="true"
+            >
+              {iconRight}
+            </span>
+          ) : null}
+        </>
+      )}
     </button>
   );
 

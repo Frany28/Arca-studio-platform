@@ -1,3 +1,4 @@
+import Button from "../../../components/ui/Button/Button.jsx";
 import clsx from "clsx";
 import FileAttachmentIcons from "../../../components/ui/FileAttachmentIcons/FileAttachmentIcons.jsx";
 import { getFileDisplayName } from "../../../utils/fileDisplayName.js";
@@ -32,8 +33,8 @@ export default function ProjectDocumentListCard({
   }
 
   return (
-    <button
-      type="button"
+    <Button layout="content"
+      htmlType="button"
       onClick={onClick}
       className={clsx(
         "flex w-full cursor-pointer items-center gap-[24px] rounded-[var(--radius-3)] border bg-[var(--color-neutral-100)] p-[16px] text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-neutral-bg)]",
@@ -62,6 +63,6 @@ export default function ProjectDocumentListCard({
       <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-2)] text-[var(--color-text-200)]">
         <MoreIcon className="size-5" />
       </span>
-    </button>
+    </Button>
   );
 }

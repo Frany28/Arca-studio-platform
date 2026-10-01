@@ -1,3 +1,4 @@
+import Button from "../components/ui/Button/Button.jsx";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -63,25 +64,25 @@ function EmptyProjectsCarouselSection() {
 
         <div className="flex items-center gap-[6px]">
           <Tooltip asChild portal showTip text="Proyecto anterior" tipPosition="Top center">
-            <button
-              type="button"
+            <Button layout="content"
+              htmlType="button"
               aria-label="Proyecto anterior"
               disabled
               className=" cursor-not-allowed flex h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-200)] opacity-40"
             >
               <ChevronLeftIcon className="size-4" />
-            </button>
+            </Button>
           </Tooltip>
 
           <Tooltip asChild portal showTip text="Proyecto siguiente" tipPosition="Top center">
-            <button
-              type="button"
+            <Button layout="content"
+              htmlType="button"
               aria-label="Proyecto siguiente"
               disabled
               className=" cursor-not-allowed flex h-[28px] w-[28px] items-center justify-center rounded-[8px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] text-[var(--color-text-200)] opacity-40"
             >
               <ChevronRightIcon className="size-4" />
-            </button>
+            </Button>
           </Tooltip>
         </div>
       </div>

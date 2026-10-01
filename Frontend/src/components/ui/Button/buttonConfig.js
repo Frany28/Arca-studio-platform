@@ -33,6 +33,9 @@ export const BUTTON_SIZE_STYLES = {
 };
 
 export const BUTTON_DEFAULT_PROPS = {
+  // content conserva el DOM interior y la geometría de cards, marcadores y controles compuestos.
+  // standard aplica las variantes visuales del botón de acción convencional.
+  layout: "standard",
   theme: "Primary",
   size: "S",
   type: "Solid",

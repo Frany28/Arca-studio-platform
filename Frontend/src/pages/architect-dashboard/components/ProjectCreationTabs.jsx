@@ -1,3 +1,4 @@
+import Button from "../../../components/ui/Button/Button.jsx";
 import clsx from "clsx";
 
 const PROJECT_CREATION_TABS = [
@@ -21,9 +22,9 @@ function ProjectCreationTabs({ activeItemId = "general", className }) {
         const isActive = item.id === activeItemId;
 
         return (
-          <button
+          <Button layout="content"
             key={item.id}
-            type="button"
+            htmlType="button"
             className={clsx(
               "flex cursor-pointer items-center justify-center px-[12px] py-[8px] text-heading-8 tracking-[-0.5px] transition-colors duration-150",
               item.heightClassName,
@@ -34,7 +35,7 @@ function ProjectCreationTabs({ activeItemId = "general", className }) {
             aria-current={isActive ? "page" : undefined}
           >
             {item.label}
-          </button>
+          </Button>
         );
       })}
     </nav>

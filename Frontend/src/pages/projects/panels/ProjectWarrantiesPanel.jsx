@@ -1,3 +1,4 @@
+import Button from "../../../components/ui/Button/Button.jsx";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { ArrowDown2, ArrowUp2 } from "iconsax-react";
@@ -114,8 +115,8 @@ function WarrantyRow({ warranty, expanded, onToggle }) {
           text={expanded ? "Contraer garantía" : "Expandir garantía"}
           tipPosition="Top right"
         >
-          <button
-            type="button"
+          <Button layout="content"
+            htmlType="button"
             className="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-2)] text-[var(--color-text-200)] transition-colors hover:bg-[var(--color-neutral-10)] hover:text-[var(--color-text-300)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]"
             aria-label={expanded ? "Contraer garantía" : "Expandir garantía"}
             aria-expanded={expanded}
@@ -123,7 +124,7 @@ function WarrantyRow({ warranty, expanded, onToggle }) {
             onClick={onToggle}
           >
             <WarrantyChevronIcon expanded={expanded} />
-          </button>
+          </Button>
         </Tooltip>
       </div>
 
