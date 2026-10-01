@@ -1,3 +1,4 @@
+/* Renderiza un área de texto con label, ayuda, estados visuales y modo controlado o interno. */
 import { useId, useState } from "react";
 import clsx from "clsx";
 import Label from "../Label/Label.jsx";
@@ -7,6 +8,7 @@ import {
   TEXT_AREA_STATE_STYLES,
 } from "./textAreaConfig.js";
 
+// Determina si el campo contiene un valor de texto útil.
 function hasTextValue(value) {
   if (value == null) {
     return false;
@@ -15,6 +17,7 @@ function hasTextValue(value) {
   return String(value).trim().length > 0;
 }
 
+// Icono decorativo que representa la posibilidad de redimensionar el campo.
 function ResizeHandleIcon({ className }) {
   return (
     <svg
@@ -40,6 +43,7 @@ function ResizeHandleIcon({ className }) {
   );
 }
 
+// Coordina valor, foco, hover y estado visual antes de renderizar el textarea.
 function TextArea({
   className,
   id,

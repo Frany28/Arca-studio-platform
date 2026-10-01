@@ -1,3 +1,4 @@
+/* Renderiza un checkbox controlado o interno con estados visuales, modo oscuro y accesibilidad. */
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
@@ -104,6 +105,7 @@ const CHECKBOX_DARK_NODE_IDS = {
   },
 };
 
+// Icono visual usado para el estado marcado.
 function CheckIcon({ className, frameClassName }) {
   return (
     <span
@@ -130,6 +132,7 @@ function CheckIcon({ className, frameClassName }) {
   );
 }
 
+// Icono visual usado para el estado indeterminado.
 function IndeterminateIcon({ className, frameClassName }) {
   return (
     <span
@@ -157,6 +160,7 @@ function IndeterminateIcon({ className, frameClassName }) {
   );
 }
 
+// Calcula el siguiente estado al interactuar con el checkbox.
 function getNextCheckedState(currentChecked) {
   if (currentChecked === "Indeterminate") {
     return "Yes";
@@ -165,6 +169,7 @@ function getNextCheckedState(currentChecked) {
   return currentChecked === "Yes" ? "No" : "Yes";
 }
 
+// Detecta si el documento está usando el tema oscuro.
 function getDocumentDarkMode() {
   if (typeof document === "undefined") {
     return false;
@@ -173,6 +178,7 @@ function getDocumentDarkMode() {
   return document.documentElement.classList.contains("dark");
 }
 
+// Resuelve estilos, icono y referencia visual según tamaño, estado y tema.
 function getCheckboxVisualSpec(
   resolvedSize,
   resolvedChecked,
@@ -264,6 +270,7 @@ function getCheckboxVisualSpec(
   };
 }
 
+// Coordina estado interno/controlado, interacción y atributos accesibles del checkbox.
 function Checkbox({
   className,
   checked,

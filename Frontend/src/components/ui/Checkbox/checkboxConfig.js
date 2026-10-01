@@ -1,3 +1,4 @@
+/* Define tamaños, estados permitidos, valores por defecto y helpers del Checkbox. */
 export const CHECKBOX_SIZES = ["S", "M"];
 export const CHECKBOX_CHECKED_STATES = ["Yes", "Indeterminate", "No"];
 export const CHECKBOX_STATES = ["Default", "Hover", "Focused", "Disabled"];
@@ -21,6 +22,7 @@ export const CHECKBOX_SIZE_STYLES = {
   },
 };
 
+// Combina las propiedades base del checkbox con sobrescrituras específicas.
 export function createCheckboxProps(overrides = {}) {
   return {
     ...CHECKBOX_DEFAULT_PROPS,
@@ -28,6 +30,7 @@ export function createCheckboxProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del checkbox.
 export function createCheckboxShowcaseItem(label, overrides = {}) {
   return {
     label,

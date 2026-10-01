@@ -1,3 +1,4 @@
+/* Contiene ejemplos de actividad, tamaños y estados del Toggle para documentación visual. */
 import {
   createToggleProps,
   createToggleShowcaseItem,

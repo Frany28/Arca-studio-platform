@@ -1,3 +1,4 @@
+/* Contiene ejemplos de tamaños, estados y referencias visuales del Checkbox. */
 import {
   createCheckboxProps,
   createCheckboxShowcaseItem,
