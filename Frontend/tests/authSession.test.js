@@ -31,6 +31,23 @@ function setupLoginConfirmation(fetchSession) {
   return { login, calls };
 }
 
+test("login rejects a login response without user before requesting the session", async () => {
+  let sessionCalls = 0;
+
+  await assert.rejects(loginAndConfirmSession({
+    credentials: { email: "demo@example.com", password: "demo-password" },
+    requestLogin: async () => ({}),
+    fetchSession: async () => {
+      sessionCalls += 1;
+      return { user: { id: 7, role: "client" } };
+    },
+  }), {
+    code: "AUTH_SESSION_MISSING",
+    message: "El backend de autenticación no está actualizado.",
+  });
+  assert.equal(sessionCalls, 0);
+});
+
 test("login returns only the user confirmed by the session request", async () => {
   const confirmedUser = { id: 9, role: "admin" };
   const { login, calls } = setupLoginConfirmation(async () => ({
