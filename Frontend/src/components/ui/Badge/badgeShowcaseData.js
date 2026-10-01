@@ -1,3 +1,4 @@
+/* Contiene variantes de Badge usadas para documentación y vistas de showcase. */
 import { createBadgeProps, createBadgeShowcaseItem } from "./badgeConfig.js";
 
 export const badgeSizeItems = [
@@ -40,6 +41,7 @@ export const badgeMatrixVariations = ["Simple", "Dot", "Flag / Avatar"];
 
 export const badgeMatrixSizes = ["S", "M", "L"];
 
+// Construye las props de cada combinación usada en la matriz visual del componente.
 export function createBadgeMatrixProps(theme, variation, size) {
   return createBadgeProps({
     theme,
