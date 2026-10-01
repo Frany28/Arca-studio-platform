@@ -1,3 +1,4 @@
+/* Normaliza países, prefijos y máscaras telefónicas usadas por la variante Phone number del Input. */
 import rawPhoneCountryOptions from "./phoneCountryOptions.json";
 
 const PHONE_MASK_OVERRIDES = {
@@ -21,6 +22,7 @@ const PHONE_COUNTRY_ABBREVIATION_OVERRIDES = {
   VE: "VE",
 };
 
+// Genera una máscara y placeholder de respaldo a partir de la longitud del prefijo.
 function createDefaultPhonePresentation(dialCode) {
   const digits = String(dialCode ?? "").replace(/\D/g, "");
 

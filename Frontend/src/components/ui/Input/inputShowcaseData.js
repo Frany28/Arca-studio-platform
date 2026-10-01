@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de tamaños, estados y tipos del Input para documentación visual. */
 import { createInputProps, createInputShowcaseItem } from "./inputConfig.js";
 
 export const inputMainComponent = createInputProps({

@@ -1,3 +1,4 @@
+/* Renderiza campos de entrada reutilizables con variantes de texto, teléfono, búsqueda, contraseña y tags. */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import Flag from "../../Flag.jsx";
@@ -16,6 +17,7 @@ import {
   PASSWORD_REQUIREMENT_RULES,
 } from "./inputConfig.js";
 
+// Icono predeterminado usado en variantes relacionadas con usuarios o tags.
 function UserIcon({ className }) {
   return (
     <svg
@@ -40,6 +42,7 @@ function UserIcon({ className }) {
   );
 }
 
+// Icono predeterminado para entradas de texto generales.
 function SmsIcon({ className }) {
   return (
     <svg
@@ -69,6 +72,7 @@ function SmsIcon({ className }) {
   );
 }
 
+// Icono predeterminado para la variante de búsqueda.
 function SearchIcon({ className }) {
   return (
     <svg
@@ -96,6 +100,7 @@ function SearchIcon({ className }) {
   );
 }
 
+// Icono predeterminado para campos de contraseña.
 function LockIcon({ className }) {
   return (
     <svg
@@ -130,6 +135,7 @@ function LockIcon({ className }) {
   );
 }
 
+// Icono usado para mostrar u ocultar el contenido de una contraseña.
 function EyeIcon({ className }) {
   return (
     <svg
@@ -155,6 +161,7 @@ function EyeIcon({ className }) {
   );
 }
 
+// Icono auxiliar mostrado al lado derecho en entradas informativas.
 function HelpIcon({ className }) {
   return (
     <svg
@@ -187,6 +194,7 @@ function HelpIcon({ className }) {
   );
 }
 
+// Icono usado por selectores desplegables, como el prefijo telefónico.
 function ChevronDownIcon({ className }) {
   return (
     <svg
@@ -207,6 +215,7 @@ function ChevronDownIcon({ className }) {
   );
 }
 
+// Representa visualmente una marca de pago dentro del campo.
 function PaymentBadge({ className, brand = "VISA" }) {
   return (
     <span
@@ -223,6 +232,7 @@ function PaymentBadge({ className, brand = "VISA" }) {
   );
 }
 
+// Selecciona el icono izquierdo por defecto según el tipo de input.
 function getDefaultLeftIcon(type) {
   if (type === "Search bar") {
     return <SearchIcon className="size-5" />;
@@ -239,6 +249,7 @@ function getDefaultLeftIcon(type) {
   return <SmsIcon className="size-5" />;
 }
 
+// Selecciona el icono derecho por defecto según el tipo y estado del input.
 function getDefaultRightIcon(type, passwordVisible) {
   if (type === "Password") {
     return <EyeIcon className="size-5" data-visible={passwordVisible} />;
@@ -251,6 +262,7 @@ function getDefaultRightIcon(type, passwordVisible) {
   return <HelpIcon className="size-5" />;
 }
 
+// Determina si un valor contiene texto útil para resolver estados como Filled.
 function hasTextValue(value) {
   if (value == null) {
     return false;
@@ -259,6 +271,7 @@ function hasTextValue(value) {
   return String(value).trim().length > 0;
 }
 
+// Normaliza texto de búsqueda para comparar tags sin acentos ni diferencias de mayúsculas.
 function normalizeTagSearchText(value) {
   return String(value ?? "")
     .trim()
@@ -267,10 +280,12 @@ function normalizeTagSearchText(value) {
     .toLocaleLowerCase("es");
 }
 
+// Extrae únicamente los dígitos de un valor telefónico.
 function getPhoneDigits(value) {
   return String(value ?? "").replace(/\D/g, "");
 }
 
+// Normaliza un prefijo telefónico asegurando que conserve el signo +.
 function normalizeDialCode(value) {
   const digits = getPhoneDigits(value);
 
@@ -281,6 +296,7 @@ function normalizeDialCode(value) {
   return `+${digits}`;
 }
 
+// Calcula proporción y posición del scroll para sincronizar el scrollbar personalizado.
 function getVerticalScrollMetrics(element) {
   if (!element) return { length: 1, position: 0 };
   const maxScroll = Math.max(element.scrollHeight - element.clientHeight, 0);
@@ -290,6 +306,7 @@ function getVerticalScrollMetrics(element) {
   };
 }
 
+// Aplica la máscara telefónica del país seleccionado al valor ingresado.
 function formatPhoneNumber(value, option) {
   const digits = getPhoneDigits(value);
   const mask = option?.mask ?? "(###) ####-####";
@@ -320,6 +337,7 @@ function formatPhoneNumber(value, option) {
   return output;
 }
 
+// Convierte texto libre en un tag nuevo con propiedades visuales por defecto.
 function createTagFromText(value, fallbackIndex = 0) {
   const label = String(value ?? "").trim();
 
@@ -336,6 +354,7 @@ function createTagFromText(value, fallbackIndex = 0) {
   };
 }
 
+// Completa datos mínimos de un tag antes de renderizarlo o compararlo.
 function normalizeTagItem(tag, fallbackId) {
   return {
     id: tag.id ?? fallbackId,
@@ -345,6 +364,7 @@ function normalizeTagItem(tag, fallbackId) {
   };
 }
 
+// Coordina estado, variantes, validación visual y comportamiento específico de cada tipo de campo.
 function Input({
   className,
   id,
