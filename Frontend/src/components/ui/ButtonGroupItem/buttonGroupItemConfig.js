@@ -1,3 +1,4 @@
+/* Define estados visuales, estilos compartidos y helpers de ButtonGroupItem y ButtonGroup. */
 export const BUTTON_GROUP_ITEM_DEFAULT_PROPS = {
   label: "Text",
   state: "Default",
@@ -42,6 +43,7 @@ export const BUTTON_GROUP_INTERACTIVE_STYLES =
 export const BUTTON_GROUP_WRAPPER_STYLES =
   "overflow-hidden rounded-[var(--radius-2)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[0px_2px_4px_0px_rgba(27,28,29,0.04)]";
 
+// Combina las props base de un item con sobrescrituras específicas.
 export function createButtonGroupItemProps(overrides = {}) {
   return {
     ...BUTTON_GROUP_ITEM_DEFAULT_PROPS,
@@ -49,6 +51,7 @@ export function createButtonGroupItemProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de ButtonGroupItem.
 export function createButtonGroupItemShowcaseItem(label, overrides = {}) {
   return {
     label,
@@ -56,6 +59,7 @@ export function createButtonGroupItemShowcaseItem(label, overrides = {}) {
   };
 }
 
+// Construye la configuración base de un grupo de botones.
 export function createButtonGroupProps(items, overrides = {}) {
   return {
     items,
