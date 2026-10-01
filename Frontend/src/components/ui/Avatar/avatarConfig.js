@@ -1,3 +1,4 @@
+/* Define valores por defecto, estilos por tamaño/tema y helpers del componente Avatar. */
 export const AVATAR_DEFAULT_PROPS = {
   size: "S",
   theme: "Brand 1",
@@ -37,6 +38,7 @@ export const AVATAR_THEME_STYLES = {
   },
 };
 
+// Combina la configuración base con sobrescrituras específicas.
 export function createAvatarProps(overrides = {}) {
   return {
     ...AVATAR_DEFAULT_PROPS,
@@ -44,6 +46,7 @@ export function createAvatarProps(overrides = {}) {
   };
 }
 
+// Construye una entrada reutilizable para mostrar variantes del avatar.
 export function createAvatarShowcaseItem(label, overrides = {}) {
   return {
     label,
