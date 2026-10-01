@@ -1,3 +1,4 @@
+/* Renderiza mensajes de ayuda, error o progreso de contraseña para campos de formulario. */
 import clsx from "clsx";
 import {
   HINT_TEXT_STATE_STYLES,
@@ -5,6 +6,7 @@ import {
   PASSWORD_DEFAULT_REQUIREMENTS,
 } from "./hintTextConfig.js";
 
+// Icono informativo usado en mensajes de ayuda normales.
 function InfoCircleIcon({ className }) {
   return (
     <svg
@@ -26,6 +28,7 @@ function InfoCircleIcon({ className }) {
   );
 }
 
+// Icono informativo específico para mensajes de error.
 function ErrorInfoCircleIcon({ className }) {
   return (
     <svg
@@ -47,6 +50,7 @@ function ErrorInfoCircleIcon({ className }) {
   );
 }
 
+// Icono usado para requisitos de contraseña pendientes.
 function CloseCircleIcon({ className }) {
   return (
     <svg
@@ -73,6 +77,7 @@ function CloseCircleIcon({ className }) {
   );
 }
 
+// Icono usado para requisitos de contraseña cumplidos.
 function TickCircleIcon({ className }) {
   return (
     <svg
@@ -94,6 +99,7 @@ function TickCircleIcon({ className }) {
   );
 }
 
+// Convierte el progreso o estado de contraseña en segmentos visuales.
 function getPasswordSegments(state) {
   if (typeof state === "number") {
     if (state <= 0) {
@@ -123,6 +129,7 @@ function getPasswordSegments(state) {
   }
 }
 
+// Selecciona entre ayuda estándar o validación de contraseña según el tipo recibido.
 function HintText({
   className,
   type = "Hint",
