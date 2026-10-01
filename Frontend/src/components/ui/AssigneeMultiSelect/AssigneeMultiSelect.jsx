@@ -10,6 +10,7 @@ import {
   getRemovedAssignees,
 } from "./assigneeSelection.js";
 
+// Representa el campo de responsables con un icono decorativo.
 function AssigneeIcon() {
   return (
     <svg
@@ -38,6 +39,7 @@ function AssigneeIcon() {
   );
 }
 
+// Permite buscar sin distinguir mayúsculas ni acentos.
 function normalizeText(value) {
   return String(value || "")
     .normalize("NFD")
@@ -45,6 +47,7 @@ function normalizeText(value) {
     .toLocaleLowerCase("es");
 }
 
+// Obtiene hasta dos iniciales como respaldo del avatar.
 function getInitials(name) {
   return String(name || "")
     .trim()
@@ -55,6 +58,7 @@ function getInitials(name) {
     .toUpperCase();
 }
 
+// Adapta una persona al formato de etiqueta y avatar que consume Input.
 function toTag(person, showAvatar) {
   const avatar = getAvatarPresentation({
     identity: person.id,
@@ -77,6 +81,7 @@ function toTag(person, showAvatar) {
   };
 }
 
+// Coordina la selección múltiple, el guardado y la confirmación opcional de bajas.
 function AssigneeMultiSelect({
   "aria-label": ariaLabel = "Seleccionar responsables",
   className,
@@ -99,10 +104,12 @@ function AssigneeMultiSelect({
   const [pendingRemoval, setPendingRemoval] = useState(null);
   const [assignmentFeedback, setAssignmentFeedback] = useState(null);
 
+  // Unifica los IDs como texto para comparar selecciones de distintas fuentes.
   const selectedIds = useMemo(
     () => new Set(value.map((person) => String(person.id))),
     [value],
   );
+  // Filtra las opciones por nombre o rol con el mismo criterio de búsqueda.
   const visibleOptions = useMemo(() => {
     const normalizedQuery = normalizeText(query.trim());
 
@@ -114,6 +121,7 @@ function AssigneeMultiSelect({
       return !normalizedQuery || searchableText.includes(normalizedQuery);
     });
   }, [options, query]);
+  // Indexa seleccionados y opciones; para IDs repetidos prevalece la opción.
   const peopleById = useMemo(
     () =>
       new Map(
@@ -121,6 +129,7 @@ function AssigneeMultiSelect({
       ),
     [options, value],
   );
+  // Completa los datos desde el índice, conservando los campos de la selección.
   const selectedTags = useMemo(
     () =>
       value.map((person) =>
@@ -138,6 +147,7 @@ function AssigneeMultiSelect({
   const isDisabled = disabled || loading || isSaving;
   const resolvedError = localError || error;
 
+  // Espera el guardado del consumidor y coordina bloqueo, errores y avisos.
   const commit = async (nextValue, removedAssignees = []) => {
     if (!onChange || isDisabled) return;
 
@@ -167,6 +177,7 @@ function AssigneeMultiSelect({
       if (removedAssignees.length) {
         onRemovalSuccess?.(removedAssignees);
       }
+      // Difiere el intento de recuperar el foco hasta el siguiente fotograma.
       requestAnimationFrame(() => inputRef.current?.focus());
     } catch (changeError) {
       const errorMessage =
@@ -188,6 +199,7 @@ function AssigneeMultiSelect({
     }
   };
 
+  // Deja las bajas pendientes cuando se requiere confirmación antes de guardar.
   const requestChange = (nextValue) => {
     const removedAssignees = getRemovedAssignees(value, nextValue);
 
@@ -199,6 +211,7 @@ function AssigneeMultiSelect({
     void commit(nextValue);
   };
 
+  // Reconstruye la selección de personas desde los IDs de las etiquetas.
   const handleTagsChange = (nextTags) => {
     const nextValue = nextTags
       .map((tag) => peopleById.get(String(tag.id)))
@@ -207,6 +220,7 @@ function AssigneeMultiSelect({
     requestChange(nextValue);
   };
 
+  // Añade la persona elegida solo si existe y aún no está seleccionada.
   const handleTagOptionSelect = (tag) => {
     const person = peopleById.get(String(tag.id));
 
@@ -214,6 +228,7 @@ function AssigneeMultiSelect({
     void commit([...value, person]);
   };
 
+  // Escape limpia la búsqueda; Enter añade una opción y Backspace solicita la última baja.
   const handleKeyDown = (event) => {
     if (event.key === "Escape") {
       setQuery("");
@@ -238,6 +253,7 @@ function AssigneeMultiSelect({
     }
   };
 
+  // Cierra la confirmación y guarda la selección pendiente con sus bajas.
   const handleConfirmRemoval = () => {
     const removal = pendingRemoval;
 

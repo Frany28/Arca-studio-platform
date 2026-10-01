@@ -1,3 +1,4 @@
+// Detecta bajas comparando IDs como texto, aunque lleguen con tipos distintos.
 export function getRemovedAssignees(currentAssignees = [], nextAssignees = []) {
   const nextIds = new Set(
     nextAssignees.map((assignee) => String(assignee.id)),
@@ -8,6 +9,7 @@ export function getRemovedAssignees(currentAssignees = [], nextAssignees = []) {
   );
 }
 
+// Detecta altas comparando IDs como texto, aunque lleguen con tipos distintos.
 export function getAddedAssignees(currentAssignees = [], nextAssignees = []) {
   const currentIds = new Set(
     currentAssignees.map((assignee) => String(assignee.id)),
