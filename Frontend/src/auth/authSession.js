@@ -8,6 +8,32 @@ export const AUTH_SESSION_STATUS = Object.freeze({
 
 export const AUTH_RETRY_DELAYS_MS = Object.freeze([250, 750]);
 
+// Confirma la sesión tras el login y devuelve únicamente el usuario confirmado por el backend.
+export async function loginAndConfirmSession({
+  credentials,
+  requestLogin,
+  fetchSession,
+}) {
+  const data = await requestLogin(credentials);
+
+  if (!data.user) {
+    throw Object.assign(
+      new Error("El backend de autenticación no está actualizado."),
+      { code: "AUTH_SESSION_MISSING" },
+    );
+  }
+
+  const session = await fetchSession();
+
+  if (!session?.user) {
+    throw Object.assign(new Error("No se pudo confirmar la sesión."), {
+      code: "AUTH_SESSION_MISSING",
+    });
+  }
+
+  return session.user;
+}
+
 // Detecta cuando el backend confirma que ya no existe una sesión válida.
 export function isDefinitiveAuthenticationFailure(error) {
   return error?.status === 401 && error?.code === "UNAUTHENTICATED";

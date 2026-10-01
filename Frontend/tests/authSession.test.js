@@ -4,12 +4,70 @@ import test from "node:test";
 import {
   AUTH_SESSION_STATUS,
   createAuthSessionRestorer,
+  loginAndConfirmSession,
   restoreAuthSession,
 } from "../src/auth/authSession.js";
 import { getProtectedRouteDecision } from "../src/auth/authRouteState.js";
 import { resolveRouteAuthDisabledForTests } from "../src/auth/testAccess.js";
 
 const immediateWait = () => Promise.resolve();
+
+function setupLoginConfirmation(fetchSession) {
+  const calls = [];
+  const credentials = { email: "demo@example.com", password: "demo-password" };
+  const login = () => loginAndConfirmSession({
+    credentials,
+    requestLogin: async (payload) => {
+      calls.push("login");
+      assert.deepEqual(payload, credentials);
+      return { user: { id: 7, role: "client" } };
+    },
+    fetchSession: async () => {
+      calls.push("me");
+      return fetchSession();
+    },
+  });
+
+  return { login, calls };
+}
+
+test("login returns only the user confirmed by the session request", async () => {
+  const confirmedUser = { id: 9, role: "admin" };
+  const { login, calls } = setupLoginConfirmation(async () => ({
+    user: confirmedUser,
+  }));
+
+  assert.equal(await login(), confirmedUser);
+  assert.deepEqual(calls, ["login", "me"]);
+});
+
+test("login propagates the same 401 error without confirming authentication", async () => {
+  const error = Object.assign(new Error("Sesión requerida."), {
+    status: 401,
+    code: "UNAUTHENTICATED",
+  });
+  const { login, calls } = setupLoginConfirmation(async () => {
+    throw error;
+  });
+
+  await assert.rejects(login(), (received) => {
+    assert.equal(received, error);
+    assert.equal(received.status, 401);
+    assert.equal(received.code, "UNAUTHENTICATED");
+    return true;
+  });
+  assert.deepEqual(calls, ["login", "me"]);
+});
+
+test("login rejects a session response without user without confirming authentication", async () => {
+  const { login, calls } = setupLoginConfirmation(async () => ({}));
+
+  await assert.rejects(login(), {
+    code: "AUTH_SESSION_MISSING",
+    message: "No se pudo confirmar la sesión.",
+  });
+  assert.deepEqual(calls, ["login", "me"]);
+});
 
 test("session restoration authenticates only with a valid user response", async () => {
   const user = { id: 7, role: "client" };

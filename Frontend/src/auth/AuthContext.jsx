@@ -13,6 +13,7 @@ import { api, getApiUrl } from "../api/http.js";
 import {
   AUTH_SESSION_STATUS,
   createAuthSessionRestorer,
+  loginAndConfirmSession,
 } from "./authSession.js";
 
 const AuthContext = createContext(null);
@@ -101,24 +102,13 @@ export function AuthProvider({ children }) {
   }, [restoreSession, sessionStatus]);
 
   const login = useCallback(async ({ email, password }) => {
-    const data = await api.auth.login({ email, password });
+    const confirmedUser = await loginAndConfirmSession({
+      credentials: { email, password },
+      requestLogin: api.auth.login,
+      fetchSession: api.auth.me,
+    });
 
-    if (!data.user) {
-      throw Object.assign(
-        new Error("El backend de autenticación no está actualizado."),
-        { code: "AUTH_SESSION_MISSING" },
-      );
-    }
-
-    const session = await api.auth.me();
-
-    if (!session?.user) {
-      throw Object.assign(new Error("No se pudo confirmar la sesión."), {
-        code: "AUTH_SESSION_MISSING",
-      });
-    }
-
-    const nextUser = normalizeUser(session.user);
+    const nextUser = normalizeUser(confirmedUser);
     setUser(nextUser);
     setSessionStatus(AUTH_SESSION_STATUS.AUTHENTICATED);
     setLoginEventId((current) => current + 1);
