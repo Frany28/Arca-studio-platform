@@ -1,3 +1,4 @@
+/* Define estados, estilos y requisitos por defecto del componente HintText. */
 export const HINT_TEXT_DEFAULT_PROPS = {
   type: "Hint",
   state: "Default",
@@ -42,6 +43,7 @@ export const PASSWORD_DEFAULT_REQUIREMENTS = [
   { label: "Al menos 8 caracteres", met: false },
 ];
 
+// Combina las propiedades base del mensaje con sobrescrituras específicas.
 export function createHintTextProps(overrides = {}) {
   return {
     ...HINT_TEXT_DEFAULT_PROPS,
@@ -49,6 +51,7 @@ export function createHintTextProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de HintText.
 export function createHintTextShowcaseItem(label, overrides = {}) {
   return {
     label,

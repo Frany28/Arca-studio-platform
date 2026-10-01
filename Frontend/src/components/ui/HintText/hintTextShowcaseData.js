@@ -1,3 +1,4 @@
+/* Contiene ejemplos de estados, iconos y validación de contraseña para HintText. */
 import {
   PASSWORD_DEFAULT_REQUIREMENTS,
   createHintTextProps,

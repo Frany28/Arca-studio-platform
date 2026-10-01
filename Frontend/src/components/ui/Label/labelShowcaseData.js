@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de estados e indicadores del Label para documentación visual. */
 import { createLabelProps, createLabelShowcaseItem } from "./labelConfig.js";
 
 export const labelMainComponent = createLabelProps();

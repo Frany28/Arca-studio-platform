@@ -1,3 +1,4 @@
+/* Define estados visuales, valores por defecto y helpers del componente Label. */
 export const LABEL_DEFAULT_PROPS = {
   label: "Label",
   state: "Default",
@@ -28,6 +29,7 @@ export const LABEL_STATE_STYLES = {
   },
 };
 
+// Combina las propiedades base de la etiqueta con sobrescrituras específicas.
 export function createLabelProps(overrides = {}) {
   return {
     ...LABEL_DEFAULT_PROPS,
@@ -35,6 +37,7 @@ export function createLabelProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de Label.
 export function createLabelShowcaseItem(label, overrides = {}) {
   return {
     label,
