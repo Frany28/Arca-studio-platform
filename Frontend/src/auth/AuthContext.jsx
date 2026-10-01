@@ -110,7 +110,15 @@ export function AuthProvider({ children }) {
       );
     }
 
-    const nextUser = normalizeUser(data.user);
+    const session = await api.auth.me();
+
+    if (!session?.user) {
+      throw Object.assign(new Error("No se pudo confirmar la sesión."), {
+        code: "AUTH_SESSION_MISSING",
+      });
+    }
+
+    const nextUser = normalizeUser(session.user);
     setUser(nextUser);
     setSessionStatus(AUTH_SESSION_STATUS.AUTHENTICATED);
     setLoginEventId((current) => current + 1);
