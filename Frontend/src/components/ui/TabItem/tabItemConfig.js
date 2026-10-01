@@ -1,3 +1,4 @@
+/* Define tamaños, estados, valores por defecto y helpers del componente TabItem. */
 export const TAB_ITEM_SIZES = ["S", "M"];
 export const TAB_ITEM_STATES = ["Default", "Hover", "Selected"];
 
@@ -29,6 +30,7 @@ export const TAB_ITEM_SIZE_STYLES = {
   },
 };
 
+// Combina las propiedades base del tab con sobrescrituras específicas.
 export function createTabItemProps(overrides = {}) {
   return {
     ...TAB_ITEM_DEFAULT_PROPS,
@@ -36,6 +38,7 @@ export function createTabItemProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes de TabItem.
 export function createTabItemShowcaseItem(label, overrides = {}) {
   return {
     label,
