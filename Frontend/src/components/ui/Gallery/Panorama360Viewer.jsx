@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import Button from "../Button/Button.jsx";
@@ -37,7 +37,7 @@ export default function Panorama360Viewer({ embedded = false, item, projectId, f
   const sceneRef = useRef(null);
   const [loadState, setLoadState] = useState("loading");
   const [pendingSelection, setPendingSelection] = useState(null);
-  const [viewVersion, setViewVersion] = useState(0);
+  const [, setViewVersion] = useState(0);
   const { addComment, comments } = useImageComments(item, { commentType: "panorama", projectId });
   const roots = useMemo(() => comments.filter((comment) => !comment.parentCommentId && comment.selection), [comments]);
 
@@ -130,7 +130,8 @@ export default function Panorama360Viewer({ embedded = false, item, projectId, f
     renderer.domElement.addEventListener("pointermove", pointerMove);
     renderer.domElement.addEventListener("pointerup", pointerUp);
     renderer.domElement.addEventListener("wheel", wheel, { passive: false });
-    stageRef.current?.addEventListener("keydown", keyDown);
+    const stageNode = stageRef.current;
+    stageNode?.addEventListener("keydown", keyDown);
     resize(); updateCamera();
     let animationFrame;
     const animate = () => { renderer.render(scene, camera); animationFrame = requestAnimationFrame(animate); };
@@ -139,20 +140,20 @@ export default function Panorama360Viewer({ embedded = false, item, projectId, f
       disposed = true;
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
-      stageRef.current?.removeEventListener("keydown", keyDown);
+      stageNode?.removeEventListener("keydown", keyDown);
       geometry.dispose(); texture.dispose(); mesh.material.dispose(); renderer.dispose();
       sceneRef.current = null;
     };
   }, [item?.fileUrl, readOnly]);
 
-  const pointPosition = useCallback((selection) => {
+  function pointPosition(selection) {
     const state = sceneRef.current;
     const container = containerRef.current;
     if (!state || !container) return { display: "none" };
     const position = pointToDirection(selection).multiplyScalar(10).project(state.camera);
     if (position.z > 1) return { display: "none" };
     return { left: `${(position.x * 0.5 + 0.5) * 100}%`, top: `${(-position.y * 0.5 + 0.5) * 100}%` };
-  }, [viewVersion]);
+  }
 
   const stage = (
       <section ref={stageRef} tabIndex={0} aria-label="Visor panorámico 360" className={`relative min-w-0 flex-1 overflow-hidden rounded-[var(--radius-3)] bg-black focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)] ${embedded ? "h-full min-h-0" : "min-h-[520px]"}`}>

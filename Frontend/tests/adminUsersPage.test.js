@@ -129,7 +129,7 @@ test("admin user filters support multiple checkbox selections and four visible r
     readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
   ]);
 
-  assert.equal((source.match(/\n\s+multiple\n/g) || []).length, 2);
+  assert.equal((source.match(/\r?\n\s+multiple\r?\n/g) || []).length, 2);
   assert.match(source, /items=\{roleItems\}[\s\S]*onItemsChange=\{changeRoleFilters\}/);
   assert.match(source, /items=\{statusItems\}[\s\S]*onItemsChange=\{changeStatusFilters\}/);
   assert.equal((source.match(/max-h-\[168px\]/g) || []).length, 2);

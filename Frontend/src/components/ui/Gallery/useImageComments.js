@@ -382,7 +382,6 @@ export function useImageComments(item, { commentType = "image", projectId } = {}
     [
       commentType,
       imageKey,
-      item?.image,
       item?.label,
       item?.title,
       resolvedProjectId,

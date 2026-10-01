@@ -794,7 +794,7 @@ export default function ProjectRendersPanel({
   useEffect(() => {
     clearModelLoadingTimers();
 
-    if (!activeRender || !activeModelSrc) {
+    if (!activeModelSrc) {
       const frameId = window.requestAnimationFrame(() => {
         setIsLoading(false);
         setLoadState("loaded");

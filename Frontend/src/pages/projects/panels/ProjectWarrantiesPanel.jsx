@@ -12,6 +12,8 @@ import {
   PROJECT_WARRANTY_FILTER_ITEMS,
 } from "../projectWarrantyData.js";
 
+const EMPTY_WARRANTIES = [];
+
 function WarrantyChevronIcon({ expanded }) {
   const Icon = expanded ? ArrowUp2 : ArrowDown2;
 
@@ -151,7 +153,7 @@ export default function ProjectWarrantiesPanel({
   filters = PROJECT_WARRANTY_FILTER_ITEMS,
   empty = false,
 }) {
-  const resolvedWarranties = empty ? [] : warranties;
+  const resolvedWarranties = empty ? EMPTY_WARRANTIES : warranties;
   const [query, setQuery] = useState("");
   const [selectedFilterId, setSelectedFilterId] = useState(filters[0]?.id);
   const [expandedIds, setExpandedIds] = useState(() => {

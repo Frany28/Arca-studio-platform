@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useId,
   useMemo,
   useRef,
@@ -785,7 +786,6 @@ function CommentCard({
 
   const safeDisplayAuthor = resolveString(displayAuthor);
   const safeDisplayTime = resolveString(displayTime);
-  const safeDisplayBody = resolveString(displayBody);
 
   return (
     <div
@@ -1979,6 +1979,9 @@ export default function Model3DViewerModal({
   const [navigationMode, setNavigationMode] = useState("drag");
   const [texturePreset, setTexturePreset] = useState("auto");
   const vrLaunch = useVrViewerLaunch();
+  const closeVrOnModalReset = useEffectEvent(() => {
+    vrLaunch.close();
+  });
   const [architecturalMaterials, setArchitecturalMaterials] = useState([]);
   const closeTimeoutRef = useRef(null);
   const frameRef = useRef(null);
@@ -2041,7 +2044,7 @@ export default function Model3DViewerModal({
         setModelReloadKey(0);
         setNavigationMode("drag");
         setTexturePreset("auto");
-        vrLaunch.close();
+        closeVrOnModalReset();
         setPendingSelection(null);
         setShouldRender(true);
         frameRef.current = window.requestAnimationFrame(() => {
@@ -2234,25 +2237,6 @@ export default function Model3DViewerModal({
       return;
     }
     vrLaunch.open();
-  }
-
-  async function handleToggleFullscreen() {
-    const stage = modelStageRef.current;
-
-    if (!stage) {
-      return;
-    }
-
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen?.();
-        return;
-      }
-
-      await stage.requestFullscreen?.();
-    } catch {
-      // Ignore fullscreen denials; browser may block them outside trusted gestures.
-    }
   }
 
   useEffect(() => {

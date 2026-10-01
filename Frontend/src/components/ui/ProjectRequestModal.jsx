@@ -37,7 +37,7 @@ function ProjectRequestModal({
   onNext,
 }) {
   const [step, setStep] = useState("details");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [referenceFiles, setReferenceFiles] = useState([]);
   const uploadControllersRef = useRef(new Map());
