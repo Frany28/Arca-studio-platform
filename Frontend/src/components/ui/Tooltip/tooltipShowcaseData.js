@@ -1,3 +1,4 @@
+/* Agrupa ejemplos de contenido y posiciones del Tooltip para documentación visual. */
 import {
   createTooltipProps,
   createTooltipShowcaseItem,

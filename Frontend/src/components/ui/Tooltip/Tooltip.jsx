@@ -1,3 +1,4 @@
+/* Renderiza tooltips inline o en portal con posicionamiento adaptativo y soporte de mouse, teclado y táctil. */
 import {
   cloneElement,
   isValidElement,
@@ -71,6 +72,7 @@ const TOOLTIP_TAIL_TRANSFORMS = {
   "Bottom left": "",
 };
 
+// Renderiza la flecha visual del tooltip según su orientación.
 function TooltipTail({ tipPosition }) {
   return (
     <span
@@ -102,12 +104,14 @@ function TooltipTail({ tipPosition }) {
   );
 }
 
+// Valida la posición solicitada y aplica la posición por defecto si es inválida.
 function getResolvedPosition(tipPosition) {
   return TOOLTIP_POSITIONS.includes(tipPosition)
     ? tipPosition
     : TOOLTIP_DEFAULT_PROPS.tipPosition;
 }
 
+// Detecta si el dispositivo admite interacción real por hover con puntero preciso.
 function supportsHoverTooltip() {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
     return true;
@@ -116,6 +120,7 @@ function supportsHoverTooltip() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
 
+// Selecciona la referencia visual de Figma según contenido, flecha y posición.
 function getResolvedNodeId({ tipPosition, showSubtext, showTip }) {
   if (showSubtext && showTip && tipPosition === "Bottom center") {
     return TOOLTIP_NODE_IDS.main;
@@ -132,6 +137,7 @@ function getResolvedNodeId({ tipPosition, showSubtext, showTip }) {
   return TOOLTIP_NODE_IDS.base;
 }
 
+// Calcula la posición inicial del tooltip respecto al elemento ancla.
 function getPortalPosition(anchor, tipPosition) {
   const rect = anchor.getBoundingClientRect();
   const positions = {
@@ -148,6 +154,7 @@ function getPortalPosition(anchor, tipPosition) {
   return positions[tipPosition];
 }
 
+// Renderiza el contenido visual del tooltip y su flecha opcional.
 function TooltipBubble({
   className,
   content,
@@ -208,6 +215,7 @@ function TooltipBubble({
   );
 }
 
+// Coordina apertura, portal, reposicionamiento, accesibilidad y eventos de interacción.
 function Tooltip({
   asChild = false,
   className,
@@ -336,6 +344,7 @@ function Tooltip({
     }
   }, [portal, portalPosition, portalTipPosition, resolvedOpen, resolvedPosition]);
 
+  // Actualiza el estado abierto respetando modo controlado o interno.
   const setTooltipOpen = (nextOpen) => {
     if (nextOpen) {
       setPortalTipPosition(resolvedPosition);
@@ -348,11 +357,13 @@ function Tooltip({
     onOpenChange?.(nextOpen);
   };
 
+  // Cancela la detección pendiente de pulsación larga en dispositivos táctiles.
   const clearLongPressTimer = () => {
     window.clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
   };
 
+  // Evita eventos de mouse sintéticos después de una interacción táctil.
   const suppressTouchGeneratedEvents = () => {
     suppressMouseRef.current = true;
     window.clearTimeout(touchSuppressionTimerRef.current);
@@ -361,6 +372,7 @@ function Tooltip({
     }, TOUCH_MOUSE_SUPPRESSION_MS);
   };
 
+  // Inicia la detección de long press para mostrar el tooltip en touch.
   const handleTouchPointerDown = (event) => {
     if (event.pointerType !== "touch") {
       return;
@@ -383,6 +395,7 @@ function Tooltip({
     }, TOUCH_LONG_PRESS_MS);
   };
 
+  // Cancela el long press si el dedo se desplaza más allá de la tolerancia.
   const handleTouchPointerMove = (event) => {
     if (event.pointerType !== "touch" || !touchStartPointRef.current) {
       return;
@@ -404,6 +417,7 @@ function Tooltip({
     }
   };
 
+  // Cierra o programa el cierre del tooltip al finalizar la interacción táctil.
   const handleTouchPointerEnd = (event) => {
     if (event.pointerType !== "touch") {
       return;
@@ -425,6 +439,7 @@ function Tooltip({
     }, TOUCH_TOOLTIP_DISMISS_MS);
   };
 
+  // Abre el tooltip por hover cuando el dispositivo lo soporta.
   const handleMouseEnter = (event) => {
     const originatedFromTouch =
       event.nativeEvent?.sourceCapabilities?.firesTouchEvents;
@@ -440,6 +455,7 @@ function Tooltip({
     setTooltipOpen(true);
   };
 
+  // Abre el tooltip con foco visible para navegación por teclado.
   const handleFocus = (event) => {
     if (suppressMouseRef.current || !supportsHoverTooltip()) {
       return;
@@ -471,6 +487,7 @@ function Tooltip({
     setTooltipOpen(false);
   };
 
+  // Suprime el click generado por un long press para evitar acciones accidentales.
   const handleLongPressClick = (event, childClickHandler) => {
     if (suppressNextClickRef.current) {
       event.preventDefault();
@@ -482,6 +499,7 @@ function Tooltip({
     childClickHandler?.(event);
   };
 
+  // Evita el menú contextual nativo mientras se procesa una interacción táctil.
   const handleTouchContextMenu = (event, childContextMenuHandler) => {
     if (suppressMouseRef.current) {
       event.preventDefault();

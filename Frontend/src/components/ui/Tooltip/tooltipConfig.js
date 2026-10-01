@@ -1,3 +1,4 @@
+/* Define posiciones, valores por defecto y helpers del componente Tooltip. */
 export const TOOLTIP_POSITIONS = [
   "Right",
   "Left",
@@ -22,6 +23,7 @@ export const TOOLTIP_DEFAULT_PROPS = {
   "aria-label": "Tooltip",
 };
 
+// Combina las propiedades base del tooltip con sobrescrituras específicas.
 export function createTooltipProps(overrides = {}) {
   return {
     ...TOOLTIP_DEFAULT_PROPS,
@@ -29,6 +31,7 @@ export function createTooltipProps(overrides = {}) {
   };
 }
 
+// Genera una entrada reutilizable para mostrar variantes del Tooltip.
 export function createTooltipShowcaseItem(label, overrides = {}) {
   return {
     label,
