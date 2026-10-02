@@ -31,7 +31,9 @@ import {
 import { getProjectPath } from "../../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../../utils/commentSelection.js";
 import {
+  getProjectReadOnlyMessage,
   isProjectFinalized,
+  isProjectOperationallyReadOnly,
 } from "../../utils/projectReadOnly.js";
 import Alert from "../../components/ui/Alert/Alert.jsx";
 import { ProjectReadOnlyProvider } from "../../contexts/ProjectReadOnlyContext.jsx";
