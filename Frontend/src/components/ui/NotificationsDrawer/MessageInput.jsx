@@ -91,7 +91,7 @@ export default function MessageInput({
   const errorMessage = submissionError ? (
     <p
       role="alert"
-      className="text-[12px] font-normal leading-[14px] tracking-[-0.5px] text-[var(--color-error-300)]"
+      className="text-[12px] font-normal leading-[14px] tracking-[-0.5px] text-[var(--color-danger-100)]"
     >
       {submissionError}
     </p>
