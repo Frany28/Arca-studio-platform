@@ -43,8 +43,11 @@ test("composite checkbox options preserve selection while hovered", async () => 
     ),
     "utf8",
   );
-  const projectRequestSource = await readFile(
-    new URL("../src/pages/ProjectRequestPage.jsx", import.meta.url),
+  const projectRequestFormFieldsSource = await readFile(
+    new URL(
+      "../src/pages/project-request/components/ProjectRequestFormFields.jsx",
+      import.meta.url,
+    ),
     "utf8",
   );
 
@@ -56,9 +59,9 @@ test("composite checkbox options preserve selection while hovered", async () => 
     dropdownSource,
     /visualState === "Hover"\s*\?\s*"No"\s*:\s*checked/,
   );
-  assert.match(projectRequestSource, /setHoveredDocumentType\(option\.value\)/);
+  assert.match(projectRequestFormFieldsSource, /setHoveredDocumentType\(option\.value\)/);
   assert.match(
-    projectRequestSource,
+    projectRequestFormFieldsSource,
     /state=\{hoveredDocumentType === option\.value \? "Hover" : undefined\}/,
   );
 });
