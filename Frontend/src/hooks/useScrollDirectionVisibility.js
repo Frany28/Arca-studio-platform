@@ -8,6 +8,14 @@ gsap.registerPlugin(ScrollTrigger);
 const NAVBAR_SCROLL_DURATION_SECONDS = 0.2;
 const SCROLLABLE_OVERFLOW_PATTERN = /(auto|scroll|overlay)/;
 
+/**
+ * Busca el primer ancestro anterior al body con overflowY auto, scroll u overlay.
+ * Consulta window.getComputedStyle y usa window si no encuentra un contenedor;
+ * no comprueba si el contenido desborda realmente.
+ *
+ * @param {HTMLElement|null} element - Elemento desde cuyo padre se inicia la búsqueda.
+ * @returns {HTMLElement|Window} Contenedor para los eventos de navegación.
+ */
 function getClosestScrollContainer(element) {
   let ancestor = element?.parentElement;
 
@@ -20,6 +28,22 @@ function getClosestScrollContainer(element) {
   return window;
 }
 
+/**
+ * Muestra u oculta el destino con GSAP según scroll e intención de navegación.
+ * Usa el contenedor explícito o detectado; registra scroll y, en captura, wheel,
+ * pointerdown/move/up/cancel y keydown mientras existe destino y se permite movimiento.
+ * Así detecta gestos consumidos por Home que no modifican scrollTop.
+ * El foco de teclado mantiene el destino visible; el foco de puntero no lo fija.
+ * Ignora Ctrl+wheel, gestos predominantemente horizontales y teclas en controles.
+ * Registra focusin/out en el destino. El cleanup elimina todos los listeners
+ * y revierte el contexto GSAP, incluidas animación y ScrollTrigger.
+ * Con movimiento reducido limpia transform y omite animación y listeners.
+ *
+ * @param {Object} targetRef - Ref con current HTMLElement o null.
+ * @param {Object} [options={}] - Configuración de scroll.
+ * @param {Object} [options.scrollContainerRef] - Ref del contenedor; si falta current se detecta.
+ * @returns {void}
+ */
 function useScrollDirectionVisibility(targetRef, { scrollContainerRef } = {}) {
   const reduceMotion = useReducedMotion();
 

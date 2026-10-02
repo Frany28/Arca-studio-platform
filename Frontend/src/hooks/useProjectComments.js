@@ -4,6 +4,14 @@ import { api } from "../api/http.js";
 import { canAccessObservations } from "../utils/observationAccess.js";
 import { decorateCommentForDisplay } from "../utils/commentDisplay.js";
 
+/**
+ * Convierte una fecha en texto relativo en el momento de adaptar el comentario.
+ * Devuelve vacío para fechas inválidas y Ahora para futuras; no programa timers
+ * para actualizar la etiqueta con el paso del tiempo.
+ *
+ * @param {string|number} value - Fecha convertible mediante Date.
+ * @returns {string} Etiqueta de minutos, horas o días.
+ */
 function getRelativeTimeLabel(value) {
   const date = new Date(value);
   const diffMs = Date.now() - date.getTime();
@@ -33,6 +41,16 @@ function getRelativeTimeLabel(value) {
   return `Hace ${diffDays} ${diffDays === 1 ? "dia" : "dias"}`;
 }
 
+/**
+ * Adapta una observación al panel conservando recursos y metadatos.
+ * Prefija IDs de entorno y sus padres con environment: para evitar colisiones
+ * con proyectos; añade autor, tipo, punto de panorámica y fecha relativa.
+ *
+ * @param {Object} comment - Observación original.
+ * @param {Object|null} user - Usuario para decorar autor y avatar.
+ * @param {Object} [projectNamesById={}] - Nombres indexados por ID de proyecto.
+ * @returns {Object} Observación compatible con el drawer.
+ */
 function toDrawerComment(comment, user, projectNamesById = {}) {
   const commentType = comment.commentType || "general";
   const isEnvironmentComment = comment.scope === "environment";
@@ -71,6 +89,13 @@ function toDrawerComment(comment, user, projectNamesById = {}) {
   };
 }
 
+/**
+ * Recupera el ID numérico de entorno desde la referencia visual del padre.
+ * Admite el prefijo environment: y devuelve null para valores no enteros positivos.
+ *
+ * @param {string|number|null} value - Referencia recibida del panel.
+ * @returns {number|null} ID para la API o null.
+ */
 function getEnvironmentCommentId(value) {
   const normalizedValue = String(value || "");
   const numericValue = Number(
@@ -84,6 +109,14 @@ function getEnvironmentCommentId(value) {
     : null;
 }
 
+/**
+ * Normaliza proyectos a enteros positivos únicos conservando el orden.
+ * Permite construir una clave estable que evita repetir el efecto cuando cambia
+ * la identidad del array pero contiene los mismos IDs en el mismo orden.
+ *
+ * @param {Array} [projectIds=[]] - IDs candidatos.
+ * @returns {Array} IDs numéricos válidos sin duplicados.
+ */
 function normalizeProjectIds(projectIds = []) {
   return [
     ...new Set(
@@ -94,6 +127,14 @@ function normalizeProjectIds(projectIds = []) {
   ];
 }
 
+/**
+ * Actualiza por igualdad estricta de ID o añade una observación recibida por API o SSE.
+ * Ignora entradas sin ID y conserva el orden de las filas existentes.
+ *
+ * @param {Array} comments - Observaciones actuales.
+ * @param {Object|null} comment - Observación entrante.
+ * @returns {Array} Lista resultante sin mutar el array original.
+ */
 function upsertCommentById(comments, comment) {
   if (!comment?.id) {
     return comments;
@@ -106,6 +147,13 @@ function upsertCommentById(comments, comment) {
     : [...comments, comment];
 }
 
+/**
+ * Ordena una copia de las observaciones de la fecha más antigua a la más reciente.
+ * Utiliza cero como fecha cuando createdAt está ausente.
+ *
+ * @param {Array} comments - Observaciones por ordenar.
+ * @returns {Array} Copia ordenada.
+ */
 function sortCommentsByCreatedAt(comments) {
   return [...comments].sort(
     (left, right) =>
@@ -114,6 +162,15 @@ function sortCommentsByCreatedAt(comments) {
   );
 }
 
+/**
+ * Combina lecturas periódicas con observaciones locales o recibidas por eventos.
+ * Normaliza IDs como texto, prioriza la lectura nueva y ordena por createdAt;
+ * conserva observaciones previas ausentes en la nueva lectura.
+ *
+ * @param {Array} currentComments - Observaciones existentes.
+ * @param {Array} nextComments - Observaciones de la lectura nueva.
+ * @returns {Array} Unión ordenada sin IDs repetidos.
+ */
 function mergeCommentsById(currentComments, nextComments) {
   const commentsById = new Map();
 
@@ -132,6 +189,26 @@ function mergeCommentsById(currentComments, nextComments) {
   return sortCommentsByCreatedAt(Array.from(commentsById.values()));
 }
 
+/**
+ * Coordina observaciones de un proyecto, creación, eventos SSE y polling opcional.
+ * Con enabled y projectId carga y suscribe eventos mediante la API; el polling
+ * usa window.setInterval y combina por ID. Un fallo SSE solicita otra lectura
+ * solo con intervalo positivo; los errores de lecturas de fondo se ignoran.
+ * El cleanup elimina intervalo y suscripción y descarta respuestas del efecto,
+ * sin abortar requests. Deshabilitar o quitar el proyecto limpia el estado.
+ * submitComment acepta texto o { message, parentCommentId, projectId, commentType,
+ * image, selection, targetId }; permite otro proyecto y propaga errores de creación.
+ * refresh reemplaza filas y captura errores. Las acciones manuales no dependen
+ * de enabled ni están protegidas por la guarda de montaje del efecto.
+ *
+ * @param {Object} params - Contexto de observaciones.
+ * @param {boolean} [params.enabled=true] - Habilita lectura y suscripción automáticas.
+ * @param {number|string|null} params.projectId - Proyecto de lectura y destino predeterminado.
+ * @param {number} [params.refreshIntervalMs=0] - Polling en ms; cero lo desactiva.
+ * @param {Object|null} params.user - Usuario para presentación; no valida permisos.
+ * @returns {Object} comments, drawerComments, error, loading, submitComment y refresh.
+ * Las acciones devuelven Promise<void>; loading también cubre envíos.
+ */
 export function useProjectComments({
   enabled = true,
   projectId,
@@ -313,6 +390,24 @@ export function useProjectComments({
   };
 }
 
+/**
+ * Agrega observaciones de proyectos cuando la política del usuario permite acceso.
+ * Carga IDs normalizados en paralelo con Promise.all y suscribe eventos SSE por
+ * proyecto; un fallo inicial expone error. El polling combina por ID y silencia
+ * errores; refresh reemplaza la lista y captura fallos sin rechazar su promesa.
+ * El cleanup elimina suscripciones e intervalo e ignora respuestas del efecto,
+ * sin abortar requests. Sin acceso o IDs programa un reset con window.setTimeout(0)
+ * que también se limpia; drawerComments queda vacío inmediatamente sin acceso.
+ * La guarda de montaje del efecto no cubre el refresco manual.
+ *
+ * @param {Object} params - Ámbito de proyectos y usuario.
+ * @param {boolean} [params.enabled=true] - Habilita carga junto con canAccessObservations.
+ * @param {Array} [params.projectIds=[]] - IDs convertidos a enteros positivos únicos.
+ * @param {Object} [params.projectNamesById={}] - Nombres usados en la adaptación.
+ * @param {number} [params.refreshIntervalMs=0] - Polling en ms; cero lo desactiva.
+ * @param {Object|null} params.user - Usuario para política de acceso y presentación.
+ * @returns {Object} comments, drawerComments, error, loading y refresh (Promise<void>), sin envío.
+ */
 export function useRecentProjectComments({
   enabled = true,
   projectIds = [],
@@ -466,6 +561,23 @@ export function useRecentProjectComments({
   };
 }
 
+/**
+ * Gestiona observaciones del entorno con carga inicial, polling opcional y creación.
+ * enabled controla solo el efecto automático; desactivarlo conserva el estado.
+ * queueMicrotask inicia indicadores; window.setInterval combina lecturas por ID
+ * sin exponer errores de polling. El cleanup limpia el intervalo e ignora resultados
+ * y microtareas protegidas del efecto, sin abortar requests ni proteger acciones manuales.
+ * submitComment acepta texto o { message, parentCommentId }, retira environment:
+ * del padre y propaga errores de creación; refresh reemplaza filas y captura fallos.
+ * No registra SSE ni verifica aquí la política de acceso por rol.
+ *
+ * @param {Object} params - Contexto de lectura y presentación.
+ * @param {boolean} [params.enabled=true] - Habilita carga automática.
+ * @param {number} [params.refreshIntervalMs=0] - Polling en ms; cero lo desactiva.
+ * @param {Object|null} params.user - Usuario para decorar autor y avatar.
+ * @returns {Object} comments, drawerComments, error, loading, refresh y submitComment.
+ * Las acciones devuelven Promise<void>; loading se comparte entre lectura y creación.
+ */
 export function useEnvironmentComments({
   enabled = true,
   refreshIntervalMs = 0,

@@ -10,6 +10,14 @@ const CLOSED_VIEWER = {
 const MOBILE_DEVICE_PATTERN = /Android|iPhone|iPad|iPod|Mobile/i;
 const HEADSET_BROWSER_PATTERN = /OculusBrowser|Meta Quest|Quest|Pico|Vive Focus|Firefox Reality/i;
 
+/**
+ * Distingue teléfonos y tablets de navegadores de visores mediante pistas del navegador.
+ * Excluye primero los headsets; contempla userAgentData, userAgent e iPadOS
+ * con identidad MacIntel y múltiples puntos táctiles. La detección es heurística.
+ *
+ * @param {Object|null} navigatorLike - Datos equivalentes a navigator.
+ * @returns {boolean} Si corresponde a un móvil de mano.
+ */
 export function isHandheldMobileNavigator(navigatorLike) {
   if (!navigatorLike) return false;
 
@@ -23,6 +31,15 @@ export function isHandheldMobileNavigator(navigatorLike) {
   return navigatorLike.platform === "MacIntel" && navigatorLike.maxTouchPoints > 1;
 }
 
+/**
+ * Consulta soporte immersive-vr en WebXR excluyendo móviles de mano.
+ * La exclusión evita sesiones tipo Cardboard con pantalla dividida en teléfonos;
+ * la ausencia de API o los errores de detección producen unsupported.
+ *
+ * @param {Object|null} xr - API equivalente a navigator.xr.
+ * @param {Object|null} navigatorLike - Datos para distinguir móviles y headsets.
+ * @returns {Promise<string>} supported o unsupported.
+ */
 export async function getVrSupportStatus(xr, navigatorLike) {
   // Some Android browsers expose immersive-vr as a Cardboard-style session.
   // Opening it on a phone forces the duplicated, split-screen presentation.
@@ -35,6 +52,15 @@ export async function getVrSupportStatus(xr, navigatorLike) {
   }
 }
 
+/**
+ * Solicita una sesión immersive-vr con local-floor y bounded-floor opcionales.
+ * Debe llamarse desde la interacción de apertura para cumplir la activación
+ * requerida por el navegador; no transforma errores en un fallback.
+ *
+ * @param {Object|null} xr - API WebXR con requestSession.
+ * @returns {Promise<Object>} Sesión WebXR creada.
+ * @throws {Error} Rechaza con VR_UNAVAILABLE si falta la API o con el error de requestSession.
+ */
 export function requestVrSession(xr) {
   if (!xr?.requestSession) return Promise.reject(new Error("VR_UNAVAILABLE"));
   return xr.requestSession("immersive-vr", {
@@ -42,6 +68,19 @@ export function requestVrSession(xr) {
   });
 }
 
+/**
+ * Coordina apertura del visor convencional o de una sesión WebXR inmersiva.
+ * Comprueba navigator.xr al montar; el cleanup ignora el resultado de detección
+ * sin cancelar la consulta. open usa fallback mientras comprueba o no hay soporte;
+ * si requestSession falla abre el fallback con un aviso en viewer.notice.
+ * close intenta terminar la sesión, ignora errores de end y oculta el visor.
+ * handleImmersiveEnd muestra el fallback tras un fin externo, pero no tras cierre
+ * explícito. El consumidor conecta este callback al fin de sesión; el hook no
+ * registra ese listener ni termina sesiones automáticamente al desmontarse.
+ *
+ * @returns {Object} close, handleImmersiveEnd, isChecking, open, supportStatus y viewer.
+ * viewer contiene initialSession (Object|null), mode, notice y visible; open devuelve Promise<void>.
+ */
 export default function useVrViewerLaunch() {
   const [supportStatus, setSupportStatus] = useState("checking");
   const [viewer, setViewer] = useState(CLOSED_VIEWER);

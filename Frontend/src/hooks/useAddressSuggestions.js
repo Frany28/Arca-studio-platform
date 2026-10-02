@@ -9,6 +9,20 @@ const EMPTY_RESULT = {
   suggestions: [],
 };
 
+/**
+ * Busca direcciones para consultas recortadas de al menos dos caracteres.
+ * Aplica debounce mediante window.setTimeout y cancela timer y request con
+ * AbortController al cambiar dependencias o desmontar. Ignora abortos y expone
+ * solo resultados y errores de la consulta vigente; el debounce no cuenta como carga.
+ * clear reinicia el resultado local, sin cancelar por sí mismo una petición activa.
+ *
+ * @param {Object} [params={}] - Configuración de la búsqueda.
+ * @param {number} [params.debounceMs=180] - Espera en milisegundos antes del request.
+ * @param {boolean} [params.enabled=true] - Habilita la búsqueda automática.
+ * @param {string} [params.query] - Texto de dirección.
+ * @param {boolean} [params.selected=false] - Impide buscar si ya existe una selección.
+ * @returns {Object} clear, error, hasSearched, isSearching y suggestions.
+ */
 export default function useAddressSuggestions({
   debounceMs = 180,
   enabled = true,

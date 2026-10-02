@@ -5,6 +5,13 @@ import {
   getModelViewerDimensions,
 } from "../utils/modelViewerCamera.js";
 
+/**
+ * Convierte los ángulos de órbita en una dirección unitaria hacia el objetivo.
+ * El sentido negativo de los ejes permite avanzar el objetivo al acercarse al modelo.
+ *
+ * @param {Object|null} orbit - Órbita con theta, phi y radio previamente validados.
+ * @returns {Object|null} Vector { x, y, z } o null sin radio positivo o dirección.
+ */
 function getOrbitForwardVector(orbit) {
   if (!orbit || !Number.isFinite(orbit.radius) || orbit.radius <= 0) {
     return null;
@@ -25,6 +32,18 @@ function getOrbitForwardVector(orbit) {
     : null;
 }
 
+/**
+ * Permite avanzar hacia el modelo cuando el zoom de aproximación ya está cerca.
+ * Registra wheel en captura con passive:false solo si está habilitado y existe
+ * el model-viewer. Consume deltaY negativo con cámara y dimensiones válidas
+ * únicamente dentro del radio cercano, calculado según el tamaño y un mínimo.
+ * Desplaza cameraTarget hacia delante, conserva la órbita y limita la intensidad
+ * del paso; fuera de esas condiciones deja actuar al visor. El cleanup retira el listener.
+ *
+ * @param {Object} modelViewerRef - Ref al model-viewer con APIs de cámara y dimensiones.
+ * @param {boolean} enabled - Habilita esta interacción adicional.
+ * @returns {void}
+ */
 export function useSketchfabLikeModelWheel(modelViewerRef, enabled) {
   useEffect(() => {
     const modelViewer = modelViewerRef.current;

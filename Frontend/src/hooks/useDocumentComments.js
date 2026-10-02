@@ -13,6 +13,14 @@ function isPositiveId(value) {
   return Number.isInteger(numericValue) && numericValue > 0;
 }
 
+/**
+ * Valida puntos con coordenadas normalizadas entre cero y uno.
+ * Exige límites válidos de página o sección según el tipo; para hojas comprueba
+ * nombre no vacío y referencia de celda compatible con el patrón admitido.
+ *
+ * @param {Object|null} selection - Referencia del punto seleccionado.
+ * @returns {boolean} Si cumple las reglas del tipo de selección.
+ */
 function isValidDocumentSelection(selection) {
   if (!selection || typeof selection !== "object") return false;
   const hasCoordinates =
@@ -43,22 +51,53 @@ function isValidDocumentSelection(selection) {
   return false;
 }
 
+/**
+ * Actualiza una observación comparando IDs como texto para evitar duplicados.
+ * Reemplaza la coincidencia o añade la fila sin mutar el array original.
+ *
+ * @param {Array} comments - Observaciones existentes.
+ * @param {Object} comment - Observación entrante.
+ * @returns {Array} Lista actualizada.
+ */
 function upsert(comments, comment) {
   return comments.some((item) => String(item.id) === String(comment.id))
     ? comments.map((item) => String(item.id) === String(comment.id) ? comment : item)
     : [...comments, comment];
 }
 
+/**
+ * Aísla la caché por usuario, proyecto, archivo y versión.
+ * El consumidor proporciona anonymous cuando no hay ID de usuario.
+ *
+ * @param {Object} params - fileId, fileVersionId, projectId y userId del ámbito.
+ * @returns {string} Clave compartida entre instancias del mismo ámbito.
+ */
 function getCacheKey({ fileId, fileVersionId, projectId, userId }) {
   return `${userId}:${projectId}:${fileId}:${fileVersionId}`;
 }
 
+/**
+ * Limita la caché compartida a 50 entradas eliminando las primeras insertadas.
+ * La eliminación también puede afectar entradas con peticiones pendientes.
+ *
+ * @returns {void}
+ */
 function trimCache() {
   while (commentCache.size > CACHE_MAX_ENTRIES) {
     commentCache.delete(commentCache.keys().next().value);
   }
 }
 
+/**
+ * Reutiliza lecturas de menos de 30 segundos o la promesa pendiente del mismo ámbito.
+ * Guarda resultados al resolver y elimina la entrada ante fallo para permitir
+ * otra lectura. Limita la caché a 50 entradas y no aborta requests compartidos.
+ *
+ * @param {string} cacheKey - Clave por usuario, proyecto, archivo y versión.
+ * @param {Object} input - Identificadores enviados a listAllDocumentComments.
+ * @returns {Promise<Array>} Observaciones del documento.
+ * @throws {Error} Rechaza la promesa si falla la lectura de la API.
+ */
 function loadComments(cacheKey, input) {
   const cached = commentCache.get(cacheKey);
   if (cached && (cached.promise || Date.now() - cached.createdAt < CACHE_TTL_MS)) {
@@ -81,6 +120,24 @@ function loadComments(cacheKey, input) {
   return promise;
 }
 
+/**
+ * Gestiona observaciones de una versión documental, respuestas y participantes.
+ * Obtiene usuario y modo de solo lectura de sus contextos. La carga usa caché
+ * por usuario/proyecto/archivo/versión y queueMicrotask para iniciar indicadores;
+ * el cleanup descarta respuestas del efecto sin cancelar la petición compartida.
+ * addComment valida IDs y puntos raíz, rechaza escrituras en solo lectura y
+ * reutiliza el envío pendiente de esta instancia incluso con un payload distinto.
+ * La creación actualiza filas y caché; sus errores se exponen y se propagan.
+ * enabled controla solo la lectura automática; no hay polling ni listeners.
+ *
+ * @param {Object} params - Contexto de la versión documental.
+ * @param {boolean} params.enabled - Habilita carga si están presentes todos los IDs.
+ * @param {number|string|null} params.fileId - Identificador del archivo.
+ * @param {number|string|null} params.fileVersionId - Identificador de la versión.
+ * @param {number|string|null} params.projectId - Identificador del proyecto.
+ * @returns {Object} comments, error, isLoading, isSubmitting y addComment.
+ * addComment recibe { message, parentCommentId?, selection? } y devuelve Promise<Object> con la observación creada.
+ */
 export function useDocumentComments({ enabled, fileId, fileVersionId, projectId }) {
   const { user } = useAuth();
   const { message: readOnlyMessage, readOnly } = useProjectReadOnly();
