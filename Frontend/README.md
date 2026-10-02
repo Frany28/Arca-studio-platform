@@ -19,6 +19,7 @@ SPA construida con React, Vite y Tailwind CSS para la experiencia web de cliente
 pnpm run dev
 pnpm run build
 pnpm run lint
+pnpm test
 pnpm run preview
 ```
 
@@ -26,16 +27,45 @@ pnpm run preview
 
 ```text
 src/
-  api/          Cliente HTTP centralizado
-  assets/       Logos, fondos, iconos e imagenes
-  auth/         Contexto y guards de autenticacion
-  components/   Componentes reutilizables
-  hooks/        Hooks de dominio
-  layouts/      Layouts base
-  pages/        Vistas principales
-  styles/       Estilos globales y tipografia
-  utils/        Utilidades de rutas y Geoapify
+  api/          Acceso HTTP por dominio
+  assets/       Logos, fondos, iconos e imágenes
+  auth/         Sesión, autorización, contextos y guards
+  components/   Componentes compartidos de producto
+    layout/     Estructuras compartidas de autenticación
+    ui/         Design System y visores compartidos
+  config/       Configuración estática compartida
+  contexts/     Contextos de dominio
+  data/         Datos estáticos compartidos
+  hooks/        Hooks compartidos entre funcionalidades
+  pages/        Páginas y módulos por feature
+  styles/       Tokens globales y tipografía
+  utils/        Funciones puras y utilidades compartidas
 ```
+
+`main.jsx` declara las rutas y carga las páginas mediante `lazy()`. `index.html`
+carga también `theme-init.js` para inicializar el tema. No existe un barrel global
+de páginas. Las entradas `ProjectDetails.jsx` y `Settings.jsx` mantienen rutas de
+importación estables hacia sus implementaciones por feature.
+
+Las features `home`, `project-request`, `projects`, `admin-users`, `admin-files`,
+`architect-dashboard` y `settings` agrupan su código específico. Usan `components/`,
+`hooks/`, `panels/` y `utils/` cuando lo necesitan; los datos y configuraciones
+locales permanecen junto a la feature. No es obligatorio crear todas las carpetas.
+Las páginas de autenticación y ejemplos de estados vacíos siguen en `pages/`.
+
+En `api/`, `client.js` mantiene la infraestructura HTTP compartida y `http.js`
+es la fachada compatible (`api`, reexports de dominios y `getApiUrl`). Los módulos
+`authApi.js`, `adminApi.js`, `projectsApi.js`, `projectRequestsApi.js`,
+`environmentCommentsApi.js` y `supportApi.js` separan el acceso por dominio.
+`adminDashboardOverview.js` adapta los datos del dashboard administrativo.
+
+Los archivos raíz de `components/ui`, como `Avatar.jsx` o `Accordion.jsx`, pueden
+ser reexports públicos de la implementación en su subcarpeta. No representan
+componentes duplicados. Configuración y catálogos `*ShowcaseData.js` permanecen
+junto al componente. Antes de añadir interfaz, consultar [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
+
+El [informe de auditoría estructural](STRUCTURE_AUDIT.md) contiene el inventario,
+las comprobaciones de referencias y las decisiones de conservación y eliminación.
 
 ## Rutas principales
 
