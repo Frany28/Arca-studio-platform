@@ -22,19 +22,16 @@ import ProjectUploadFilesPanel from "./panels/ProjectUploadFilesPanel.jsx";
 import ProjectWarrantiesPanel from "./panels/ProjectWarrantiesPanel.jsx";
 import { PROJECT_DETAIL_DATA } from "./projectDetailsData.js";
 import useProjectDetailsData from "./hooks/useProjectDetailsData.js";
+import useProjectDetailsComments from "./hooks/useProjectDetailsComments.js";
 import {
-  mergeCommentsById,
   mergeNotificationComments,
   toDrawerComment,
   toProjectPresentation,
-  upsertCommentById,
 } from "./utils/projectDetailsPresentation.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../../utils/commentSelection.js";
 import {
-  getProjectReadOnlyMessage,
   isProjectFinalized,
-  isProjectOperationallyReadOnly,
 } from "../../utils/projectReadOnly.js";
 import Alert from "../../components/ui/Alert/Alert.jsx";
 import { ProjectReadOnlyProvider } from "../../contexts/ProjectReadOnlyContext.jsx";
@@ -84,9 +81,16 @@ export default function ProjectDetailsPage({
     routeProjectSlug,
     searchParams,
   });
-  const [projectComments, setProjectComments] = useState([]);
-  const [projectCommentsError, setProjectCommentsError] = useState("");
-  const [projectCommentsLoading, setProjectCommentsLoading] = useState(false);
+  const {
+    comments: projectComments,
+    error: projectCommentsError,
+    loading: projectCommentsLoading,
+    submitComment: handleSubmitComment,
+  } = useProjectDetailsComments({
+    isNotificationsDrawerOpen,
+    project,
+    resolvedProjectId,
+  });
   const [activeProjectTabIndex, setActiveProjectTabIndex] = useState(() => {
     const requestedTab = searchParams.get("tab");
     if (requestedTab === "renders") return 1;
@@ -124,70 +128,6 @@ export default function ProjectDetailsPage({
     if (requestedTab === "renders") setActiveProjectTabIndex(1);
     if (requestedTab === "documents") setActiveProjectTabIndex(2);
   }, [searchParams]);
-
-  useEffect(() => {
-    if (!resolvedProjectId) {
-      setProjectComments([]);
-      return undefined;
-    }
-
-    let isMounted = true;
-
-    function loadProjectComments({ showLoading = false } = {}) {
-      if (showLoading) {
-        setProjectCommentsLoading(true);
-      }
-
-      setProjectCommentsError("");
-
-      api.projects
-        .listAllComments({ projectId: resolvedProjectId })
-        .then((data) => {
-          if (isMounted) {
-            setProjectComments(
-              (current) =>
-                mergeCommentsById(
-                  current,
-                  Array.isArray(data.comments) ? data.comments : [],
-                ),
-            );
-          }
-        })
-        .catch((error) => {
-          if (isMounted) {
-            setProjectCommentsError(
-              error.message || "No se pudieron cargar las observaciones.",
-            );
-          }
-        })
-        .finally(() => {
-          if (isMounted && showLoading) {
-            setProjectCommentsLoading(false);
-          }
-        });
-    }
-
-    loadProjectComments({ showLoading: true });
-
-    const unsubscribe = api.projects.subscribeToEvents({
-      projectId: resolvedProjectId,
-      onCommentCreated: (comment) => {
-        if (isMounted) {
-          setProjectComments((current) => upsertCommentById(current, comment));
-        }
-      },
-    });
-    const refreshIntervalId = window.setInterval(
-      () => loadProjectComments(),
-      isNotificationsDrawerOpen ? 5000 : 15000,
-    );
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(refreshIntervalId);
-      unsubscribe();
-    };
-  }, [isNotificationsDrawerOpen, resolvedProjectId]);
 
   const handleSideNavigationSelect = (item) => {
     if (item?.to) {
@@ -266,39 +206,6 @@ export default function ProjectDetailsPage({
     },
     [],
   );
-
-  const handleSubmitComment = async ({ message, parentCommentId = null }) => {
-    if (isProjectOperationallyReadOnly(project)) {
-      setProjectCommentsError(getProjectReadOnlyMessage(project));
-      return;
-    }
-
-    if (!resolvedProjectId) {
-      setProjectCommentsError("No se encontro el proyecto para comentar.");
-      return;
-    }
-
-    setProjectCommentsLoading(true);
-    setProjectCommentsError("");
-
-    try {
-      const data = await api.projects.createComment({
-        content: message,
-        parentCommentId,
-        projectId: resolvedProjectId,
-      });
-
-      if (data.comment) {
-        setProjectComments((current) => upsertCommentById(current, data.comment));
-      }
-    } catch (error) {
-      setProjectCommentsError(
-        error.message || "No se pudo guardar la observación.",
-      );
-    } finally {
-      setProjectCommentsLoading(false);
-    }
-  };
 
   const presentedProject = project
     ? toProjectPresentation(project)
