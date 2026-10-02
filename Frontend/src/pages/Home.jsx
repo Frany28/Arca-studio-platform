@@ -18,36 +18,18 @@ import ScrollBar from "../components/ui/ScrollBar/ScrollBar.jsx";
 import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
 import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
 import Tooltip from "../components/ui/Tooltip/Tooltip.jsx";
-import { useImageCommentNotifications } from "../components/ui/Gallery/useImageComments.js";
-import {
-  useProjectComments,
-  useRecentProjectComments,
-} from "../hooks/useProjectComments.js";
-import { getProjectNamesById } from "../utils/commentDisplay.js";
 import { getProjectPath } from "../utils/projectRoutes.js";
-import { getCommentNavigationParams } from "../utils/commentSelection.js";
 import { getProjectRequestStatus } from "../utils/projectRequestStatus.js";
 import { createUserSideNavigationItems } from "../utils/sideNavigationItems.js";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "./clientDrawerData.js";
 import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
 import useHomeProjects from "./home/hooks/useHomeProjects.js";
+import useHomeNotifications from "./home/hooks/useHomeNotifications.js";
 
 const EXPANDED_SIDEBAR_WIDTH = 312;
 const COLLAPSED_SIDEBAR_WIDTH = 76;
 const TABLET_BREAKPOINT_PX = 768;
 const REQUEST_SKELETON_COUNT = 2;
-
-function mergeNotificationComments(comments) {
-  const commentsById = new Map();
-
-  comments.forEach((comment) => {
-    if (comment?.id) {
-      commentsById.set(String(comment.id), comment);
-    }
-  });
-
-  return Array.from(commentsById.values());
-}
 
 function ProjectRow({ project }) {
   const navigate = useNavigate();
@@ -237,8 +219,6 @@ function Home({ view = "dashboard" }) {
   const currentUser = getUserDisplay(user);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
-  const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
-    useState(false);
   const {
     loadMoreProjectRequests,
     projectRequests,
@@ -290,68 +270,23 @@ function Home({ view = "dashboard" }) {
     () => createUserSideNavigationItems(ownedProjectRows, "client"),
     [ownedProjectRows],
   );
-  const imageCommentNotifications = useImageCommentNotifications({
-    projectIds: commentProjectRows.map((project) => project.id),
-    projectNamesById: getProjectNamesById(commentProjectRows),
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
-  });
-  const commentsProjectId = commentProjectRows[0]?.id ?? null;
   const {
-    drawerComments: submittedDrawerComments,
+    close: closeNotifications,
+    comments: notificationComments,
+    commentsProjectId,
+    error: drawerCommentsError,
+    isOpen: isNotificationsDrawerOpen,
+    loading: drawerCommentsLoading,
+    openActivity: handleActivitySelect,
+    openComment: openImageComment,
     submitComment,
-    refresh: refreshSubmittedComments,
-    error: submittedCommentsError,
-    loading: submittedCommentsLoading,
-  } = useProjectComments({
-    enabled: false,
-    projectId: commentsProjectId,
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 0,
+    toggle: toggleNotifications,
+  } = useHomeNotifications({
+    commentProjectRows,
+    navigate,
+    ownedProjectRows,
     user,
   });
-  const {
-    drawerComments: recentProjectComments,
-    error: recentProjectCommentsError,
-    loading: recentProjectCommentsLoading,
-    refresh: refreshRecentComments,
-  } = useRecentProjectComments({
-    enabled: commentProjectRows.length > 0,
-    projectIds: commentProjectRows.map((project) => project.id),
-    projectNamesById: getProjectNamesById(commentProjectRows),
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
-    user,
-  });
-
-  const drawerComments = useMemo(() => {
-    const commentsById = new Map();
-
-    [...recentProjectComments, ...submittedDrawerComments].forEach(
-      (comment) => {
-        commentsById.set(String(comment.id), comment);
-      },
-    );
-
-    return Array.from(commentsById.values());
-  }, [recentProjectComments, submittedDrawerComments]);
-  const drawerCommentsError =
-    recentProjectCommentsError || submittedCommentsError;
-  const drawerCommentsLoading =
-    recentProjectCommentsLoading || submittedCommentsLoading;
-  const notificationComments = useMemo(
-    () => mergeNotificationComments([...drawerComments, ...imageCommentNotifications]),
-    [drawerComments, imageCommentNotifications],
-  );
-
-  useEffect(() => {
-    if (isNotificationsDrawerOpen) {
-      refreshRecentComments?.();
-      refreshSubmittedComments?.();
-    }
-  }, [
-    isNotificationsDrawerOpen,
-    refreshRecentComments,
-    refreshSubmittedComments,
-  ]);
-
   useEffect(() => {
     const mediaQuery = window.matchMedia(
       `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
@@ -410,34 +345,6 @@ function Home({ view = "dashboard" }) {
     }
   };
 
-  const handleActivitySelect = (activity) => {
-    if (!activity?.to) {
-      return;
-    }
-
-    setIsNotificationsDrawerOpen(false);
-    navigate(activity.to);
-  };
-
-  const openImageComment = (comment) => {
-    const params = getCommentNavigationParams(comment);
-
-    setIsNotificationsDrawerOpen(false);
-    const targetProjectId = comment?.projectId || commentsProjectId;
-
-    if (targetProjectId) {
-      const targetProject = ownedProjectRows.find(
-        (project) => project.id === Number(targetProjectId),
-      );
-
-      navigate(
-        targetProject
-          ? getProjectPath(targetProject, params.toString())
-          : `/proyectos/${targetProjectId}?${params.toString()}`,
-      );
-    }
-  };
-
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <AuthToast
@@ -468,9 +375,7 @@ function Home({ view = "dashboard" }) {
           <NavigationBar
             onMenuClick={() => setIsMobileNavigationOpen(true)}
             utilityActionActive={isNotificationsDrawerOpen}
-            onUtilityActionClick={() =>
-              setIsNotificationsDrawerOpen((current) => !current)
-            }
+            onUtilityActionClick={toggleNotifications}
           />
 
           <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-[12px] px-[16px] py-[16px] min-[480px]:flex-row min-[480px]:items-center min-[480px]:justify-between sm:px-[24px] lg:px-[48px]">
@@ -699,7 +604,7 @@ function Home({ view = "dashboard" }) {
 
           <NotificationsDrawer
             open={isNotificationsDrawerOpen}
-            onClose={() => setIsNotificationsDrawerOpen(false)}
+            onClose={closeNotifications}
             comments={notificationComments}
             commentsError={drawerCommentsError}
             commentsLoading={drawerCommentsLoading}
