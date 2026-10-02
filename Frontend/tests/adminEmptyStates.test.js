@@ -8,6 +8,10 @@ test("admin empty-state routes reuse the production pages without API data", asy
     new URL("../src/pages/architect-dashboard/ArchitectDashboard.jsx", import.meta.url),
     "utf8",
   );
+  const adminDashboardDataSource = await readFile(
+    new URL("../src/pages/architect-dashboard/hooks/useAdminDashboardData.js", import.meta.url),
+    "utf8",
+  );
   const usersSource = await readFile(
     new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url),
     "utf8",
@@ -16,7 +20,7 @@ test("admin empty-state routes reuse the production pages without API data", asy
   assert.match(mainSource, /path="\/dashboard-admin-vacio"[\s\S]*<ArchitectDashboard empty/);
   assert.match(mainSource, /path="\/usuarios-vacio"[\s\S]*<AdminUsersPage empty/);
   assert.match(dashboardSource, /events=\{empty \? \[\] : undefined\}/);
-  assert.match(dashboardSource, /currentUser\.roleCode !== "admin" \|\| empty/);
+  assert.match(adminDashboardDataSource, /roleCode !== "admin" \|\| empty/);
   assert.match(usersSource, /function AdminUsersPage\(\{ empty = false \}\)/);
   assert.match(usersSource, /if \(empty\) return undefined/);
   assert.match(usersSource, /title="No hay usuarios registrados"[\s\S]*size="M"/);

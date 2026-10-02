@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("admin request alert follows Figma and appears after every explicit login", async () => {
-  const [alertSource, authSource, dashboardSource, overviewSource] =
+  const [alertSource, authSource, dashboardSource, overviewSource, workflowSource] =
     await Promise.all([
       readFile(
         new URL(
@@ -27,6 +27,13 @@ test("admin request alert follows Figma and appears after every explicit login",
         ),
         "utf8",
       ),
+      readFile(
+        new URL(
+          "../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
     ]);
 
   assert.match(authSource, /setLoginEventId\(\(current\) => current \+ 1\)/);
@@ -38,11 +45,11 @@ test("admin request alert follows Figma and appears after every explicit login",
   assert.match(alertSource, /secondaryActionLabel="Asignar responsable"/);
   assert.match(alertSource, /primaryActionLabel="Ver solicitud"/);
   assert.match(overviewSource, /data-admin-new-requests="true"/);
-  assert.match(dashboardSource, /openRequestWorkflow\(loginNotificationRequest\)/);
+  assert.match(workflowSource, /openRequestWorkflow\(loginNotificationRequest\)/);
 });
 
 test("assigning from the login alert uses a confirm-only modal flow", async () => {
-  const [dashboardSource, modalSource] = await Promise.all([
+  const [dashboardSource, modalSource, workflowSource] = await Promise.all([
     readFile(
       new URL(
         "../src/pages/architect-dashboard/ArchitectDashboard.jsx",
@@ -57,6 +64,13 @@ test("assigning from the login alert uses a confirm-only modal flow", async () =
       ),
       "utf8",
     ),
+    readFile(
+      new URL(
+        "../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
   ]);
 
   assert.match(modalSource, /title|Asignar revisión de solicitud/);
@@ -65,21 +79,22 @@ test("assigning from the login alert uses a confirm-only modal flow", async () =
   assert.match(modalSource, />\s*Cancelar\s*<\/Button>/);
   assert.match(modalSource, /onClick=\{onConfirm\}/);
   assert.match(modalSource, /\{submitting \? "Confirmando\.\.\." : "Confirmar"\}/);
-  assert.match(dashboardSource, /setAssignmentModalRequested\(true\)/);
+  assert.match(dashboardSource, /onAssign=\{loginActions\.assign\}/);
+  assert.match(workflowSource, /setAssignmentModalRequested\(true\)/);
   assert.match(
-    dashboardSource,
+    workflowSource,
     /const confirmRequestAssignment = async \(\) => \{[\s\S]*await handleRequestAssigneesChange\(request, assignmentDraft\)/,
   );
   assert.match(
-    dashboardSource,
+    workflowSource,
     /await handleRequestAssigneesChange[\s\S]*type: "success"[\s\S]*catch \(error\)[\s\S]*type: "error"/,
   );
   assert.doesNotMatch(
-    dashboardSource,
+    workflowSource,
     /const handleLoginNotificationAssign = \(\) => \{[\s\S]{0,180}setAssignmentFeedback/,
   );
   assert.doesNotMatch(
-    dashboardSource,
+    workflowSource,
     /const closeAssignmentModal = \(\) => \{[\s\S]{0,220}setAssignmentFeedback/,
   );
 });
