@@ -2,7 +2,6 @@ import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { api } from "../api/http.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
 import AvatarGroup from "../components/ui/AvatarGroup/AvatarGroup.jsx";
@@ -27,14 +26,11 @@ import {
 import { getProjectNamesById } from "../utils/commentDisplay.js";
 import { getProjectPath } from "../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../utils/commentSelection.js";
-import { getProjectImageSource } from "../utils/projectImage.js";
-import { getProjectAssigneeAvatar } from "../utils/projectAssigneeDisplay.js";
-import { isProjectOperationallyReadOnly } from "../utils/projectReadOnly.js";
 import { getProjectRequestStatus } from "../utils/projectRequestStatus.js";
-import { groupProjectsByStatus } from "../utils/projectStatusGroups.js";
 import { createUserSideNavigationItems } from "../utils/sideNavigationItems.js";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "./clientDrawerData.js";
 import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
+import useHomeProjects from "./home/hooks/useHomeProjects.js";
 
 const EXPANDED_SIDEBAR_WIDTH = 312;
 const COLLAPSED_SIDEBAR_WIDTH = 76;
@@ -51,20 +47,6 @@ function mergeNotificationComments(comments) {
   });
 
   return Array.from(commentsById.values());
-}
-
-function getProjectAssigneeAvatars(project) {
-  const assigneeAvatar = getProjectAssigneeAvatar(project);
-  return assigneeAvatar ? [assigneeAvatar] : [];
-}
-
-function toProjectRow(project) {
-  return {
-    ...project,
-    assigneeAvatars: getProjectAssigneeAvatars(project),
-    image: getProjectImageSource(project),
-    title: project.name,
-  };
 }
 
 function ProjectRow({ project }) {
@@ -266,10 +248,15 @@ function Home({ view = "dashboard" }) {
     projectRequestsNextCursor,
     retryProjectRequests,
   } = useHomeProjectRequests({ user });
-  const [projects, setProjects] = useState([]);
-  const [projectsError, setProjectsError] = useState("");
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const projectsRequestIdRef = useRef(0);
+  const {
+    commentProjectRows,
+    loadProjects,
+    ownedProjectRows,
+    projectGroups,
+    projectsError,
+    projectsLoading,
+    publicProjectRows,
+  } = useHomeProjects({ user });
   const [registrationToast] = useState(() => {
     try {
       if (window.sessionStorage.getItem("arca_registration_complete") === "true") {
@@ -281,30 +268,6 @@ function Home({ view = "dashboard" }) {
     }
     return null;
   });
-  const projectRows = useMemo(
-    () => projects.map((project) => toProjectRow(project)),
-    [projects],
-  );
-  const ownedProjectRows = useMemo(
-    () =>
-      projectRows.filter((project) => project.client?.id === user?.clientId),
-    [projectRows, user?.clientId],
-  );
-  const commentProjectRows = useMemo(
-    () => ownedProjectRows.filter((project) => !isProjectOperationallyReadOnly(project)),
-    [ownedProjectRows],
-  );
-  const publicProjectRows = useMemo(
-    () =>
-      projectRows.filter(
-        (project) => project.isPublic && project.client?.id !== user?.clientId,
-      ),
-    [projectRows, user?.clientId],
-  );
-  const projectGroups = useMemo(
-    () => groupProjectsByStatus(ownedProjectRows),
-    [ownedProjectRows],
-  );
   const {
     containerRef: projectsContainerRef,
     length: projectScrollLength,
@@ -388,43 +351,6 @@ function Home({ view = "dashboard" }) {
     refreshRecentComments,
     refreshSubmittedComments,
   ]);
-
-  const loadProjects = useCallback(async () => {
-    const requestId = projectsRequestIdRef.current + 1;
-    projectsRequestIdRef.current = requestId;
-    setProjectsLoading(true);
-    setProjectsError("");
-
-    if (!user) {
-      setProjects([]);
-      setProjectsLoading(false);
-      return;
-    }
-
-    try {
-      const data = await api.projects.listAll();
-      if (projectsRequestIdRef.current === requestId) {
-        setProjects(data.projects || []);
-      }
-    } catch {
-      if (projectsRequestIdRef.current === requestId) {
-        setProjects([]);
-        setProjectsError("No se pudieron cargar los proyectos.");
-      }
-    } finally {
-      if (projectsRequestIdRef.current === requestId) {
-        setProjectsLoading(false);
-      }
-    }
-  }, [user]);
-
-  useEffect(() => {
-    loadProjects();
-
-    return () => {
-      projectsRequestIdRef.current += 1;
-    };
-  }, [loadProjects]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(
