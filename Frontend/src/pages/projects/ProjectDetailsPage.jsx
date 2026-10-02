@@ -37,10 +37,7 @@ import {
 } from "../../utils/projectReadOnly.js";
 import Alert from "../../components/ui/Alert/Alert.jsx";
 import { ProjectReadOnlyProvider } from "../../contexts/ProjectReadOnlyContext.jsx";
-import {
-  createUserSideNavigationItems,
-  getDashboardPath,
-} from "../../utils/sideNavigationItems.js";
+import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.js";
 
 const PROJECT_DETAIL_LOADER_SECTIONS = [
   "info",
