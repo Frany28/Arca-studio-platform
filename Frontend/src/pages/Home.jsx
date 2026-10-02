@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
 import AuthToast, { AuthToastLockIcon } from "../components/ui/AuthToast/AuthToast.jsx";
+import Badge from "../components/ui/Badge/Badge.jsx";
 import Button from "../components/ui/Button/Button.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import Loader from "../components/ui/Loader/Loader.jsx";
