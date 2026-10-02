@@ -6,7 +6,6 @@ import { projectsApi } from "./projectsApi.js";
 import { supportApi } from "./supportApi.js";
 import {
   apiRequest,
-  collectCursorPages,
   getApiUrl,
   uploadRawFile,
 } from "./client.js";
