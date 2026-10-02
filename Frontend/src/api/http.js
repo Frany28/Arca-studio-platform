@@ -1,7 +1,9 @@
 /* Centraliza la comunicación HTTP del frontend con la API y adapta respuestas para la interfaz. */
 import { adminApi } from "./adminApi.js";
 import { authApi } from "./authApi.js";
+import { environmentCommentsApi } from "./environmentCommentsApi.js";
 import { projectsApi } from "./projectsApi.js";
+import { supportApi } from "./supportApi.js";
 import {
   apiRequest,
   collectCursorPages,
@@ -12,32 +14,9 @@ import {
 export { adminApi } from "./adminApi.js";
 export { authApi } from "./authApi.js";
 export { getApiUrl } from "./client.js";
+export { environmentCommentsApi } from "./environmentCommentsApi.js";
 export { projectsApi } from "./projectsApi.js";
-
-// Endpoints de comentarios generales del entorno colaborativo.
-export const environmentCommentsApi = {
-  list({ cursor, limit } = {}) {
-    const params = new URLSearchParams();
-    if (cursor) params.set("cursor", cursor);
-    if (limit) params.set("limit", String(limit));
-    const query = params.toString();
-    return apiRequest(`/environment-comments${query ? `?${query}` : ""}`);
-  },
-
-  listAll() {
-    return collectCursorPages(
-      (page) => environmentCommentsApi.list(page),
-      "comments",
-    );
-  },
-
-  create({ content, parentCommentId = null }) {
-    return apiRequest("/environment-comments", {
-      body: JSON.stringify({ content, parentCommentId }),
-      method: "POST",
-    });
-  },
-};
+export { supportApi } from "./supportApi.js";
 
 // Endpoints para crear, revisar, actualizar y adjuntar archivos a solicitudes de proyecto.
 export const projectRequestsApi = {
@@ -98,25 +77,6 @@ export const projectRequestsApi = {
       file,
       onUploadProgress,
       path: `/project-requests/${projectRequestId}/files`,
-      signal,
-    });
-  },
-};
-
-// Endpoints para solicitudes de soporte y sus archivos adjuntos.
-export const supportApi = {
-  createRequest({ description, issueType, subject }) {
-    return apiRequest("/support/requests", {
-      body: JSON.stringify({ description, issueType, subject }),
-      method: "POST",
-    });
-  },
-
-  uploadFile({ file, onUploadProgress, signal, supportRequestId }) {
-    return uploadRawFile({
-      file,
-      onUploadProgress,
-      path: `/support/requests/${supportRequestId}/files`,
       signal,
     });
   },
