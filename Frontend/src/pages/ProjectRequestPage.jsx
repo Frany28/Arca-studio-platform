@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 
 import { useAuth } from "../auth/AuthContext.jsx";
-import { api } from "../api/http.js";
 import { useRecentProjects } from "../auth/RecentProjectsContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
 import Alert from "../components/ui/Alert/Alert.jsx";
@@ -22,7 +21,6 @@ import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { useRecentProjectComments } from "../hooks/useProjectComments.js";
 import { getProjectNamesById } from "../utils/commentDisplay.js";
 import {
-  buildProjectRequestPayload,
   getProjectRequestFieldErrors,
   getProjectRequestFileErrors,
 } from "../utils/projectRequestValidation.js";
@@ -31,6 +29,7 @@ import { getProjectPath } from "../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../utils/commentSelection.js";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
+import useProjectRequestSubmission from "./project-request/hooks/useProjectRequestSubmission.js";
 import {
   CheckboxField,
   ChoiceGroup,
@@ -121,18 +120,8 @@ export default function ProjectRequestPage() {
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
   const [pendingRequestAction, setPendingRequestAction] = useState(null);
   const [isRequestActionModalOpen, setIsRequestActionModalOpen] = useState(false);
-  const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
-  const [validationCode, setValidationCode] = useState("");
-  const [isRequestReceived, setIsRequestReceived] = useState(Boolean(viewRequest));
-  const [receivedRequest, setReceivedRequest] = useState(viewRequest);
-  const [draftId, setDraftId] = useState(
-    initialRequest?.status === "changes_requested" ? initialRequest.id : null,
-  );
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
   const [isLocationInputFocused, setIsLocationInputFocused] = useState(false);
   const formRef = useRef(null);
-  const submissionIdRef = useRef(null);
   const {
     clear: clearLocationSuggestions,
     error: locationSuggestionsError,
@@ -148,6 +137,29 @@ export default function ProjectRequestPage() {
     () => getProjectRequestFieldErrors(form),
     [form],
   );
+  const {
+    closeValidation,
+    draftId,
+    isRequestReceived,
+    isSubmitting,
+    isValidationModalOpen,
+    openValidation,
+    receivedRequest,
+    resetSubmission,
+    setValidationCode,
+    showRequestForm,
+    submitError,
+    submitValidation,
+    validationCode,
+  } = useProjectRequestSubmission({
+    form,
+    initialRequest,
+    onSubmitted: () => {
+      setIsSidebarExpanded(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    viewRequest,
+  });
   const {
     fileErrors,
     fileInputRef,
@@ -357,13 +369,7 @@ export default function ProjectRequestPage() {
     setFieldErrors({});
     setHasAttemptedSubmit(false);
     setShowRequiredAlert(false);
-    setIsValidationModalOpen(false);
-    setValidationCode("");
-    setIsRequestReceived(false);
-    setReceivedRequest(null);
-    setDraftId(null);
-    setSubmitError("");
-    submissionIdRef.current = null;
+    resetSubmission();
   };
   const requestFormReset = () => {
     setShowRequiredAlert(false);
@@ -394,64 +400,10 @@ export default function ProjectRequestPage() {
     }
 
     setShowRequiredAlert(false);
-    setSubmitError("");
-    setValidationCode("");
-    setIsValidationModalOpen(true);
+    openValidation();
   };
-  const handleValidationSubmit = async (code) => {
-    if (isSubmitting || !/^\d{6}$/.test(String(code ?? "").trim())) {
-      return;
-    }
-    setValidationCode("");
-    setIsSubmitting(true);
-    setSubmitError("");
-
-    try {
-      if (!submissionIdRef.current) submissionIdRef.current = window.crypto.randomUUID();
-      const payload = buildProjectRequestPayload(form, submissionIdRef.current);
-      let nextDraftId = draftId;
-      if (nextDraftId) {
-        await api.projectRequests.update({
-          payload: buildProjectRequestPayload(form),
-          projectRequestId: nextDraftId,
-        });
-      } else {
-        const created = await api.projectRequests.create(payload);
-        nextDraftId = created?.projectRequest?.id;
-        if (!nextDraftId) throw new Error("No se pudo identificar el borrador de la solicitud.");
-        setDraftId(nextDraftId);
-      }
-
-      for (const item of files) {
-        if (item.status === "uploaded") continue;
-        updateFileItem(item.id, { error: "", progress: 0, status: "uploading" });
-        try {
-          await api.projectRequests.uploadFile({
-            file: item.file,
-            onUploadProgress: ({ progress }) => updateFileItem(item.id, { progress }),
-            projectRequestId: nextDraftId,
-          });
-          updateFileItem(item.id, { progress: 100, status: "uploaded" });
-        } catch (error) {
-          updateFileItem(item.id, {
-            error: error.message || "No se pudo subir el archivo.",
-            status: "error",
-          });
-          throw error;
-        }
-      }
-
-      const submitted = await api.projectRequests.submit(nextDraftId);
-      setReceivedRequest(submitted?.projectRequest || null);
-      setIsValidationModalOpen(false);
-      setIsRequestReceived(true);
-      setIsSidebarExpanded(false);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (error) {
-      setSubmitError(error.message || "No se pudo enviar la solicitud. Puedes reintentarlo.");
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleValidationSubmit = (code) => {
+    submitValidation(code, { files, updateFileItem });
   };
   const sidebar = (
     <SideNavigation
@@ -492,7 +444,7 @@ export default function ProjectRequestPage() {
               compatibility={receivedRequest?.compatibility}
               projectRequest={receivedRequest}
               onViewRequest={() => {
-                setIsRequestReceived(false);
+                showRequestForm();
                 setIsSidebarExpanded(true);
               }}
               onBackToDashboard={() => navigate(getDashboardPath(currentUser.roleCode))}
@@ -672,8 +624,8 @@ export default function ProjectRequestPage() {
         onCodeChange={setValidationCode}
         isSubmitting={isSubmitting}
         submitError={submitError}
-        onClose={() => { if (!isSubmitting) setIsValidationModalOpen(false); }}
-        onPrevious={() => { if (!isSubmitting) setIsValidationModalOpen(false); }}
+        onClose={closeValidation}
+        onPrevious={closeValidation}
         onNext={handleValidationSubmit}
       />
 
