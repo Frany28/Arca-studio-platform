@@ -28,6 +28,7 @@ import ProjectRequestReceivedView from "./project-request/components/ProjectRequ
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
 import useProjectRequestSubmission from "./project-request/hooks/useProjectRequestSubmission.js";
+import useProjectRequestNavigation from "./project-request/hooks/useProjectRequestNavigation.js";
 import {
   CheckboxField,
   ChoiceGroup,
@@ -52,11 +53,36 @@ export default function ProjectRequestPage() {
   const viewRequest = location.state?.viewRequest || null;
   const initialRequest = location.state?.initialRequest || viewRequest;
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
-  const [pendingRequestAction, setPendingRequestAction] = useState(null);
-  const [isRequestActionModalOpen, setIsRequestActionModalOpen] = useState(false);
+  const resetRequestFlow = () => {
+    resetFormState();
+    clearLocationSuggestions();
+    resetFiles();
+    resetSubmission();
+  };
+  const {
+    cancelRequestAction,
+    closeMobileNavigation,
+    collapseSidebar,
+    confirmRequestAction,
+    expandSidebar,
+    isMobileNavigationOpen,
+    isRequestActionModalOpen,
+    isSidebarExpanded,
+    openMobileNavigation,
+    pendingRequestAction,
+    requestLogout,
+    requestNavigation,
+    requestReset,
+    setIsSidebarExpanded,
+  } = useProjectRequestNavigation({
+    logout,
+    navigate,
+    onReset: resetRequestFlow,
+    roleCode: currentUser.roleCode,
+    setNotificationsOpen: setIsNotificationsDrawerOpen,
+    setShowRequiredAlert,
+  });
   const {
     applyLocationSuggestion,
     currentFieldErrors,
@@ -104,7 +130,7 @@ export default function ProjectRequestPage() {
     form,
     initialRequest,
     onSubmitted: () => {
-      setIsSidebarExpanded(false);
+      collapseSidebar();
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
     viewRequest,
@@ -175,57 +201,6 @@ export default function ProjectRequestPage() {
     applyLocationSuggestion(suggestion, fileErrors);
     clearLocationSuggestions();
   };
-  const performSideNavigation = (item) => {
-    if (item?.to) {
-      navigate(item.to);
-      return;
-    }
-
-    if (item.id === "dashboard") navigate(getDashboardPath(currentUser.roleCode));
-    if (item.id === "requests") navigate("/solicitudes");
-    if (item.id === "more-projects") navigate("/proyectos");
-    if (item.id === "settings") navigate("/configuraciones");
-  };
-  const handleNavigation = (item) => {
-    if (!item) {
-      return;
-    }
-
-    setShowRequiredAlert(false);
-    setIsNotificationsDrawerOpen(false);
-    setIsMobileNavigationOpen(false);
-    setPendingRequestAction({ type: "navigate", item });
-    setIsRequestActionModalOpen(true);
-  };
-  const requestLogout = () => {
-    setShowRequiredAlert(false);
-    setIsNotificationsDrawerOpen(false);
-    setIsMobileNavigationOpen(false);
-    setPendingRequestAction({ type: "logout" });
-    setIsRequestActionModalOpen(true);
-  };
-  const cancelRequestAction = () => {
-    setIsRequestActionModalOpen(false);
-  };
-  const confirmRequestAction = () => {
-    const action = pendingRequestAction;
-    setIsRequestActionModalOpen(false);
-
-    if (action?.type === "clear") {
-      resetForm();
-      return;
-    }
-
-    if (action?.type === "logout") {
-      logout();
-      navigate("/");
-      return;
-    }
-
-    if (action?.type === "navigate") {
-      performSideNavigation(action.item);
-    }
-  };
   const openImageComment = (comment) => {
     const targetProjectId = comment?.projectId;
 
@@ -245,17 +220,6 @@ export default function ProjectRequestPage() {
         ? getProjectPath(targetProject, params.toString())
         : `/proyectos/${targetProjectId}?${params.toString()}`,
     );
-  };
-  const resetForm = () => {
-    resetFormState();
-    clearLocationSuggestions();
-    resetFiles();
-    resetSubmission();
-  };
-  const requestFormReset = () => {
-    setShowRequiredAlert(false);
-    setPendingRequestAction({ type: "clear" });
-    setIsRequestActionModalOpen(true);
   };
   const handleFrontendSubmit = () => {
     const nextFileErrors = getProjectRequestFileErrors(files);
@@ -289,7 +253,7 @@ export default function ProjectRequestPage() {
       userEmail={currentUser.email}
       userAvatarSrc={currentUser.profilePhotoUrl}
       onExpandedChange={setIsSidebarExpanded}
-      onItemSelect={handleNavigation}
+      onItemSelect={requestNavigation}
       onNewOpportunityClick={() => navigate("/solicitudes/nueva")}
       onLogoutClick={requestLogout}
     />
@@ -309,7 +273,7 @@ export default function ProjectRequestPage() {
         </div>
         <div className="min-w-0 flex-1">
           <NavigationBar
-            onMenuClick={() => setIsMobileNavigationOpen(true)}
+            onMenuClick={openMobileNavigation}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={() => setIsNotificationsDrawerOpen((current) => !current)}
           />
@@ -320,7 +284,7 @@ export default function ProjectRequestPage() {
               projectRequest={receivedRequest}
               onViewRequest={() => {
                 showRequestForm();
-                setIsSidebarExpanded(true);
+                expandSidebar();
               }}
               onBackToDashboard={() => navigate(getDashboardPath(currentUser.roleCode))}
             />
@@ -459,7 +423,7 @@ export default function ProjectRequestPage() {
                 <p className="text-[16px] leading-[19px] tracking-[-0.5px] text-[var(--color-text-100)]">Al enviar este formulario, nuestro equipo revisará la información y se pondrá en contacto contigo en un plazo aproximado de 24–48 horas.</p>
               </div>
               <footer className="flex w-full max-w-[850px] flex-col-reverse gap-[8px] min-[480px]:flex-row min-[480px]:justify-end">
-                <Button theme="Primary" type="Outline" size="M" fitContent={false} showLeftIcon={false} showRightIcon={false} className="h-[41px] w-full min-[480px]:w-auto" onClick={requestFormReset}>Limpiar formulario</Button>
+                <Button theme="Primary" type="Outline" size="M" fitContent={false} showLeftIcon={false} showRightIcon={false} className="h-[41px] w-full min-[480px]:w-auto" onClick={requestReset}>Limpiar formulario</Button>
                 <Button disabled={isSubmitting} theme="Primary" type="Solid" htmlType="submit" size="M" fitContent={false} showLeftIcon={false} showRightIcon={false} className="h-[41px] w-full min-[480px]:w-auto">{isSubmitting ? "Enviando" : "Enviar"}</Button>
               </footer>
             </form>
@@ -479,8 +443,8 @@ export default function ProjectRequestPage() {
         </div>
       </div>
 
-      <SideOverlayDrawer open={isMobileNavigationOpen} onClose={() => setIsMobileNavigationOpen(false)} side="left" widthClassName="w-[min(312px,calc(100vw-32px))]" className="z-[80] min-[768px]:hidden" panelClassName="rounded-none">
-        <SideNavigation {...sidebar.props} expanded onItemSelect={(item) => { setIsMobileNavigationOpen(false); handleNavigation(item); }} />
+      <SideOverlayDrawer open={isMobileNavigationOpen} onClose={closeMobileNavigation} side="left" widthClassName="w-[min(312px,calc(100vw-32px))]" className="z-[80] min-[768px]:hidden" panelClassName="rounded-none">
+        <SideNavigation {...sidebar.props} expanded onItemSelect={requestNavigation} />
       </SideOverlayDrawer>
 
       <ProjectRequestCancelModal
