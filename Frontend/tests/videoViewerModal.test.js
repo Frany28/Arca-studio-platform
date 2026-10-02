@@ -20,6 +20,25 @@ const videoViewerSource = readFileSync(
   ),
   "utf8",
 );
+const videoStageSource = readFileSync(
+  new URL(
+    "../src/components/ui/Gallery/VideoViewerModal/VideoStage.jsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const playbackBarSource = readFileSync(
+  new URL(
+    "../src/components/ui/Gallery/VideoViewerModal/PlaybackBar.jsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const videoViewerCompositionSource = [
+  videoViewerSource,
+  videoStageSource,
+  playbackBarSource,
+].join("\n");
 const galleryVideosSource = readFileSync(
   new URL(
     "../src/components/ui/Gallery/GalleryVideosModal.jsx",
@@ -46,17 +65,28 @@ test("video viewer keeps the image viewer modal composition", () => {
 
   sharedLayoutFragments.forEach((fragment) => {
     assert.match(imageViewerSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(videoViewerSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\assert.match(videoViewerSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));")));
   });
 });
 
 test("video viewer preserves vertical media without cropping", () => {
-  assert.match(videoViewerSource, /bg-\[var\(--color-neutral-950-uniform\)\]/);
-  assert.match(videoViewerSource, /cursor-pointer object-contain/);
-  assert.doesNotMatch(videoViewerSource, /cursor-pointer object-cover/);
-  assert.match(videoViewerSource, /<PlaybackBar/);
+  assert.match(videoViewerCompositionSource, /bg-\[var\(--color-neutral-950-uniform\)\]/);
+  assert.match(videoViewerCompositionSource, /cursor-pointer object-contain/);
+  assert.doesNotMatch(videoViewerCompositionSource, /cursor-pointer object-cover/);
+  assert.match(videoStageSource, /<PlaybackBar/);
   assert.match(videoViewerSource, /handleFullscreen/);
   assert.match(videoViewerSource, /handleTogglePlay/);
+});
+
+test("video viewer keeps orchestration separated from visual stage", () => {
+  assert.match(
+    videoViewerSource,
+    /import VideoStage from "\\.\\/VideoViewerModal\\/VideoStage\\.jsx"/,
+  );
+  assert.match(videoStageSource, /import PlaybackBar from "\\.\\/PlaybackBar\\.jsx"/);
+  assert.doesNotMatch(videoViewerSource, /function PlaybackBar/);
+  assert.doesNotMatch(videoViewerSource, /function CloseIcon/);
+  assert.doesNotMatch(videoViewerSource, /function PlayIcon/);
 });
 
 test("closing the video releases its overlay and nested body scroll lock", () => {
