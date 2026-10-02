@@ -224,3 +224,199 @@ test("Sidebar: teclado, tema oscuro y movimiento reducido conservan expansión y
   await sidebar.getByRole("button", { name: "Ver más proyectos", exact: true }).press("Enter");
   await page.waitForURL(`${origin}/proyectos`);
 });
+
+/**
+ * Monta la sidebar real sin un layout que imponga estado, para comprobar su contrato público.
+ * Usa el mismo aislamiento HTTP de las pruebas de páginas y conserva proveedores reales.
+ *
+ * @param {import("node:test").TestContext} context Prueba propietaria de la página.
+ * @param {Object} [options] Opciones de viewport, tema o interacción táctil.
+ * @returns {Promise<import("playwright").Page>} Página con la sidebar inicialmente expandida.
+ */
+async function openComponent(context, options = {}) {
+  const page = await openPage(context, "client", options);
+  await page.goto(`${origin}/tests/browser/fixtures/side-navigation.html`);
+  await expectSidebar(page, true, 312);
+  return page;
+}
+
+/**
+ * Comprueba la selección por su resultado visual, sin depender de estados internos de React.
+ * Retira hover y foco para distinguir selección persistente de énfasis temporal.
+ *
+ * @param {import("playwright").Page} page Página con la navegación montada.
+ * @param {string} label Nombre accesible del destino.
+ * @param {boolean} selected Si el destino debe conservar el fondo seleccionado.
+ * @returns {Promise<void>} Finaliza cuando el resultado visual coincide.
+ */
+async function expectSelected(page, label, selected) {
+  await page.mouse.move(800, 800);
+  const item = page.getByRole("navigation", { name: "Secciones", exact: true }).getByRole("button", { name: label, exact: true });
+  await item.evaluate((element) => element.blur());
+  await page.waitForFunction(({ label, selected }) => {
+    const item = [...document.querySelectorAll('nav[aria-label="Secciones"] button')].find((element) => element.getAttribute("aria-label") === label);
+    const expected = getComputedStyle(document.documentElement).getPropertyValue("--color-neutral-200").trim();
+    const probe = document.createElement("span");
+    probe.style.backgroundColor = expected;
+    document.body.append(probe);
+    const selectedColor = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return (getComputedStyle(item).backgroundColor === selectedColor) === selected;
+  }, { label, selected });
+}
+
+test("Componente: estado no controlado, callbacks y selección en ambos menús", async (context) => {
+  const page = await openComponent(context);
+  await expectSelected(page, "Dashboard", true);
+  await page.getByRole("button", { name: "Solicitudes", exact: true }).click();
+  await expectSelected(page, "Solicitudes", true);
+  await expectSelected(page, "Dashboard", false);
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
+  await expectSidebar(page, false, 76);
+  await page.getByRole("button", { name: "Configuraciones", exact: true }).click();
+  await expectSelected(page, "Configuraciones", true);
+  await page.getByRole("button", { name: "Expandir navegación lateral", exact: true }).click();
+  await expectSidebar(page, true, 312);
+  await expectSelected(page, "Configuraciones", true);
+  const events = await page.evaluate(() => window.sideNavigationHarness.events);
+  assert.deepEqual(events.filter(({ type }) => type === "expanded" || type === "collapse"), [
+    { type: "expanded", value: false }, { type: "collapse", value: false },
+    { type: "expanded", value: true }, { type: "collapse", value: true },
+  ]);
+  assert.deepEqual(events.filter(({ type }) => type === "select").map(({ value }) => value), [
+    { id: "requests", label: "Solicitudes", icon: "requests" },
+    { id: "settings", label: "Configuraciones", icon: "settings" },
+  ]);
+});
+
+test("Componente: estado controlado cambia solo al recibir nuevas props del padre", async (context) => {
+  const page = await openComponent(context);
+  await page.evaluate(() => window.sideNavigationHarness.setProps({ expanded: true, activeItemId: "dashboard" }));
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
+  await expectSidebar(page, true, 312);
+  await page.getByRole("button", { name: "Solicitudes", exact: true }).click();
+  await expectSelected(page, "Dashboard", true);
+  await expectSelected(page, "Solicitudes", false);
+  await page.evaluate(() => window.sideNavigationHarness.setProps({ expanded: false, activeItemId: "requests" }));
+  await expectSidebar(page, false, 76);
+  await expectSelected(page, "Solicitudes", true);
+  await page.getByRole("button", { name: "Expandir navegación lateral", exact: true }).click();
+  await page.getByRole("button", { name: "Configuraciones", exact: true }).click();
+  await expectSidebar(page, false, 76);
+  await expectSelected(page, "Solicitudes", true);
+  await page.evaluate(() => window.sideNavigationHarness.setProps({ expanded: true, activeItemId: "settings" }));
+  await expectSidebar(page, true, 312);
+  await expectSelected(page, "Configuraciones", true);
+  const events = await page.evaluate(() => window.sideNavigationHarness.events);
+  assert.deepEqual(events.filter(({ type }) => type === "expanded" || type === "collapse").map(({ value }) => value), [false, false, true, true]);
+  assert.deepEqual(events.filter(({ type }) => type === "select").map(({ value }) => value.id), ["requests", "settings"]);
+});
+
+test("Componente: búsqueda, estado vacío y filtro persistente al alternar expansión", async (context) => {
+  const page = await openComponent(context);
+  const search = page.getByRole("searchbox", { name: "Buscar navegación", exact: true });
+  const navigation = page.getByRole("navigation", { name: "Secciones", exact: true });
+  await search.fill("  SOLIC  ");
+  assert.deepEqual(await navigation.getByRole("button").allTextContents(), ["Solicitudes"]);
+  await search.fill("sin-coincidencias");
+  await navigation.getByText("No hay coincidencias.", { exact: true }).waitFor();
+  assert.equal(await navigation.getByRole("button").count(), 0);
+  await search.fill("config");
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
+  await expectSidebar(page, false, 76);
+  assert.equal(await navigation.getByRole("button").count(), 1);
+  await navigation.getByRole("button", { name: "Configuraciones", exact: true }).hover();
+  await page.getByRole("tooltip").getByText("Configuraciones", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Expandir navegación lateral", exact: true }).click();
+  await expectSidebar(page, true, 312);
+  assert.equal(await search.inputValue(), "config");
+  await search.fill("");
+  assert.equal(await navigation.getByRole("button").count(), 4);
+  const values = await page.evaluate(() => window.sideNavigationHarness.events.filter(({ type }) => type === "search").map(({ value }) => value));
+  assert.deepEqual(values, ["  SOLIC  ", "sin-coincidencias", "config", ""]);
+});
+
+test("Componente: footer, oportunidad, foco de puntero y valores iniciales conservados", async (context) => {
+  const page = await openComponent(context);
+  await page.getByText("Persona de prueba", { exact: true }).waitFor();
+  await page.getByText("sidebar@example.test", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Cerrar sesión", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva oportunidad", exact: true }).click();
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
+  await expectSidebar(page, false, 76);
+  assert.equal(await page.getByRole("button", { name: "Cerrar sesión", exact: true }).count(), 0);
+  assert.equal(await page.getByText("Persona de prueba", { exact: true }).count(), 0);
+  const destination = page.getByRole("button", { name: "Otro destino", exact: true });
+  await destination.click();
+  assert.equal(await destination.evaluate((element) => element === document.activeElement), false);
+  await page.getByRole("button", { name: "Nueva oportunidad", exact: true }).click();
+  await page.evaluate(() => window.sideNavigationHarness.setProps({ defaultExpanded: true, defaultActiveItemId: "dashboard" }));
+  await expectSidebar(page, false, 76);
+  await expectSelected(page, "Otro destino", true);
+  const events = await page.evaluate(() => window.sideNavigationHarness.events);
+  assert.equal(events.filter(({ type }) => type === "logout").length, 1);
+  assert.equal(events.filter(({ type }) => type === "new-opportunity").length, 2);
+});
+
+test("Componente: abandonar props controladas recupera selección y expansión internas", async (context) => {
+  const page = await openComponent(context);
+  await page.getByRole("button", { name: "Solicitudes", exact: true }).click();
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
+  await expectSidebar(page, false, 76);
+  await page.evaluate(() => window.sideNavigationHarness.setProps({ expanded: true, activeItemId: "settings" }));
+  await expectSidebar(page, true, 312);
+  await expectSelected(page, "Configuraciones", true);
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
+  await expectSidebar(page, true, 312);
+  await expectSelected(page, "Configuraciones", true);
+  // Una cadena vacía y un valor no booleano dejan de controlar las props según el contrato original.
+  await page.evaluate(() => window.sideNavigationHarness.setProps({ expanded: null, activeItemId: "" }));
+  await expectSidebar(page, false, 76);
+  await expectSelected(page, "Solicitudes", true);
+  const events = await page.evaluate(() => window.sideNavigationHarness.events);
+  assert.deepEqual(events.filter(({ type }) => type === "select").map(({ value }) => value.id), ["requests", "dashboard"]);
+  assert.deepEqual(events.filter(({ type }) => type === "expanded" || type === "collapse"), [
+    { type: "expanded", value: false }, { type: "collapse", value: false },
+    { type: "expanded", value: false }, { type: "collapse", value: false },
+  ]);
+});
+
+test("Componente: touch limpia foco en logout y menú colapsado", async (context) => {
+  const page = await openComponent(context, { hasTouch: true });
+  const logout = page.getByRole("button", { name: "Cerrar sesión", exact: true });
+  await logout.tap();
+  assert.equal(await logout.evaluate((element) => element === document.activeElement), false);
+  await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).tap();
+  await expectSidebar(page, false, 76);
+  const destination = page.getByRole("button", { name: "Otro destino", exact: true });
+  await destination.tap();
+  assert.equal(await destination.evaluate((element) => element === document.activeElement), false);
+  await expectSelected(page, "Otro destino", true);
+  const events = await page.evaluate(() => window.sideNavigationHarness.events);
+  assert.equal(events.filter(({ type }) => type === "logout").length, 1);
+  assert.deepEqual(events.filter(({ type }) => type === "select").map(({ value }) => value.id), ["unknown"]);
+});
+
+test("Componente: teclado conserva foco y tooltip del menú colapsado", async (context) => {
+  const page = await openComponent(context);
+  const toggle = page.getByRole("button", { name: TOGGLE_NAME });
+  await toggle.focus();
+  await toggle.press("Enter");
+  await expectSidebar(page, false, 76);
+  await page.getByRole("button", { name: "Otro destino", exact: true }).focus();
+  // Tab activa la modalidad real de teclado que Tooltip comprueba mediante :focus-visible.
+  await page.keyboard.press("Shift+Tab");
+  const settings = page.getByRole("button", { name: "Configuraciones", exact: true });
+  assert.equal(await settings.evaluate((element) => element === document.activeElement), true);
+  await page.getByRole("tooltip").getByText("Configuraciones", { exact: true }).waitFor();
+  await settings.press("Enter");
+  assert.equal(await settings.evaluate((element) => element === document.activeElement), true);
+  await toggle.focus();
+  await toggle.press("Space");
+  await expectSidebar(page, true, 312);
+  assert.equal(await toggle.evaluate((element) => element === document.activeElement), true);
+  await expectSelected(page, "Configuraciones", true);
+  const events = await page.evaluate(() => window.sideNavigationHarness.events);
+  assert.deepEqual(events.filter(({ type }) => type === "select").map(({ value }) => value.id), ["settings"]);
+});
