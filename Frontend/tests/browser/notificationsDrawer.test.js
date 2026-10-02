@@ -304,37 +304,159 @@ test("Composer general: vacío, trim, Enter, Shift+Enter, fallback y disabled", 
   assert.equal(await field.inputValue(), "Conservar");
 });
 
-test("Contrato preservado: borrador se limpia inmediatamente y permite otro envío pendiente", async (context) => {
+test("Envío general: conserva el borrador pendiente, bloquea repeticiones y limpia solo al resolver", async (context) => {
   const page = await openPage(context);
   const drawer = await openDrawer(page);
   await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
   const field = drawer.getByRole("textbox", { name: "Observación general" });
-  for (const message of ["Primero", "Segundo"]) {
-    await field.fill(message);
-    await field.press("Enter");
-    assert.equal(await field.inputValue(), "");
-  }
-  assert.equal((await values(page, "submit-environment")).length, 2);
-  await page.evaluate(() => { window.drawerHarness.settle(0, true); window.drawerHarness.settle(1); });
-  await drawer.getByText("No se pudo guardar la observación", { exact: true }).waitFor();
+  const send = drawer.getByRole("button", { name: "Enviar observación", exact: true });
+  await field.fill("  Primero  ");
+  // Dos eventos en el mismo turno también deben quedar protegidos antes del render.
+  await field.evaluate((element) => {
+    for (let index = 0; index < 2; index++) element.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+  assert.equal((await values(page, "submit-environment")).length, 1);
+  assert.equal(await field.inputValue(), "  Primero  ");
+  assert.equal(await send.isDisabled(), true);
+  await field.dispatchEvent("keydown", { key: "Enter" });
+  await send.evaluate((element) => element.click());
+  assert.equal((await values(page, "submit-environment")).length, 1);
+  await page.evaluate(() => window.drawerHarness.settle(0));
+  await page.waitForFunction(() => document.querySelector("textarea").value === "");
   assert.equal(await field.inputValue(), "");
 });
 
-test("Contrato preservado: una respuesta fallida cierra un compositor posterior", async (context) => {
+for (const kind of ["general", "reply"]) {
+  test(`Envío ${kind}: rechazo conserva texto, muestra error y permite reintento`, async (context) => {
+    const page = await openPage(context, { comments: [COMMENT] });
+    const drawer = await openDrawer(page);
+    await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+    const field = kind === "general" ? drawer.getByRole("textbox", { name: "Observación general" }) : await reply(page);
+    const send = drawer.getByRole("button", { name: kind === "general" ? "Enviar observación" : "Enviar mensaje", exact: true });
+    await field.fill("  Conservar borrador  ");
+    await field.press("Enter");
+    assert.equal(await field.inputValue(), "  Conservar borrador  ");
+    assert.equal(await send.isDisabled(), true);
+    await page.evaluate(() => window.drawerHarness.settle(0, true));
+    await drawer.getByText("Fallo simulado", { exact: true }).waitFor();
+    assert.equal(await field.inputValue(), "  Conservar borrador  ");
+    assert.equal(await send.isEnabled(), true);
+    await field.press("Enter");
+    assert.equal((await values(page, kind === "general" ? "submit-environment" : "submit-project")).length, 2);
+    await page.evaluate(() => window.drawerHarness.settle(1));
+    if (kind === "reply") await field.waitFor({ state: "detached" });
+    else await page.waitForFunction(() => document.querySelector("textarea").value === "");
+    assert.equal(await drawer.getByText("Fallo simulado", { exact: true }).count(), 0);
+  });
+}
+
+for (const fail of [false, true]) {
+test(`Respuestas: finalizar A con ${fail ? "error" : "éxito"} conserva B abierto y su borrador`, async (context) => {
   const page = await openPage(context, { comments: [COMMENT, { ...COMMENT, id: 22, message: "Otra raíz" }] });
   await openDrawer(page);
   await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
   const field = await reply(page);
   await field.fill("Pendiente");
   await field.press("Enter");
-  assert.equal(await field.inputValue(), "");
-  await reply(page, 22);
-  await page.evaluate(() => window.drawerHarness.settle(0, true));
-  await field.waitFor({ state: "detached" });
-  await page.getByText("No se pudo guardar la observación", { exact: true }).waitFor();
-  await page.evaluate(() => window.drawerHarness.setProps({ commentsError: "" }));
-  assert.equal(await field.count(), 0, "El cierre posterior al fallo no depende solo de ocultar el contenido por error");
+  const fieldB = await reply(page, 22);
+  await fieldB.fill("Borrador B");
+  await page.evaluate((fail) => window.drawerHarness.settle(0, fail), fail);
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(await fieldB.inputValue(), "Borrador B");
+  assert.equal(await page.getByRole("button", { name: "Enviar mensaje", exact: true }).isEnabled(), true);
+  assert.equal(await page.getByText("Fallo simulado", { exact: true }).count(), 0, "El fallo de A no pertenece a B");
 });
+}
+
+test("Respuestas: terminar una apertura anterior de A no cierra una nueva apertura de A", async (context) => {
+  const page = await openPage(context, { comments: [COMMENT, { ...COMMENT, id: 22 }] });
+  await openDrawer(page);
+  await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+  const first = await reply(page);
+  await first.fill("A anterior");
+  await first.press("Enter");
+  await reply(page, 22);
+  const current = await reply(page);
+  await current.fill("A nuevo");
+  await page.evaluate(() => window.drawerHarness.settle(0));
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(await current.inputValue(), "A nuevo");
+});
+
+for (const firstKind of ["general", "reply"]) {
+  test(`Pending independiente: ${firstKind} permite enviar desde el otro compositor`, async (context) => {
+    const page = await openPage(context, { comments: [COMMENT] });
+    const drawer = await openDrawer(page);
+    await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+    const general = drawer.getByRole("textbox", { name: "Observación general" });
+    const response = await reply(page);
+    const first = firstKind === "general" ? general : response;
+    const second = firstKind === "general" ? response : general;
+    await first.fill("Primero");
+    await second.fill("Segundo");
+    // Mantiene los eventos mousedown existentes fuera de este contrato de envío.
+    await first.press("Enter");
+    assert.equal(await second.isEnabled(), true);
+    await second.press("Enter");
+    assert.equal((await values(page, "submit-project")).length, 1);
+    assert.equal((await values(page, "submit-environment")).length, 1);
+    await page.evaluate(() => { window.drawerHarness.settle(0); window.drawerHarness.settle(1); });
+    await response.waitFor({ state: "detached" });
+    assert.equal(await general.inputValue(), "");
+  });
+}
+
+for (const mode of ["sync", "void", "immediate"]) {
+  test(`Callbacks: éxito ${mode} limpia general y cierra respuesta`, async (context) => {
+    const page = await openPage(context, { comments: [COMMENT] });
+    const drawer = await openDrawer(page);
+    await page.evaluate((mode) => window.drawerHarness.setSubmissionMode(mode), mode);
+    const general = drawer.getByRole("textbox", { name: "Observación general" });
+    await general.fill("General");
+    await general.press("Enter");
+    await page.waitForFunction(() => document.querySelector("textarea").value === "");
+    const response = await reply(page);
+    await response.fill("Respuesta");
+    await response.press("Enter");
+    await response.waitFor({ state: "detached" });
+    assert.equal((await values(page, "submit-project")).length, 1);
+    assert.equal((await values(page, "submit-environment")).length, 1);
+  });
+}
+
+test("Callbacks: throw síncrono conserva el borrador y habilita reintento", async (context) => {
+  const page = await openPage(context, { comments: [COMMENT] });
+  await openDrawer(page);
+  await page.evaluate(() => window.drawerHarness.setSubmissionMode("throw"));
+  const field = await reply(page);
+  await field.fill("Recuperable");
+  await field.press("Enter");
+  await page.getByText("Fallo síncrono", { exact: true }).waitFor();
+  assert.equal(await field.inputValue(), "Recuperable");
+  assert.equal(await page.getByRole("button", { name: "Enviar mensaje", exact: true }).isEnabled(), true);
+  await page.evaluate(() => window.drawerHarness.setSubmissionMode("sync"));
+  await field.press("Enter");
+  await field.waitFor({ state: "detached" });
+});
+
+for (const fail of [false, true]) {
+  test(`Ciclo de vida: envío ${fail ? "fallido" : "exitoso"} previo al cierre no afecta la reapertura`, async (context) => {
+    const page = await openPage(context, { comments: [COMMENT] });
+    const drawer = await openDrawer(page);
+    await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+    const old = await reply(page);
+    await old.fill("Anterior");
+    await old.press("Enter");
+    await page.keyboard.press("Escape");
+    await drawer.waitFor({ state: "detached" });
+    await openDrawer(page);
+    const current = await reply(page);
+    await current.fill("Nuevo");
+    await page.evaluate((fail) => window.drawerHarness.settle(0, fail), fail);
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    assert.equal(await current.inputValue(), "Nuevo");
+  });
+}
 
 test("Mouse/touch: pointerdown solo no cierra; mousedown exterior y tap compatible sí", async (context) => {
   const page = await openPage(context, { comments: [COMMENT] }, { hasTouch: true });

@@ -21,11 +21,14 @@ function record(type, value, sameReference) {
  * Las promesas diferidas permiten observar fallos y respuestas fuera de orden.
  * @param {string} type Callback invocado.
  * @param {Object} value Payload público recibido.
- * @returns {Promise<void>} Finalización controlada por la prueba.
+ * @returns {Object|undefined|Promise<Object>} Resultado síncrono o finalización controlada.
  */
 function submit(type, value) {
   record(type, value);
-  if (submissionMode === "immediate") return Promise.resolve();
+  if (submissionMode === "sync") return { saved: true };
+  if (submissionMode === "void") return undefined;
+  if (submissionMode === "throw") throw new Error("Fallo síncrono");
+  if (submissionMode === "immediate") return Promise.resolve({});
   return new Promise((resolve, reject) => pendingSubmissions.push({ resolve, reject }));
 }
 
@@ -77,17 +80,16 @@ function setSubmissionMode(mode) {
 }
 
 /**
- * Completa una solicitud externa y expone su error como haría el consumidor.
+ * Completa una solicitud externa; el rechazo conserva el mensaje del consumidor.
  * @param {number} index Índice de la solicitud pendiente.
  * @param {boolean} [fail=false] Si debe rechazar la solicitud.
  * @returns {void} Resuelve o rechaza la promesa observada por el drawer.
  */
 function settle(index, fail = false) {
   if (fail) {
-    setProps({ commentsError: "No se pudo guardar la observación" });
     pendingSubmissions[index].reject(new Error("Fallo simulado"));
   } else {
-    pendingSubmissions[index].resolve();
+    pendingSubmissions[index].resolve({});
   }
 }
 
