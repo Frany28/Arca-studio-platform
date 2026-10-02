@@ -65,13 +65,13 @@ test("video viewer keeps the image viewer modal composition", () => {
 
   sharedLayoutFragments.forEach((fragment) => {
     assert.match(imageViewerSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\assert.match(videoViewerSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));")));
+    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")));
   });
 });
 
 test("video viewer preserves vertical media without cropping", () => {
-  assert.match(videoViewerCompositionSource, /bg-\[var\(--color-neutral-950-uniform\)\]/);
-  assert.match(videoViewerCompositionSource, /cursor-pointer object-contain/);
+    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")));
+    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")));
   assert.doesNotMatch(videoViewerCompositionSource, /cursor-pointer object-cover/);
   assert.match(videoStageSource, /<PlaybackBar/);
   assert.match(videoViewerSource, /handleFullscreen/);
