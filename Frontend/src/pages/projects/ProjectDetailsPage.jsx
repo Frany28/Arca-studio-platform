@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
@@ -12,17 +12,13 @@ import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.js
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../clientDrawerData.js";
 import ProjectDetailTabMenu from "./components/ProjectDetailTabMenu.jsx";
 import ProjectOverviewHeader from "./components/ProjectOverviewHeader.jsx";
+import ProjectActivePanel from "./components/ProjectActivePanel.jsx";
 import { ProjectDocumentViewerModal } from "./components/ProjectDocumentPreview.jsx";
-import ProjectDocumentsPanel from "./panels/ProjectDocumentsPanel.jsx";
-import ProjectInfoPanel from "./panels/ProjectInfoPanel.jsx";
-import ProjectRendersPanel from "./panels/ProjectRendersPanel.jsx";
-import ProjectTrackingPanel from "./panels/ProjectTrackingPanel.jsx";
-import ProjectUploadFilesPanel from "./panels/ProjectUploadFilesPanel.jsx";
-import ProjectWarrantiesPanel from "./panels/ProjectWarrantiesPanel.jsx";
 import { PROJECT_DETAIL_DATA } from "./projectDetailsData.js";
 import useProjectDetailsData from "./hooks/useProjectDetailsData.js";
 import useProjectDetailsComments from "./hooks/useProjectDetailsComments.js";
 import useProjectDetailsNavigation from "./hooks/useProjectDetailsNavigation.js";
+import useProjectDetailsTabs from "./hooks/useProjectDetailsTabs.js";
 import {
   mergeNotificationComments,
   toDrawerComment,
@@ -100,11 +96,14 @@ export default function ProjectDetailsPage({
     project,
     resolvedProjectId,
   });
-  const [activeProjectTabIndex, setActiveProjectTabIndex] = useState(() => {
-    const requestedTab = searchParams.get("tab");
-    if (requestedTab === "renders") return 1;
-    if (requestedTab === "documents") return 2;
-    return initialActiveProjectTabIndex;
+  const {
+    activeProjectTabIndex,
+    clearFocusedRenderComment,
+    setActiveProjectTabIndex,
+  } = useProjectDetailsTabs({
+    initialActiveProjectTabIndex,
+    searchParams,
+    setSearchParams,
   });
   const imageCommentNotifications = useImageCommentNotifications({
     projectIds: resolvedProjectId ? [resolvedProjectId] : [],
@@ -114,12 +113,6 @@ export default function ProjectDetailsPage({
     ...projectComments.map((comment) => toDrawerComment(comment, user, project?.files)),
     ...imageCommentNotifications,
   ]);
-
-  useEffect(() => {
-    const requestedTab = searchParams.get("tab");
-    if (requestedTab === "renders") setActiveProjectTabIndex(1);
-    if (requestedTab === "documents") setActiveProjectTabIndex(2);
-  }, [searchParams]);
 
   const handleActivitySelect = (activity) => {
     if (!activity?.to) {
@@ -141,17 +134,6 @@ export default function ProjectDetailsPage({
     );
   };
 
-  const clearFocusedRenderComment = useCallback(() => {
-    if (!searchParams.has("imageId") && !searchParams.has("commentId")) {
-      return;
-    }
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("imageId");
-    nextParams.delete("commentId");
-    setSearchParams(nextParams, { replace: true });
-  }, [searchParams, setSearchParams]);
-
   const openRecentDocument = useCallback(
     (document, triggerElement) => {
       recentDocumentTriggerRef.current = triggerElement || null;
@@ -166,48 +148,21 @@ export default function ProjectDetailsPage({
   const projectIsFinalized = isProjectFinalized(presentedProject);
   const projectIsReadOnly = isProjectOperationallyReadOnly(presentedProject);
   const projectReadOnlyMessage = getProjectReadOnlyMessage(presentedProject);
-  let activeProjectPanel = (
-    <ProjectInfoPanel
-      {...infoProps}
-      project={presentedProject}
-      onViewDocument={openRecentDocument}
+  const activeProjectPanel = (
+    <ProjectActivePanel
+      activeProjectTabIndex={activeProjectTabIndex}
+      clearFocusedRenderComment={clearFocusedRenderComment}
+      filesSynchronizedAt={filesSynchronizedAt}
+      infoProps={infoProps}
+      openRecentDocument={openRecentDocument}
+      presentedProject={presentedProject}
+      refreshProjectFiles={refreshProjectFiles}
+      resolvedProjectId={resolvedProjectId}
+      searchParams={searchParams}
+      trackingProps={trackingProps}
+      warrantiesProps={warrantiesProps}
     />
   );
-
-  if (activeProjectTabIndex === 1) {
-    activeProjectPanel = (
-      <ProjectRendersPanel
-        focusedCommentId={searchParams.get("commentId")}
-        focusedImageId={searchParams.get("imageId")}
-        modelGallery={presentedProject.panoramaGallery}
-        onClearFocusedComment={clearFocusedRenderComment}
-        projectId={resolvedProjectId}
-        renderGallery={presentedProject.renderGallery}
-        videoGallery={presentedProject.videoGallery}
-      />
-    );
-  } else if (activeProjectTabIndex === 2) {
-    activeProjectPanel = (
-      <ProjectDocumentsPanel
-        documents={presentedProject.documents}
-        focusedCommentId={searchParams.get("commentId")}
-        focusedDocumentId={searchParams.get("fileId")}
-        lastSynchronizedAt={filesSynchronizedAt}
-        projectId={resolvedProjectId}
-      />
-    );
-  } else if (activeProjectTabIndex === 3) {
-    activeProjectPanel = <ProjectTrackingPanel {...trackingProps} />;
-  } else if (activeProjectTabIndex === 4) {
-    activeProjectPanel = <ProjectWarrantiesPanel {...warrantiesProps} />;
-  } else if (activeProjectTabIndex === 5) {
-    activeProjectPanel = (
-      <ProjectUploadFilesPanel
-        projectId={resolvedProjectId}
-        onFilesChanged={refreshProjectFiles}
-      />
-    );
-  }
 
   return (
     <ProjectReadOnlyProvider
