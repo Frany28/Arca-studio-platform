@@ -113,6 +113,7 @@ export default function useProjectRequestSubmission({
   };
 
   return {
+    closeValidation,
     draftId,
     isRequestReceived,
     isSubmitting,
