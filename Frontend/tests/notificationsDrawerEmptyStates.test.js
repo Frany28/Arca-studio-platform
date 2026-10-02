@@ -23,7 +23,7 @@ test("comment and event drawers use the centered Figma CTA empty-state variant",
   );
   assert.match(
     drawerSource,
-    /activityOnly && "flex min-h-0 flex-1 items-center justify-center"/,
+    /activityOnly\s*&&\s*"flex min-h-0 flex-1 items-center justify-center"/,
   );
   assert.doesNotMatch(drawerSource, /min-h-\[320px\] flex-1/);
   assert.match(drawerSource, /document\.getElementById\(generalCommentInputId\)\?\.focus\(\)/);
