@@ -65,7 +65,7 @@ test("video viewer keeps the image viewer modal composition", () => {
 
   sharedLayoutFragments.forEach((fragment) => {
     assert.match(imageViewerSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")));
+    assert.match(videoViewerCompositionSource, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
 });
 
