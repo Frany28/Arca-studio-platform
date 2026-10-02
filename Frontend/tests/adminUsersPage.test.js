@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("admin user management keeps the shared navigation and users tab active", async () => {
-  const [source, kpiSource] = await Promise.all([
+  const [source, kpiSource, dataSource] = await Promise.all([
     readFile(new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/AdminKpiMetric.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/admin-users/hooks/useAdminUsersData.js", import.meta.url), "utf8"),
   ]);
 
   assert.match(source, /components\/EnvironmentNavigationBar\.jsx/);
@@ -14,7 +15,7 @@ test("admin user management keeps the shared navigation and users tab active", a
   assert.match(kpiSource, /w-\[235px\]/);
   assert.match(kpiSource, /text-heading-4/);
   assert.match(source, /iconType="Disabled"/);
-  assert.match(source, /api\.admin\.listUsers/);
+  assert.match(dataSource, /api\.admin\.listUsers/);
 });
 
 test("the admin users route is protected for administrators", async () => {
@@ -29,12 +30,17 @@ test("admin user table footer follows the detached Figma pagination layout", asy
     "utf8",
   );
 
+  const dataSource = await readFile(
+    new URL("../src/pages/admin-users/hooks/useAdminUsersData.js", import.meta.url),
+    "utf8",
+  );
+
   assert.match(source, /text-heading-8 text-\[var\(--color-text-300\)\]/);
   assert.match(source, /type="Outline" size="M"[\s\S]*Anterior/);
   assert.match(source, /type="Solid" size="M"[\s\S]*Siguiente pág\./);
   assert.doesNotMatch(source, /gap-\[12px\] border-t border-\[var\(--color-neutral-200\)\] px-\[16px\] py-\[12px\]/);
-  assert.match(source, /const ADMIN_USERS_PAGE_SIZE = 10/);
-  assert.match(source, /limit: ADMIN_USERS_PAGE_SIZE/);
+  assert.match(dataSource, /const ADMIN_USERS_PAGE_SIZE = 10/);
+  assert.match(dataSource, /limit: ADMIN_USERS_PAGE_SIZE/);
 });
 
 test("selected admin users expose centered bulk status actions", async () => {
@@ -43,12 +49,17 @@ test("selected admin users expose centered bulk status actions", async () => {
     readFile(new URL("../src/pages/admin-users/AdminUserStatusModal.jsx", import.meta.url), "utf8"),
   ]);
 
+  const actionsSource = await readFile(
+    new URL("../src/pages/admin-users/hooks/useAdminUsersActions.js", import.meta.url),
+    "utf8",
+  );
+
   assert.match(source, /grid-cols-\[1fr_auto_1fr\]/);
   assert.match(source, /selectedCount \? BULK_STATUS_ACTIONS\.map/);
   assert.match(source, /label: "Suspender", status: "blocked"/);
   assert.match(source, /label: "Deshabilitar", status: "inactive"/);
   assert.match(source, /label: "Activar", status: "active"/);
-  assert.match(source, /Promise\.allSettled/);
+  assert.match(actionsSource, /Promise\.allSettled/);
   assert.match(source, /targets\.length === 0/);
   assert.match(source, /<AlertToast/);
   assert.match(modalSource, /getBulkActionDetails/);
@@ -200,14 +211,21 @@ test("editing an admin user reports successful and failed updates", async () => 
     readFile(new URL("../src/pages/admin-users/AdminUserDetailsDrawer.jsx", import.meta.url), "utf8"),
   ]);
 
-  for (const source of [pageSource, drawerSource]) {
+  const actionsSource = await readFile(
+    new URL("../src/pages/admin-users/hooks/useAdminUsersActions.js", import.meta.url),
+    "utf8",
+  );
+
+  for (const source of [actionsSource, drawerSource]) {
     assert.match(source, /Usuario actualizado correctamente/);
     assert.match(source, /No se pudo actualizar el usuario/);
     assert.match(source, /No se pudieron guardar los cambios del usuario\./);
-    assert.match(source, /<AlertToast/);
+
   }
-  assert.match(pageSource, /async function updateEditedUser[\s\S]*setStatusFeedback\(\{[\s\S]*tone: "success"/);
-  assert.match(pageSource, /catch \(requestError\)[\s\S]*tone: "danger"[\s\S]*throw requestError/);
+  assert.match(pageSource, /<AlertToast/);
+  assert.match(drawerSource, /<AlertToast/);
+  assert.match(actionsSource, /async function updateEditedUser[\s\S]*setStatusFeedback\(\{[\s\S]*tone: "success"/);
+  assert.match(actionsSource, /catch \(requestError\)[\s\S]*tone: "danger"[\s\S]*throw requestError/);
   assert.match(drawerSource, /const updateUser = async[\s\S]*setEditFeedback\(\{[\s\S]*theme: "Success"/);
   assert.match(drawerSource, /theme: "Danger"[\s\S]*throw requestError/);
 });

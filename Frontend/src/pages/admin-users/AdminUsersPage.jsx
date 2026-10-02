@@ -18,7 +18,6 @@ import {
 } from "iconsax-react";
 import { useNavigate } from "react-router-dom";
 
-import { api } from "../../api/http.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
@@ -44,36 +43,21 @@ import AdminUserActionsMenu from "./AdminUserActionsMenu.jsx";
 import AdminUserDetailsDrawer from "./AdminUserDetailsDrawer.jsx";
 import AdminUserStatusModal from "./AdminUserStatusModal.jsx";
 import { getBulkStatusTargets } from "./adminUserStatusPolicy.js";
+import { useAdminUsersData } from "./hooks/useAdminUsersData.js";
+import { useAdminUsersActions } from "./hooks/useAdminUsersActions.js";
 
 const WEB_BREAKPOINT_PX = 1280;
-const ADMIN_USERS_PAGE_SIZE = 10;
-const STATUS_FILTER_ITEMS = [
-  { id: "active", label: "Activo", type: "Checkbox" },
-  { id: "blocked", label: "Suspendido", type: "Checkbox" },
-  { id: "inactive", label: "Deshabilitado", type: "Checkbox" },
-];
 const STATUS_DETAILS = {
   active: { label: "Activo", theme: "Success" },
   blocked: { label: "Suspendido", theme: "Danger" },
   inactive: { label: "Deshabilitado", theme: "Disabled" },
 };
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
-const METRIC_BY_STATUS = {
-  active: "active",
-  blocked: "suspended",
-  inactive: "disabled",
-};
 const BULK_STATUS_ACTIONS = [
   { icon: MinusCirlce, label: "Suspender", status: "blocked" },
   { icon: LockCircle, label: "Deshabilitar", status: "inactive" },
   { icon: TickCircle, label: "Activar", status: "active" },
 ];
-const BULK_FEEDBACK = {
-  active: { singular: "Usuario activado", plural: "Usuarios activados", singularVerb: "activó", pluralVerb: "activaron" },
-  blocked: { singular: "Usuario suspendido", plural: "Usuarios suspendidos", singularVerb: "suspendió", pluralVerb: "suspendieron" },
-  inactive: { singular: "Usuario deshabilitado", plural: "Usuarios deshabilitados", singularVerb: "deshabilitó", pluralVerb: "deshabilitaron" },
-};
-
 function HeaderLabel({ children, filter = false }) {
   const Icon = filter ? Filter : ArrowSwapVertical;
   return (
@@ -92,47 +76,23 @@ function AdminUsersPage({ empty = false }) {
     typeof window === "undefined" ? true : window.innerWidth >= WEB_BREAKPOINT_PX,
   );
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [users, setUsers] = useState([]);
-  const [metrics, setMetrics] = useState(() => empty
-    ? { total: 0, active: 0, suspended: 0, disabled: 0 }
-    : null);
-  const [roles, setRoles] = useState([]);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [roleFilterIds, setRoleFilterIds] = useState([]);
-  const [statusFilterIds, setStatusFilterIds] = useState([]);
-  const [cursorHistory, setCursorHistory] = useState([null]);
-  const [pageIndex, setPageIndex] = useState(0);
-  const [nextCursor, setNextCursor] = useState(null);
   const [selectedUserIds, setSelectedUserIds] = useState(() => new Set());
-  const [loading, setLoading] = useState(!empty);
-  const [error, setError] = useState("");
-  const [requestKey, setRequestKey] = useState(0);
-  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
-  const [createdUser, setCreatedUser] = useState(null);
-  const [statusFeedback, setStatusFeedback] = useState(null);
-  const [updatingUserId, setUpdatingUserId] = useState(null);
-  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
-  const [pendingStatusChange, setPendingStatusChange] = useState(null);
+  const {
+    users, metrics, roles, loading, error, filters, pagination,
+    reload, setUsers, setMetrics,
+  } = useAdminUsersData({ empty, setSelectedUserIds });
+  const {
+    query, setQuery, roleItems, statusItems, hasFilters, statusFilterIds,
+    clear: clearFilters, changeRoles: changeRoleFilters,
+    changeStatuses: changeStatusFilters,
+  } = filters;
+  const { pageIndex, nextCursor, next: goNext } = pagination;
   const [detailsUserId, setDetailsUserId] = useState(null);
-  const [editingUser, setEditingUser] = useState(null);
-  const [loadingEditUserId, setLoadingEditUserId] = useState(null);
 
   const navigationItems = useMemo(
     () => createUserSideNavigationItems([], "admin"),
     [],
   );
-  const roleItems = useMemo(() => roles.map((role) => ({
-    id: role.code,
-    label: role.name,
-    type: "Checkbox",
-    checked: roleFilterIds.includes(role.code) ? "Yes" : "No",
-  })), [roleFilterIds, roles]);
-  const statusItems = useMemo(() => STATUS_FILTER_ITEMS.map((item) => ({
-    ...item,
-    checked: statusFilterIds.includes(item.id) ? "Yes" : "No",
-  })), [statusFilterIds]);
-  const hasFilters = Boolean(query || roleFilterIds.length || statusFilterIds.length);
   const selectedCount = users.reduce(
     (count, listedUser) => count + (selectedUserIds.has(String(listedUser.id)) ? 1 : 0),
     0,
@@ -151,59 +111,21 @@ function AdminUsersPage({ empty = false }) {
     ]),
   ), [selectedUserIds, user?.id, users]);
 
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setDebouncedQuery(query.trim());
-      setCursorHistory([null]);
-      setPageIndex(0);
-      setSelectedUserIds(new Set());
-    }, 300);
-    return () => window.clearTimeout(timeoutId);
-  }, [query]);
+  const { creation, editing, status, feedback } = useAdminUsersActions({
+    setUsers,
+    setMetrics,
+    setSelectedUserIds,
+    statusFilterIds,
+    bulkTargetsByStatus,
+    reload,
+    resetPagination: pagination.reset,
+  });
 
-  useEffect(() => {
-    if (empty) return undefined;
-
-    const controller = new AbortController();
-    api.admin.listRoles({ signal: controller.signal })
-      .then((payload) => setRoles(payload?.roles || []))
-      .catch((requestError) => {
-        if (requestError?.name !== "AbortError") setRoles([]);
-      });
-    return () => controller.abort();
-  }, [empty]);
-
-  useEffect(() => {
-    if (empty) return undefined;
-
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      if (!controller.signal.aborted) {
-        setLoading(true);
-        setError("");
-      }
-    });
-    api.admin.listUsers({
-      cursor: cursorHistory[pageIndex],
-      limit: ADMIN_USERS_PAGE_SIZE,
-      role: roleFilterIds.length ? roleFilterIds : undefined,
-      search: debouncedQuery || undefined,
-      signal: controller.signal,
-      status: statusFilterIds.length ? statusFilterIds : undefined,
-    }).then((payload) => {
-      setUsers(payload?.users || []);
-      setMetrics(payload?.metrics || null);
-      setNextCursor(payload?.nextCursor || null);
-      setSelectedUserIds(new Set());
-    }).catch((requestError) => {
-      if (requestError?.name !== "AbortError") {
-        setError(requestError?.message || "No se pudieron cargar los usuarios.");
-      }
-    }).finally(() => {
-      if (!controller.signal.aborted) setLoading(false);
-    });
-    return () => controller.abort();
-  }, [cursorHistory, debouncedQuery, empty, pageIndex, requestKey, roleFilterIds, statusFilterIds]);
+  const { open: isCreateUserOpen, createdUser, submit: createUser } = creation;
+  const { user: editingUser, loadingUserId: loadingEditUserId, open: openUserEditor, submit: updateEditedUser } = editing;
+  const { updatingUserId, isBulkUpdating, pendingChange: pendingStatusChange, requestBulk: requestBulkStatusChange } = status;
+  const requestIndividualStatusChange = status.requestIndividual;
+  const statusFeedback = feedback.value;
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(`(max-width: ${WEB_BREAKPOINT_PX - 1}px)`);
@@ -212,33 +134,6 @@ function AdminUsersPage({ empty = false }) {
     mediaQuery.addEventListener("change", syncSidebar);
     return () => mediaQuery.removeEventListener("change", syncSidebar);
   }, []);
-
-  function clearFilters() {
-    setQuery("");
-    setRoleFilterIds([]);
-    setStatusFilterIds([]);
-    setCursorHistory([null]);
-    setPageIndex(0);
-    setSelectedUserIds(new Set());
-  }
-
-  function changeRoleFilters(nextItems) {
-    setRoleFilterIds(nextItems
-      .filter((item) => item.checked === "Yes")
-      .map((item) => String(item.id)));
-    setCursorHistory([null]);
-    setPageIndex(0);
-    setSelectedUserIds(new Set());
-  }
-
-  function changeStatusFilters(nextItems) {
-    setStatusFilterIds(nextItems
-      .filter((item) => item.checked === "Yes")
-      .map((item) => String(item.id)));
-    setCursorHistory([null]);
-    setPageIndex(0);
-    setSelectedUserIds(new Set());
-  }
 
   function toggleAll() {
     if (isBulkUpdating) return;
@@ -261,200 +156,6 @@ function AdminUsersPage({ empty = false }) {
       else next.add(id);
       return next;
     });
-  }
-
-  function goNext() {
-    if (!nextCursor) return;
-    setCursorHistory((current) => [...current.slice(0, pageIndex + 1), nextCursor]);
-    setPageIndex((current) => current + 1);
-  }
-
-  async function createUser(payload) {
-    const response = await api.admin.createUser(payload);
-    setCreatedUser(response?.user || { email: payload.email });
-    setIsCreateUserOpen(false);
-    setCursorHistory([null]);
-    setPageIndex(0);
-    setRequestKey((key) => key + 1);
-  }
-
-  async function openUserEditor(listedUser) {
-    if (loadingEditUserId !== null || isBulkUpdating || updatingUserId !== null) return;
-
-    setLoadingEditUserId(String(listedUser.id));
-    setStatusFeedback(null);
-    try {
-      const response = await api.admin.getUserDetails({ userId: listedUser.id });
-      setEditingUser(response?.user || listedUser);
-    } catch (requestError) {
-      setStatusFeedback({
-        tone: "danger",
-        title: "No se pudo abrir la edición",
-        message: requestError?.message || "No se pudieron cargar los datos del usuario.",
-      });
-    } finally {
-      setLoadingEditUserId(null);
-    }
-  }
-
-  async function updateEditedUser(payload) {
-    const userId = editingUser?.id;
-    if (!userId) return;
-
-    setStatusFeedback(null);
-    try {
-      const response = await api.admin.updateUser({ payload, userId });
-      const updatedUser = response?.user;
-      setEditingUser(null);
-      if (updatedUser) {
-        setUsers((current) => current.map((listedUser) => (
-          String(listedUser.id) === String(userId)
-            ? { ...listedUser, ...updatedUser }
-            : listedUser
-        )));
-      }
-      setRequestKey((key) => key + 1);
-      setStatusFeedback({
-        tone: "success",
-        title: "Usuario actualizado correctamente",
-        message: "Los datos del usuario se guardaron correctamente.",
-      });
-    } catch (requestError) {
-      setStatusFeedback({
-        tone: "danger",
-        title: "No se pudo actualizar el usuario",
-        message: requestError?.message || "No se pudieron guardar los cambios del usuario.",
-      });
-      throw requestError;
-    }
-  }
-
-  async function changeUserStatus(listedUser, status) {
-    setUpdatingUserId(String(listedUser.id));
-    setStatusFeedback(null);
-    try {
-      const response = await api.admin.updateUserStatus({ status, userId: listedUser.id });
-      const updatedUser = response?.user || { ...listedUser, status };
-      setUsers((current) => {
-        if (statusFilterIds.length && !statusFilterIds.includes(status)) {
-          return current.filter((item) => String(item.id) !== String(listedUser.id));
-        }
-        return current.map((item) => (
-          String(item.id) === String(listedUser.id) ? updatedUser : item
-        ));
-      });
-      setSelectedUserIds((current) => {
-        const next = new Set(current);
-        next.delete(String(listedUser.id));
-        return next;
-      });
-      setMetrics((current) => {
-        if (!current || listedUser.status === status) return current;
-        return {
-          ...current,
-          [METRIC_BY_STATUS[listedUser.status]]: Math.max(0, current[METRIC_BY_STATUS[listedUser.status]] - 1),
-          [METRIC_BY_STATUS[status]]: current[METRIC_BY_STATUS[status]] + 1,
-        };
-      });
-      setStatusFeedback({
-        tone: "success",
-        title: status === "blocked"
-          ? "Usuario suspendido"
-          : status === "inactive"
-            ? "Usuario deshabilitado"
-            : listedUser.status === "blocked"
-              ? "Usuario reactivado"
-              : "Usuario activado",
-        message: status === "active"
-          ? listedUser.status === "blocked"
-            ? `${listedUser.name} recuperó el acceso al sistema.`
-            : `${listedUser.name} fue activado y recuperó el acceso al sistema.`
-          : response?.message || `El estado de ${listedUser.name} fue actualizado.`,
-      });
-    } catch (requestError) {
-      setStatusFeedback({
-        tone: "danger",
-        title: "No se pudo actualizar el usuario",
-        message: requestError?.message || "No se pudo actualizar el estado del usuario.",
-      });
-    } finally {
-      setUpdatingUserId(null);
-    }
-  }
-
-  function requestBulkStatusChange(status) {
-    const targets = bulkTargetsByStatus[status] || [];
-    if (!targets.length || isBulkUpdating || updatingUserId !== null) return;
-    setStatusFeedback(null);
-    setPendingStatusChange({ users: targets, status });
-  }
-
-  async function changeUsersStatus(targets, status) {
-    setIsBulkUpdating(true);
-    setStatusFeedback(null);
-
-    try {
-      const results = await Promise.allSettled(targets.map(async (listedUser) => ({
-        listedUser,
-        response: await api.admin.updateUserStatus({ status, userId: listedUser.id }),
-      })));
-      const successfulChanges = results
-        .filter((result) => result.status === "fulfilled")
-        .map((result) => result.value);
-      const failedResults = results.filter((result) => result.status === "rejected");
-      const successfulIds = new Set(successfulChanges.map(({ listedUser }) => String(listedUser.id)));
-      const updatedById = new Map(successfulChanges.map(({ listedUser, response }) => [
-        String(listedUser.id),
-        response?.user || { ...listedUser, status },
-      ]));
-
-      if (successfulChanges.length) {
-        setUsers((current) => current
-          .filter((listedUser) => !(
-            successfulIds.has(String(listedUser.id))
-            && statusFilterIds.length
-            && !statusFilterIds.includes(status)
-          ))
-          .map((listedUser) => updatedById.get(String(listedUser.id)) || listedUser));
-        setSelectedUserIds((current) => {
-          const next = new Set(current);
-          successfulIds.forEach((id) => next.delete(id));
-          return next;
-        });
-        setMetrics((current) => successfulChanges.reduce((nextMetrics, { listedUser }) => {
-          if (!nextMetrics || listedUser.status === status) return nextMetrics;
-          return {
-            ...nextMetrics,
-            [METRIC_BY_STATUS[listedUser.status]]: Math.max(
-              0,
-              nextMetrics[METRIC_BY_STATUS[listedUser.status]] - 1,
-            ),
-            [METRIC_BY_STATUS[status]]: nextMetrics[METRIC_BY_STATUS[status]] + 1,
-          };
-        }, current));
-      }
-
-      const feedback = BULK_FEEDBACK[status];
-      if (!failedResults.length) {
-        setStatusFeedback({
-          tone: "success",
-          title: successfulChanges.length === 1 ? feedback.singular : feedback.plural,
-          message: `Se ${successfulChanges.length === 1 ? feedback.singularVerb : feedback.pluralVerb} ${successfulChanges.length} ${successfulChanges.length === 1 ? "usuario" : "usuarios"} correctamente.`,
-        });
-      } else {
-        setStatusFeedback({
-          tone: "danger",
-          title: successfulChanges.length
-            ? "Algunos usuarios no se pudieron actualizar"
-            : "No se pudieron actualizar los usuarios",
-          message: successfulChanges.length
-            ? `${successfulChanges.length} ${successfulChanges.length === 1 ? "usuario fue actualizado" : "usuarios fueron actualizados"} y ${failedResults.length} ${failedResults.length === 1 ? "no pudo actualizarse" : "no pudieron actualizarse"}.`
-            : failedResults[0]?.reason?.message || "No se pudo actualizar el estado de los usuarios seleccionados.",
-        });
-      }
-    } finally {
-      setIsBulkUpdating(false);
-    }
   }
 
   return (
@@ -488,7 +189,7 @@ function AdminUsersPage({ empty = false }) {
               <h1 id="admin-users-title" className="text-heading-3 m-0 text-[var(--color-text-50)] max-sm:text-[40px] max-sm:leading-[48px]">
                 Gestión de usuarios
               </h1>
-              <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon iconLeft={<Add size="20" color="currentColor" />} showRightIcon={false} onClick={() => { setCreatedUser(null); setIsCreateUserOpen(true); }}>
+              <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon iconLeft={<Add size="20" color="currentColor" />} showRightIcon={false} onClick={creation.openFromNew}>
                 Nuevo
               </Button>
             </div>
@@ -549,7 +250,7 @@ function AdminUsersPage({ empty = false }) {
                     showActions
                     showSecondaryAction={false}
                     primaryActionLabel="Reintentar"
-                    onPrimaryAction={() => setRequestKey((key) => key + 1)}
+                    onPrimaryAction={reload}
                   />
                 </div>
               ) : users.length ? (
@@ -632,10 +333,7 @@ function AdminUsersPage({ empty = false }) {
                                     || updatingUserId === String(listedUser.id)
                                     || String(user?.id) === String(listedUser.id)
                                   }
-                                  onStatusChange={(selectedUser, status) => {
-                                    setStatusFeedback(null);
-                                    setPendingStatusChange({ user: selectedUser, status });
-                                  }}
+                                  onStatusChange={requestIndividualStatusChange}
                                 />
                               </div></td>
                             </tr>
@@ -670,7 +368,7 @@ function AdminUsersPage({ empty = false }) {
                       }) : null}
                     </div>
                     <div className="flex items-center gap-[8px] justify-self-end">
-                      <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={pageIndex === 0} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={() => setPageIndex((index) => Math.max(index - 1, 0))}>Anterior</Button>
+                      <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={pageIndex === 0} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
                       <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!nextCursor} onClick={goNext}>Siguiente pág.</Button>
                     </div>
                   </div>
@@ -697,10 +395,10 @@ function AdminUsersPage({ empty = false }) {
                   showSecondaryAction
                   secondaryActionLabel="Añadir"
                   primaryActionLabel="Actualizar"
-                  onSecondaryAction={() => setIsCreateUserOpen(true)}
+                  onSecondaryAction={creation.openFromEmpty}
                   onPrimaryAction={() => {
                     if (empty) navigate("/usuarios");
-                    else setRequestKey((key) => key + 1);
+                    else reload();
                   }}
                   className="min-h-[320px] flex-1"
                 />
@@ -714,15 +412,15 @@ function AdminUsersPage({ empty = false }) {
             userId={detailsUserId}
             roles={roles}
             onClose={() => setDetailsUserId(null)}
-            onUserUpdated={() => setRequestKey((key) => key + 1)}
+            onUserUpdated={reload}
           />
-          {isCreateUserOpen ? <CreateAdminUserModal open roles={roles} onClose={() => setIsCreateUserOpen(false)} onCreate={createUser} /> : null}
+          {isCreateUserOpen ? <CreateAdminUserModal open roles={roles} onClose={creation.close} onCreate={createUser} /> : null}
           {editingUser ? (
             <EditAdminUserModal
               open
               roles={roles}
               user={editingUser}
-              onClose={() => setEditingUser(null)}
+              onClose={editing.close}
               onUpdate={updateEditedUser}
             />
           ) : null}
@@ -738,21 +436,16 @@ function AdminUsersPage({ empty = false }) {
             secondaryActionLabel="Cancelar"
             primaryActionLabel="Aceptar"
             icon={<ShieldSecurity size="20" color="currentColor" />}
-            onClose={() => setCreatedUser(null)}
-            onSecondaryAction={() => setCreatedUser(null)}
-            onPrimaryAction={() => setCreatedUser(null)}
+            onClose={creation.dismissConfirmation}
+            onSecondaryAction={creation.dismissConfirmation}
+            onPrimaryAction={creation.dismissConfirmation}
             className="z-[90]"
             aria-label="Usuario creado correctamente"
           />
           <AdminUserStatusModal
             change={pendingStatusChange}
-            onCancel={() => setPendingStatusChange(null)}
-            onConfirm={() => {
-              const change = pendingStatusChange;
-              setPendingStatusChange(null);
-              if (change?.users) changeUsersStatus(change.users, change.status);
-              else if (change) changeUserStatus(change.user, change.status);
-            }}
+            onCancel={status.cancel}
+            onConfirm={status.confirm}
           />
           <AlertToast
             trigger={statusFeedback}
@@ -760,7 +453,7 @@ function AdminUsersPage({ empty = false }) {
             description={statusFeedback?.message || ""}
             theme={statusFeedback?.tone === "danger" ? "Danger" : "Success"}
             aria-label={statusFeedback?.tone === "danger" ? "Error al actualizar el usuario" : "Usuario actualizado correctamente"}
-            onDismiss={() => setStatusFeedback(null)}
+            onDismiss={feedback.dismiss}
           />
         </div>
       </div>

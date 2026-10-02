@@ -9,8 +9,13 @@ test("admin users expose the connected creation modal from both new actions", as
     readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /setIsCreateUserOpen\(true\)/);
-  assert.match(page, /api\.admin\.createUser\(payload\)/);
+  const actionsSource = await readFile(
+    new URL("../src/pages/admin-users/hooks/useAdminUsersActions.js", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(actionsSource, /setIsCreateUserOpen\(true\)/);
+  assert.match(actionsSource, /api\.admin\.createUser\(payload\)/);
   assert.match(page, /<CreateAdminUserModal/);
   assert.match(modal, /role="dialog"/);
   assert.match(modal, /Enviar código de activación/);
@@ -37,6 +42,11 @@ test("admin user row actions expose the connected Figma status menu", async () =
     readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
   ]);
 
+  const actionsSource = await readFile(
+    new URL("../src/pages/admin-users/hooks/useAdminUsersActions.js", import.meta.url),
+    "utf8",
+  );
+
   assert.match(page, /<AdminUserActionsMenu/);
   assert.match(menu, /role="menu"/);
   assert.match(menu, /Suspender/);
@@ -54,7 +64,7 @@ test("admin user row actions expose the connected Figma status menu", async () =
   assert.match(modal, /primaryActionTheme="Danger"/);
   assert.match(modal, /text-\[var\(--color-danger-100\)\]/);
   assert.doesNotMatch(modal, /text-\[var\(--color-warning-200\)\]/);
-  assert.match(page, /if \(change\) changeUserStatus\(change\.user, change\.status\)/);
+  assert.match(actionsSource, /if \(change\) changeUserStatus\(change\.user, change\.status\)/);
   assert.match(page, /String\(user\?\.id\) === String\(listedUser\.id\)/);
   assert.match(menu, /createPortal/);
   assert.match(http, /updateUserStatus[\s\S]*\/admin\/users\/\$\{encodeURIComponent\(userId\)\}\/status[\s\S]*method: "PATCH"/);
@@ -90,10 +100,15 @@ test("each table edit action loads the complete user before opening the edit mod
     "utf8",
   );
 
+  const actionsSource = await readFile(
+    new URL("../src/pages/admin-users/hooks/useAdminUsersActions.js", import.meta.url),
+    "utf8",
+  );
+
   assert.doesNotMatch(source, /Editar: disponible en una próxima sección/);
   assert.match(source, /onClick=\{\(\) => openUserEditor\(listedUser\)\}/);
-  assert.match(source, /api\.admin\.getUserDetails\(\{ userId: listedUser\.id \}\)/);
-  assert.match(source, /setEditingUser\(response\?\.user \|\| listedUser\)/);
+  assert.match(actionsSource, /api\.admin\.getUserDetails\(\{ userId: listedUser\.id \}\)/);
+  assert.match(actionsSource, /setEditingUser\(response\?\.user \|\| listedUser\)/);
   assert.match(source, /<EditAdminUserModal[\s\S]*user=\{editingUser\}/);
-  assert.match(source, /api\.admin\.updateUser\(\{ payload, userId \}\)/);
+  assert.match(actionsSource, /api\.admin\.updateUser\(\{ payload, userId \}\)/);
 });
