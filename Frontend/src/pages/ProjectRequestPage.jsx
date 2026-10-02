@@ -1,15 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CloudPlus, Edit2, Link21, Location } from "iconsax-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 
 import { useAuth } from "../auth/AuthContext.jsx";
-import { useRecentProjects } from "../auth/RecentProjectsContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
 import Alert from "../components/ui/Alert/Alert.jsx";
 import Button from "../components/ui/Button/Button.jsx";
 import HintText from "../components/ui/HintText/HintText.jsx";
-import { useImageCommentNotifications } from "../components/ui/Gallery/useImageComments.js";
 import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
 import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
 import ProjectRequestCancelModal from "../components/ui/ProjectRequestFlow/ProjectRequestCancelModal.jsx";
@@ -18,17 +16,14 @@ import ProjectRequestValidationStep from "../components/ui/ProjectRequestFlow/Pr
 import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
 import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
-import { useRecentProjectComments } from "../hooks/useProjectComments.js";
-import { getProjectNamesById } from "../utils/commentDisplay.js";
 import { getProjectRequestFileErrors } from "../utils/projectRequestValidation.js";
 import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
-import { getProjectPath } from "../utils/projectRoutes.js";
-import { getCommentNavigationParams } from "../utils/commentSelection.js";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
 import useProjectRequestSubmission from "./project-request/hooks/useProjectRequestSubmission.js";
 import useProjectRequestNavigation from "./project-request/hooks/useProjectRequestNavigation.js";
+import useProjectRequestNotifications from "./project-request/hooks/useProjectRequestNotifications.js";
 import {
   CheckboxField,
   ChoiceGroup,
@@ -53,7 +48,19 @@ export default function ProjectRequestPage() {
   const viewRequest = location.state?.viewRequest || null;
   const initialRequest = location.state?.initialRequest || viewRequest;
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
-  const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
+  const {
+    close: closeNotifications,
+    comments: notificationComments,
+    error: recentProjectCommentsError,
+    isOpen: isNotificationsDrawerOpen,
+    loading: recentProjectCommentsLoading,
+    openComment: openImageComment,
+    setOpen: setIsNotificationsDrawerOpen,
+    toggle: toggleNotifications,
+  } = useProjectRequestNotifications({
+    navigate,
+    user,
+  });
   const resetRequestFlow = () => {
     resetFormState();
     clearLocationSuggestions();
@@ -153,73 +160,9 @@ export default function ProjectRequestPage() {
     () => createUserSideNavigationItems([], currentUser.roleCode),
     [currentUser.roleCode],
   );
-  const { projects: recentProjects } = useRecentProjects();
-  const notificationProjectIds = useMemo(
-    () => recentProjects.map((project) => project.id),
-    [recentProjects],
-  );
-  const projectNamesById = useMemo(
-    () => getProjectNamesById(recentProjects),
-    [recentProjects],
-  );
-  const imageCommentNotifications = useImageCommentNotifications({
-    projectIds: notificationProjectIds,
-    projectNamesById,
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
-  });
-  const {
-    drawerComments: recentProjectComments,
-    error: recentProjectCommentsError,
-    loading: recentProjectCommentsLoading,
-    refresh: refreshRecentComments,
-  } = useRecentProjectComments({
-    enabled: notificationProjectIds.length > 0,
-    projectIds: notificationProjectIds,
-    projectNamesById,
-    refreshIntervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
-    user,
-  });
-  const notificationComments = useMemo(() => {
-    const commentsById = new Map();
-
-    [...recentProjectComments, ...imageCommentNotifications].forEach((comment) => {
-      if (comment?.id !== undefined && comment?.id !== null) {
-        commentsById.set(String(comment.id), comment);
-      }
-    });
-
-    return Array.from(commentsById.values());
-  }, [imageCommentNotifications, recentProjectComments]);
-
-  useEffect(() => {
-    if (isNotificationsDrawerOpen) {
-      refreshRecentComments?.();
-    }
-  }, [isNotificationsDrawerOpen, refreshRecentComments]);
-
   const selectLocationSuggestion = (suggestion) => {
     applyLocationSuggestion(suggestion, fileErrors);
     clearLocationSuggestions();
-  };
-  const openImageComment = (comment) => {
-    const targetProjectId = comment?.projectId;
-
-    if (!targetProjectId) {
-      return;
-    }
-
-    const params = getCommentNavigationParams(comment);
-
-    const targetProject = recentProjects.find(
-      (project) => String(project.id) === String(targetProjectId),
-    );
-
-    setIsNotificationsDrawerOpen(false);
-    navigate(
-      targetProject
-        ? getProjectPath(targetProject, params.toString())
-        : `/proyectos/${targetProjectId}?${params.toString()}`,
-    );
   };
   const handleFrontendSubmit = () => {
     const nextFileErrors = getProjectRequestFileErrors(files);
@@ -275,7 +218,7 @@ export default function ProjectRequestPage() {
           <NavigationBar
             onMenuClick={openMobileNavigation}
             utilityActionActive={isNotificationsDrawerOpen}
-            onUtilityActionClick={() => setIsNotificationsDrawerOpen((current) => !current)}
+            onUtilityActionClick={toggleNotifications}
           />
 
           {isRequestReceived ? (
@@ -432,7 +375,7 @@ export default function ProjectRequestPage() {
 
           <NotificationsDrawer
             open={isNotificationsDrawerOpen}
-            onClose={() => setIsNotificationsDrawerOpen(false)}
+            onClose={closeNotifications}
             comments={notificationComments}
             commentsError={recentProjectCommentsError}
             commentsLoading={recentProjectCommentsLoading}
