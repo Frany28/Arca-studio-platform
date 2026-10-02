@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/**
+ * Sincroniza una barra personalizada con las m?tricas del contenedor referenciado.
+ * Recalcula con ResizeObserver, resize y cambios de contenido; libera los recursos
+ * al limpiar el efecto. La acci?n setPosition tambi?n desplaza el contenedor.
+ *
+ * @param {*} contentKey - Valor cuya variaci?n vuelve a medir el contenido.
+ * @returns {{containerRef: Object, length: number, onScroll: Function, position: number, setPosition: Function}} Referencia, proporciones y acciones de sincronizaci?n/desplazamiento.
+ */
 export default function useSyncedScrollBar(contentKey) {
   const containerRef = useRef(null);
   const [position, setPosition] = useState(0);

@@ -9,6 +9,12 @@ import { getProjectNamesById } from "../../../utils/commentDisplay.js";
 import { getCommentNavigationParams } from "../../../utils/commentSelection.js";
 import { getProjectPath } from "../../../utils/projectRoutes.js";
 
+/**
+ * Combina fuentes por id, omite elementos sin id truthy y conserva la ?ltima versi?n.
+ *
+ * @param {Array} comments - Observaciones de las distintas fuentes.
+ * @returns {Array} Observaciones ?nicas por id convertido a string.
+ */
 function mergeNotificationComments(comments) {
   const commentsById = new Map();
 
@@ -21,6 +27,18 @@ function mergeNotificationComments(comments) {
   return Array.from(commentsById.values());
 }
 
+/**
+ * Combina observaciones recientes, enviadas y de im?genes para el drawer de Home.
+ * Configura refrescos de 5 s al abrir y de 15 s para las fuentes agregadas al cerrar;
+ * delega las cargas a hooks compartidos y navega hacia actividad u observaciones.
+ *
+ * @param {Object} params - Fuentes de observaciones y navegaci?n.
+ * @param {Array} params.commentProjectRows - Proyectos usados para consultar observaciones.
+ * @param {Function} params.navigate - Navegaci?n del router.
+ * @param {Array} params.ownedProjectRows - Proyectos propios para resolver sus rutas.
+ * @param {Object|null} params.user - Usuario pasado a los hooks de observaciones.
+ * @returns {Object} Apertura del drawer, comentarios, proyecto inicial, carga/error y acciones de env?o/navegaci?n.
+ */
 export default function useHomeNotifications({
   commentProjectRows,
   navigate,
@@ -119,6 +137,13 @@ export default function useHomeNotifications({
     navigate(activity.to);
   };
 
+  /**
+   * Cierra el drawer y navega al proyecto con los par?metros de referencia de la observaci?n.
+   * Si falta projectId usa el primer proyecto de observaciones; sin destino no navega.
+   *
+   * @param {Object} comment - Observaci?n seleccionada y referencia asociada.
+   * @returns {void} Actualiza el drawer y solicita navegaci?n cuando hay destino.
+   */
   const openComment = (comment) => {
     const params = getCommentNavigationParams(comment);
 

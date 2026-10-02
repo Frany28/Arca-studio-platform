@@ -11,6 +11,13 @@ function getProjectAssigneeAvatars(project) {
   return assigneeAvatar ? [assigneeAvatar] : [];
 }
 
+/**
+ * Adapta el proyecto a una fila conservando sus campos originales.
+ * Obtiene avatar e imagen con los helpers compartidos de presentaci?n.
+ *
+ * @param {Object} project - Proyecto recibido de la API.
+ * @returns {Object} Proyecto con assigneeAvatars, image y title.
+ */
 function toProjectRow(project) {
   return {
     ...project,
@@ -20,6 +27,15 @@ function toProjectRow(project) {
   };
 }
 
+/**
+ * Carga los proyectos mediante la API y deriva filas propias, p?blicas y grupos por estado.
+ * Excluye proyectos de solo lectura del conjunto usado para observaciones; al cambiar
+ * el usuario o desmontarse invalida respuestas pendientes mediante un contador.
+ *
+ * @param {Object} params - Contexto de la carga.
+ * @param {Object|null} params.user - Usuario; clientId identifica los proyectos propios.
+ * @returns {Object} Filas derivadas, grupos, carga, error como texto y acci?n loadProjects.
+ */
 export default function useHomeProjects({ user }) {
   const [projects, setProjects] = useState([]);
   const [projectsError, setProjectsError] = useState("");
@@ -58,6 +74,12 @@ export default function useHomeProjects({ user }) {
     [ownedProjectRows],
   );
 
+  /**
+   * Recarga proyectos y aplica ?nicamente la respuesta de la solicitud m?s reciente.
+   * Conserva los datos durante la espera; si la carga vigente falla, los vac?a.
+   *
+   * @returns {Promise<void>} Actualiza datos, carga y error; no devuelve los proyectos.
+   */
   const loadProjects = useCallback(async () => {
     const requestId = projectsRequestIdRef.current + 1;
     projectsRequestIdRef.current = requestId;

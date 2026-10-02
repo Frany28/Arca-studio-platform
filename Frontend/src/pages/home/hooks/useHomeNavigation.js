@@ -5,6 +5,16 @@ import { createUserSideNavigationItems } from "../../../utils/sideNavigationItem
 
 const TABLET_BREAKPOINT_PX = 768;
 
+/**
+ * Construye los destinos del cliente y coordina navegaci?n lateral y m?vil.
+ * Sincroniza la expansi?n con matchMedia bajo 768 px y retira el listener al desmontar.
+ *
+ * @param {Object} params - Dependencias de navegaci?n.
+ * @param {Function} params.logout - Acci?n de cierre de sesi?n; el handler no espera su promesa.
+ * @param {Function} params.navigate - Navegaci?n del router.
+ * @param {Array} params.ownedProjectRows - Proyectos propios usados para destinos din?micos.
+ * @returns {Object} Items, expansi?n, apertura m?vil y handlers de selecci?n, creaci?n y logout.
+ */
 export default function useHomeNavigation({
   logout,
   navigate,
@@ -35,6 +45,13 @@ export default function useHomeNavigation({
     };
   }, []);
 
+  /**
+   * Prioriza el destino to del item y resuelve los identificadores de navegaci?n restantes.
+   * Para proyectos usa su ruta de presentaci?n o una ruta por id si no encuentra la fila.
+   *
+   * @param {Object} item - Elemento seleccionado con to o id.
+   * @returns {void} Solicita la navegaci?n cuando reconoce un destino.
+   */
   const handleSideNavigationSelect = (item) => {
     if (item?.to) {
       navigate(item.to);

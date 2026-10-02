@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 
 import { api } from "../../../api/http.js";
 
+/**
+ * Carga solicitudes por cursor y permite reintentar la primera p?gina.
+ * La carga inicial ignora respuestas despu?s de limpiar el efecto; las p?ginas
+ * adicionales se combinan por id y conservan lo cargado si fallan.
+ *
+ * @param {Object} params - Contexto de la consulta.
+ * @param {Object|null} params.user - Usuario cuya presencia habilita la carga inicial.
+ * @returns {Object} Solicitudes, cursor, errores como texto, estados de carga y acciones de carga/reintento.
+ */
 export default function useHomeProjectRequests({ user }) {
   const [projectRequests, setProjectRequests] = useState([]);
   const [projectRequestsError, setProjectRequestsError] = useState("");
@@ -42,6 +51,12 @@ export default function useHomeProjectRequests({ user }) {
     };
   }, [projectRequestsRevision, user]);
 
+  /**
+   * Carga el cursor disponible salvo que ya est? cargando otra p?gina.
+   * Sustituye las coincidencias por id con la versi?n recibida y actualiza el cursor.
+   *
+   * @returns {Promise<void>} Actualiza solicitudes y estado; registra el error sin propagarlo.
+   */
   const loadMoreProjectRequests = async () => {
     if (!projectRequestsNextCursor || projectRequestsLoadingMore) return;
 
