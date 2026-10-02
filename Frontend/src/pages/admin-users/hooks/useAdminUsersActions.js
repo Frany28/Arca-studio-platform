@@ -13,6 +13,24 @@ const BULK_FEEDBACK = {
   inactive: { singular: "Usuario deshabilitado", plural: "Usuarios deshabilitados", singularVerb: "deshabilitó", pluralVerb: "deshabilitaron" },
 };
 
+/**
+ * Coordina las mutaciones administrativas y su sincronización con useAdminUsersData.
+ * creation controla alta y confirmación; editing carga y guarda el editor; status
+ * prepara y ejecuta cambios individuales o masivos; feedback reúne avisos descartables.
+ *
+ * @param {Object} params - Dependencias de datos y selección proporcionadas por AdminUsersPage.
+ * @param {Function} params.setUsers - Setter del listado de la página actual.
+ * @param {Function} params.setMetrics - Setter de métricas; los cambios de estado ajustan contadores locales.
+ * @param {Function} params.setSelectedUserIds - Setter de un Set de IDs string seleccionados.
+ * @param {Array} params.statusFilterIds - Estados filtrados; permite retirar filas que dejan de coincidir.
+ * @param {Object} params.bulkTargetsByStatus - Arrays por estado ya evaluados por getBulkStatusTargets
+ * en la página, incluyendo elegibilidad y exclusión del actor; el hook no repite esa política.
+ * @param {Function} params.reload - Solicita una nueva lectura del listado y métricas.
+ * @param {Function} params.resetPagination - Devuelve la lectura a la primera página.
+ * @returns {Object} Grupos creation, editing, status y feedback, con estados y acciones.
+ * El modal gestiona loading y errores de envío de creación/edición; el hook expone
+ * carga de detalles y progreso de estado. feedback.value es Object|null con tone, title y message.
+ */
 export function useAdminUsersActions({
   setUsers,
   setMetrics,
@@ -31,6 +49,15 @@ export function useAdminUsersActions({
   const [editingUser, setEditingUser] = useState(null);
   const [loadingEditUserId, setLoadingEditUserId] = useState(null);
 
+  /**
+   * Envía el alta y guarda el usuario devuelto, o su correo como confirmación mínima.
+   * Al tener éxito cierra el modal, reinicia paginación y recarga listado y métricas.
+   * El modal consumidor controla loading y captura los errores propagados.
+   *
+   * @param {Object} payload - Datos del alta preparados por el formulario.
+   * @returns {Promise<void>} Finaliza tras el alta y la solicitud de recarga, sin esperar esa lectura.
+   * @throws {Error} Propaga el fallo del alta al formulario.
+   */
   async function createUser(payload) {
     const response = await api.admin.createUser(payload);
     setCreatedUser(response?.user || { email: payload.email });
@@ -39,6 +66,14 @@ export function useAdminUsersActions({
     reload();
   }
 
+  /**
+   * Carga detalles antes de abrir el editor, con la fila como respaldo si falta user.
+   * Omite la apertura si el estado actual indica carga de detalles o cambio de estado;
+   * un fallo publica feedback y siempre libera loadingEditUserId. No cancela respuestas obsoletas.
+   *
+   * @param {Object} listedUser - Fila seleccionada para editar.
+   * @returns {Promise<void>} Actualiza el editor o el aviso de error.
+   */
   async function openUserEditor(listedUser) {
     if (loadingEditUserId !== null || isBulkUpdating || updatingUserId !== null) return;
 
@@ -58,6 +93,15 @@ export function useAdminUsersActions({
     }
   }
 
+  /**
+   * Guarda el usuario del editor y, al tener éxito, cierra el modal y mezcla los datos
+   * devueltos en su fila local. Solicita recarga para reconciliar listado y métricas.
+   * Sin ID no envía; un error conserva el editor, publica feedback y se propaga al modal.
+   *
+   * @param {Object} payload - Cambios preparados por el formulario de edición.
+   * @returns {Promise<void>} Finaliza el guardado y solicita la recarga sin esperarla.
+   * @throws {Error} Propaga el fallo del guardado al formulario.
+   */
   async function updateEditedUser(payload) {
     const userId = editingUser?.id;
     if (!userId) return;
@@ -90,6 +134,15 @@ export function useAdminUsersActions({
     }
   }
 
+  /**
+   * Ejecuta un cambio individual y sincroniza la fila tras la respuesta de la API.
+   * Retira la fila si el estado objetivo no coincide con los filtros, elimina su selección
+   * y traslada un contador del estado anterior al nuevo, sin cambiar total ni recargar.
+   *
+   * @param {Object} listedUser - Usuario y estado previo usados para reconciliar datos locales.
+   * @param {string} status - Estado objetivo solicitado por el flujo de confirmación.
+   * @returns {Promise<void>} Publica éxito o error y libera updatingUserId; captura errores de la API.
+   */
   async function changeUserStatus(listedUser, status) {
     setUpdatingUserId(String(listedUser.id));
     setStatusFeedback(null);
@@ -143,6 +196,13 @@ export function useAdminUsersActions({
     }
   }
 
+  /**
+   * Prepara la confirmación con los targets ya filtrados por la política de la página.
+   * Sin targets o durante otra actualización de estado no abre una nueva confirmación.
+   *
+   * @param {string} status - Estado objetivo y clave de bulkTargetsByStatus.
+   * @returns {void} Limpia feedback y guarda usuarios y estado pendientes.
+   */
   function requestBulkStatusChange(status) {
     const targets = bulkTargetsByStatus[status] || [];
     if (!targets.length || isBulkUpdating || updatingUserId !== null) return;
@@ -150,6 +210,17 @@ export function useAdminUsersActions({
     setPendingStatusChange({ users: targets, status });
   }
 
+  /**
+   * Envía una petición por usuario en paralelo y reúne resultados con allSettled.
+   * Tras completar todas, reconcilia solo éxitos: reemplaza o retira filas según filtros,
+   * elimina sus IDs de la selección y ajusta métricas por sus estados anteriores.
+   * Los fallidos conservan fila y selección; el feedback distingue éxito, fallo parcial
+   * y fallo total. No hay atomicidad del conjunto ni recarga; finally libera isBulkUpdating.
+   *
+   * @param {Array} targets - Usuarios capturados al preparar la confirmación masiva.
+   * @param {string} status - Estado objetivo común a las peticiones.
+   * @returns {Promise<void>} Finaliza reconciliación y feedback del conjunto.
+   */
   async function changeUsersStatus(targets, status) {
     setIsBulkUpdating(true);
     setStatusFeedback(null);
@@ -218,6 +289,8 @@ export function useAdminUsersActions({
     }
   }
 
+  // Nuevo limpia la confirmación de alta previa; abrir desde vacío solo abre el modal.
+  // Cerrar el flujo tampoco descarta createdUser: su aviso tiene dismissConfirmation propio.
   function openFromNew() {
     setCreatedUser(null);
     setIsCreateUserOpen(true);
@@ -235,6 +308,8 @@ export function useAdminUsersActions({
     setEditingUser(null);
   }
 
+  // La confirmación individual guarda el usuario recibido sin volver a evaluar la política.
+  // Cancelar descarta pendingStatusChange; el feedback se limpia al preparar otra acción.
   function requestIndividual(selectedUser, status) {
     setStatusFeedback(null);
     setPendingStatusChange({ user: selectedUser, status });
@@ -244,6 +319,12 @@ export function useAdminUsersActions({
     setPendingStatusChange(null);
   }
 
+  /**
+   * Consume y cierra la confirmación antes de iniciar la mutación correspondiente.
+   * La presencia de users selecciona el flujo masivo; user selecciona el individual.
+   *
+   * @returns {void} Inicia la operación sin devolver ni esperar su promesa.
+   */
   function confirmStatusChange() {
     const change = pendingStatusChange;
     setPendingStatusChange(null);
