@@ -89,7 +89,7 @@ export const authApi = {
         request.abort();
       };
 
-      request.open("POST", `${API_BASE_URL}/auth/profile-photo`);
+      request.open("POST", getApiUrl("/auth/profile-photo"));
       request.withCredentials = true;
       request.setRequestHeader(
         "Content-Type",
