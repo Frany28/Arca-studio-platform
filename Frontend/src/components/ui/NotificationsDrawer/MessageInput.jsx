@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import ComposerSubmitButton from "../ComposerSubmitButton.jsx";
 import TextArea from "../TextArea/TextArea.jsx";
@@ -28,9 +28,22 @@ export function ReplyComposer({
 }
 
 /**
- * Mantiene el borrador y presenta las variantes de observación general y respuesta.
- * Recorta el texto, bloquea vacío o disabled y conserva los atajos originales;
- * no coordina peticiones, errores ni estado pending del callback externo.
+ * Convierte un rechazo de envío en un mensaje visible y estable para reintentar.
+ * @param {unknown} error Valor lanzado o rechazado por el callback externo.
+ * @returns {string} Mensaje apto para presentar junto al compositor.
+ */
+function getSubmissionErrorMessage(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "No se pudo enviar el comentario.";
+}
+
+/**
+ * Mantiene borrador, estado pending y error local de cada compositor.
+ * Solo limpia el texto cuando el callback termina con éxito y utiliza una ref
+ * síncrona para impedir envíos duplicados antes del siguiente render de React.
  * @param {Object} props Configuración visual y callbacks del compositor.
  * @returns {import("react").ReactElement} Campo y acción de envío.
  */
@@ -43,22 +56,46 @@ export default function MessageInput({
   placeholder,
 }) {
   const [textAreaValue, setTextAreaValue] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
+  const submissionPendingRef = useRef(false);
   const trimmedValue = textAreaValue.trim();
+  const submitDisabled = !trimmedValue || disabled || isSubmitting;
 
   /**
-   * Invoca el callback con el texto recortado y limpia el borrador inmediatamente.
-   * No espera su promesa ni bloquea otra solicitud pendiente; ese comportamiento
-   * se conserva deliberadamente durante la extracción estructural.
-   * @returns {void} Envía si existe texto y el control está habilitado.
+   * Envía una única solicitud por compositor y conserva el borrador mientras espera.
+   * Admite callbacks síncronos, void o Promise; los errores quedan locales al
+   * compositor actual para que otro compositor abierto no herede su fallo.
+   * @returns {Promise<void>} Finaliza tras éxito o recuperación del rechazo.
    */
-  function handleSubmit() {
-    if (!trimmedValue || disabled) {
+  async function handleSubmit() {
+    if (!trimmedValue || disabled || submissionPendingRef.current) {
       return;
     }
 
-    onSubmit?.(trimmedValue);
-    setTextAreaValue("");
+    submissionPendingRef.current = true;
+    setIsSubmitting(true);
+    setSubmissionError("");
+
+    try {
+      await Promise.resolve(onSubmit?.(trimmedValue));
+      setTextAreaValue("");
+    } catch (error) {
+      setSubmissionError(getSubmissionErrorMessage(error));
+    } finally {
+      submissionPendingRef.current = false;
+      setIsSubmitting(false);
+    }
   }
+
+  const errorMessage = submissionError ? (
+    <p
+      role="alert"
+      className="text-[12px] font-normal leading-[14px] tracking-[-0.5px] text-[var(--color-error-300)]"
+    >
+      {submissionError}
+    </p>
+  ) : null;
 
   return multiline ? (
     <div className="flex flex-col gap-[8px]">
@@ -82,10 +119,11 @@ export default function MessageInput({
           }
         }}
       />
+      {errorMessage}
       <div className="flex justify-end">
         <ComposerSubmitButton
           ariaLabel="Enviar observación"
-          disabled={!trimmedValue || disabled}
+          disabled={submitDisabled}
           onClick={handleSubmit}
         />
       </div>
@@ -110,11 +148,17 @@ export default function MessageInput({
               }
             }}
           />
-          <Tooltip asChild portal showTip text="Enviar mensaje" tipPosition="Top right">
+          <Tooltip
+            asChild
+            portal
+            showTip
+            text="Enviar mensaje"
+            tipPosition="Top right"
+          >
             <button
               type="button"
               aria-label="Enviar mensaje"
-              disabled={!trimmedValue || disabled}
+              disabled={submitDisabled}
               className="flex cursor-pointer shrink-0 items-center justify-center text-[var(--color-neutral-300)] transition-colors duration-200 hover:text-[var(--color-text-300)] disabled:cursor-not-allowed disabled:opacity-40"
               onClick={handleSubmit}
             >
@@ -122,6 +166,7 @@ export default function MessageInput({
             </button>
           </Tooltip>
         </div>
+        {errorMessage}
       </div>
     </div>
   );
