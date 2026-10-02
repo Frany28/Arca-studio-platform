@@ -20,15 +20,14 @@ import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
 import Tooltip from "../components/ui/Tooltip/Tooltip.jsx";
 import { getProjectPath } from "../utils/projectRoutes.js";
 import { getProjectRequestStatus } from "../utils/projectRequestStatus.js";
-import { createUserSideNavigationItems } from "../utils/sideNavigationItems.js";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "./clientDrawerData.js";
 import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
 import useHomeProjects from "./home/hooks/useHomeProjects.js";
 import useHomeNotifications from "./home/hooks/useHomeNotifications.js";
+import useHomeNavigation from "./home/hooks/useHomeNavigation.js";
 
 const EXPANDED_SIDEBAR_WIDTH = 312;
 const COLLAPSED_SIDEBAR_WIDTH = 76;
-const TABLET_BREAKPOINT_PX = 768;
 const REQUEST_SKELETON_COUNT = 2;
 
 function ProjectRow({ project }) {
@@ -217,8 +216,6 @@ function Home({ view = "dashboard" }) {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const {
     loadMoreProjectRequests,
     projectRequests,
@@ -266,10 +263,24 @@ function Home({ view = "dashboard" }) {
   } = useSyncedScrollBar(
     `${view}:${projectRequests.map((request) => request.id).join("|")}`,
   );
-  const navigationItems = useMemo(
-    () => createUserSideNavigationItems(ownedProjectRows, "client"),
-    [ownedProjectRows],
-  );
+  const {
+    closeMobileNavigation,
+    handleLogout,
+    handleMobileExpandedChange,
+    handleMobileNavigationSelect,
+    handleMobileNewOpportunity,
+    handleNewOpportunity,
+    handleSideNavigationSelect,
+    isMobileNavigationOpen,
+    isSidebarExpanded,
+    navigationItems,
+    openMobileNavigation,
+    setIsSidebarExpanded,
+  } = useHomeNavigation({
+    logout,
+    navigate,
+    ownedProjectRows,
+  });
   const {
     close: closeNotifications,
     comments: notificationComments,
@@ -287,64 +298,6 @@ function Home({ view = "dashboard" }) {
     ownedProjectRows,
     user,
   });
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
-    );
-
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
-
-  const handleSideNavigationSelect = (item) => {
-    if (item?.to) {
-      navigate(item.to);
-      return;
-    }
-
-    if (item?.id === "dashboard") {
-      navigate("/dashboard-clientes");
-      return;
-    }
-
-    if (item?.id?.startsWith("project-")) {
-      const projectId = Number(item.id.replace("project-", ""));
-
-      if (Number.isInteger(projectId)) {
-        const selectedProject = ownedProjectRows.find(
-          (project) => project.id === projectId,
-        );
-
-        navigate(
-          selectedProject ? getProjectPath(selectedProject) : `/proyectos/${projectId}`,
-        );
-      }
-      return;
-    }
-
-    if (item?.id === "more-projects") {
-      navigate("/proyectos");
-      return;
-    }
-
-    if (item?.id === "requests") {
-      navigate("/solicitudes");
-      return;
-    }
-
-    if (item?.id === "settings") {
-      navigate("/configuraciones");
-    }
-  };
-
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <AuthToast
@@ -363,17 +316,14 @@ function Home({ view = "dashboard" }) {
           userAvatarSrc={currentUser.profilePhotoUrl}
           onExpandedChange={setIsSidebarExpanded}
           onItemSelect={handleSideNavigationSelect}
-          onNewOpportunityClick={() => navigate("/solicitudes/nueva")}
-          onLogoutClick={() => {
-            logout();
-            navigate("/");
-          }}
+          onNewOpportunityClick={handleNewOpportunity}
+          onLogoutClick={handleLogout}
           className="min-h-screen shrink-0 self-stretch max-[767px]:hidden min-[768px]:max-[1023px]:!w-[234px] min-[768px]:max-[1023px]:!px-[12px]"
         />
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
           <NavigationBar
-            onMenuClick={() => setIsMobileNavigationOpen(true)}
+            onMenuClick={openMobileNavigation}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={toggleNotifications}
           />
@@ -618,7 +568,7 @@ function Home({ view = "dashboard" }) {
 
       <SideOverlayDrawer
         open={isMobileNavigationOpen}
-        onClose={() => setIsMobileNavigationOpen(false)}
+        onClose={closeMobileNavigation}
         side="left"
         widthClassName="w-[min(312px,calc(100vw-32px))]"
         className="z-[80] min-[768px]:hidden"
@@ -631,21 +581,10 @@ function Home({ view = "dashboard" }) {
           userName={currentUser.name}
           userEmail={currentUser.email}
           userAvatarSrc={currentUser.profilePhotoUrl}
-          onItemSelect={(item) => {
-            setIsMobileNavigationOpen(false);
-            handleSideNavigationSelect(item);
-          }}
-          onNewOpportunityClick={() => {
-            setIsMobileNavigationOpen(false);
-            navigate("/solicitudes/nueva");
-          }}
-          onLogoutClick={() => {
-            logout();
-            navigate("/");
-          }}
-          onExpandedChange={(expanded) => {
-            if (!expanded) setIsMobileNavigationOpen(false);
-          }}
+          onItemSelect={handleMobileNavigationSelect}
+          onNewOpportunityClick={handleMobileNewOpportunity}
+          onLogoutClick={handleLogout}
+          onExpandedChange={handleMobileExpandedChange}
           className="!h-full !min-h-full !w-full border-r-0 shadow-none"
         />
       </SideOverlayDrawer>
