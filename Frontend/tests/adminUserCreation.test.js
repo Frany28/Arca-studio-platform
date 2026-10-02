@@ -6,7 +6,7 @@ test("admin users expose the connected creation modal from both new actions", as
   const [page, modal, http] = await Promise.all([
     readFile(new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-users/CreateAdminUserModal.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
   const actionsSource = await readFile(
@@ -39,7 +39,7 @@ test("admin user row actions expose the connected Figma status menu", async () =
     readFile(new URL("../src/pages/admin-users/AdminUsersPage.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-users/AdminUserActionsMenu.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-users/AdminUserStatusModal.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
   const actionsSource = await readFile(
@@ -75,7 +75,7 @@ test("the user details drawer opens the connected Figma edit modal", async () =>
     readFile(new URL("../src/pages/admin-users/AdminUserDetailsDrawer.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-users/EditAdminUserModal.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-users/CreateAdminUserModal.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
   assert.match(drawer, /onClick=\{\(\) => setEditing\(true\)\}>Editar<\/Button>/);
