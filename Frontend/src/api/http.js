@@ -15,6 +15,12 @@ export { projectsApi } from "./projectsApi.js";
 export { supportApi } from "./supportApi.js";
 
 // Fachada única que agrupa todos los módulos de acceso a la API.
+/**
+ * Expone una fachada estable sobre los objetos de cada dominio.
+ * Las peticiones y adaptaciones siguen implementadas en los m?dulos de API.
+ *
+ * @type {Object}
+ */
 export const api = {
   admin: adminApi,
   auth: authApi,

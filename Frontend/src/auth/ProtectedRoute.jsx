@@ -6,7 +6,14 @@ import { getDefaultAuthenticatedPath } from "./authRoutes.js";
 import SessionUnavailable from "./SessionUnavailable.jsx";
 import { getProtectedRouteDecision } from "./authRouteState.js";
 
-// Decide si mostrar contenido, reintentar sesión o redirigir al usuario.
+/**
+ * Aplica la decisi?n compartida de sesi?n y rol antes de renderizar la ruta hija.
+ * La indisponibilidad ofrece reintento; la carga evita una redirecci?n prematura.
+ *
+ * @param {Object} props - Pol?tica de acceso de la ruta.
+ * @param {Array} [props.allowedRoles] - Roles permitidos por esta ruta.
+ * @returns {Object|null} Contenido, aviso, redirecci?n o null durante la carga.
+ */
 function ProtectedRoute({ allowedRoles }) {
   const {
     isAuthenticated,

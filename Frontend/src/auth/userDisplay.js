@@ -1,5 +1,11 @@
 /* Normaliza los datos del usuario para mostrarlos de forma consistente en la interfaz. */
-// Construye nombre, iniciales, rol, teléfono y foto con valores de respaldo seguros.
+/**
+ * Construye identidad visible con fallback de nombre a correo y luego Usuario.
+ * Acepta las dos variantes existentes del campo de foto y limita las iniciales a dos.
+ *
+ * @param {Object|null} user - Usuario con datos de identidad y rol.
+ * @returns {Object} Nombre, nombre corto, iniciales, correo, tel?fono, foto y rol.
+ */
 export function getUserDisplay(user) {
   const firstName = String(user?.firstName || "").trim();
   const lastName = String(user?.lastName || "").trim();

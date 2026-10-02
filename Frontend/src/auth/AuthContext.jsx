@@ -18,7 +18,14 @@ import {
 
 const AuthContext = createContext(null);
 
-// Construye la URL versionada de la foto de perfil para evitar caché obsoleta.
+/**
+ * Versiona la URL del avatar almacenado para evitar im?genes obsoletas.
+ * Conserva URLs blob/data sin construir una ruta de backend.
+ *
+ * @param {string} profilePhotoUrl - Referencia de foto o URL temporal.
+ * @param {string|number} [version] - Versi?n; si es falsy usa el instante actual.
+ * @returns {string} URL de imagen o cadena vac?a si no hay foto.
+ */
 function buildProfilePhotoImageUrl(profilePhotoUrl, version) {
   if (!profilePhotoUrl) {
     return "";
@@ -37,7 +44,12 @@ function buildProfilePhotoImageUrl(profilePhotoUrl, version) {
   return getApiUrl(`/auth/profile-photo/image?${params.toString()}`);
 }
 
-// Normaliza la forma del usuario que consume el resto del frontend.
+/**
+ * Adapta el rol y la URL de avatar sin descartar los dem?s campos del usuario.
+ *
+ * @param {Object|null} user - Usuario recibido del backend.
+ * @returns {Object|null} Usuario normalizado o null.
+ */
 function normalizeUser(user) {
   if (!user) {
     return null;
@@ -53,7 +65,14 @@ function normalizeUser(user) {
   };
 }
 
-// Proveedor principal que sincroniza el estado de autenticación con el backend y el navegador.
+/**
+ * Mantiene usuario y estado de sesi?n compartidos; restaura al montar y al recuperar conexi?n.
+ * Expone login confirmado, registro, actualizaci?n local, reintento y logout entre pesta?as.
+ *
+ * @param {Object} props - Contenido del proveedor.
+ * @param {Object} props.children - Contenido React que consume la sesi?n.
+ * @returns {Object} Proveedor del contexto de autenticaci?n.
+ */
 export function AuthProvider({ children }) {
   const [sessionStatus, setSessionStatus] = useState(
     AUTH_SESSION_STATUS.LOADING,
@@ -160,6 +179,12 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  /**
+   * Cancela la restauraci?n y limpia primero la sesi?n local.
+   * Intenta cerrar la cookie y notifica a otras pesta?as incluso si la petici?n falla.
+   *
+   * @returns {Promise<void>} Finaliza tras intentar logout y difundir el cierre.
+   */
   const logout = useCallback(async () => {
     sessionRestorer?.cancel();
     setUser(null);
@@ -204,7 +229,12 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// Hook de acceso seguro al contexto de autenticación.
+/**
+ * Accede al estado de sesi?n y a las acciones publicadas por AuthProvider.
+ *
+ * @returns {Object} Usuario, estados de carga/disponibilidad y acciones de sesi?n.
+ * @throws {Error} Si se utiliza fuera de AuthProvider.
+ */
 export function useAuth() {
   const auth = useContext(AuthContext);
 

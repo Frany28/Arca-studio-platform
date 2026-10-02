@@ -7,10 +7,25 @@ const API_BASE_URL = (
   "/api"
 ).replace(/\/$/, "");
 
+/**
+ * Compone una URL de API; la base configurable se usa solo en desarrollo.
+ *
+ * @param {string} path - Ruta relativa que incluye la barra inicial.
+ * @returns {string} URL con la base de API actual.
+ */
 export function getApiUrl(path) {
   return `${API_BASE_URL}${path}`;
 }
 
+/**
+ * Env?a una petici?n con cookies y traduce fallos HTTP y de red a errores consumibles.
+ * Devuelve null para 204, respuestas no JSON o JSON que no pueda decodificarse.
+ *
+ * @param {string} path - Ruta relativa a la base de API.
+ * @param {Object} [options={}] - Opciones fetch; admite headers y signal.
+ * @returns {Promise<Object|null>} Contenido JSON recibido o null.
+ * @throws {Error} Fallo HTTP con status/code/fields, fallo de red o cancelaci?n.
+ */
 export async function apiRequest(path, options = {}) {
   let response;
 
@@ -54,6 +69,15 @@ export async function apiRequest(path, options = {}) {
   return data;
 }
 
+/**
+ * Recorre cursores secuencialmente y conserva la primera aparici?n de cada id.
+ * Los elementos sin id reciben una clave seg?n la longitud acumulada.
+ *
+ * @param {Function} fetchPage - Carga una p?gina con cursor y limit.
+ * @param {string} collectionKey - Campo que contiene los elementos de cada p?gina.
+ * @param {number} [limit=100] - Tama?o solicitado por p?gina.
+ * @returns {Promise<Object>} Colecci?n acumulada y nextCursor null.
+ */
 export async function collectCursorPages(fetchPage, collectionKey, limit = 100) {
   const items = [];
   const ids = new Set();
@@ -77,6 +101,18 @@ export async function collectCursorPages(fetchPage, collectionKey, limit = 100) 
   return { [collectionKey]: items, nextCursor: null };
 }
 
+/**
+ * Sube el archivo sin envolverlo en JSON y env?a cookies de sesi?n.
+ * Limita el progreso a 99 hasta recibir una respuesta HTTP exitosa.
+ *
+ * @param {Object} params - Archivo y opciones de subida.
+ * @param {Object} params.file - Archivo con name, type y size.
+ * @param {Function} [params.onUploadProgress] - Recibe loaded, total y progress.
+ * @param {string} params.path - Ruta del endpoint de subida.
+ * @param {Object} [params.signal] - AbortSignal para cancelar la petici?n activa.
+ * @returns {Promise<Object|null>} Respuesta JSON decodificada o null.
+ * @throws {Error} La promesa rechaza ante error HTTP, red o cancelaci?n.
+ */
 export function uploadRawFile({ file, onUploadProgress, path, signal }) {
   const fileName = encodeURIComponent(file?.name || "archivo");
 
