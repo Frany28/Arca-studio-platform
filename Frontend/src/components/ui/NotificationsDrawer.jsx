@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import clsx from "clsx";
 
 import { orderCommentsByThread } from "../../utils/commentDisplay.js";
@@ -39,6 +39,7 @@ function NotificationsDrawer({
 }) {
   const [visibleReplyAction, setVisibleReplyAction] = useState(null);
   const [activeReplyComposer, setActiveReplyComposer] = useState(null);
+  const replySessionSequenceRef = useRef(0);
   const generalCommentInputId = useId();
   const canSubmitComments = typeof onSubmitComment === "function";
   const canSubmitEnvironmentComments =
@@ -115,27 +116,36 @@ function NotificationsDrawer({
   }
 
   /**
-   * Sustituye la acción visible por el compositor de la observación seleccionada.
-   * No enfoca el input ni desplaza el contenido al abrir la respuesta.
+   * Abre una sesión nueva de respuesta para la observación seleccionada.
+   * El identificador monotónico diferencia reaperturas del mismo comentario y evita
+   * que una solicitud antigua cierre un compositor creado después.
    * @param {string|number} commentId Identificador de la tarjeta activada.
    * @returns {void} Abre la respuesta y oculta su acción previa.
    */
   function handleReplyClick(commentId) {
+    replySessionSequenceRef.current += 1;
     setVisibleReplyAction(null);
-    setActiveReplyComposer(commentId);
+    setActiveReplyComposer({
+      commentId,
+      sessionId: replySessionSequenceRef.current,
+    });
   }
 
   /**
-   * Construye el payload conservando padre raíz, proyecto y referencias multimedia.
-   * Las respuestas eligen callback por scope; una raíz prioriza el del entorno.
-   * Captura rechazos porque el consumidor comunica el error mediante commentsError.
-   * Una respuesta cierra el compositor en finally, incluso si falla o cambió desde
-   * el envío; no introduce bloqueo pending ni protección frente a respuestas antiguas.
+   * Construye y envía el payload de una observación o respuesta.
+   * Los errores se propagan al compositor para conservar el borrador y permitir
+   * reintentos. Una respuesta solo cierra la misma sesión que originó el envío,
+   * por lo que una finalización antigua no puede afectar otra apertura posterior.
    * @param {string} message Texto ya recortado por el compositor.
    * @param {Object|string|number|null} [parentComment=null] Observación padre o ID.
-   * @returns {Promise<void>} Espera el callback externo y aplica el cierre original.
+   * @param {number|null} [replySessionId=null] Sesión concreta de respuesta.
+   * @returns {Promise<void>} Finaliza cuando el callback externo termina con éxito.
    */
-  async function handleCommentSubmit(message, parentComment = null) {
+  async function handleCommentSubmit(
+    message,
+    parentComment = null,
+    replySessionId = null,
+  ) {
     const parentCommentId =
       parentComment && typeof parentComment === "object"
         ? parentComment.parentCommentId || parentComment.id
@@ -154,25 +164,27 @@ function NotificationsDrawer({
           }
         : {};
 
-    try {
-      const submitComment = parentComment
-        ? parentComment.scope === "environment"
-          ? onSubmitEnvironmentComment
-          : onSubmitComment
-        : onSubmitEnvironmentComment || onSubmitComment;
+    const submitComment = parentComment
+      ? parentComment.scope === "environment"
+        ? onSubmitEnvironmentComment
+        : onSubmitComment
+      : onSubmitEnvironmentComment || onSubmitComment;
 
-      await submitComment?.({
+    await Promise.resolve(
+      submitComment?.({
         ...parentCommentPayload,
         message,
         parentCommentId,
         projectId,
-      });
-    } catch {
-      // El consumidor presenta el error mediante commentsError; se evita un rechazo sin manejar.
-    } finally {
-      if (parentCommentId) {
-        setActiveReplyComposer(null);
-      }
+      }),
+    );
+
+    if (replySessionId !== null) {
+      setActiveReplyComposer((currentComposer) =>
+        currentComposer?.sessionId === replySessionId
+          ? null
+          : currentComposer,
+      );
     }
   }
 
@@ -196,82 +208,86 @@ function NotificationsDrawer({
       <div className="flex min-h-0 flex-1 flex-col gap-[24px] overflow-y-auto pr-[2px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {!activityOnly ? (
           <section className="flex w-[280px] max-w-full flex-col gap-[16px] border-b border-[var(--color-neutral-200)] pb-[24px]">
-          {commentsLoading ? (
-            <Loader
-              preset="commentCard"
-              count={3}
-              label="Cargando observaciones"
-            />
-          ) : (
-            <div className="content-reveal flex flex-col gap-[16px]">
-              <MessageInput
-                id={generalCommentInputId}
-                multiline
-                disabled={
-                  !canSubmitEnvironmentComments && !canSubmitComments
-                }
-                placeholder="Escribe algo..."
-                onSubmit={(message) => handleCommentSubmit(message)}
+            {commentsLoading ? (
+              <Loader
+                preset="commentCard"
+                count={3}
+                label="Cargando observaciones"
               />
-
-              {commentsError ? (
-                <EmptyState
-                  title="No se pudieron cargar los comentarios"
-                  description={commentsError}
-                  size="S"
-                  showFeaturedIcon={false}
-                  showActions
-                  showSecondaryAction={false}
-                  primaryActionLabel="Reintentar"
-                  onPrimaryAction={onRefreshComments}
+            ) : (
+              <div className="content-reveal flex flex-col gap-[16px]">
+                <MessageInput
+                  id={generalCommentInputId}
+                  multiline
+                  disabled={
+                    !canSubmitEnvironmentComments && !canSubmitComments
+                  }
+                  placeholder="Escribe algo..."
+                  onSubmit={(message) => handleCommentSubmit(message)}
                 />
-              ) : orderedComments.length ? (
-                <div className="flex flex-col gap-[8px]">
-                  {orderedComments.map((item) => (
-                    <div key={item.id} className="flex flex-col gap-[8px]">
-                      <CommentCard
-                        {...item}
-                        showReplyAction={visibleReplyAction === item.id}
-                        onMoreClick={() => handleMoreClick(item.id)}
-                        onSelect={
-                          item.imageComment && onCommentSelect
-                            ? () => onCommentSelect(item)
-                            : undefined
-                        }
-                        onReplyClick={() => handleReplyClick(item.id)}
-                      />
 
-                      {activeReplyComposer === item.id ? (
-                        <ReplyComposer
-                          disabled={
-                            item.scope === "environment"
-                              ? !canSubmitEnvironmentComments
-                              : !canSubmitComments
+                {commentsError ? (
+                  <EmptyState
+                    title="No se pudieron cargar los comentarios"
+                    description={commentsError}
+                    size="S"
+                    showFeaturedIcon={false}
+                    showActions
+                    showSecondaryAction={false}
+                    primaryActionLabel="Reintentar"
+                    onPrimaryAction={onRefreshComments}
+                  />
+                ) : orderedComments.length ? (
+                  <div className="flex flex-col gap-[8px]">
+                    {orderedComments.map((item) => (
+                      <div key={item.id} className="flex flex-col gap-[8px]">
+                        <CommentCard
+                          {...item}
+                          showReplyAction={visibleReplyAction === item.id}
+                          onMoreClick={() => handleMoreClick(item.id)}
+                          onSelect={
+                            item.imageComment && onCommentSelect
+                              ? () => onCommentSelect(item)
+                              : undefined
                           }
-                          onSubmit={(message) =>
-                            handleCommentSubmit(message, item)
-                          }
+                          onReplyClick={() => handleReplyClick(item.id)}
                         />
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  title="No hay comentarios"
-                  description="Los comentarios y observaciones aparecerán aquí."
-                  size="S"
-                  showFeaturedIcon={false}
-                  showActions
-                  showSecondaryAction
-                  secondaryActionLabel="Añadir"
-                  primaryActionLabel="Actualizar"
-                  onSecondaryAction={focusCommentInput}
-                  onPrimaryAction={onRefreshComments}
-                />
-              )}
-            </div>
-          )}
+
+                        {activeReplyComposer?.commentId === item.id ? (
+                          <ReplyComposer
+                            disabled={
+                              item.scope === "environment"
+                                ? !canSubmitEnvironmentComments
+                                : !canSubmitComments
+                            }
+                            onSubmit={(message) =>
+                              handleCommentSubmit(
+                                message,
+                                item,
+                                activeReplyComposer.sessionId,
+                              )
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="No hay comentarios"
+                    description="Los comentarios y observaciones aparecerán aquí."
+                    size="S"
+                    showFeaturedIcon={false}
+                    showActions
+                    showSecondaryAction
+                    secondaryActionLabel="Añadir"
+                    primaryActionLabel="Actualizar"
+                    onSecondaryAction={focusCommentInput}
+                    onPrimaryAction={onRefreshComments}
+                  />
+                )}
+              </div>
+            )}
           </section>
         ) : null}
 
@@ -285,7 +301,12 @@ function NotificationsDrawer({
             Actividad Reciente
           </h3>
 
-          <div className={clsx("flex flex-col gap-[8px]", activityOnly && "min-h-0 flex-1")}>
+          <div
+            className={clsx(
+              "flex flex-col gap-[8px]",
+              activityOnly && "min-h-0 flex-1",
+            )}
+          >
             {recentActivityLoading ? (
               <Loader
                 preset="activityItem"
@@ -293,7 +314,12 @@ function NotificationsDrawer({
                 label="Cargando actividad reciente"
               />
             ) : recentActivityError ? (
-              <div className={clsx(activityOnly && "flex min-h-0 flex-1 items-center justify-center")}>
+              <div
+                className={clsx(
+                  activityOnly &&
+                    "flex min-h-0 flex-1 items-center justify-center",
+                )}
+              >
                 <EmptyState
                   title="No se pudieron cargar los eventos"
                   description={recentActivityError}
@@ -318,7 +344,12 @@ function NotificationsDrawer({
                 ))}
               </div>
             ) : (
-              <div className={clsx(activityOnly && "flex min-h-0 flex-1 items-center justify-center")}>
+              <div
+                className={clsx(
+                  activityOnly &&
+                    "flex min-h-0 flex-1 items-center justify-center",
+                )}
+              >
                 <EmptyState
                   title="No hay eventos recientes"
                   description="Los eventos y cambios del proyecto aparecerán aquí."
