@@ -20,15 +20,13 @@ import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { useRecentProjectComments } from "../hooks/useProjectComments.js";
 import { getProjectNamesById } from "../utils/commentDisplay.js";
-import {
-  getProjectRequestFieldErrors,
-  getProjectRequestFileErrors,
-} from "../utils/projectRequestValidation.js";
+import { getProjectRequestFileErrors } from "../utils/projectRequestValidation.js";
 import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
 import { getProjectPath } from "../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../utils/commentSelection.js";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
+import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
 import useProjectRequestSubmission from "./project-request/hooks/useProjectRequestSubmission.js";
 import {
   CheckboxField,
@@ -45,30 +43,6 @@ import {
   getDashboardPath,
 } from "../utils/sideNavigationItems.js";
 
-const INITIAL_FORM = {
-  projectName: "",
-  projectType: "",
-  location: "",
-  locationFormattedAddress: "",
-  locationLatitude: null,
-  locationLongitude: null,
-  locationProviderPlaceId: null,
-  description: "",
-  projectSize: "",
-  developmentMode: "",
-  landStatus: "",
-  legalDocumentationStatus: "",
-  legalDocumentTypes: [],
-  multipleOwners: "",
-  investmentRange: "",
-  capitalAvailability: "",
-  startTime: "",
-  decisionMaker: "",
-  quality: "",
-  experience: "",
-  hasBlueprints: "Indeterminate",
-  referenceLink: "",
-};
 
 export default function ProjectRequestPage() {
   const navigate = useNavigate();
@@ -77,50 +51,29 @@ export default function ProjectRequestPage() {
   const currentUser = getUserDisplay(user);
   const viewRequest = location.state?.viewRequest || null;
   const initialRequest = location.state?.initialRequest || viewRequest;
-  const [form, setForm] = useState(() => ({
-    ...INITIAL_FORM,
-    projectName: initialRequest?.projectName || "",
-    projectType: initialRequest?.projectType || INITIAL_FORM.projectType,
-    location: initialRequest?.location || "",
-    locationFormattedAddress: initialRequest?.formattedAddress || "",
-    locationLatitude: initialRequest?.locationCoordinates?.latitude ?? null,
-    locationLongitude: initialRequest?.locationCoordinates?.longitude ?? null,
-    locationProviderPlaceId: initialRequest?.providerPlaceId || null,
-    description: initialRequest?.description || "",
-    projectSize: initialRequest?.projectSize || "",
-    developmentMode: initialRequest?.developmentMode || "",
-    landStatus: initialRequest?.landStatus || "",
-    legalDocumentationStatus: initialRequest?.legalDocumentationStatus || "",
-    legalDocumentTypes: initialRequest?.legalDocumentTypes || [],
-    multipleOwners:
-      initialRequest?.hasMultipleOwners === true
-        ? "yes"
-        : initialRequest?.hasMultipleOwners === false
-          ? "no"
-          : "",
-    investmentRange: initialRequest?.investmentRange || "",
-    capitalAvailability: initialRequest?.capitalAvailability || "",
-    startTime: initialRequest?.startTime || "",
-    decisionMaker: initialRequest?.decisionMaker || "",
-    quality: initialRequest?.quality || "",
-    experience: initialRequest?.experience || "",
-    hasBlueprints:
-      initialRequest?.hasPlans === true
-        ? "Yes"
-        : initialRequest?.hasPlans === false
-          ? "No"
-          : "Indeterminate",
-    referenceLink: initialRequest?.referenceLink || "",
-  }));
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
   const [pendingRequestAction, setPendingRequestAction] = useState(null);
   const [isRequestActionModalOpen, setIsRequestActionModalOpen] = useState(false);
-  const [isLocationInputFocused, setIsLocationInputFocused] = useState(false);
+  const {
+    applyLocationSuggestion,
+    currentFieldErrors,
+    fieldErrors,
+    form,
+    hasAttemptedSubmit,
+    isLocationInputFocused,
+    resetFormState,
+    setIsLocationInputFocused,
+    update,
+    updateLegalDocumentationStatus,
+    updateLocation,
+    validateForSubmit,
+  } = useProjectRequestForm({
+    initialRequest,
+    setShowRequiredAlert,
+  });
   const formRef = useRef(null);
   const {
     clear: clearLocationSuggestions,
@@ -133,10 +86,6 @@ export default function ProjectRequestPage() {
     selected:
       form.locationLatitude !== null && form.locationLatitude !== undefined,
   });
-  const currentFieldErrors = useMemo(
-    () => getProjectRequestFieldErrors(form),
-    [form],
-  );
   const {
     closeValidation,
     draftId,
@@ -222,73 +171,9 @@ export default function ProjectRequestPage() {
     }
   }, [isNotificationsDrawerOpen, refreshRecentComments]);
 
-  const update = (field) => (eventOrValue) => {
-    const value = eventOrValue?.target ? eventOrValue.target.value : eventOrValue;
-    const nextForm = { ...form, [field]: value };
-
-    setForm(nextForm);
-
-    if (hasAttemptedSubmit) {
-      const nextErrors = getProjectRequestFieldErrors(nextForm);
-      setFieldErrors(nextErrors);
-      if (Object.keys(nextErrors).length === 0 && fileErrors.length === 0) setShowRequiredAlert(false);
-    }
-  };
-  const updateLegalDocumentationStatus = (status) => {
-    const nextForm = {
-      ...form,
-      legalDocumentationStatus: status,
-      legalDocumentTypes: status === "available" ? form.legalDocumentTypes : [],
-    };
-    setForm(nextForm);
-    if (hasAttemptedSubmit) {
-      const nextErrors = getProjectRequestFieldErrors(nextForm);
-      setFieldErrors(nextErrors);
-      if (Object.keys(nextErrors).length === 0 && fileErrors.length === 0) {
-        setShowRequiredAlert(false);
-      }
-    }
-  };
-  const updateLocation = (event) => {
-    const value = event.target.value;
-    const nextForm = {
-      ...form,
-      location: value,
-      locationFormattedAddress: "",
-      locationLatitude: null,
-      locationLongitude: null,
-      locationProviderPlaceId: null,
-    };
-
-    setIsLocationInputFocused(true);
-    setForm(nextForm);
-
-    if (
-      hasAttemptedSubmit &&
-      Object.keys(getProjectRequestFieldErrors(nextForm)).length === 0 &&
-      fileErrors.length === 0
-    ) {
-      setShowRequiredAlert(false);
-    }
-    if (hasAttemptedSubmit) setFieldErrors(getProjectRequestFieldErrors(nextForm));
-  };
   const selectLocationSuggestion = (suggestion) => {
-    const nextForm = {
-      ...form,
-      location: suggestion.formattedAddress,
-      locationFormattedAddress: suggestion.formattedAddress,
-      locationLatitude: suggestion.latitude,
-      locationLongitude: suggestion.longitude,
-      locationProviderPlaceId: suggestion.placeId,
-    };
-    setForm(nextForm);
-    if (hasAttemptedSubmit) {
-      const nextErrors = getProjectRequestFieldErrors(nextForm);
-      setFieldErrors(nextErrors);
-      if (Object.keys(nextErrors).length === 0 && fileErrors.length === 0) setShowRequiredAlert(false);
-    }
+    applyLocationSuggestion(suggestion, fileErrors);
     clearLocationSuggestions();
-    setIsLocationInputFocused(false);
   };
   const performSideNavigation = (item) => {
     if (item?.to) {
@@ -362,13 +247,9 @@ export default function ProjectRequestPage() {
     );
   };
   const resetForm = () => {
-    setForm(INITIAL_FORM);
+    resetFormState();
     clearLocationSuggestions();
-    setIsLocationInputFocused(false);
     resetFiles();
-    setFieldErrors({});
-    setHasAttemptedSubmit(false);
-    setShowRequiredAlert(false);
     resetSubmission();
   };
   const requestFormReset = () => {
@@ -377,15 +258,10 @@ export default function ProjectRequestPage() {
     setIsRequestActionModalOpen(true);
   };
   const handleFrontendSubmit = () => {
-    setHasAttemptedSubmit(true);
-    const nextFieldErrors = getProjectRequestFieldErrors(form);
     const nextFileErrors = getProjectRequestFileErrors(files);
-    setFieldErrors(nextFieldErrors);
     setFileErrors(nextFileErrors);
 
-    if (Object.keys(nextFieldErrors).length > 0 || nextFileErrors.length > 0) {
-      setShowRequiredAlert(true);
-
+    if (validateForSubmit(nextFileErrors)) {
       window.requestAnimationFrame(() => {
         const invalidField = formRef.current?.querySelector('[aria-invalid="true"]');
         const focusTarget = invalidField?.matches("input, textarea, button")
@@ -399,7 +275,6 @@ export default function ProjectRequestPage() {
       return;
     }
 
-    setShowRequiredAlert(false);
     openValidation();
   };
   const handleValidationSubmit = (code) => {
@@ -463,8 +338,8 @@ export default function ProjectRequestPage() {
 
             <form ref={formRef} noValidate className="flex w-full flex-col items-center gap-[48px]" onSubmit={(event) => { event.preventDefault(); handleFrontendSubmit(); }}>
               <FormSection title="Detalles del proyecto" description="Cuéntanos qué deseas desarrollar. Esta información nos ayudará a comprender el alcance, los objetivos y las características generales de tu proyecto antes de la primera reunión.">
-                <TextField error={hasAttemptedSubmit ? fieldErrors.projectName : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectName)} label="Nombre del proyecto" icon={Edit2} placeholder='Ej. “Apto. Noventa y Uno”' value={form.projectName} onChange={update("projectName")} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectType : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectType)} label="Tipo de proyecto" value={form.projectType} onChange={update("projectType")} options={PROJECT_REQUEST_OPTIONS.projectType} />
+                <TextField error={hasAttemptedSubmit ? fieldErrors.projectName : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectName)} label="Nombre del proyecto" icon={Edit2} placeholder='Ej. “Apto. Noventa y Uno”' value={form.projectName} onChange={update("projectName", fileErrors)} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectType : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectType)} label="Tipo de proyecto" value={form.projectType} onChange={update("projectType", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectType} />
                 <TextField
                   error={hasAttemptedSubmit ? fieldErrors.location : ""}
                   invalid={hasAttemptedSubmit && Boolean(fieldErrors.location)}
@@ -476,7 +351,7 @@ export default function ProjectRequestPage() {
                   onBlur={() => {
                     window.setTimeout(() => setIsLocationInputFocused(false), 120);
                   }}
-                  onChange={updateLocation}
+                  onChange={(event) => updateLocation(event, fileErrors)}
                   role="combobox"
                   aria-autocomplete="list"
                   aria-expanded={
@@ -515,40 +390,40 @@ export default function ProjectRequestPage() {
                     />
                   ) : null}
                 </TextField>
-                <TextField error={hasAttemptedSubmit ? fieldErrors.description : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.description)} label="Descripción del proyecto" multiline minLength={30} maxLength={100} placeholder="Describe brevemente qué quieres lograr, dónde está el inmueble y cualquier detalle relevante." value={form.description} onChange={update("description")} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectSize : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectSize)} label="Tamaño aproximado del proyecto" optional value={form.projectSize} onChange={update("projectSize")} options={PROJECT_REQUEST_OPTIONS.projectSize} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.developmentMode : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.developmentMode)} label="¿Cómo prefiere desarrollar el proyecto?" info value={form.developmentMode} onChange={update("developmentMode")} options={PROJECT_REQUEST_OPTIONS.developmentMode} />
-                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.landStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.landStatus)} label="¿Tiene terreno o inmueble disponible?" optional value={form.landStatus} onChange={update("landStatus")} options={PROJECT_REQUEST_OPTIONS.landStatus} />
+                <TextField error={hasAttemptedSubmit ? fieldErrors.description : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.description)} label="Descripción del proyecto" multiline minLength={30} maxLength={100} placeholder="Describe brevemente qué quieres lograr, dónde está el inmueble y cualquier detalle relevante." value={form.description} onChange={update("description", fileErrors)} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectSize : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectSize)} label="Tamaño aproximado del proyecto" optional value={form.projectSize} onChange={update("projectSize", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectSize} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.developmentMode : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.developmentMode)} label="¿Cómo prefiere desarrollar el proyecto?" info value={form.developmentMode} onChange={update("developmentMode", fileErrors)} options={PROJECT_REQUEST_OPTIONS.developmentMode} />
+                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.landStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.landStatus)} label="¿Tiene terreno o inmueble disponible?" optional value={form.landStatus} onChange={update("landStatus", fileErrors)} options={PROJECT_REQUEST_OPTIONS.landStatus} />
               </FormSection>
 
               <FormDivider />
 
               <FormSection title="Documentación legal del inmueble" description="Por favor, proporciona detalles sobre el estado legal de la propiedad que deseas intervenir. Esta información es crucial para evaluar la viabilidad del proyecto y asegurarnos de que se cumplan todos los requisitos legales antes de proceder.">
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.legalDocumentationStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.legalDocumentationStatus)} label="¿Cuenta con documentación que acredite la situación legal del inmueble?" value={form.legalDocumentationStatus} onChange={updateLegalDocumentationStatus} options={PROJECT_REQUEST_OPTIONS.legalDocumentationStatus} />
-                <LegalDocumentTypesField error={hasAttemptedSubmit ? fieldErrors.legalDocumentTypes : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.legalDocumentTypes)} value={form.legalDocumentTypes} onChange={update("legalDocumentTypes")} disabled={form.legalDocumentationStatus !== "available"} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.legalDocumentationStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.legalDocumentationStatus)} label="¿Cuenta con documentación que acredite la situación legal del inmueble?" value={form.legalDocumentationStatus} onChange={(status) => updateLegalDocumentationStatus(status, fileErrors)} options={PROJECT_REQUEST_OPTIONS.legalDocumentationStatus} />
+                <LegalDocumentTypesField error={hasAttemptedSubmit ? fieldErrors.legalDocumentTypes : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.legalDocumentTypes)} value={form.legalDocumentTypes} onChange={update("legalDocumentTypes", fileErrors)} disabled={form.legalDocumentationStatus !== "available"} />
                 <div className="flex w-full flex-col gap-[8px]">
-                  <SelectField error={hasAttemptedSubmit ? fieldErrors.multipleOwners : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.multipleOwners)} label="¿El inmueble tiene más de un propietario?" value={form.multipleOwners} onChange={update("multipleOwners")} options={PROJECT_REQUEST_OPTIONS.multipleOwners} />
+                  <SelectField error={hasAttemptedSubmit ? fieldErrors.multipleOwners : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.multipleOwners)} label="¿El inmueble tiene más de un propietario?" value={form.multipleOwners} onChange={update("multipleOwners", fileErrors)} options={PROJECT_REQUEST_OPTIONS.multipleOwners} />
                   <HintText state="Default" hintText="La documentación podrá ser presentada posteriormente durante la reunión inicial." className="w-full" />
                 </div>
                 <div className="border-t border-[var(--color-neutral-200)] pt-[12px]">
-                  <CheckboxField label="¿Dispone de planos del lugar?" value={form.hasBlueprints} onChange={(value) => setForm((current) => ({ ...current, hasBlueprints: value }))} />
+                  <CheckboxField label="¿Dispone de planos del lugar?" value={form.hasBlueprints} onChange={update("hasBlueprints", fileErrors)} />
                 </div>
               </FormSection>
 
               <FormDivider />
 
               <FormSection fieldsVariant="responsive-grid" title="Viabilidad financiera" description="Conocer tu presupuesto y la disponibilidad de capital nos permite proponerte soluciones acordes.">
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.investmentRange : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.investmentRange)} label="Rango de inversión estimado" value={form.investmentRange} onChange={update("investmentRange")} options={PROJECT_REQUEST_OPTIONS.investmentRange} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.capitalAvailability : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.capitalAvailability)} label="Disponibilidad de capital" value={form.capitalAvailability} onChange={update("capitalAvailability")} options={PROJECT_REQUEST_OPTIONS.capitalAvailability} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.investmentRange : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.investmentRange)} label="Rango de inversión estimado" value={form.investmentRange} onChange={update("investmentRange", fileErrors)} options={PROJECT_REQUEST_OPTIONS.investmentRange} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.capitalAvailability : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.capitalAvailability)} label="Disponibilidad de capital" value={form.capitalAvailability} onChange={update("capitalAvailability", fileErrors)} options={PROJECT_REQUEST_OPTIONS.capitalAvailability} />
               </FormSection>
 
               <FormDivider />
 
               <FormSection title="Compatibilidad" description="Estas preguntas nos ayudan a conocer tus expectativas, tiempos y experiencia previa para ofrecerte un proceso de trabajo más personalizado y eficiente.">
-                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.startTime : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.startTime)} label="¿Cuándo espera iniciar el proyecto?" orientation="vertical" value={form.startTime} onChange={update("startTime")} options={PROJECT_REQUEST_OPTIONS.startTime} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.decisionMaker : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.decisionMaker)} label="¿Quién toma la decisión final del proyecto?" optional value={form.decisionMaker} onChange={update("decisionMaker")} options={PROJECT_REQUEST_OPTIONS.decisionMaker} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.quality : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.quality)} label="Expectativa de estilo / nivel de calidad" optional info value={form.quality} onChange={update("quality")} options={PROJECT_REQUEST_OPTIONS.quality} />
-                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.experience : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.experience)} label="¿Ha trabajado con un arquitecto o diseñador antes?" optional value={form.experience} onChange={update("experience")} options={PROJECT_REQUEST_OPTIONS.experience} />
+                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.startTime : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.startTime)} label="¿Cuándo espera iniciar el proyecto?" orientation="vertical" value={form.startTime} onChange={update("startTime", fileErrors)} options={PROJECT_REQUEST_OPTIONS.startTime} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.decisionMaker : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.decisionMaker)} label="¿Quién toma la decisión final del proyecto?" optional value={form.decisionMaker} onChange={update("decisionMaker", fileErrors)} options={PROJECT_REQUEST_OPTIONS.decisionMaker} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.quality : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.quality)} label="Expectativa de estilo / nivel de calidad" optional info value={form.quality} onChange={update("quality", fileErrors)} options={PROJECT_REQUEST_OPTIONS.quality} />
+                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.experience : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.experience)} label="¿Ha trabajado con un arquitecto o diseñador antes?" optional value={form.experience} onChange={update("experience", fileErrors)} options={PROJECT_REQUEST_OPTIONS.experience} />
               </FormSection>
 
               <FormDivider />
@@ -575,7 +450,7 @@ export default function ProjectRequestPage() {
                   ) : null}
                   {fileErrors.map((error) => <HintText key={error} state="Error" hintText={error} className="w-full" role="alert" />)}
                 </div>
-                <TextField error={hasAttemptedSubmit ? fieldErrors.referenceLink : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.referenceLink)} label="Links de referencia (Pinterest, web, etc.) (opcional)" optional icon={Link21} placeholder='Ej. “https://es.pinterest.com/pin”' value={form.referenceLink} onChange={update("referenceLink")} />
+                <TextField error={hasAttemptedSubmit ? fieldErrors.referenceLink : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.referenceLink)} label="Links de referencia (Pinterest, web, etc.) (opcional)" optional icon={Link21} placeholder='Ej. “https://es.pinterest.com/pin”' value={form.referenceLink} onChange={update("referenceLink", fileErrors)} />
               </FormSection>
 
               <FormDivider />
