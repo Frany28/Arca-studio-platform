@@ -3,6 +3,18 @@ import { useRef, useState } from "react";
 import { api } from "../../../api/http.js";
 import { buildProjectRequestPayload } from "../../../utils/projectRequestValidation.js";
 
+/**
+ * Coordina borrador, uploads secuenciales y env?o final mediante la API de solicitudes.
+ * Inicializa la vista recibida desde viewRequest y reutiliza el id inicial solo
+ * para solicitudes changes_requested; conserva borrador y submissionId al reintentar.
+ *
+ * @param {Object} params - Datos del flujo y callback posterior.
+ * @param {Object} params.form - Campos usados para construir el payload.
+ * @param {Object|null} params.initialRequest - Solicitud inicial para recuperar un borrador corregible.
+ * @param {Function} [params.onSubmitted] - Callback invocado tras el env?o exitoso; no se espera su resultado.
+ * @param {Object|null} params.viewRequest - Solicitud para inicializar la vista recibida.
+ * @returns {Object} Borrador, c?digo, modal, solicitud recibida, carga/error y acciones de env?o, vista y reset.
+ */
 export default function useProjectRequestSubmission({
   form,
   initialRequest,
@@ -36,6 +48,12 @@ export default function useProjectRequestSubmission({
     setIsRequestReceived(false);
   };
 
+  /**
+   * Limpia modal, c?digo, vista recibida, borrador, error y submissionId local.
+   * No elimina el borrador remoto ni reinicia los estados de formulario o archivos.
+   *
+   * @returns {void} Restablece el estado local indicado sin cambiar isSubmitting.
+   */
   const resetSubmission = () => {
     setIsValidationModalOpen(false);
     setValidationCode("");
@@ -46,6 +64,17 @@ export default function useProjectRequestSubmission({
     submissionIdRef.current = null;
   };
 
+  /**
+   * Comprueba localmente seis d?gitos y evita iniciar otro env?o mientras isSubmitting sea true.
+   * Crea o actualiza el borrador, omite archivos uploaded y env?a tras completar los uploads.
+   * El c?digo no se transmite a la API; los errores quedan en submitError y el item afectado.
+   *
+   * @param {string|number} code - Valor convertido a texto y validado por formato.
+   * @param {Object} options - Archivos y actualizaci?n de su presentaci?n.
+   * @param {Array} options.files - Items con id, file y status.
+   * @param {Function} options.updateFileItem - Actualiza error, progreso y estado del item por id.
+   * @returns {Promise<void>} Actualiza la vista recibida y llama onSubmitted tras ?xito; captura errores.
+   */
   const submitValidation = async (code, { files, updateFileItem }) => {
     if (isSubmitting || !/^\d{6}$/.test(String(code ?? "").trim())) {
       return;

@@ -3,6 +3,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../../api/http.js";
 import { getProjectPath } from "../../../utils/projectRoutes.js";
 
+/**
+ * Inicializa el detalle con el proyecto proporcionado o carga proyecto y archivos desde la API.
+ * Sin proyecto proporcionado usa el id num?rico positivo de ruta o env?a su slug;
+ * una carga por ruta num?rica reemplaza la URL por la ruta del proyecto conservando la query.
+ *
+ * @param {Object} params - Proyecto opcional y contexto de la ruta.
+ * @param {Function} params.navigate - Navegaci?n del router, usada para reemplazar la ruta num?rica.
+ * @param {Object|null} params.providedProject - Proyecto inicial; su presencia evita la carga del efecto.
+ * @param {string|undefined} params.routeProjectSlug - Id o slug recibido desde la ruta.
+ * @param {URLSearchParams} params.searchParams - Query que se conserva al reemplazar la ruta.
+ * @returns {Object} Proyecto, id resuelto, carga, error como texto, fecha de sincronizaci?n, setter y refreshProjectFiles.
+ */
 export default function useProjectDetailsData({
   navigate,
   providedProject,
@@ -118,6 +130,12 @@ export default function useProjectDetailsData({
     searchParams,
   ]);
 
+  /**
+   * Recarga el proyecto completo con sus archivos usando el id resuelto y fecha la sincronizaci?n.
+   * Si falla conserva la vista sin publicar error; esta acci?n no usa la protecci?n isMounted del efecto.
+   *
+   * @returns {Promise<void>} Actualiza proyecto y fecha si la petici?n tiene ?xito; sin id no consulta.
+   */
   const refreshProjectFiles = useCallback(async () => {
     if (!resolvedProjectId) {
       return;

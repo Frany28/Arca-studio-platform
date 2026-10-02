@@ -2,6 +2,19 @@ import { useState } from "react";
 
 import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
 
+/**
+ * Coordina sidebar desktop/m?vil y difiere navegaci?n, logout o reset hasta confirmarlos.
+ * Cancelar cierra el modal sin ejecutar la acci?n; el reset del flujo se delega a onReset.
+ *
+ * @param {Object} params - Dependencias del flujo de navegaci?n.
+ * @param {Function} params.logout - Cierra sesi?n; no se espera su resultado antes de navegar.
+ * @param {Function} params.navigate - Navegaci?n del router.
+ * @param {Function} params.onReset - Reinicia el flujo al confirmar clear.
+ * @param {string} params.roleCode - Rol usado para resolver el dashboard.
+ * @param {Function} params.setShowRequiredAlert - Controla el aviso de validaci?n.
+ * @param {Function} params.setNotificationsOpen - Controla la apertura del drawer externo.
+ * @returns {Object} Apertura/expansi?n, modal, acci?n pendiente y handlers para solicitar, cancelar o confirmar acciones.
+ */
 export default function useProjectRequestNavigation({
   logout,
   navigate,
@@ -55,6 +68,12 @@ export default function useProjectRequestNavigation({
     setIsRequestActionModalOpen(false);
   };
 
+  /**
+   * Cierra el modal y ejecuta la acci?n pendiente: reset, logout o navegaci?n.
+   * El logout solicita cierre de sesi?n y navega de inmediato, sin esperar su promesa.
+   *
+   * @returns {void} Ejecuta los callbacks correspondientes a la acci?n guardada.
+   */
   const confirmRequestAction = () => {
     const action = pendingRequestAction;
     setIsRequestActionModalOpen(false);
