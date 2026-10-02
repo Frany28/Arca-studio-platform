@@ -29,6 +29,14 @@ export const PROJECT_STATUS_GROUPS = [
   },
 ];
 
+/**
+ * Agrupa proyectos por los estados del catálogo conservando su orden de presentación.
+ * Los estados no reconocidos van a Otros con estilo del primer grupo; omite grupos vacíos
+ * y conserva el orden original de los proyectos dentro de cada grupo.
+ *
+ * @param {Array} projects - Proyectos con status.
+ * @returns {Array} Grupos visuales con projects y propiedades de badge.
+ */
 export function groupProjectsByStatus(projects) {
   const fallbackGroup = PROJECT_STATUS_GROUPS[0];
 

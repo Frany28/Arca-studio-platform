@@ -37,6 +37,14 @@ function isHttpUrl(value) {
   }
 }
 
+/**
+ * Aplica una comprobación textual de ubicación, sin geocodificar.
+ * Normaliza acentos y exige letras, longitud mínima y alguna palabra de cinco
+ * caracteres; rechaza secuencias largas de un solo carácter.
+ *
+ * @param {string|null} value - Ubicación introducida.
+ * @returns {boolean} Si el texto supera la comprobación local.
+ */
 function isValidLocation(value) {
   const normalized = String(value || "")
     .trim()
@@ -48,6 +56,15 @@ function isValidLocation(value) {
   return (normalized.match(/[a-z0-9]+/g) || []).some((word) => word.length >= 5);
 }
 
+/**
+ * Valida campos de la solicitud y devuelve mensajes indexados por campo.
+ * Comprueba longitudes, opciones del catálogo, enlace HTTP(S), documentos legales
+ * sin duplicados y su relación con disponibilidad. Exige coordenadas presentes
+ * en pareja y compara sus rangos numéricos; no verifica explícitamente su finitud.
+ *
+ * @param {Object} [values={}] - Valores actuales del formulario.
+ * @returns {Object} Errores por campo; objeto vacío si no se detectan problemas.
+ */
 export function getProjectRequestFieldErrors(values = {}) {
   const errors = {};
   const projectName = String(values.projectName || "").trim();
@@ -110,6 +127,13 @@ export function getProjectRequestFieldErrors(values = {}) {
   return errors;
 }
 
+/**
+ * Restringe la validación completa a los campos del catálogo de requeridos.
+ * No añade nuevas reglas; omite errores de campos opcionales en esta vista.
+ *
+ * @param {Object} [values={}] - Valores del formulario.
+ * @returns {Object} Errores de campos requeridos.
+ */
 export function getProjectRequestRequiredFieldErrors(values = {}) {
   const errors = getProjectRequestFieldErrors(values);
   return Object.fromEntries(
@@ -117,6 +141,15 @@ export function getProjectRequestRequiredFieldErrors(values = {}) {
   );
 }
 
+/**
+ * Valida adjuntos locales como archivos directos o elementos con propiedad file.
+ * Admite JPEG/JPG, PNG, MP4 y PDF con MIME coincidente; comprueba nombres de hasta
+ * 150 caracteres, duplicados sin distinguir mayúsculas, máximo diez archivos,
+ * 50 MiB por archivo y 200 MiB totales. Devuelve mensajes únicos, no lanza por validación.
+ *
+ * @param {Array} [files=[]] - Archivos o wrappers del formulario.
+ * @returns {Array} Mensajes de error sin duplicados.
+ */
 export function getProjectRequestFileErrors(files = []) {
   const errors = [];
   if (files.length > PROJECT_REQUEST_FILE_LIMITS.maxCount) errors.push("Puedes adjuntar un máximo de 10 archivos.");
@@ -144,6 +177,15 @@ function nullableText(value) {
   return normalized || null;
 }
 
+/**
+ * Transforma el formulario al payload de solicitud sin validarlo ni incluir adjuntos.
+ * Recorta textos, convierte opciones vacías a null, traduce hasBlueprints Yes/No
+ * a boolean o null y multipleOwners yes a boolean. Añade submissionId solo si es truthy.
+ *
+ * @param {Object} form - Campos de formulario y metadatos de ubicación.
+ * @param {string} [submissionId] - Referencia opcional del envío.
+ * @returns {Object} Payload con nombres de campos esperados por la API.
+ */
 export function buildProjectRequestPayload(form, submissionId) {
   return {
     capitalAvailability: form.capitalAvailability,

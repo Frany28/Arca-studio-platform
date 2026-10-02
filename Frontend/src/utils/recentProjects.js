@@ -1,6 +1,13 @@
 export const RECENT_PROJECTS_LIMIT = 3;
 export const RECENT_PROJECTS_FETCH_LIMIT = 25;
 
+/**
+ * Selecciona el ámbito de lectura de proyectos recientes según rol.
+ * Clientes usan owned; cualquier otro código usa accessible.
+ *
+ * @param {string|null} roleCode - Código de rol sin normalización.
+ * @returns {string} Ámbito para la consulta.
+ */
 export function getRecentProjectsScope(roleCode) {
   return roleCode === "client" ? "owned" : "accessible";
 }
@@ -13,6 +20,14 @@ function getProjectTimestamp(project) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+/**
+ * Selecciona hasta tres proyectos recientes excluyendo archived o isArchived.
+ * Deduplica IDs como texto, conservando la última aparición; ordena por updatedAt
+ * o createdAt descendente, con fecha inválida cero y desempate por ID descendente.
+ *
+ * @param {Array} [projects=[]] - Proyectos candidatos; entradas no array producen [].
+ * @returns {Array} Proyectos recientes seleccionados.
+ */
 export function selectRecentProjects(projects = []) {
   const projectsById = new Map();
 
@@ -38,6 +53,14 @@ export function selectRecentProjects(projects = []) {
     .slice(0, RECENT_PROJECTS_LIMIT);
 }
 
+/**
+ * Reduce los proyectos recientes a datos de navegación aptos para caché.
+ * Aplica selección previa y normaliza nombre y referencias opcionales, sin incluir
+ * archivos, comentarios ni otros detalles completos del proyecto.
+ *
+ * @param {Array} [projects=[]] - Proyectos candidatos.
+ * @returns {Array} Entradas con ID, publicación, nombre, slug, estado y updatedAt.
+ */
 export function toRecentProjectCacheEntries(projects = []) {
   return selectRecentProjects(projects).map((project) => ({
     id: project.id,

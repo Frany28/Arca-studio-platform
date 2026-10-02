@@ -2,6 +2,14 @@ import { api } from "../../../api/http.js";
 import { decorateCommentForDisplay } from "../../../utils/commentDisplay.js";
 import { getProjectTypeDisplay } from "../../../utils/projectTypeDisplay.js";
 
+/**
+ * Deriva cuatro etapas visuales usando umbrales de progreso 25, 50, 75 y 100.
+ * Marca completadas las alcanzadas, activa la primera restante y deja las demás
+ * pendientes; no consulta etapas reales ni limita el progreso recibido.
+ *
+ * @param {number} progressValue - Progreso numérico del proyecto.
+ * @returns {Array} Etapas con estado y tono visual.
+ */
 function createProjectStages(progressValue) {
   const stages = [
     { id: "survey", threshold: 25, title: "Levantamiento" },
@@ -26,6 +34,13 @@ function createProjectStages(progressValue) {
   });
 }
 
+/**
+ * Presenta tamaños de archivo en KB redondeados o MB con un decimal.
+ * Bajo un MiB muestra al menos un KB; valores no convertibles a número finito usan vacío.
+ *
+ * @param {number|string|null} size - Bytes del archivo.
+ * @returns {string} Tamaño visible.
+ */
 function formatFileSize(size) {
   if (!Number.isFinite(Number(size))) {
     return "";
@@ -40,6 +55,14 @@ function formatFileSize(size) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Actualiza por ID estricto o añade una observación, sin mutar la colección.
+ * Entradas sin ID se ignoran; no equipara IDs numéricos y textuales.
+ *
+ * @param {Array} comments - Observaciones actuales.
+ * @param {Object|null} comment - Observación entrante.
+ * @returns {Array} Lista resultante.
+ */
 function upsertCommentById(comments, comment) {
   if (!comment?.id) {
     return comments;
@@ -52,6 +75,14 @@ function upsertCommentById(comments, comment) {
     : [...comments, comment];
 }
 
+/**
+ * Une observaciones por ID convertido a texto, priorizando la lectura nueva.
+ * Conserva filas anteriores ausentes en la lectura y ordena por createdAt ascendente.
+ *
+ * @param {Array} currentComments - Observaciones existentes.
+ * @param {Array} nextComments - Observaciones nuevas.
+ * @returns {Array} Unión ordenada sin IDs repetidos.
+ */
 function mergeCommentsById(currentComments, nextComments) {
   const commentsById = new Map();
 
@@ -74,6 +105,13 @@ function mergeCommentsById(currentComments, nextComments) {
   );
 }
 
+/**
+ * Deduplica notificaciones por ID textual conservando la última observación de cada ID.
+ * Ignora entradas sin ID y mantiene el orden de primera inserción, sin ordenar por fecha.
+ *
+ * @param {Array} comments - Observaciones candidatas.
+ * @returns {Array} Observaciones únicas para notificaciones.
+ */
 function mergeNotificationComments(comments) {
   const commentsById = new Map();
 
@@ -104,6 +142,14 @@ function isPanoramaFile(file) {
   return file?.fileCategory === "panorama";
 }
 
+/**
+ * Formatea una fecha de archivo en es-ES con día, mes abreviado y año.
+ * Usa la zona local y devuelve vacío si no hay valor; no captura fechas inválidas.
+ *
+ * @param {string|number|null} value - Fecha recibida para el archivo.
+ * @returns {string} Fecha visible o vacío.
+ * @throws {RangeError} Si un valor presente produce una fecha inválida.
+ */
 function formatFileDate(value) {
   if (!value) {
     return "";
@@ -116,6 +162,16 @@ function formatFileDate(value) {
   }).format(new Date(value));
 }
 
+/**
+ * Adapta un archivo para galerías y construye su URL con la versión actual.
+ * Prioriza título sobre nombre y autor de carga sobre responsable, cliente o ARCA Studio;
+ * solo asigna image o video según MIME/extensión. Sin IDs la URL queda en null.
+ *
+ * @param {Object} file - Archivo recibido de la API.
+ * @param {Object} options - Contexto de presentación.
+ * @param {Object} options.project - Proyecto con ID y datos de autores alternativos.
+ * @returns {Object} Recurso de galería con referencias, fecha, tamaño y autor.
+ */
 function toMediaFileItem(file, { project }) {
   const title = file.title || file.name || "Archivo";
   const uploadedAt = formatFileDate(file.createdAt);
@@ -151,6 +207,15 @@ function toMediaFileItem(file, { project }) {
   };
 }
 
+/**
+ * Extiende el proyecto con categoría, progreso, etapas, galerías y documentos.
+ * Galerías exigen available; renders excluyen panoramas y estas usan fileCategory.
+ * Documentos excluyen imágenes y videos sin filtrar available. Construye URLs
+ * versionadas y normaliza tamaños y fechas; conserva el resto de los campos del proyecto.
+ *
+ * @param {Object} project - Proyecto con archivos y recentDocuments de la API.
+ * @returns {Object} Modelo para la página de detalles con galerías y documentos.
+ */
 function toProjectPresentation(project) {
   const progressValue = Number(project?.progress) || 0;
   const projectFiles = project?.files || [];
@@ -164,6 +229,14 @@ function toProjectPresentation(project) {
   const panoramaGallery = projectFiles
     .filter((file) => isPanoramaFile(file) && file.available)
     .map((file) => toMediaFileItem(file, { project }));
+  /**
+   * Adapta documentos completos y recientes con la misma referencia versionada.
+   * Usa FILE para extensión ausente y ARCA Studio para autor ausente; conserva
+   * file.title como nombre sin sustituirlo y no filtra disponibilidad.
+   *
+   * @param {Object} file - Documento de la API en el ámbito del proyecto actual.
+   * @returns {Object} Datos para cards documentales con URL, fecha y tamaño.
+   */
   const toDocumentItem = (file) => {
       const contentUrl =
         project?.id && file.id
@@ -235,6 +308,16 @@ function getRelativeTimeLabel(value) {
   return `Hace ${diffDays} ${diffDays === 1 ? "dia" : "dias"}`;
 }
 
+/**
+ * Adapta una observación al drawer de detalles conservando referencias al recurso.
+ * Para documentos busca extensión por fileId y usa FILE si no encuentra archivo;
+ * resuelve autor, tipo, punto de panorámica y fecha relativa sin renumerar IDs.
+ *
+ * @param {Object} comment - Observación de la API.
+ * @param {Object|null} user - Usuario actual para decorar autor.
+ * @param {Array} [files=[]] - Archivos del proyecto para resolver extensión documental.
+ * @returns {Object} Observación de presentación con datos para navegar al recurso.
+ */
 function toDrawerComment(comment, user, files = []) {
   const commentType = comment.commentType || "general";
   const documentFile = commentType === "document"

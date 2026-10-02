@@ -23,6 +23,15 @@ export const DEFAULT_USER_ERROR_MESSAGE =
 export const NETWORK_USER_ERROR_MESSAGE =
   "No pudimos conectarnos con el servidor. Revisa tu conexión e inténtalo nuevamente.";
 
+/**
+ * Selecciona un mensaje visible desde texto o la propiedad message de un error.
+ * Patrones de red usan el mensaje de conexión; patrones técnicos y mensajes vacíos
+ * usan el fallback. Otros mensajes se conservan recortados, sin traducción adicional.
+ *
+ * @param {Object|string|null} errorOrMessage - Error o mensaje recibido.
+ * @param {string} [fallback=DEFAULT_USER_ERROR_MESSAGE] - Mensaje general alternativo.
+ * @returns {string} Mensaje de presentación.
+ */
 export function getUserFacingErrorMessage(
   errorOrMessage,
   fallback = DEFAULT_USER_ERROR_MESSAGE,

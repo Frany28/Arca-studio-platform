@@ -1,5 +1,13 @@
 import { getApiUrl } from "../api/http.js";
 
+/**
+ * Construye la URL de foto de autor según el ámbito de la observación.
+ * Exige indicador de foto e ID de autor positivo; proyectos también exigen projectId
+ * positivo, mientras el entorno usa su endpoint independiente. No carga la foto.
+ *
+ * @param {Object|null} comment - Observación con autor, scope y proyecto.
+ * @returns {string} URL de API o vacío.
+ */
 export function buildCommentAuthorAvatarUrl(comment) {
   const authorUserId = Number(comment?.author?.id);
   const projectId = Number(comment?.projectId);
@@ -21,6 +29,14 @@ export function buildCommentAuthorAvatarUrl(comment) {
   );
 }
 
+/**
+ * Compara identidad del autor y usuario como texto para admitir IDs string o number.
+ * IDs ausentes se convierten en vacío y no se consideran coincidencia.
+ *
+ * @param {Object|null} comment - Observación con author.id.
+ * @param {Object|null} user - Usuario actual.
+ * @returns {boolean} Si ambas identidades no vacías coinciden.
+ */
 export function isCommentFromCurrentUser(comment, user) {
   const author = comment?.author;
   const authorId = author?.id == null ? "" : String(author.id);
@@ -29,6 +45,15 @@ export function isCommentFromCurrentUser(comment, user) {
   return Boolean(authorId && userId && authorId === userId);
 }
 
+/**
+ * Resuelve foto del autor priorizando la foto actual del propio usuario.
+ * Para otros autores prioriza la URL de API sobre avatarSrc; para el propio usuario
+ * no usa avatarSrc del comentario como fallback.
+ *
+ * @param {Object|null} comment - Observación con autor y avatar opcional.
+ * @param {Object|null} user - Usuario actual.
+ * @returns {string} Fuente de avatar o vacío.
+ */
 export function getCommentAuthorAvatarSrc(comment, user) {
   if (isCommentFromCurrentUser(comment, user)) {
     return user?.profilePhotoUrl || buildCommentAuthorAvatarUrl(comment) || "";
@@ -51,11 +76,27 @@ export const AUTHOR_ROLE_LABELS = Object.freeze({
   client: "Cliente",
 });
 
+/**
+ * Presenta Tú para el autor autenticado; para otros conserva el nombre disponible.
+ * Prioriza author.name sobre name y usa Usuario como alternativa.
+ *
+ * @param {Object|null} comment - Observación original.
+ * @param {Object|null} user - Usuario actual.
+ * @returns {string} Nombre visible.
+ */
 export function getCommentAuthorName(comment, user) {
   if (isCommentFromCurrentUser(comment, user)) return "Tú";
   return comment?.author?.name || comment?.name || "Usuario";
 }
 
+/**
+ * Resuelve el rol visible desde el usuario actual si es autor o desde author.roleCode.
+ * Traduce admin, architect y client; códigos desconocidos usan Usuario.
+ *
+ * @param {Object|null} comment - Observación con autor.
+ * @param {Object|null} user - Usuario actual.
+ * @returns {string} Rol visible.
+ */
 export function getCommentAuthorRoleLabel(comment, user) {
   const roleCode = isCommentFromCurrentUser(comment, user)
     ? user?.role || user?.roleDetails?.code
@@ -74,6 +115,17 @@ function getCommentTime(comment) {
   return Number.isNaN(time) ? 0 : time;
 }
 
+/**
+ * Ordena raíces de más recientes a antiguas y adjunta sus respuestas cronológicas.
+ * Un límite entero positivo recorta solo raíces; respuestas de raíces recortadas
+ * también quedan fuera. Añade al final respuestas cuyo padre no está entre las
+ * raíces originales, de más recientes a antiguas; no recorre hilos recursivamente.
+ *
+ * @param {Array} comments - Observaciones con IDs, parentCommentId y createdAt.
+ * @param {Object} [options={}] - Opciones de presentación.
+ * @param {number} [options.limitRootThreads] - Máximo de conversaciones raíz.
+ * @returns {Array} Observaciones ordenadas por conversación.
+ */
 export function orderCommentsByThread(comments, { limitRootThreads } = {}) {
   const repliesByParent = new Map();
   const rootComments = [];
@@ -124,6 +176,16 @@ export function getProjectNamesById(projects = []) {
   );
 }
 
+/**
+ * Selecciona proyectos por rol para el flujo de comentarios del consumidor.
+ * admin recibe todos; architect solo asignados; client solo proyectos de su clientId;
+ * otros roles reciben []. No sustituye permisos de API ni la exclusión de admin
+ * del panel global definida por observationAccess.
+ *
+ * @param {Array} [projects=[]] - Proyectos candidatos.
+ * @param {Object|null} user - Usuario con rol e IDs.
+ * @returns {Array} Proyectos seleccionados.
+ */
 export function getCommentableProjectsForUser(projects = [], user) {
   const roleCode = user?.role || user?.roleDetails?.code;
 
@@ -146,6 +208,16 @@ export function getCommentableProjectsForUser(projects = [], user) {
   return [];
 }
 
+/**
+ * Extiende la observación conservando sus campos y añadiendo datos de presentación.
+ * Resuelve autor, avatar, rol y tipo mediante helpers; projectName usa el mapa por ID
+ * o texto vacío, sin modificar la observación original.
+ *
+ * @param {Object} comment - Observación recibida de la API.
+ * @param {Object|null} user - Usuario actual para presentación del autor.
+ * @param {Object} [projectNamesById={}] - Nombres indexados por ID de proyecto.
+ * @returns {Object} Observación decorada para la interfaz.
+ */
 export function decorateCommentForDisplay(comment, user, projectNamesById = {}) {
   return {
     ...comment,

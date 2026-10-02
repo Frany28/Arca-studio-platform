@@ -1,6 +1,13 @@
 import { getProjectPath } from "./projectRoutes.js";
 import { selectRecentProjects } from "./recentProjects.js";
 
+/**
+ * Adapta los proyectos recientes a accesos laterales con ruta por slug.
+ * La selección excluye archivados y limita a tres; proyectos públicos añaden icono window.
+ *
+ * @param {Array} projects - Proyectos candidatos.
+ * @returns {Array} Accesos de navegación con ID project- y destino.
+ */
 function createProjectShortcutItems(projects) {
   return selectRecentProjects(projects).map((project) => ({
     id: `project-${project.id}`,
@@ -12,6 +19,17 @@ function createProjectShortcutItems(projects) {
   }));
 }
 
+/**
+ * Reemplaza accesos project- conservando los demás elementos de navegación.
+ * Inserta nuevos recientes después de dashboard, o al principio si no existe;
+ * si se deshabilitan los accesos devuelve solo elementos persistentes.
+ *
+ * @param {Array} [items=[]] - Navegación actual.
+ * @param {Array} [projects=[]] - Proyectos para los accesos nuevos.
+ * @param {Object} [options={}] - Opciones de composición.
+ * @param {boolean} [options.includeProjectShortcuts=true] - Incluye accesos recientes.
+ * @returns {Array} Navegación resultante.
+ */
 export function mergeRecentProjectNavigationItems(
   items = [],
   projects = [],
@@ -37,6 +55,15 @@ export function mergeRecentProjectNavigationItems(
   ];
 }
 
+/**
+ * Construye navegación por rol sin comprobar permisos de backend.
+ * Administradores reciben secciones administrativas sin recientes; otros reciben
+ * recientes, galería y configuración, y solo client incorpora Solicitudes.
+ *
+ * @param {Array} [projects=[]] - Proyectos candidatos para accesos recientes.
+ * @param {string} [roleCode="client"] - Rol exacto para escoger navegación.
+ * @returns {Array} Elementos con etiquetas, iconos y destinos.
+ */
 export function createUserSideNavigationItems(projects = [], roleCode = "client") {
   const safeProjects = Array.isArray(projects) ? projects : [];
   const isClient = roleCode === "client";
@@ -125,6 +152,13 @@ export function createUserSideNavigationItems(projects = [], roleCode = "client"
   ];
 }
 
+/**
+ * Resuelve la ruta principal de navegación por rol.
+ * architect y admin comparten dashboard-arquitecto; cualquier otro código usa dashboard-clientes.
+ *
+ * @param {string|null} roleCode - Código de rol.
+ * @returns {string} Ruta del dashboard.
+ */
 export function getDashboardPath(roleCode) {
   return roleCode === "architect" || roleCode === "admin"
     ? "/dashboard-arquitecto"
