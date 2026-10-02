@@ -27,7 +27,7 @@ test("architect dashboard assignment areas use the shared tag selector with avat
 
 test("admin assignees receive authenticated profile photos with initials fallback", async () => {
   const [httpSource, selectorSource, avatarConfigSource] = await Promise.all([
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
     readFile(
       new URL(
         "../src/components/ui/AssigneeMultiSelect/AssigneeMultiSelect.jsx",
