@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api } from "../../api/http.js";
-import { getProjectAssigneeAvatar } from "../../utils/projectAssigneeDisplay.js";
-import { getProjectImageSource } from "../../utils/projectImage.js";
-import { isProjectOperationallyReadOnly } from "../../utils/projectReadOnly.js";
-import { groupProjectsByStatus } from "../../utils/projectStatusGroups.js";
+import { api } from "../../../api/http.js";
+import { getProjectAssigneeAvatar } from "../../../utils/projectAssigneeDisplay.js";
+import { getProjectImageSource } from "../../../utils/projectImage.js";
+import { isProjectOperationallyReadOnly } from "../../../utils/projectReadOnly.js";
+import { groupProjectsByStatus } from "../../../utils/projectStatusGroups.js";
 
 function getProjectAssigneeAvatars(project) {
   const assigneeAvatar = getProjectAssigneeAvatar(project);

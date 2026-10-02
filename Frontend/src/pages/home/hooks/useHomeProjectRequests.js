@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { api } from "../../api/http.js";
+import { api } from "../../../api/http.js";
 
 export default function useHomeProjectRequests({ user }) {
   const [projectRequests, setProjectRequests] = useState([]);
