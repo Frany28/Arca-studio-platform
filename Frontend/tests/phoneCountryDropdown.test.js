@@ -4,7 +4,12 @@ import test from "node:test";
 
 test("phone country options reuse the attached four-row dropdown pattern", async () => {
   const source = await readFile(
-    new URL("../src/components/ui/Input/Input.jsx", import.meta.url),
+    new URL("../src/components/ui/Input/phone/PhoneCountrySelector.jsx", import.meta.url),
+    "utf8",
+  );
+
+  const hook = await readFile(
+    new URL("../src/components/ui/Input/phone/usePhoneInput.js", import.meta.url),
     "utf8",
   );
 
@@ -24,21 +29,22 @@ test("phone country options reuse the attached four-row dropdown pattern", async
   assert.match(source, /aria-label="Buscar código de país por prefijo; el signo más es fijo"/);
   assert.match(source, /role="combobox"/);
   assert.match(source, /aria-autocomplete="list"/);
-  assert.match(source, /onClick=\{\(\) => setIsPhoneMenuOpen\(\(current\) => !current\)\}/);
+  assert.match(source, /onClick=\{handleToggleMenu\}/);
+  assert.match(hook, /setIsPhoneMenuOpen\(\(current\) => !current\)/);
   assert.match(source, /value=\{getPhoneDigits\(normalizedPhonePrefix\)\}/);
   assert.match(source, /aria-hidden="true">\+<\/span>/);
   assert.match(source, /inputMode="numeric"/);
-  assert.match(source, /setPhonePrefixValue\(nextPrefix\)/);
-  assert.match(source, /optionDigits\.startsWith\(prefixDigits\)/);
-  assert.match(source, /event\.key !== "Enter" \|\| !isPhoneMenuOpen/);
-  assert.match(source, /const firstVisibleOption = filteredPhoneOptions\[0\]/);
-  assert.match(source, /event\.preventDefault\(\);\s*handlePhoneOptionSelection\(firstVisibleOption\)/);
+  assert.match(hook, /setPhonePrefixValue\(nextPrefix\)/);
+  assert.match(hook, /optionDigits\.startsWith\(prefixDigits\)/);
+  assert.match(hook, /event\.key !== "Enter" \|\| !isPhoneMenuOpen/);
+  assert.match(hook, /const firstVisibleOption = filteredPhoneOptions\[0\]/);
+  assert.match(hook, /event\.preventDefault\(\);\s*handlePhoneOptionSelection\(firstVisibleOption\)/);
   assert.match(source, /onClick=\{\(\) => handlePhoneOptionSelection\(option\)\}/);
   assert.doesNotMatch(source, /aria-label="Código de país"/);
   assert.doesNotMatch(source, /text="Mostrar países"/);
   assert.match(source, /<ScrollBar/);
   assert.match(source, /aria-label="Desplazar países"/);
-  assert.match(source, /event\.key === "Escape"/);
+  assert.match(hook, /event\.key === "Escape"/);
   assert.doesNotMatch(source, /top-\[calc\(100%_-_1px\)\]/);
 });
 

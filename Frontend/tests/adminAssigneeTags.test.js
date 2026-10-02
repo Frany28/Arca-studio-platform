@@ -59,7 +59,7 @@ test("the temporary input tags route is no longer registered", async () => {
 });
 
 test("assignee suggestions overlay their container without changing table row height", async () => {
-  const [selectorSource, inputSource] = await Promise.all([
+  const [selectorSource, inputSource, groupSource] = await Promise.all([
     readFile(
       new URL(
         "../src/components/ui/AssigneeMultiSelect/AssigneeMultiSelect.jsx",
@@ -71,9 +71,13 @@ test("assignee suggestions overlay their container without changing table row he
       new URL("../src/components/ui/Input/Input.jsx", import.meta.url),
       "utf8",
     ),
+    readFile(
+      new URL("../src/components/ui/Input/tags/InputTagGroup.jsx", import.meta.url),
+      "utf8",
+    ),
   ]);
 
   assert.match(selectorSource, /tagGroupPlacement="overlay"/);
   assert.match(inputSource, /showTagGroupAsOverlay/);
-  assert.match(inputSource, /absolute left-0 top-full/);
+  assert.match(groupSource, /absolute left-0 top-full/);
 });

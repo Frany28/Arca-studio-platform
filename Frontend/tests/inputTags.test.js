@@ -8,6 +8,11 @@ test("tag input exposes accessible state, keyboard behavior and Figma hint rules
     "utf8",
   );
 
+  const [hookSource, groupSource] = await Promise.all([
+    readFile(new URL("../src/components/ui/Input/tags/useInputTags.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/ui/Input/tags/InputTagGroup.jsx", import.meta.url), "utf8"),
+  ]);
+
   assert.match(inputSource, /tags = \[\]/);
   assert.match(
     inputSource,
@@ -16,18 +21,18 @@ test("tag input exposes accessible state, keyboard behavior and Figma hint rules
   assert.match(inputSource, /aria-describedby=\{resolvedAriaDescribedBy\}/);
   assert.match(inputSource, /aria-invalid=\{resolvedAriaInvalid\}/);
   assert.match(inputSource, /onKeyDown=\{handleInputKeyDown\}/);
-  assert.match(inputSource, /currentLabel === nextLabel/);
-  assert.match(inputSource, /avatarSrc=\{tag\.avatarSrc \?\? ""\}/);
-  assert.match(inputSource, /handleTagOptionSelection/);
-  assert.match(inputSource, /closeIcon=\{false\}/);
+  assert.match(hookSource, /currentLabel === nextLabel/);
+  assert.match(groupSource, /avatarSrc=\{tag\.avatarSrc \?\? ""\}/);
+  assert.match(groupSource, /handleTagOptionSelection/);
+  assert.match(groupSource, /closeIcon=\{false\}/);
   assert.match(inputSource, /baseState === "Default" && isFocused/);
   assert.match(inputSource, /showSelectedTagsBelow/);
   assert.match(inputSource, /maxVisibleTagOptions = 3/);
-  assert.match(inputSource, /visibleSelectableTags = filteredSelectableTags\.slice/);
-  assert.match(inputSource, /normalizeTagSearchText/);
-  assert.match(inputSource, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
-  assert.match(inputSource, /requestAnimationFrame\(\(\) => resolvedInputRef\.current\?\.focus\(\)\)/);
-  assert.match(inputSource, /tagFieldScrollRef\.current\?\.scrollTo\(\{ left: 0 \}\)/);
+  assert.match(hookSource, /visibleSelectableTags = filteredSelectableTags\.slice/);
+  assert.match(hookSource, /normalizeTagSearchText/);
+  assert.match(groupSource, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(hookSource, /requestAnimationFrame\(\(\) => resolvedInputRef\.current\?\.focus\(\)\)/);
+  assert.match(hookSource, /tagFieldScrollRef\.current\?\.scrollTo\(\{ left: 0 \}\)/);
 });
 
 test("tag avatars support real images with fallback initials", async () => {
