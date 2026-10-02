@@ -58,6 +58,8 @@ function hasTextValue(value) {
  * value !== undefined controla el valor; defaultValue solo inicializa el estado interno.
  * Teléfono y tags conservan sus contratos específicos en hooks independientes.
  * @param {object} props API pública del Input, callbacks y atributos del campo nativo.
+ * @param {boolean} props.required Obligatoriedad visual y nativa; conserva true por defecto.
+ * @param {boolean} props.disabled Bloqueo efectivo, también activado por state="Disabled".
  * @returns {import("react").ReactElement} Campo accesible con sus adornos y ayudas.
  */
 function Input({
@@ -74,6 +76,7 @@ function Input({
   showLeftIcon = true,
   showRightIcon = true,
   showLabelInfo = true,
+  information: legacyInformation,
   required = true,
   leftIcon = null,
   rightIcon = null,
@@ -110,6 +113,8 @@ function Input({
   style,
   ...props
 }) {
+  // Prop heredada de Label sin efecto en Input: se consume para no enviarla al DOM.
+  void legacyInformation;
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const hintId = `${inputId}-hint`;
@@ -123,14 +128,16 @@ function Input({
 
   const resolvedSize = INPUT_SIZE_STYLES[size] ? size : "S";
   const resolvedType = INPUT_TYPES[type] ? type : "Default input";
-  const baseState = disabled ? "Disabled" : state;
+  // Ambas entradas públicas expresan el mismo bloqueo funcional y visual.
+  const isDisabled = disabled || state === "Disabled";
+  const baseState = isDisabled ? "Disabled" : state;
   const sizing = INPUT_SIZE_STYLES[resolvedSize];
   const typeConfig = INPUT_TYPES[resolvedType];
   const isControlled = value !== undefined;
   const fieldValue = isControlled ? value : internalValue;
   const phone = usePhoneInput({
     resolvedType, countryCode, countryPrefix, phoneOptions, isControlled,
-    setInternalValue, onChange, onPhoneCountryChange, disabled,
+    setInternalValue, onChange, onPhoneCountryChange, disabled: isDisabled,
   });
   const { resolvedPhoneOption } = phone;
 
@@ -138,7 +145,7 @@ function Input({
   const hasInputText = hasTextValue(currentValue);
   const inputTags = useInputTags({
     resolvedType, tags, tagOptions, currentValue, hasInputText, maxVisibleTagOptions,
-    isControlled, setInternalValue, disabled, onTagsChange, onTagOptionSelect,
+    isControlled, setInternalValue, disabled: isDisabled, onTagsChange, onTagOptionSelect,
     onKeyDown, resolvedInputRef,
   });
   const {
@@ -208,7 +215,7 @@ function Input({
   const passwordProgressCount = Array.isArray(passwordRequirementItems)
     ? passwordRequirementItems.filter((item) => item.met).length
     : 0;
-  const passwordStrengthState = disabled
+  const passwordStrengthState = isDisabled
     ? "Disabled"
     : passwordProgressCount === 0
       ? "Default"
@@ -222,7 +229,8 @@ function Input({
    * @returns {void}
    */
   const handleRightIconClick = () => {
-    if (resolvedType === "Password" && !disabled) {
+    if (isDisabled) return;
+    if (resolvedType === "Password") {
       setPasswordVisible((current) => !current);
     }
 
@@ -236,6 +244,7 @@ function Input({
    * @returns {void}
    */
   const handleChange = (event) => {
+    if (isDisabled) return;
     if (resolvedType === "Phone number") {
       phone.handleChange(event);
       return;
@@ -277,14 +286,14 @@ function Input({
       className={clsx(
         "flex w-full items-center rounded-[var(--radius-2)] transition-[border-color,box-shadow,background-color] duration-150",
         resolvedType === "Phone number" ? "overflow-visible" : "overflow-hidden",
-        disabled ? "cursor-not-allowed" : "cursor-pointer",
+        isDisabled ? "cursor-not-allowed" : "cursor-pointer",
         sizing.shell,
         stateStyles.shell,
-        baseState === "Default" && !disabled && INPUT_INTERACTIVE_STYLES,
+        baseState === "Default" && !isDisabled && INPUT_INTERACTIVE_STYLES,
       )}
       data-state={resolvedState.toLowerCase()}
       onMouseEnter={() => {
-        if (!disabled && baseState === "Default") {
+        if (!isDisabled && baseState === "Default") {
           setIsHovered(true);
         }
       }}
@@ -299,7 +308,7 @@ function Input({
         >
           <PhoneCountrySelector
             inputId={inputId}
-            disabled={disabled}
+            disabled={isDisabled}
             sizing={sizing}
             stateStyles={stateStyles}
             phone={phone}
@@ -309,19 +318,21 @@ function Input({
               ref={resolvedInputRef}
               id={inputId}
               type={inputType}
-              disabled={disabled}
+              required={required}
+              disabled={isDisabled}
               value={fieldValue}
               placeholder={resolvedPlaceholder}
               aria-describedby={resolvedAriaDescribedBy}
               aria-invalid={resolvedAriaInvalid}
               className={clsx(
                 "text-body-3 min-w-0 flex-1 border-0 bg-transparent tracking-[-0.5px] outline-none",
-                disabled ? "cursor-not-allowed" : "cursor-text",
+                isDisabled ? "cursor-not-allowed" : "cursor-text",
                 isFilled ? stateStyles.inputText : stateStyles.placeholder,
                 stateStyles.placeholder,
                 inputClassName,
               )}
               onFocus={(event) => {
+                if (isDisabled) return;
                 setIsFocused(true);
                 onFocus?.(event);
               }}
@@ -330,6 +341,7 @@ function Input({
                 onBlur?.(event);
               }}
               onChange={handleChange}
+              onKeyDown={handleInputKeyDown}
               {...props}
             />
             {showRightIcon && trailingIcon ? (
@@ -345,13 +357,13 @@ function Input({
                 className={clsx(
                   "inline-flex size-5 shrink-0 items-center justify-center",
                   stateStyles.trailingIcon,
-                  disabled ? "cursor-not-allowed" : "cursor-pointer",
+                  isDisabled ? "cursor-not-allowed" : "cursor-pointer",
                 )}
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
                 onClick={handleRightIconClick}
-                disabled={disabled}
+                disabled={isDisabled}
                 aria-label={trailingIconLabel}
               >
                 {trailingIcon}
@@ -393,7 +405,7 @@ function Input({
                 inline
                 normalizedVisibleTags={normalizedVisibleTags}
                 sizing={sizing}
-                disabled={disabled}
+                disabled={isDisabled}
                 handleRemoveTag={handleRemoveTag}
               />
             ) : null}
@@ -402,7 +414,8 @@ function Input({
               ref={resolvedInputRef}
               id={inputId}
               type={inputType}
-              disabled={disabled}
+              required={required}
+              disabled={isDisabled}
               value={fieldValue}
               placeholder={showTagsInsideField ? "" : resolvedPlaceholder}
               aria-describedby={resolvedAriaDescribedBy}
@@ -410,12 +423,13 @@ function Input({
               className={clsx(
                 "text-body-3 min-w-0 flex-1 border-0 bg-transparent tracking-[-0.5px] outline-none",
                 showTagsInsideField && "min-w-[48px]",
-                disabled ? "cursor-not-allowed" : "cursor-text",
+                isDisabled ? "cursor-not-allowed" : "cursor-text",
                 isFilled ? stateStyles.inputText : stateStyles.placeholder,
                 stateStyles.placeholder,
                 inputClassName,
               )}
               onFocus={(event) => {
+                if (isDisabled) return;
                 setIsFocused(true);
                 onFocus?.(event);
               }}
@@ -446,13 +460,13 @@ function Input({
               className={clsx(
                 "inline-flex size-5 shrink-0 items-center justify-center",
                 stateStyles.trailingIcon,
-                disabled ? "cursor-not-allowed" : "cursor-pointer",
+                isDisabled ? "cursor-not-allowed" : "cursor-pointer",
               )}
               onMouseDown={(event) => {
                 event.preventDefault();
               }}
               onClick={handleRightIconClick}
-              disabled={disabled}
+              disabled={isDisabled}
               aria-label={trailingIconLabel}
             >
               {trailingIcon}
@@ -512,7 +526,7 @@ function Input({
           normalizedVisibleTags={normalizedVisibleTags}
           visibleSelectableTags={visibleSelectableTags}
           sizing={sizing}
-          disabled={disabled}
+          disabled={isDisabled}
           handleRemoveTag={handleRemoveTag}
           handleTagOptionSelection={handleTagOptionSelection}
           tagGroupId={tagGroupId}

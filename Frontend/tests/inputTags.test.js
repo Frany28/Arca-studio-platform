@@ -31,7 +31,7 @@ test("tag input exposes accessible state, keyboard behavior and Figma hint rules
   assert.match(hookSource, /visibleSelectableTags = filteredSelectableTags\.slice/);
   assert.match(hookSource, /normalizeTagSearchText/);
   assert.match(groupSource, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
-  assert.match(hookSource, /requestAnimationFrame\(\(\) => resolvedInputRef\.current\?\.focus\(\)\)/);
+  assert.match(hookSource, /resolvedInputRef\.current\?\.focus\(\)/);
   assert.match(hookSource, /tagFieldScrollRef\.current\?\.scrollTo\(\{ left: 0 \}\)/);
 });
 

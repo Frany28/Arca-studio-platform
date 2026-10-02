@@ -19,6 +19,8 @@ export default function useInputTags({
       : [],
   );
   const tagFieldScrollRef = useRef(null);
+  const focusFrameRef = useRef(null);
+  const tagsActiveRef = useRef(false);
   const tagsAreControlled = typeof onTagsChange === "function";
   const visibleTags =
     resolvedType === "Tags" && tagsAreControlled ? tags : selectedTags;
@@ -64,6 +66,18 @@ export default function useInputTags({
 
     return () => cancelAnimationFrame(frameId);
   }, [resolvedType, visibleTagIds]);
+
+  // Desmontar, cambiar de variante o deshabilitar vuelve obsoleto el foco pendiente sobre la ref.
+  useEffect(() => {
+    tagsActiveRef.current = resolvedType === "Tags" && !disabled;
+    return () => {
+      tagsActiveRef.current = false;
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current);
+        focusFrameRef.current = null;
+      }
+    };
+  }, [disabled, resolvedType]);
 
   /**
    * Selecciona la primera sugerencia coincidente o crea un tag y evita duplicados por ID o etiqueta.
@@ -112,7 +126,7 @@ export default function useInputTags({
 
   /**
    * Elimina por identidad exacta, notifica la selección y después restaura el foco.
-   * Conserva el requestAnimationFrame sin cancelación del contrato anterior.
+   * Solo mantiene el último frame y descarta foco tras desmontar, cambiar de variante o deshabilitar.
    * @param {string|number|undefined} tagId Identificador original del tag.
    * @returns {void}
    */
@@ -127,7 +141,15 @@ export default function useInputTags({
     }
     onTagsChange?.(nextTags);
 
-    requestAnimationFrame(() => resolvedInputRef.current?.focus());
+    // El callback público puede desmontar Input de forma síncrona antes de programar el foco.
+    if (!tagsActiveRef.current) return;
+    if (focusFrameRef.current !== null) {
+      cancelAnimationFrame(focusFrameRef.current);
+    }
+    focusFrameRef.current = requestAnimationFrame(() => {
+      focusFrameRef.current = null;
+      resolvedInputRef.current?.focus();
+    });
   };
 
   /**
@@ -164,6 +186,7 @@ export default function useInputTags({
    * @returns {void}
    */
   const handleInputKeyDown = (event) => {
+    if (disabled) return;
     if (resolvedType === "Tags") {
       if (
         (event.key === "Enter" || event.key === ",") &&

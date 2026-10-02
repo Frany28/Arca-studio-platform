@@ -79,6 +79,85 @@ async function values(page, type) {
   return page.evaluate((type) => window.inputHarness.events.filter((event) => event.type === type).map((event) => event.value), type);
 }
 
+/**
+ * Controla el reloj de frames del navegador sin inspeccionar el estado de Input.
+ * Permite observar si un trabajo pendiente roba foco o repite su acción pública.
+ * @param {import("playwright").Page} page Página propietaria del reloj aislado.
+ * @returns {Promise<void>} Instala una cola que respeta cancelAnimationFrame.
+ */
+async function pauseFrames(page) {
+  await page.evaluate(() => {
+    let sequence = 0;
+    const callbacks = new Map();
+    window.requestAnimationFrame = (callback) => {
+      const id = ++sequence;
+      callbacks.set(id, callback);
+      return id;
+    };
+    window.cancelAnimationFrame = (id) => callbacks.delete(id);
+    window.inputHarness.flushFrames = () => {
+      const pending = [...callbacks.entries()];
+      callbacks.clear();
+      pending.forEach(([, callback]) => callback(performance.now()));
+    };
+  });
+}
+
+test("Tags: eliminaciones rápidas restauran foco una sola vez y el desmontaje cancela el foco pendiente", async (context) => {
+  const page = await openInput(context, { type: "Tags", tags: TAG_OPTIONS });
+  await pauseFrames(page);
+  await page.evaluate(() => {
+    const field = window.inputHarness.inputRef.current;
+    const originalFocus = field.focus.bind(field);
+    field.focus = () => { window.inputHarness.record("restore-focus", null); originalFocus(); };
+    document.querySelector('[aria-label="Quitar Ána Pérez"]').click();
+    document.querySelector('[aria-label="Quitar Luis Rivas"]').click();
+    window.inputHarness.flushFrames();
+  });
+  assert.equal((await values(page, "restore-focus")).length, 1);
+  assert.equal(await page.locator("#contract-input").evaluate((element) => element === document.activeElement), true);
+  await page.locator("#contract-input").fill("Otro");
+  await page.locator("#contract-input").press("Enter");
+  await page.evaluate(() => {
+    document.querySelector('[aria-label="Quitar Otro"]').click();
+    window.inputHarness.unmountInput();
+    window.inputHarness.flushFrames();
+  });
+  assert.equal(await page.getByRole("textbox", { name: "Campo reemplazo" }).evaluate((element) => element === document.activeElement), false);
+});
+
+test("Tags: si onTagsChange desmonta Input no se programa un foco sobre su reemplazo", async (context) => {
+  const page = await openInput(context, { type: "Tags", tags: TAG_OPTIONS });
+  await pauseFrames(page);
+  await page.evaluate(() => {
+    window.inputHarness.setProps({ onTagsChange: () => window.inputHarness.unmountInput() });
+    document.querySelector('[aria-label="Quitar Ána Pérez"]').click();
+    window.inputHarness.flushFrames();
+  });
+  assert.equal(await page.getByRole("textbox", { name: "Campo reemplazo" }).evaluate((element) => element === document.activeElement), false);
+});
+
+test("Input: information legado no llega al DOM y conserva atributos HTML y showLabelInfo", async (context) => {
+  const page = await openInput(context, {
+    information: "legado", showLabelInfo: true,
+    name: "contacto", autoComplete: "email", "data-contract": "conservado", "aria-label": "Contacto",
+  });
+  const field = page.locator("#contract-input");
+  assert.equal(await field.getAttribute("information"), null);
+  assert.equal(await field.getAttribute("name"), "contacto");
+  assert.equal(await field.getAttribute("autocomplete"), "email");
+  assert.equal(await field.getAttribute("data-contract"), "conservado");
+  assert.equal(await field.getAttribute("aria-label"), "Contacto");
+  await page.evaluate(() => window.inputHarness.setProps({ information: false }));
+  assert.equal(await page.locator('label[for="contract-input"] svg').count(), 1);
+  await page.evaluate((phoneOptions) => window.inputHarness.setProps({
+    type: "Phone number", phoneOptions, information: "legado", showLabelInfo: false,
+  }), PHONE_OPTIONS);
+  assert.equal(await field.getAttribute("information"), null);
+  assert.equal(await field.getAttribute("name"), "contacto");
+  assert.equal(await page.locator('label[for="contract-input"] svg').count(), 0);
+});
+
 test("Input: value controla incluso vacío y defaultValue solo inicializa el estado interno", async (context) => {
   const page = await openInput(context, { value: "controlado", defaultValue: "semilla" });
   const field = page.locator("#contract-input");
@@ -95,20 +174,109 @@ test("Input: value controla incluso vacío y defaultValue solo inicializa el est
   assert.equal(await field.inputValue(), "interno");
 });
 
+test("Input: required expresa obligatoriedad nativa y visual sin bloquear formularios noValidate", async (context) => {
+  const page = await openInput(context);
+  const field = page.locator("#contract-input");
+  const label = page.locator('label[for="contract-input"]');
+  for (const type of ["Default input", "Phone number", "Password"]) {
+    await page.evaluate((type) => window.inputHarness.setProps({ type, required: true }), type);
+    await field.fill("");
+    assert.equal(await field.evaluate((element) => element.required), true);
+    assert.match(await label.innerText(), /\*/);
+    assert.equal(await field.evaluate((element) => element.validity.valueMissing), true);
+    await field.evaluate((element) => { element.form.noValidate = false; element.form.requestSubmit(); });
+    assert.deepEqual(await values(page, "submit"), []);
+    await field.fill("12345678");
+    assert.equal(await field.evaluate((element) => element.checkValidity()), true);
+  }
+  await field.fill("");
+  await field.evaluate((element) => { element.form.noValidate = true; element.form.requestSubmit(); });
+  assert.equal((await values(page, "submit")).length, 1, "El handler con preventDefault conserva la validación personalizada");
+  await page.evaluate(() => window.inputHarness.setProps({ required: false }));
+  assert.equal(await field.getAttribute("required"), null);
+  assert.doesNotMatch(await label.innerText(), /\*/);
+  assert.equal(await field.evaluate((element) => element.checkValidity()), true);
+});
+
 test("Input: búsqueda, label, hints, error y disabled conservan semántica", async (context) => {
   const page = await openInput(context, { type: "Search bar", state: "Error", "aria-describedby": "extra" });
   const field = page.getByRole("searchbox", { name: "Campo de prueba" });
   assert.equal(await field.getAttribute("aria-describedby"), "extra contract-input-hint");
   assert.equal(await field.getAttribute("aria-invalid"), "true");
-  assert.equal(await field.getAttribute("required"), null);
+  assert.equal(await field.evaluate((element) => element.required), true);
   await page.getByRole("alert").getByText("Ayuda del campo").waitFor();
   await field.fill("consulta");
   await field.press("Escape");
   assert.equal((await values(page, "keydown")).at(-1).key, "Escape");
   await page.evaluate(() => window.inputHarness.setProps({ state: "Disabled" }));
-  assert.equal(await field.isEnabled(), true);
+  assert.equal(await field.isDisabled(), true);
   await page.evaluate(() => window.inputHarness.setProps({ disabled: true }));
   assert.equal(await field.isDisabled(), true);
+});
+
+test("Input: state Disabled y disabled bloquean campo, teclado, password y eliminación de tags", async (context) => {
+  const page = await openInput(context, { state: "Disabled", disabled: false, defaultValue: "Secreto1!", tags: TAG_OPTIONS });
+  const field = page.locator("#contract-input");
+  for (const type of ["Default input", "Password", "Tags"]) {
+    await page.evaluate((type) => window.inputHarness.setProps({ type, showPasswordStrength: type === "Password" }), type);
+    assert.equal(await field.isDisabled(), true);
+    await field.evaluate((element) => {
+      element.focus();
+      element.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    assert.equal(await field.evaluate((element) => element === document.activeElement), false);
+    if (type === "Password") {
+      const toggle = page.getByRole("button", { name: "Mostrar contraseña", exact: true });
+      assert.equal(await toggle.isDisabled(), true);
+      await toggle.evaluate((element) => element.click());
+      assert.equal(await field.getAttribute("type"), "password");
+      assert.deepEqual(await values(page, "right-icon"), []);
+      const disabledColor = await page.evaluate(() => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-neutral-300)";
+        document.body.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      });
+      assert.equal(await page.getByText("Debe contener al menos:", { exact: true }).evaluate((element) => getComputedStyle(element).color), disabledColor);
+    }
+  }
+  await page.evaluate(() => window.inputHarness.setProps({ state: "Filled", disabled: true, value: "" }));
+  assert.equal(await field.isDisabled(), true);
+  await field.evaluate((element) => element.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true })));
+  assert.equal(await page.getByRole("button", { name: "Quitar Ána Pérez", exact: true }).count(), 0, "Disabled conserva la presentación previa sin tags visibles");
+  assert.deepEqual(await values(page, "keydown"), []);
+  await page.evaluate(() => window.inputHarness.setProps({ state: "Default", disabled: false }));
+  assert.equal(await field.isEnabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Quitar Ána Pérez", exact: true }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: "Quitar Luis Rivas", exact: true }).count(), 1);
+});
+
+test("Teléfono: deshabilitar con menú abierto bloquea prefijo, país y callbacks", async (context) => {
+  const page = await openInput(context, { type: "Phone number", phoneOptions: [
+    ...PHONE_OPTIONS,
+    { ...PHONE_OPTIONS[0], countryCode: "CO", dialCode: "+57", abbreviation: "CO", label: "Colombia" },
+    { ...PHONE_OPTIONS[0], countryCode: "AR", dialCode: "+54", abbreviation: "AR", label: "Argentina" },
+  ] });
+  const prefix = page.getByRole("combobox");
+  await prefix.fill("");
+  await page.getByRole("option").first().waitFor();
+  const scroll = page.getByRole("scrollbar", { name: "Desplazar países" });
+  await scroll.waitFor();
+  const scrollBounds = await scroll.boundingBox();
+  await page.evaluate(() => window.inputHarness.setProps({ state: "Disabled" }));
+  assert.equal(await page.locator("#contract-input").isDisabled(), true);
+  assert.equal(await prefix.isDisabled(), true);
+  assert.equal(await scroll.count(), 0, "El scrollbar del menú disabled queda visual sin acción accesible");
+  await page.mouse.click(scrollBounds.x + scrollBounds.width / 2, scrollBounds.y + scrollBounds.height - 4);
+  assert.equal(await page.getByRole("listbox").evaluate((element) => element.querySelector('[role="option"]').parentElement.scrollTop), 0);
+  const option = page.getByRole("option").filter({ hasText: "VE" });
+  assert.equal(await option.isDisabled(), true);
+  await option.evaluate((element) => element.click());
+  await prefix.evaluate((element) => element.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  assert.deepEqual(await values(page, "country"), []);
+  assert.deepEqual(await values(page, "change"), []);
 });
 
 test("Tags: Enter/coma normalizan, deduplican y consumen teclado antes del callback externo", async (context) => {
@@ -192,7 +360,69 @@ test("Teléfono: onChange modifica el evento y cambiar país reformatea solo val
   assert.equal(await prefix.inputValue(), "58");
   assert.equal(await field.inputValue(), "(412) 123-4567");
   await field.press("ArrowLeft");
-  assert.deepEqual(await values(page, "keydown"), [], "La rama phone no conecta onKeyDown al número");
+  assert.deepEqual(await values(page, "keydown"), [{ key: "ArrowLeft", defaultPrevented: false }]);
+});
+
+test("Teléfono: teclado público del número respeta preventDefault y selección interna del prefijo", async (context) => {
+  const page = await openInput(context, { type: "Phone number", phoneOptions: PHONE_OPTIONS, defaultValue: "123" });
+  await page.evaluate(() => {
+    window.inputHarness.setProps({ onKeyDown: (event) => {
+      window.inputHarness.record("keyboard", { key: event.key, prevented: event.defaultPrevented, id: event.target.id });
+      if (event.key === "Enter") event.preventDefault();
+      window.inputHarness.record("keyboard-after", event.defaultPrevented);
+    } });
+    document.querySelector("form").addEventListener("keydown", (event) => {
+      if (event.key === "Escape") event.preventDefault();
+    }, { capture: true });
+  });
+  const field = page.locator("#contract-input");
+  await field.press("ArrowLeft");
+  assert.deepEqual(await values(page, "keyboard"), [{ key: "ArrowLeft", prevented: false, id: "contract-input" }]);
+  await field.press("Escape");
+  assert.equal((await values(page, "keyboard")).length, 1, "Un evento ya prevenido no llega al callback público");
+  await field.press("Enter");
+  assert.deepEqual(await values(page, "keyboard-after"), [false, true]);
+  assert.deepEqual(await values(page, "submit"), []);
+  const prefix = page.getByRole("combobox");
+  await prefix.fill("58");
+  await prefix.press("Enter");
+  assert.equal(await prefix.getAttribute("aria-expanded"), "false");
+  assert.equal((await values(page, "country")).at(-1).countryCode, "VE");
+  assert.equal((await values(page, "keyboard")).length, 2, "El prefijo conserva su handler auxiliar");
+  assert.deepEqual(await values(page, "submit"), []);
+});
+
+test("Teléfono: país y prefijo son iniciales; el eco del consumidor no reinicia selección ni genera eventos", async (context) => {
+  const page = await openInput(context, {
+    type: "Phone number", countryCode: "VE", countryPrefix: "+58",
+    phoneOptions: PHONE_OPTIONS, defaultValue: "4121234567",
+  });
+  const field = page.locator("#contract-input");
+  const prefix = page.getByRole("combobox");
+  assert.equal(await prefix.inputValue(), "58");
+  assert.equal(await field.getAttribute("placeholder"), PHONE_OPTIONS[1].placeholder);
+  assert.equal(await field.inputValue(), "4121234567", "Inicializar país no reformatea el valor inicial");
+  await page.evaluate(() => window.inputHarness.setProps({
+    countryCode: "US", countryPrefix: "+1",
+    onPhoneCountryChange: (country) => {
+      window.inputHarness.record("country", country);
+      window.inputHarness.setProps({ countryCode: country.countryCode, countryPrefix: country.dialCode });
+    },
+  }));
+  assert.equal(await prefix.inputValue(), "58");
+  assert.equal(await field.getAttribute("placeholder"), PHONE_OPTIONS[1].placeholder);
+  assert.deepEqual(await values(page, "country"), []);
+  assert.deepEqual(await values(page, "change"), []);
+  await prefix.fill("");
+  await page.getByRole("option").filter({ hasText: "ES" }).click();
+  assert.equal(await prefix.inputValue(), "34");
+  assert.equal(await field.inputValue(), "412 123 456");
+  assert.equal((await values(page, "country")).length, 1);
+  await page.evaluate(() => window.inputHarness.setProps({ countryCode: "US", countryPrefix: "+1", label: "Editado" }));
+  assert.equal(await prefix.inputValue(), "34");
+  assert.equal(await field.inputValue(), "412 123 456");
+  assert.equal((await values(page, "country")).length, 1);
+  assert.deepEqual(await values(page, "change"), []);
 });
 
 test("Teléfono: el padre controla el número y recibe el país sin sincronización adicional", async (context) => {

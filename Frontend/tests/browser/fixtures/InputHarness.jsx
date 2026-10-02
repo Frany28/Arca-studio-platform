@@ -8,6 +8,7 @@ import "../../../src/index.css";
 const root = createRoot(document.getElementById("root"));
 const inputRef = createRef();
 const events = [];
+let inputMounted = true;
 
 /**
  * Registra los argumentos públicos antes de que React restaure un valor controlado.
@@ -51,11 +52,17 @@ function setProps(nextProps = {}) {
   inputProps = { ...inputProps, ...nextProps };
   flushSync(() => root.render(
     <form onSubmit={(event) => { event.preventDefault(); record("submit", null); }}>
-      <Input {...inputProps} />
+      {inputMounted ? <Input {...inputProps} /> : <input ref={inputRef} aria-label="Campo reemplazo" />}
       <button type="button">Fuera del campo</button>
     </form>,
   ));
 }
 
-window.inputHarness = { events, record, setProps };
+/** Sustituye Input reutilizando su ref pública para detectar focos obsoletos. */
+function unmountInput() {
+  inputMounted = false;
+  setProps();
+}
+
+window.inputHarness = { events, record, setProps, unmountInput, inputRef };
 setProps();

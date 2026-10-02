@@ -18,8 +18,12 @@ function getVerticalScrollMetrics(element) {
 /**
  * Coordina país, prefijo, menú y formato de la variante telefónica.
  * País y prefijo inicializan estado una sola vez; no se sincronizan posteriormente.
+ * onPhoneCountryChange notifica la selección interna y no activa un modo controlado de país.
  * El valor común permanece en Input y solo se escribe si no está controlado.
  * @param {object} options Configuración inicial, callbacks y acceso al valor interno.
+ * @param {string} options.countryCode País inicial; tiene prioridad sobre el fallback por prefijo.
+ * @param {string} options.countryPrefix Prefijo inicial del buscador y fallback de país.
+ * @param {Array<object>} options.phoneOptions Catálogo de países, máscaras y opciones visibles.
  * @returns {object} Estado, refs y acciones del selector y del número nativo.
  */
 export default function usePhoneInput({
@@ -105,7 +109,7 @@ export default function usePhoneInput({
    * @returns {void}
    */
   const handlePhoneOptionSelection = (option) => {
-    if (!option) return;
+    if (!option || disabled) return;
 
     setSelectedPhoneOption(option);
     setPhonePrefixValue(option.dialCode);
@@ -136,6 +140,7 @@ export default function usePhoneInput({
    * @returns {void}
    */
   const handlePrefixChange = (event) => {
+    if (disabled) return;
     const nextPrefix = normalizeDialCode(event.target.value);
     setPhonePrefixValue(nextPrefix);
     const exactMatches = phoneOptions.filter((option) => option.dialCode === nextPrefix);
@@ -158,7 +163,7 @@ export default function usePhoneInput({
    * @returns {void}
    */
   const handlePrefixKeyDown = (event) => {
-    if (event.key !== "Enter" || !isPhoneMenuOpen) return;
+    if (disabled || event.key !== "Enter" || !isPhoneMenuOpen) return;
 
     const firstVisibleOption = filteredPhoneOptions[0];
     if (!firstVisibleOption) return;
@@ -173,6 +178,7 @@ export default function usePhoneInput({
    * @returns {void}
    */
   const handleScrollPositionChange = (nextPosition) => {
+    if (disabled) return;
     const container = phoneOptionsScrollRef.current;
     if (!container) return;
     const maxScroll = Math.max(container.scrollHeight - container.clientHeight, 0);
@@ -181,10 +187,14 @@ export default function usePhoneInput({
   };
 
   /** Abre el menú al enfocar el campo de prefijo. */
-  const handlePrefixFocus = () => setIsPhoneMenuOpen(true);
+  const handlePrefixFocus = () => {
+    if (!disabled) setIsPhoneMenuOpen(true);
+  };
 
   /** Alterna el menú desde su botón sin cambiar la selección. */
-  const handleToggleMenu = () => setIsPhoneMenuOpen((current) => !current);
+  const handleToggleMenu = () => {
+    if (!disabled) setIsPhoneMenuOpen((current) => !current);
+  };
 
   /**
    * Lee las métricas del contenedor tras su desplazamiento nativo.
@@ -201,6 +211,7 @@ export default function usePhoneInput({
    * @returns {void}
    */
   const handleChange = (event) => {
+    if (disabled) return;
     const formattedValue = formatPhoneNumber(event.target.value, resolvedPhoneOption);
     if (!isControlled) {
       setInternalValue(formattedValue);

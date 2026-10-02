@@ -437,6 +437,7 @@ function AdminActiveProjects({
           leftIcon={<SearchNormal1 size="20" color="currentColor" />}
           className="w-full"
           aria-label="Buscar proyectos"
+          required={false}
           onChange={handleQueryChange}
         />
         <div className="admin-active-projects__filters w-full">

@@ -30,21 +30,62 @@ La API pública continúa en `Input.jsx`. El valor está controlado cuando
 - `onTagOptionSelect` intercepta exclusivamente el clic en sugerencias:
   no cambia selección ni limpia consulta. Enter/coma mantienen su flujo propio.
 - La eliminación notifica antes de restaurar el foco mediante requestAnimationFrame.
+  Solo conserva el último frame pendiente y lo cancela al desmontar o salir de Tags.
   El scroll horizontal vuelve al inicio al cambiar la identidad de la selección.
 - El botón de password alterna visibilidad antes de su callback y conserva foco,
   valor, nombre accesible y el indicador de requisitos original.
 
-## Deuda funcional deliberadamente pendiente
+## Correcciones de contrato verificadas
 
-Este refactor no modifica los siguientes comportamientos:
+- Todas las ramas del campo nativo, incluido el número telefónico, comparten
+  `onKeyDown`: la lógica de tags va primero y el callback público se ejecuta solo
+  si el evento no fue prevenido. El callback puede prevenir el envío del formulario.
+  El prefijo es un control auxiliar con teclado propio; Enter selecciona país
+  sin enviar el formulario ni invocar el teclado público del número.
+- `disabled || state === "Disabled"` es el bloqueo efectivo de todas las variantes:
+  campo, adornos, prefijo, países, scrollbar personalizado, tags, eventos y estilos. No existe un modo
+  Disabled visual con interacción activa. Deshabilitar cancela también el foco de tags pendiente.
+- `required` expresa obligatoriedad en el label y en el campo nativo (no en el
+  buscador de prefijos). Los formularios con validación personalizada conservan
+  `noValidate`; `preventDefault` por sí solo no evita la validación previa del navegador.
+  Buscadores y selectores opcionales deben proporcionar `required={false}`.
+- `information` se consume y descarta por compatibilidad. No controla el label:
+  esa responsabilidad pertenece a `showLabelInfo`. Los atributos HTML, data-* y
+  aria-* del consumidor siguen llegando al campo nativo.
+- Los frames de foco de tags, medición telefónica y reinicio de scroll se cancelan
+  cuando dejan de ser aplicables. Una eliminación cuyo callback desmonta Input
+  no programa foco sobre otro control que reutilice su ref.
 
-- La rama del número telefónico no conecta el `onKeyDown` público.
-- `state="Disabled"` aplica estado visual; solo `disabled` bloquea interacción.
-- `required` se usa en el label y no como atributo del input nativo.
-- `information` no se consume en Input y se propaga al DOM mediante `...props`.
-- `countryCode` y `countryPrefix` no sincronizan cambios posteriores de props.
-- El frame que restaura foco al eliminar tags sigue sin cancelarse. Los frames
-  de medición telefónica y reinicio de scroll sí conservan su limpieza existente.
+## País y prefijo: decisión de compatibilidad
+
+La ausencia de sincronización posterior se conserva deliberadamente. Estas props
+son valores iniciales en el contrato actual, no valores controlados. Añadir un
+efecto que las reaplique cambiaría la API semántica y podría sobrescribir la
+selección del usuario. `onPhoneCountryChange` es una notificación: guardar sus
+datos en el padre no cambia ese contrato.
+
+| Prop | Clasificación | Comportamiento |
+| --- | --- | --- |
+| `countryCode` | Valor inicial | Inicializa el país; prevalece sobre el fallback por prefijo. |
+| `countryPrefix` | Valor inicial | Inicializa el texto del prefijo y sirve de fallback de país. |
+| `phoneOptions` | Configuración del catálogo | Define opciones, máscaras y placeholders; no controla la selección. |
+| `value` | Valor controlado del número | Se actualiza desde el padre cuando es distinto de undefined. |
+| `defaultValue` | Valor inicial del número | Solo inicializa el estado interno, sin formateo automático. |
+
+Los consumidores actuales de país/prefijo son:
+
+- `CreateAccount`: constantes VE/+58 como selección inicial; el usuario puede cambiarlas.
+- `ProfilePanel`: constantes US/+1 en campos deshabilitados.
+- `CreateAdminUserModal` / `EditAdminUserModal`: país/prefijo del usuario al montar;
+  después reflejan las notificaciones en el borrador para construir el payload.
+  No realizan una sustitución independiente del país durante esa edición.
+- Los demás inputs telefónicos y el catálogo visual usan los valores iniciales por defecto.
+
+Para reemplazar esos valores iniciales hay que montar otra instancia (por ejemplo,
+con una nueva key). No se renombraron props ni se añadió un modo controlado de país.
+Una futura necesidad de selección controlada requiere definir ese contrato por
+separado, incluyendo prioridad entre país y prefijo. Los cambios de props actuales
+no reformatean el número ni disparan onChange/onPhoneCountryChange artificialmente.
 
 Las pruebas de comportamiento están en `tests/browser/input.test.js`; los
 helpers puros se verifican en `tests/inputDomainUtils.test.js`. Las pruebas

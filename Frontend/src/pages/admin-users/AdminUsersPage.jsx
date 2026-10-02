@@ -212,7 +212,7 @@ function AdminUsersPage({ empty = false }) {
 
             <div className="flex min-h-0 flex-1 flex-col gap-[16px] pt-[24px]">
               <div className="flex flex-col justify-between gap-[12px] min-[900px]:flex-row">
-                <Input type="Default input" size="M" value={query} placeholder="Buscar..." showLabel={false} showHint={false} showLeftIcon showRightIcon={false} leftIcon={<SearchNormal1 size="20" color="currentColor" />} className="w-full min-[900px]:max-w-[320px]" aria-label="Buscar usuarios" onChange={(event) => setQuery(event.target.value)} />
+                <Input type="Default input" size="M" value={query} placeholder="Buscar..." showLabel={false} showHint={false} showLeftIcon showRightIcon={false} required={false} leftIcon={<SearchNormal1 size="20" color="currentColor" />} className="w-full min-[900px]:max-w-[320px]" aria-label="Buscar usuarios" onChange={(event) => setQuery(event.target.value)} />
                 <div className="grid w-full grid-cols-1 items-center gap-[12px] min-[560px]:grid-cols-3 min-[900px]:w-auto min-[900px]:grid-cols-[180px_180px_129px]">
                   <DropdownMenu
                     type="Text"

@@ -99,6 +99,7 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
               key={`${option.countryCode}-${option.dialCode}`}
               type="button"
               role="option"
+              disabled={disabled}
               aria-selected={
                 option.countryCode === resolvedPhoneOption.countryCode &&
                 option.dialCode === resolvedPhoneOption.dialCode
@@ -108,7 +109,8 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
                 option.countryCode === resolvedPhoneOption.countryCode &&
                   option.dialCode === resolvedPhoneOption.dialCode
                   ? "bg-[var(--color-neutral-200)]"
-                  : "hover:bg-[var(--color-neutral-200)]",
+                  : !disabled && "hover:bg-[var(--color-neutral-200)]",
+                disabled && "cursor-not-allowed",
               )}
               onClick={() => handlePhoneOptionSelection(option)}
             >
@@ -141,7 +143,7 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
               height={152}
               length={phoneScrollMetrics.length}
               position={phoneScrollMetrics.position}
-              interactive
+              interactive={!disabled}
               onPositionChange={handleScrollPositionChange}
               aria-label="Desplazar países"
               className="absolute right-0 top-[8px]"
