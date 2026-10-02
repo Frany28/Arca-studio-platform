@@ -24,7 +24,8 @@
     "db:migrate:deploy": "node scripts/prisma.mjs migrate deploy",
     "db:migrate:status": "node scripts/prisma.mjs migrate status",
     "db:studio": "node scripts/prisma.mjs studio",
-    "verify": "pnpm lint:docs && node scripts/prisma.mjs validate && node scripts/prisma.mjs migrate status && pnpm test && pnpm --dir ../Frontend build"
+    "verify": "pnpm lint:docs && node scripts/prisma.mjs validate && pnpm test && pnpm --dir ../Frontend test && pnpm --dir ../Frontend build",
+    "verify:db": "pnpm db:migrate:status"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1068.0",
