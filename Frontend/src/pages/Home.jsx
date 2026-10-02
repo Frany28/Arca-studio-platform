@@ -34,6 +34,7 @@ import { getProjectRequestStatus } from "../utils/projectRequestStatus.js";
 import { groupProjectsByStatus } from "../utils/projectStatusGroups.js";
 import { createUserSideNavigationItems } from "../utils/sideNavigationItems.js";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "./clientDrawerData.js";
+import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
 
 const EXPANDED_SIDEBAR_WIDTH = 312;
 const COLLAPSED_SIDEBAR_WIDTH = 76;
@@ -256,14 +257,15 @@ function Home({ view = "dashboard" }) {
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
-  const [projectRequests, setProjectRequests] = useState([]);
-  const [projectRequestsError, setProjectRequestsError] = useState("");
-  const [projectRequestsLoading, setProjectRequestsLoading] = useState(false);
-  const [projectRequestsLoadingMore, setProjectRequestsLoadingMore] =
-    useState(false);
-  const [projectRequestsNextCursor, setProjectRequestsNextCursor] =
-    useState(null);
-  const [projectRequestsRevision, setProjectRequestsRevision] = useState(0);
+  const {
+    loadMoreProjectRequests,
+    projectRequests,
+    projectRequestsError,
+    projectRequestsLoading,
+    projectRequestsLoadingMore,
+    projectRequestsNextCursor,
+    retryProjectRequests,
+  } = useHomeProjectRequests({ user });
   const [projects, setProjects] = useState([]);
   const [projectsError, setProjectsError] = useState("");
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -423,61 +425,6 @@ function Home({ view = "dashboard" }) {
       projectsRequestIdRef.current += 1;
     };
   }, [loadProjects]);
-
-  useEffect(() => {
-    if (!user) return undefined;
-
-    let isMounted = true;
-    setProjectRequestsLoading(true);
-    setProjectRequestsError("");
-
-    api.projectRequests
-      .list()
-      .then((data) => {
-        if (isMounted) {
-          setProjectRequests(data.projectRequests || []);
-          setProjectRequestsNextCursor(data.nextCursor || null);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setProjectRequests([]);
-          setProjectRequestsError("No se pudieron cargar tus solicitudes.");
-        }
-      })
-      .finally(() => {
-        if (isMounted) setProjectRequestsLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [projectRequestsRevision, user]);
-
-  const loadMoreProjectRequests = async () => {
-    if (!projectRequestsNextCursor || projectRequestsLoadingMore) return;
-
-    setProjectRequestsLoadingMore(true);
-    setProjectRequestsError("");
-
-    try {
-      const data = await api.projectRequests.list({
-        cursor: projectRequestsNextCursor,
-      });
-      setProjectRequests((current) => {
-        const byId = new Map(current.map((item) => [String(item.id), item]));
-        (data.projectRequests || []).forEach((item) => {
-          byId.set(String(item.id), item);
-        });
-        return Array.from(byId.values());
-      });
-      setProjectRequestsNextCursor(data.nextCursor || null);
-    } catch {
-      setProjectRequestsError("No se pudieron cargar más solicitudes.");
-    } finally {
-      setProjectRequestsLoadingMore(false);
-    }
-  };
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(
@@ -696,9 +643,7 @@ function Home({ view = "dashboard" }) {
                       showActions
                       showSecondaryAction={false}
                       primaryActionLabel="Actualizar"
-                      onPrimaryAction={() =>
-                        setProjectRequestsRevision((current) => current + 1)
-                      }
+                      onPrimaryAction={retryProjectRequests}
                     />
                   ) : projectRequests.length ? (
                     <div className="content-reveal flex flex-col">
