@@ -17,8 +17,9 @@ test("request status policy distinguishes corrections from final decisions", () 
 });
 
 test("client, architect and admin surfaces consume the shared workflow", async () => {
-  const [home, dashboard, requestWorkflow, modal, api, adminApi] = await Promise.all([
+  const [home, homeRows, dashboard, requestWorkflow, modal, api, adminApi] = await Promise.all([
     readFile(new URL("../src/pages/Home.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/home/components/HomeProjectRows.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/ArchitectDashboard.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx", import.meta.url), "utf8"),
@@ -26,7 +27,7 @@ test("client, architect and admin surfaces consume the shared workflow", async (
     readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(home, /Corregir solicitud/);
+  assert.match(homeRows, /Corregir solicitud/);
   assert.match(home, /convertedProjectId/);
   assert.match(dashboard, /useDashboardRequestWorkflow/);
   assert.match(requestWorkflow, /listReviewQueue/);
