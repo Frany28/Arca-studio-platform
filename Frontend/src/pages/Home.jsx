@@ -1,5 +1,5 @@
 import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
