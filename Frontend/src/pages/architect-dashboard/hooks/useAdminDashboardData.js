@@ -3,6 +3,20 @@ import { useEffect, useState } from "react";
 import { api } from "../../../api/http.js";
 import { loadAdminDashboardOverview } from "../../../api/adminDashboardOverview.js";
 
+/**
+ * Carga métricas, overview administrativo y responsables disponibles para el dashboard.
+ * Solo consulta con rol admin y fuera del escenario vacío; cada lectura conserva
+ * su loading independiente. La página consume actividad y solicitudes desde el overview.
+ *
+ * @param {Object} params - Contexto de sesión y claves externas de refresco.
+ * @param {boolean} params.empty - Omite las consultas del escenario de ejemplo vacío.
+ * @param {string} params.roleCode - Rol usado para habilitar las lecturas administrativas.
+ * @param {Object|null} params.user - Usuario cuyo ID o correo delimita la caché del overview.
+ * @param {number} params.adminMetricsRequestKey - Un cambio vuelve a consultar las métricas.
+ * @param {number} params.adminOverviewRequestKey - Un cambio recarga el overview; si es mayor que cero fuerza lectura.
+ * @returns {Object} Métricas, overview y responsables con loading; errores independientes
+ * de métricas y overview, y setAdminOverview para reconciliar asignaciones desde la página.
+ */
 export function useAdminDashboardData({
   empty,
   roleCode,
@@ -30,6 +44,8 @@ export function useAdminDashboardData({
       return undefined;
     }
 
+    // La microtarea evita iniciar la consulta si el efecto ya se limpió.
+    // Métricas recibe la señal de cancelación; un error conserva el valor anterior.
     const abortController = new AbortController();
     Promise.resolve()
       .then(() => {
@@ -79,6 +95,9 @@ export function useAdminDashboardData({
 
         setAdminOverviewLoading(true);
         setAdminOverviewError("");
+        // El helper reutiliza caché de 15 s y peticiones activas por ID/correo.
+        // force evita reutilizar caché vigente, pero sigue deduplicando peticiones activas.
+        // Esta señal no se envía al helper: la limpieza impide aplicar su resultado exitoso.
         return loadAdminDashboardOverview({
           force: adminOverviewRequestKey > 0,
           scopeKey: user?.id || user?.email,
@@ -115,6 +134,8 @@ export function useAdminDashboardData({
       .then(() => {
         if (abortController.signal.aborted) return null;
         setAdminAssigneesLoading(true);
+        // El catálogo no depende de las claves de refresco. Un fallo no publica
+        // un error propio: vacía responsables; la señal y la guarda protegen esta lectura.
         return api.admin.listAssignees({ signal: abortController.signal });
       })
       .then((data) => {
