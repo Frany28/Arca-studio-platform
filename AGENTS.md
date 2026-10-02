@@ -2,6 +2,8 @@
 
 Estas instrucciones son obligatorias para cualquier persona o agente que modifique este repositorio.
 
+Al iniciar cada tarea en este repositorio, leer este `AGENTS.md` y cualquier `AGENTS.md` adicional aplicable al área de trabajo. Aplicar también el proceso de calidad y mantenibilidad de la sección 19 antes de modificar código; estas reglas permanecen vigentes entre sesiones.
+
 > **Estado actual del proyecto:** ARCA Studio se encuentra en fase de desarrollo, pruebas y demostración. Los despliegues actuales realizados mediante Netlify y/o Vercel deben considerarse entornos de **staging/demo/pruebas**, y no el entorno definitivo de producción.
 
 ---
@@ -425,3 +427,95 @@ Toda función o método existente o nuevo dentro de `Backend/src` debe incluir u
 * Los callbacks anónimos simples quedan exentos. Si un callback concentra lógica relevante, debe extraerse como función nombrada y documentarse.
 * Todo cambio de comportamiento debe actualizar también el JSDoc relacionado.
 * `pnpm lint:docs` y `pnpm verify` deben rechazar funciones o métodos que incumplan la estructura verificable de esta regla.
+
+---
+
+# 19. Calidad arquitectónica, mantenibilidad y proceso de trabajo
+
+Trabajar como responsable de la estabilidad del proyecto a largo plazo. Toda solución debe ser funcional, clara, mantenible, comprobable, extensible, coherente con la arquitectura, documentada y segura frente a regresiones. No resolver únicamente el síntoma visible ni acumular deuda técnica para hacer desaparecer un problema.
+
+## 19.1. Análisis previo y causa raíz
+
+Antes de escribir código:
+
+1. Analizar el flujo completo: dónde nace el estado, dónde se transforma y dónde se consume.
+2. Identificar componentes, hooks, servicios, helpers, endpoints y pruebas que participan.
+3. Buscar implementaciones equivalentes y revisar los módulos compartidos pertinentes antes de crear lógica nueva.
+4. Determinar la causa raíz y revisar los contratos y todos los consumidores de las interfaces compartidas que se pretenda cambiar.
+5. Antes de un cambio importante, explicar brevemente el problema real, su causa, los archivos involucrados, los riesgos, la solución propuesta y por qué resuelve el problema de forma estructural.
+
+Si la causa es una distribución incorrecta de responsabilidades, corregirla de forma segura e incremental dentro del alcance de la tarea.
+
+## 19.2. Responsabilidades y tamaño de los módulos
+
+* Cada componente, hook, servicio, controlador o helper debe tener una responsabilidad comprensible. Preferir composición antes que acumulación de funciones.
+* Antes de agregar lógica a un archivo grande, enumerar sus responsabilidades, identificar cuáles pueden separarse y explicar la división propuesta.
+* Extraer por responsabilidad, no por cantidad de líneas. Mover un archivo grande a otro archivo grande no resuelve el problema.
+* Separar cuando corresponda presentación, estado, HTTP, transformaciones, validaciones, reglas de negocio, eventos, sincronización, caché, permisos y configuración.
+* Los componentes React deben centrarse en composición, presentación, conexión entre hooks y renderizado. Extraer lógica de negocio compleja, transformaciones extensas y efectos de responsabilidades independientes.
+* Los hooks deben tener una intención clara. No trasladar toda la complejidad de un componente a un hook que mezcle networking, validación, caché, permisos, navegación y estado visual; componer responsabilidades independientes.
+* Mantener la comunicación HTTP separada de la presentación. Las funciones HTTP deben tener nombres explícitos, interfaces consistentes y manejo de errores, sin comportamiento visual.
+* Distribuir servicios HTTP por dominio cuando mejore la responsabilidad y la navegación del código, no únicamente por estética.
+* Separar reglas de dominio de infraestructura cuando sea posible, para probar el negocio sin depender de HTTP, almacenamiento local, SSE, WebSocket o servicios externos.
+* Mantener las piezas relacionadas cerca y una estructura predecible. Usar carpetas por funcionalidad cuando el alcance lo justifique; evitar carpetas innecesarias para archivos triviales.
+* No hacer extracciones artificiales que dificulten seguir el flujo. Cada extracción debe mejorar responsabilidad, claridad, reutilización, pruebas, aislamiento o mantenibilidad.
+
+## 19.3. Claridad, reutilización y documentación
+
+* Usar nombres que expresen intención y dominio; evitar nombres ambiguos como `stuff`, `handler2`, `processData` o `helpers2`.
+* Cada función debe resolver una responsabilidad concreta. Preferir retornos tempranos y validaciones separadas frente a anidación excesiva, sin fragmentar artificialmente el código.
+* Buscar helpers, validadores, servicios y componentes equivalentes antes de crear otros. Aplicar DRY con criterio, sin abstracciones genéricas para coincidencias superficiales.
+* Usar constantes para valores que representan conceptos importantes y cuya dispersión dificulta el mantenimiento; no convertir cada literal trivial en una constante.
+* Documentar con JSDoc todo código no trivial, especialmente funciones reutilizables, hooks, helpers, servicios, transformaciones, validadores, caché y efectos secundarios. Mantener la regla más específica de la sección 18 para `Backend/src`.
+* El JSDoc debe explicar propósito, entradas, resultado, efectos secundarios, condiciones relevantes y errores esperados cuando correspondan. Actualizarlo si cambia el comportamiento.
+* Documentar decisiones que no sean evidentes: abortos, caché, dependencias de efectos, timeouts, listeners, descarte de respuestas antiguas y elección de mecanismos de sincronización.
+* Los comentarios deben explicar el motivo de una decisión, no repetir literalmente el código.
+
+## 19.4. Estado, efectos, asincronía y errores
+
+* Evitar estado duplicado: derivar valores del estado existente cuando sea posible.
+* No usar efectos para sincronizar estados que pueden calcularse directamente. Controlar dependencias y limpiar listeners y timers.
+* En operaciones asíncronas, considerar cancelación, concurrencia, respuestas fuera de orden, desmontaje, errores, carga y operaciones repetidas. Evitar que respuestas obsoletas sobrescriban datos recientes.
+* Si la solución acumula flags, booleanos relacionados, condiciones repetidas o efectos interdependientes, simplificar la representación del problema antes de agregar más estados.
+* No ocultar errores silenciosamente. Propagarlos, transformarlos, registrarlos o manejarlos según la responsabilidad del módulo; documentar cualquier descarte deliberado.
+* Mantener mensajes y códigos consistentes. No sustituir errores específicos por mensajes genéricos que dificulten el diagnóstico.
+
+## 19.5. Alcance, compatibilidad y mejora gradual
+
+* Mantener cambios enfocados y fáciles de revisar. No mezclar una corrección con formateos, lint o refactors ajenos.
+* No hacer un refactor masivo del repositorio. Mejorar progresivamente el área relacionada con cada tarea.
+* Antes de modificar una interfaz compartida, revisar todos sus consumidores, contratos, pruebas e impacto; conservar compatibilidad salvo autorización explícita.
+* Clasificar problemas encontrados: los directamente relacionados pueden corregirse en el mismo cambio; los indirectamente relacionados solo si reducen significativamente el riesgo; los no relacionados se reportan como deuda técnica para otra tarea.
+* En archivos con demasiadas responsabilidades, realizar extracciones incrementales, adaptar las pruebas y comprobar que el comportamiento público continúa siendo el mismo.
+
+## 19.6. Validación y revisión del cambio
+
+* Revisar las pruebas relacionadas antes de modificar y ejecutar pruebas específicas y relacionadas después del cambio.
+* Cuando se corrige un bug, agregar una prueba de regresión que lo hubiera detectado cuando corresponda. Las pruebas deben comprobar comportamiento y evitar dependencia innecesaria de detalles internos.
+* Adaptar las pruebas si cambia una responsabilidad interna sin cambiar el comportamiento público.
+* Ejecutar lint disponible, build cuando el alcance lo justifique y las comprobaciones exigidas por la sección 13. Documentar cualquier comprobación no ejecutada y su motivo.
+* Revisar explícitamente los casos aplicables: flujo normal, límites, errores, carga inicial, desmontaje, navegación, respuestas lentas, solicitudes repetidas, estados vacíos y permisos.
+* Antes de entregar, revisar el propio cambio buscando duplicación, funciones o componentes excesivos, hooks sobrecargados, estado y efectos innecesarios, nombres ambiguos, documentación ausente, manejo incorrecto de errores, condiciones de carrera y código muerto.
+
+## 19.7. Proceso y reporte esperado
+
+Para cada tarea:
+
+1. **Análisis:** explicar causa raíz, archivos involucrados, riesgos y solución propuesta antes de cambios importantes.
+2. **Implementación:** mantener responsabilidades claras, nombres explícitos, JSDoc, estructura limpia y compatibilidad.
+3. **Validación:** ejecutar las pruebas y comprobaciones aplicables y revisar su resultado.
+4. **Revisión:** inspeccionar el cambio por claridad, documentación, errores, concurrencia y regresiones.
+5. **Reporte final:** indicar el problema encontrado, los cambios y archivos modificados, las pruebas ejecutadas y sus resultados, las comprobaciones omitidas con su motivo y cualquier deuda técnica adicional relevante.
+
+## 19.8. Orden de prioridad
+
+1. Correctitud.
+2. No generar regresiones.
+3. Arquitectura clara.
+4. Código mantenible.
+5. Pruebas.
+6. Documentación.
+7. Rendimiento cuando sea relevante.
+8. Reducción de código.
+
+Menos líneas no implica mejor código. Entre soluciones válidas, preferir la que conserve mejor las responsabilidades, reduzca acoplamiento y futuros bugs, facilite pruebas y sea coherente con ARCA Studio. El criterio de aceptación incluye que el siguiente desarrollador pueda comprender y mantener la solución con confianza.
