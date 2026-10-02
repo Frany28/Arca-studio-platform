@@ -17,13 +17,13 @@ test("request status policy distinguishes corrections from final decisions", () 
 });
 
 test("client, architect and admin surfaces consume the shared workflow", async () => {
-  const [home, homeRows, dashboard, requestWorkflow, modal, api, adminApi] = await Promise.all([
+  const [home, homeRows, dashboard, requestWorkflow, modal, projectRequestsApi, adminApi] = await Promise.all([
     readFile(new URL("../src/pages/Home.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/home/components/HomeProjectRows.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/ArchitectDashboard.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/api/http.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/projectRequestsApi.js", import.meta.url), "utf8"),
     readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
@@ -33,6 +33,6 @@ test("client, architect and admin surfaces consume the shared workflow", async (
   assert.match(requestWorkflow, /listReviewQueue/);
   assert.match(requestWorkflow, /decideProjectRequest/);
   assert.match(modal, /Guardar revisión/);
-  assert.match(api, /project-requests\/review-queue/);
+  assert.match(projectRequestsApi, /project-requests\/review-queue/);
   assert.match(adminApi, /project-requests\/\$\{encodeURIComponent\(projectRequestId\)\}\/decision/);
 });
