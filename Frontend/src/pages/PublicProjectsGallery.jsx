@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import clsx from "clsx";
 
 import { api } from "../api/http.js";
 import { useAuth } from "../auth/AuthContext.jsx";
@@ -302,7 +303,10 @@ export default function PublicProjectsGallery() {
           {...sideNavigationProps}
           expanded={isSidebarExpanded}
           onExpandedChange={setIsSidebarExpanded}
-          className="min-h-screen shrink-0 self-stretch max-[767px]:hidden min-[768px]:max-[1023px]:!w-[234px] min-[768px]:max-[1023px]:!px-[12px]"
+          className={clsx(
+            "min-h-screen shrink-0 self-stretch max-[767px]:hidden min-[768px]:max-[1023px]:!px-[12px]",
+            isSidebarExpanded && "min-[768px]:max-[1023px]:!w-[234px]",
+          )}
         />
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto">

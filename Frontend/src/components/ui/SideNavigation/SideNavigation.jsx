@@ -464,6 +464,12 @@ function SideNavigation({
     onItemSelect?.(item);
   };
 
+  /**
+   * Solicita alternar la expansión sin duplicar el estado proporcionado por el padre.
+   * En modo no controlado actualiza el estado interno y notifica los callbacks compatibles.
+   *
+   * @returns {void} Actualiza o solicita la expansión de esta instancia.
+   */
   const handleToggleExpanded = () => {
     const nextExpanded = !isExpanded;
 
@@ -517,6 +523,7 @@ function SideNavigation({
             iconLeft={<SidebarRightIcon className="size-5" />}
             className="shrink-0"
             tooltipPosition="Right"
+            aria-expanded={isExpanded}
             aria-label={
               isExpanded
                 ? "Contraer navegación lateral"

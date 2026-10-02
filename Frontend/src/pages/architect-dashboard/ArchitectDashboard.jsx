@@ -205,6 +205,13 @@ function ArchitectDashboard({ empty = false }) {
       `(max-width: ${WEB_BREAKPOINT_PX - 1}px)`,
     );
 
+    /**
+     * Restablece la expansión al entrar o salir del rango web, además del montaje.
+     * Dentro del mismo rango conserva los cambios manuales solicitados por el usuario.
+     *
+     * @param {MediaQueryList|MediaQueryListEvent} event Coincidencia del rango menor a 1280 px.
+     * @returns {void} Actualiza la expansión controlada por la página.
+     */
     function syncSidebarForViewport(event) {
       setIsSidebarExpanded(!event.matches);
     }
@@ -368,11 +375,7 @@ function ArchitectDashboard({ empty = false }) {
           userName={currentUser.name}
           userEmail={currentUser.email}
           userAvatarSrc={currentUser.profilePhotoUrl}
-          onExpandedChange={(nextExpanded) => {
-            if (window.innerWidth >= WEB_BREAKPOINT_PX) {
-              setIsSidebarExpanded(nextExpanded);
-            }
-          }}
+          onExpandedChange={setIsSidebarExpanded}
           onItemSelect={handleSideNavigationSelect}
           onNewOpportunityClick={() =>
             navigate("/dashboard-arquitecto/nuevo-proyecto")

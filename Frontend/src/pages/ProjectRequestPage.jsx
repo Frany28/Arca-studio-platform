@@ -73,6 +73,7 @@ export default function ProjectRequestPage() {
     collapseSidebar,
     confirmRequestAction,
     expandSidebar,
+    handleMobileExpandedChange,
     isMobileNavigationOpen,
     isRequestActionModalOpen,
     isSidebarExpanded,
@@ -387,7 +388,12 @@ export default function ProjectRequestPage() {
       </div>
 
       <SideOverlayDrawer open={isMobileNavigationOpen} onClose={closeMobileNavigation} side="left" widthClassName="w-[min(312px,calc(100vw-32px))]" className="z-[80] min-[768px]:hidden" panelClassName="rounded-none">
-        <SideNavigation {...sidebar.props} expanded onItemSelect={requestNavigation} />
+        <SideNavigation
+          {...sidebar.props}
+          expanded={isMobileNavigationOpen}
+          onExpandedChange={handleMobileExpandedChange}
+          onItemSelect={requestNavigation}
+        />
       </SideOverlayDrawer>
 
       <ProjectRequestCancelModal

@@ -20,8 +20,28 @@ pnpm run dev
 pnpm run build
 pnpm run lint
 pnpm test
+pnpm test:browser
 pnpm run preview
 ```
+
+### Regresión de navegación lateral en navegador
+
+`pnpm test:browser` ejecuta `tests/browser/sideNavigation.test.js` con Playwright
+y un servidor Vite temporal en localhost. Usa las páginas, React y CSS reales;
+la sesión y las lecturas de API se interceptan con fixtures vacías y no requieren
+backend ni base de datos. El servidor y los contextos del navegador se cierran al finalizar.
+
+En Windows usa Edge instalado, en modo headless. En otros sistemas utiliza
+Chromium de Playwright; prepararlo una vez con `pnpm exec playwright install chromium`.
+La variable `ARCA_TEST_BROWSER_CHANNEL` permite seleccionar otro navegador compatible,
+por ejemplo `chrome`. Estas pruebas se ejecutan aparte de `pnpm test` porque requieren
+un navegador instalado y permisos para iniciar procesos y escuchar en localhost.
+
+La regresión comprueba clics, navegación y anchos de tablet/escritorio, los límites
+responsive, teclado, tema oscuro, movimiento reducido y cierre/reapertura móvil con
+restauración de foco. En dashboard de arquitecto y Usuarios se conserva la sincronización
+al cruzar 1280 px; en Archivos ese breakpoint determina únicamente el estado inicial.
+En todos los casos el usuario puede alternar manualmente la sidebar a cualquier ancho.
 
 ## Estructura principal
 

@@ -129,6 +129,13 @@ function AdminUsersPage({ empty = false }) {
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(`(max-width: ${WEB_BREAKPOINT_PX - 1}px)`);
+    /**
+     * Restablece la expansión al montar o cruzar el breakpoint web.
+     * Los cambios manuales se conservan mientras la ventana permanezca en ese rango.
+     *
+     * @param {MediaQueryList|MediaQueryListEvent} event Coincidencia del rango menor a 1280 px.
+     * @returns {void} Actualiza la expansión controlada por la página.
+     */
     const syncSidebar = (event) => setIsSidebarExpanded(!event.matches);
     syncSidebar(mediaQuery);
     mediaQuery.addEventListener("change", syncSidebar);
@@ -169,9 +176,7 @@ function AdminUsersPage({ empty = false }) {
           userName={currentUser.name}
           userEmail={currentUser.email}
           userAvatarSrc={currentUser.profilePhotoUrl}
-          onExpandedChange={(expanded) => {
-            if (window.innerWidth >= WEB_BREAKPOINT_PX) setIsSidebarExpanded(expanded);
-          }}
+          onExpandedChange={setIsSidebarExpanded}
           onItemSelect={(item) => item?.to && navigate(item.to)}
           onNewOpportunityClick={() => navigate("/dashboard-arquitecto/nuevo-proyecto")}
           onLogoutClick={() => { logout(); navigate("/"); }}

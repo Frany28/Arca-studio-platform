@@ -17,6 +17,12 @@ import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.j
 const WEB_BREAKPOINT_PX = 1280;
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
 
+/**
+ * Presenta las métricas de archivos con navegación administrativa compartida.
+ * El breakpoint define solo la expansión inicial; redimensionar conserva la elección manual.
+ *
+ * @returns {import("react").ReactElement} Vista administrativa de archivos.
+ */
 function AdminFilesPage() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -65,9 +71,7 @@ function AdminFilesPage() {
           userName={currentUser.name}
           userEmail={currentUser.email}
           userAvatarSrc={currentUser.profilePhotoUrl}
-          onExpandedChange={(expanded) => {
-            if (window.innerWidth >= WEB_BREAKPOINT_PX) setIsSidebarExpanded(expanded);
-          }}
+          onExpandedChange={setIsSidebarExpanded}
           onItemSelect={(item) => item?.to && navigate(item.to)}
           onNewOpportunityClick={() => navigate("/dashboard-arquitecto/nuevo-proyecto")}
           onLogoutClick={() => { logout(); navigate("/"); }}

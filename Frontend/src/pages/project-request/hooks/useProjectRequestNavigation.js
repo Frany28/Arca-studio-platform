@@ -3,8 +3,8 @@ import { useState } from "react";
 import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
 
 /**
- * Coordina sidebar desktop/m?vil y difiere navegaci?n, logout o reset hasta confirmarlos.
- * Cancelar cierra el modal sin ejecutar la acci?n; el reset del flujo se delega a onReset.
+ * Coordina por separado la expansión de escritorio y la apertura del drawer móvil.
+ * Difiere navegación, logout o reset hasta confirmarlos; cancelar no ejecuta la acción.
  *
  * @param {Object} params - Dependencias del flujo de navegaci?n.
  * @param {Function} params.logout - Cierra sesi?n; no se espera su resultado antes de navegar.
@@ -102,6 +102,19 @@ export default function useProjectRequestNavigation({
     setIsMobileNavigationOpen(false);
   };
 
+  /**
+   * Traduce la intención de contraer la navegación móvil en el cierre de su drawer.
+   * Conserva el estado de escritorio y delega la restauración de foco al drawer compartido.
+   *
+   * @param {boolean} expanded Expansión solicitada por la instancia móvil.
+   * @returns {void} Cierra únicamente el drawer móvil cuando se solicita contraer.
+   */
+  const handleMobileExpandedChange = (expanded) => {
+    if (!expanded) {
+      closeMobileNavigation();
+    }
+  };
+
   const collapseSidebar = () => {
     setIsSidebarExpanded(false);
   };
@@ -116,6 +129,7 @@ export default function useProjectRequestNavigation({
     collapseSidebar,
     confirmRequestAction,
     expandSidebar,
+    handleMobileExpandedChange,
     isMobileNavigationOpen,
     isRequestActionModalOpen,
     isSidebarExpanded,

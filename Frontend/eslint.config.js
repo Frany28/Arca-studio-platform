@@ -33,6 +33,12 @@ export default defineConfig([
     },
   },
   {
+    files: ['tests/browser/**/*.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['vite.config.js'],
     languageOptions: {
       globals: globals.node,
