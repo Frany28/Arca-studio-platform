@@ -30,6 +30,7 @@ import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
 import { getProjectPath } from "../utils/projectRoutes.js";
 import { getCommentNavigationParams } from "../utils/commentSelection.js";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
+import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import {
   CheckboxField,
   ChoiceGroup,
@@ -69,16 +70,6 @@ const INITIAL_FORM = {
   hasBlueprints: "Indeterminate",
   referenceLink: "",
 };
-
-function toFileItems(fileList) {
-  return Array.from(fileList || []).map((file, index) => ({
-    error: "",
-    file,
-    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
-    progress: 0,
-    status: "pending",
-  }));
-}
 
 export default function ProjectRequestPage() {
   const navigate = useNavigate();
@@ -122,9 +113,7 @@ export default function ProjectRequestPage() {
           : "Indeterminate",
     referenceLink: initialRequest?.referenceLink || "",
   }));
-  const [files, setFiles] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [fileErrors, setFileErrors] = useState([]);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
@@ -142,7 +131,6 @@ export default function ProjectRequestPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [isLocationInputFocused, setIsLocationInputFocused] = useState(false);
-  const fileInputRef = useRef(null);
   const formRef = useRef(null);
   const submissionIdRef = useRef(null);
   const {
@@ -160,6 +148,20 @@ export default function ProjectRequestPage() {
     () => getProjectRequestFieldErrors(form),
     [form],
   );
+  const {
+    fileErrors,
+    fileInputRef,
+    files,
+    handleFilesChange,
+    resetFiles,
+    setFileErrors,
+    updateFileItem,
+  } = useProjectRequestFiles({
+    currentFieldErrors,
+    draftId,
+    hasAttemptedSubmit,
+    setShowRequiredAlert,
+  });
   const navigationItems = useMemo(
     () => createUserSideNavigationItems([], currentUser.roleCode),
     [currentUser.roleCode],
@@ -351,12 +353,8 @@ export default function ProjectRequestPage() {
     setForm(INITIAL_FORM);
     clearLocationSuggestions();
     setIsLocationInputFocused(false);
-    setFiles([]);
+    resetFiles();
     setFieldErrors({});
-    setFileErrors([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
     setHasAttemptedSubmit(false);
     setShowRequiredAlert(false);
     setIsValidationModalOpen(false);
@@ -371,22 +369,6 @@ export default function ProjectRequestPage() {
     setShowRequiredAlert(false);
     setPendingRequestAction({ type: "clear" });
     setIsRequestActionModalOpen(true);
-  };
-  const handleFilesChange = (fileList) => {
-    if (draftId) {
-      setFileErrors(["Ya existe un borrador en proceso. Reintenta el envío antes de cambiar los archivos."]);
-      return;
-    }
-    const nextFiles = toFileItems(fileList);
-    const nextErrors = getProjectRequestFileErrors(nextFiles);
-    setFiles(nextFiles);
-    setFileErrors(nextErrors);
-    if (hasAttemptedSubmit && nextErrors.length === 0 && Object.keys(currentFieldErrors).length === 0) {
-      setShowRequiredAlert(false);
-    }
-  };
-  const updateFileItem = (id, values) => {
-    setFiles((current) => current.map((item) => (item.id === id ? { ...item, ...values } : item)));
   };
   const handleFrontendSubmit = () => {
     setHasAttemptedSubmit(true);
