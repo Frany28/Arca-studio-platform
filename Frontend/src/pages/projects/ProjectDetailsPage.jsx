@@ -22,6 +22,7 @@ import ProjectWarrantiesPanel from "./panels/ProjectWarrantiesPanel.jsx";
 import { PROJECT_DETAIL_DATA } from "./projectDetailsData.js";
 import useProjectDetailsData from "./hooks/useProjectDetailsData.js";
 import useProjectDetailsComments from "./hooks/useProjectDetailsComments.js";
+import useProjectDetailsNavigation from "./hooks/useProjectDetailsNavigation.js";
 import {
   mergeNotificationComments,
   toDrawerComment,
@@ -41,7 +42,6 @@ import {
   getDashboardPath,
 } from "../../utils/sideNavigationItems.js";
 
-const TABLET_BREAKPOINT_PX = 768;
 const PROJECT_DETAIL_LOADER_SECTIONS = [
   "info",
   "renders",
@@ -62,9 +62,6 @@ export default function ProjectDetailsPage({
   const [searchParams, setSearchParams] = useSearchParams();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(
-    () => typeof window === "undefined" || window.innerWidth >= 1024,
-  );
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
   const [recentDocumentModal, setRecentDocumentModal] = useState(null);
@@ -81,6 +78,20 @@ export default function ProjectDetailsPage({
     providedProject,
     routeProjectSlug,
     searchParams,
+  });
+  const {
+    closeSidebar,
+    handleLogout,
+    handleNewOpportunity,
+    handleSideNavigationSelect,
+    isSidebarExpanded,
+    openSidebar,
+    setIsSidebarExpanded,
+  } = useProjectDetailsNavigation({
+    currentUser,
+    logout,
+    navigate,
+    project,
   });
   const {
     comments: projectComments,
@@ -108,66 +119,10 @@ export default function ProjectDetailsPage({
   ]);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
-    );
-
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
-
-  useEffect(() => {
     const requestedTab = searchParams.get("tab");
     if (requestedTab === "renders") setActiveProjectTabIndex(1);
     if (requestedTab === "documents") setActiveProjectTabIndex(2);
   }, [searchParams]);
-
-  const handleSideNavigationSelect = (item) => {
-    if (item?.to) {
-      navigate(item.to);
-      return;
-    }
-
-    if (item?.id === "dashboard") {
-      navigate(getDashboardPath(currentUser.roleCode));
-      return;
-    }
-
-    if (item?.id?.startsWith("project-")) {
-      const selectedProjectId = Number(item.id.replace("project-", ""));
-
-      if (Number.isInteger(selectedProjectId)) {
-        navigate(
-          project && project.id === selectedProjectId
-            ? getProjectPath(project)
-            : `/proyectos/${selectedProjectId}`,
-        );
-      }
-      return;
-    }
-
-    if (item?.id === "more-projects") {
-      navigate("/proyectos");
-      return;
-    }
-
-    if (item?.id === "requests") {
-      navigate("/solicitudes");
-      return;
-    }
-
-    if (item?.id === "settings") {
-      navigate("/configuraciones");
-    }
-  };
 
   const handleActivitySelect = (activity) => {
     if (!activity?.to) {
@@ -269,7 +224,7 @@ export default function ProjectDetailsPage({
             type="button"
             aria-label="Cerrar navegación lateral"
             className="fixed inset-0 z-40 cursor-pointer bg-[rgba(42,41,41,0.10)] backdrop-blur-[var(--effect-blur-b1)] min-[768px]:hidden"
-            onClick={() => setIsSidebarExpanded(false)}
+            onClick={closeSidebar}
           />
         ) : null}
 
@@ -296,15 +251,8 @@ export default function ProjectDetailsPage({
           userAvatarSrc={currentUser.profilePhotoUrl}
           onExpandedChange={setIsSidebarExpanded}
           onItemSelect={handleSideNavigationSelect}
-          onNewOpportunityClick={() =>
-            currentUser.roleCode === "client"
-              ? navigate("/solicitudes/nueva")
-              : navigate("/dashboard-arquitecto/nuevo-proyecto")
-          }
-          onLogoutClick={() => {
-            logout();
-            navigate("/");
-          }}
+          onNewOpportunityClick={handleNewOpportunity}
+          onLogoutClick={handleLogout}
           className={`min-h-screen shrink-0 self-stretch max-[767px]:fixed max-[767px]:inset-y-0 max-[767px]:left-0 max-[767px]:z-50 ${
             isSidebarExpanded
               ? "max-[767px]:flex"
@@ -315,7 +263,7 @@ export default function ProjectDetailsPage({
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
           <NavigationBar
             utilityActionActive={isNotificationsDrawerOpen}
-            onMenuClick={() => setIsSidebarExpanded(true)}
+            onMenuClick={openSidebar}
             onUtilityActionClick={() =>
               setIsNotificationsDrawerOpen((current) => !current)
             }
