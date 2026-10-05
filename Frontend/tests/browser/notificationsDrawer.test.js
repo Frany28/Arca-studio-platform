@@ -49,7 +49,7 @@ after(async () => {
  * @param {Object} [options={}] Viewport, tema y capacidad táctil.
  * @returns {Promise<import("playwright").Page>} Página con fixture listo.
  */
-async function openPage(context, props = {}, { theme = "light", ...options } = {}) {
+async function openPage(context, props = {}, { theme = "light", consumer = "", ...options } = {}) {
   const session = await browser.newContext({ viewport: { width: 1024, height: 900 }, ...options });
   const page = await session.newPage();
   const errors = [];
@@ -63,7 +63,7 @@ async function openPage(context, props = {}, { theme = "light", ...options } = {
     await session.close();
     assert.deepEqual(errors, [], "El drawer no debe lanzar errores ni consultar APIs");
   });
-  await page.goto(`${origin}/tests/browser/fixtures/notifications-drawer.html?theme=${theme}&props=${encodeURIComponent(JSON.stringify(props))}`);
+  await page.goto(`${origin}/tests/browser/fixtures/notifications-drawer.html?theme=${theme}&consumer=${consumer}&props=${encodeURIComponent(JSON.stringify(props))}`);
   await page.getByRole("button", { name: "Abrir notificaciones", exact: true }).waitFor();
   return page;
 }
@@ -457,6 +457,124 @@ for (const fail of [false, true]) {
     assert.equal(await current.inputValue(), "Nuevo");
   });
 }
+
+for (const [consumer, kind, apiType] of [
+  ["environment", "general", "api-environment"],
+  ["environment", "reply", "api-project"],
+  ["environment", "reply-environment", "api-environment"],
+  ["details", "reply", "api-project"],
+]) {
+  test(`Consumidor ${consumer}/${kind}: no desmonta al enviar, conserva errores y permite reintento`, async (context) => {
+    const page = await openPage(context, { comments: [{ ...COMMENT, scope: kind === "reply-environment" ? "environment" : "project" }] }, { consumer });
+    const drawer = await openDrawer(page);
+    await drawer.getByText(COMMENT.message, { exact: true }).first().waitFor();
+    await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+    const field = kind === "general" ? drawer.getByRole("textbox", { name: "Observación general" }) : await reply(page, kind === "reply-environment" ? "environment:21" : 21);
+    await field.fill("Borrador real");
+    await field.press("Enter");
+    assert.equal(await field.count(), 1, "El loading de envío no debe desmontar el compositor");
+    assert.equal(await field.inputValue(), "Borrador real");
+    await field.dispatchEvent("keydown", { key: "Enter" });
+    assert.equal((await values(page, apiType)).length, 1);
+    await page.evaluate(() => window.drawerHarness.settle(0, true));
+    await drawer.getByText("Fallo simulado", { exact: true }).waitFor();
+    assert.equal(await field.inputValue(), "Borrador real");
+    if (kind === "reply") assert.equal(await page.locator("[data-consumer-error]").textContent(), "Fallo simulado");
+    assert.equal(await drawer.getByText("No se pudieron cargar los comentarios", { exact: true }).count(), 0);
+    await field.press("Enter");
+    assert.equal((await values(page, apiType)).length, 2);
+    await page.evaluate(() => window.drawerHarness.settle(1));
+    if (kind !== "general") await field.waitFor({ state: "detached" });
+    else await page.waitForFunction(() => document.querySelector("textarea").value === "");
+  });
+}
+
+test("EnvironmentNotificationsDrawer: errores de lectura conservan el estado y la acción Reintentar", async (context) => {
+  const page = await openPage(context, { comments: [COMMENT] }, { consumer: "environment" });
+  await page.evaluate(() => window.drawerHarness.setReadFailure(true));
+  const drawer = await openDrawer(page);
+  await drawer.getByText("Fallo de lectura", { exact: true }).waitFor();
+  assert.equal(await drawer.getByText("No se pudieron cargar los comentarios", { exact: true }).count(), 1);
+  await page.evaluate(() => window.drawerHarness.setReadFailure(false));
+  await drawer.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await drawer.getByText(COMMENT.message, { exact: true }).first().waitFor();
+  assert.equal(await drawer.getByText("Fallo de lectura", { exact: true }).count(), 0);
+});
+
+for (const fail of [false, true]) {
+  test(`EnvironmentNotificationsDrawer: terminar A con ${fail ? "error" : "éxito"} no desmonta B`, async (context) => {
+    const page = await openPage(context, { comments: [COMMENT, { ...COMMENT, id: 22, message: "Otra raíz" }] }, { consumer: "environment" });
+    await openDrawer(page);
+    await page.getByText(COMMENT.message, { exact: true }).waitFor();
+    await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+    const first = await reply(page);
+    await first.fill("A");
+    await first.press("Enter");
+    const current = await reply(page, 22);
+    await current.fill("Borrador B");
+    await page.evaluate((fail) => window.drawerHarness.settle(0, fail), fail);
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    assert.equal(await current.inputValue(), "Borrador B");
+    assert.equal(await page.getByRole("dialog").getByText("Fallo simulado", { exact: true }).count(), 0);
+  });
+}
+
+for (const firstKind of ["general", "reply"]) {
+  test(`EnvironmentNotificationsDrawer: pending de ${firstKind} no bloquea el otro envío`, async (context) => {
+    const page = await openPage(context, { comments: [COMMENT] }, { consumer: "environment" });
+    const drawer = await openDrawer(page);
+    await drawer.getByText(COMMENT.message, { exact: true }).waitFor();
+    await page.evaluate(() => window.drawerHarness.setSubmissionMode("deferred"));
+    const general = drawer.getByRole("textbox", { name: "Observación general" });
+    const response = await reply(page);
+    const first = firstKind === "general" ? general : response;
+    const second = firstKind === "general" ? response : general;
+    await first.fill("Primero");
+    await second.fill("Segundo");
+    await first.press("Enter");
+    assert.equal(await second.isEnabled(), true);
+    await second.press("Enter");
+    assert.equal((await values(page, "api-project")).length, 1);
+    assert.equal((await values(page, "api-environment")).length, 1);
+    await page.evaluate(() => { window.drawerHarness.settle(0); window.drawerHarness.settle(1); });
+    await response.waitFor({ state: "detached" });
+    assert.equal(await general.inputValue(), "");
+  });
+}
+
+test("Consumidor environment: destino de proyecto ausente conserva la respuesta sin invocar API", async (context) => {
+  const page = await openPage(context, { projectId: null, comments: [{ ...COMMENT, projectId: null }] }, { consumer: "environment" });
+  await openDrawer(page);
+  const field = await reply(page);
+  await field.fill("Sin destino");
+  await field.press("Enter");
+  await page.getByRole("dialog").getByText("No se encontro el proyecto para comentar.", { exact: true }).waitFor();
+  assert.equal(await field.inputValue(), "Sin destino");
+  assert.equal((await values(page, "api-project")).length, 0);
+});
+
+test("Consumidor details: proyecto finalizado rechaza, conserva respuesta y no invoca API", async (context) => {
+  const page = await openPage(context, { project: { status: "completed" }, comments: [COMMENT] }, { consumer: "details" });
+  const drawer = await openDrawer(page);
+  await drawer.getByText(COMMENT.message, { exact: true }).waitFor();
+  const field = await reply(page);
+  await field.fill("Conservar respuesta");
+  await field.press("Enter");
+  await drawer.getByText("El proyecto finalizado es de solo lectura.", { exact: true }).waitFor();
+  assert.equal(await field.inputValue(), "Conservar respuesta");
+  assert.equal((await values(page, "api-project")).length, 0);
+});
+
+test("Consumidor details: sin proyecto rechaza, conserva texto y no invoca la API", async (context) => {
+  const page = await openPage(context, { projectId: null }, { consumer: "details" });
+  const drawer = await openDrawer(page);
+  const field = drawer.getByRole("textbox", { name: "Observación general" });
+  await field.fill("Sin destino");
+  await field.press("Enter");
+  await drawer.getByText("No se encontro el proyecto para comentar.", { exact: true }).waitFor();
+  assert.equal(await field.inputValue(), "Sin destino");
+  assert.equal((await values(page, "api-project")).length, 0);
+});
 
 test("Mouse/touch: pointerdown solo no cierra; mousedown exterior y tap compatible sí", async (context) => {
   const page = await openPage(context, { comments: [COMMENT] }, { hasTouch: true });

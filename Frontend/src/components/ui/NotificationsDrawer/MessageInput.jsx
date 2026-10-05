@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import ComposerSubmitButton from "../ComposerSubmitButton.jsx";
+import HintText from "../HintText/HintText.jsx";
 import TextArea from "../TextArea/TextArea.jsx";
 import Tooltip from "../Tooltip/Tooltip.jsx";
 import { ReplyArrowIcon, SendIcon } from "./NotificationsDrawerIcons.jsx";
@@ -33,9 +34,11 @@ export function ReplyComposer({
  * @returns {string} Mensaje apto para presentar junto al compositor.
  */
 function getSubmissionErrorMessage(error) {
-  if (error instanceof Error && error.message) {
+  if (typeof error?.message === "string" && error.message.trim()) {
     return error.message;
   }
+
+  if (typeof error === "string" && error.trim()) return error;
 
   return "No se pudo enviar el comentario.";
 }
@@ -59,8 +62,16 @@ export default function MessageInput({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const submissionPendingRef = useRef(false);
+  const mountedRef = useRef(false);
   const trimmedValue = textAreaValue.trim();
   const submitDisabled = !trimmedValue || disabled || isSubmitting;
+
+  // La petición sigue siendo propiedad del consumidor. Al desmontar solo se
+  // descartan sus efectos visuales locales, sin cancelar una creación en curso.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   /**
    * Envía una única solicitud por compositor y conserva el borrador mientras espera.
@@ -79,22 +90,23 @@ export default function MessageInput({
 
     try {
       await Promise.resolve(onSubmit?.(trimmedValue));
-      setTextAreaValue("");
+      if (mountedRef.current) setTextAreaValue("");
     } catch (error) {
-      setSubmissionError(getSubmissionErrorMessage(error));
+      if (mountedRef.current) setSubmissionError(getSubmissionErrorMessage(error));
     } finally {
       submissionPendingRef.current = false;
-      setIsSubmitting(false);
+      if (mountedRef.current) setIsSubmitting(false);
     }
   }
 
   const errorMessage = submissionError ? (
-    <p
+    <HintText
       role="alert"
-      className="text-[12px] font-normal leading-[14px] tracking-[-0.5px] text-[var(--color-danger-100)]"
-    >
-      {submissionError}
-    </p>
+      className="w-full"
+      state="Error"
+      hintIcon={false}
+      hintText={submissionError}
+    />
   ) : null;
 
   return multiline ? (
@@ -104,7 +116,7 @@ export default function MessageInput({
         label="Observación general"
         placeholder={placeholder}
         value={textAreaValue}
-        disabled={disabled}
+        disabled={disabled || isSubmitting}
         showHint={false}
         showLabelInfo={false}
         minHeight={104}
@@ -137,7 +149,7 @@ export default function MessageInput({
             type="text"
             placeholder={placeholder}
             value={textAreaValue}
-            disabled={disabled}
+            disabled={disabled || isSubmitting}
             className="min-w-0 flex-1 border-0 bg-transparent text-[14px] font-normal leading-[17px] tracking-[-0.5px] text-[var(--color-text-300)] outline-none placeholder:text-[var(--color-text-100)]"
             onFocus={onFocus}
             onChange={(event) => setTextAreaValue(event.target.value)}

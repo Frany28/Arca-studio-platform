@@ -44,7 +44,7 @@ function EnvironmentNotificationsDrawer({
   });
   const {
     drawerComments: environmentComments,
-    error: environmentCommentsError,
+    readError: environmentCommentsError,
     loading: environmentCommentsLoading,
     refresh: refreshEnvironmentComments,
     submitComment: submitEnvironmentComment,

@@ -67,7 +67,7 @@ export default function useHomeNotifications({
     drawerComments: submittedDrawerComments,
     submitComment,
     refresh: refreshSubmittedComments,
-    error: submittedCommentsError,
+    readError: submittedCommentsError,
     loading: submittedCommentsLoading,
   } = useProjectComments({
     enabled: false,

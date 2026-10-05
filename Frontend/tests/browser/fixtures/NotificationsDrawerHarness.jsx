@@ -2,6 +2,8 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 import NotificationsDrawer from "../../../src/components/ui/NotificationsDrawer.jsx";
+import { api } from "../../../src/api/http.js";
+import NotificationsDrawerConsumers from "./NotificationsDrawerConsumers.jsx";
 import "../../../src/index.css";
 
 const root = createRoot(document.getElementById("root"));
@@ -10,6 +12,25 @@ const pendingSubmissions = [];
 const parameters = new URLSearchParams(window.location.search);
 let mounted = true;
 let submissionMode = "immediate";
+let readFailure = false;
+
+/** Proporciona lecturas controladas sin red, conservando los hooks y consumidores reales. */
+function mockComments(scope) {
+  record(`read-${scope}`, null);
+  if (readFailure) return Promise.reject(new Error("Fallo de lectura"));
+  return Promise.resolve({ comments: drawerProps.comments.filter((comment) =>
+    scope === "environment" ? comment.scope === "environment" : comment.scope !== "environment",
+  ).map((comment) => ({
+    ...comment, content: comment.message, scope,
+  })) });
+}
+
+api.auth.me = async () => ({ user: { id: 1, role: "architect", name: "Ana Pérez" } });
+api.projects.listAllComments = () => mockComments("project");
+api.projects.subscribeToEvents = () => () => {};
+api.projects.createComment = (payload) => submit("api-project", payload);
+api.environmentComments.listAll = () => mockComments("environment");
+api.environmentComments.create = (payload) => submit("api-environment", payload);
 
 /** Registra argumentos públicos y conserva su identidad para las pruebas de selección. */
 function record(type, value, sameReference) {
@@ -63,7 +84,9 @@ function setProps(nextProps = {}) {
   flushSync(() => root.render(
     <>
       <button type="button" onClick={() => setProps({ open: true })}>Abrir notificaciones</button>
-      {mounted ? <NotificationsDrawer {...drawerProps} /> : null}
+      {mounted ? (parameters.get("consumer")
+        ? <NotificationsDrawerConsumers consumer={parameters.get("consumer")} {...drawerProps} />
+        : <NotificationsDrawer {...drawerProps} />) : null}
     </>,
   ));
 }
@@ -94,5 +117,7 @@ function settle(index, fail = false) {
 }
 
 document.documentElement.classList.toggle("dark", parameters.get("theme") === "dark");
-window.drawerHarness = { events, setProps, unmount, setSubmissionMode, settle };
+window.drawerHarness = { events, setProps, unmount, setSubmissionMode, settle,
+  setReadFailure: (fail) => { readFailure = fail; },
+};
 setProps();

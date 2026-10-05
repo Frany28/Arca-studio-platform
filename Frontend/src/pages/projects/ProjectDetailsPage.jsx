@@ -88,7 +88,7 @@ export default function ProjectDetailsPage({
   });
   const {
     comments: projectComments,
-    error: projectCommentsError,
+    readError: projectCommentsError,
     loading: projectCommentsLoading,
     submitComment: handleSubmitComment,
   } = useProjectDetailsComments({
@@ -139,7 +139,7 @@ export default function ProjectDetailsPage({
       recentDocumentTriggerRef.current = triggerElement || null;
       setRecentDocumentModal(document);
     },
-    [],
+    [setRecentDocumentModal],
   );
 
   const presentedProject = project

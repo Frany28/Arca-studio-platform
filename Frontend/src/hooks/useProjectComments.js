@@ -206,8 +206,9 @@ function mergeCommentsById(currentComments, nextComments) {
  * @param {number|string|null} params.projectId - Proyecto de lectura y destino predeterminado.
  * @param {number} [params.refreshIntervalMs=0] - Polling en ms; cero lo desactiva.
  * @param {Object|null} params.user - Usuario para presentación; no valida permisos.
- * @returns {Object} comments, drawerComments, error, loading, submitComment y refresh.
- * Las acciones devuelven Promise<void>; loading también cubre envíos.
+ * @returns {Object} comments, drawerComments, error, readError, loading, submitComment y refresh.
+ * Las acciones devuelven Promise<void>; loading solo cubre lecturas. readError distingue
+ * los fallos de carga de error, que conserva también el último fallo de envío.
  */
 export function useProjectComments({
   enabled = true,
@@ -216,13 +217,14 @@ export function useProjectComments({
   user,
 }) {
   const [comments, setComments] = useState([]);
-  const [error, setError] = useState("");
+  const [readError, setReadError] = useState("");
+  const [submissionError, setSubmissionError] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!enabled || !projectId) {
       setComments([]);
-      setError("");
+      setReadError("");
       setLoading(false);
       return undefined;
     }
@@ -230,7 +232,7 @@ export function useProjectComments({
     let isMounted = true;
 
     setLoading(true);
-    setError("");
+    setReadError("");
 
     api.projects
       .listAllComments({ projectId })
@@ -241,7 +243,7 @@ export function useProjectComments({
       })
       .catch((requestError) => {
         if (isMounted) {
-          setError(
+          setReadError(
             requestError.message || "No se pudieron cargar las observaciones.",
           );
         }
@@ -300,6 +302,14 @@ export function useProjectComments({
     };
   }, [enabled, projectId, refreshIntervalMs]);
 
+  /**
+   * Publica una observación o respuesta y actualiza su fila por id.
+   * Rechaza errores de API y destinos ausentes; conserva el mensaje sin activar
+   * loading de lectura, porque cada compositor controla su propio envío pendiente.
+   * @param {string|Object} input Texto o payload con proyecto, padre y referencias.
+   * @returns {Promise<void>} Confirma la creación y actualiza las observaciones.
+   * @throws {Error} Proyecto ausente o fallo de creación recibido de la API.
+   */
   const submitComment = useCallback(
     async (input) => {
       // Support both `submitComment("text")` and `submitComment({ message, parentCommentId })`
@@ -315,8 +325,9 @@ export function useProjectComments({
           : payload.projectId;
 
       if (!targetProjectId) {
-        setError("No se encontro el proyecto para comentar.");
-        return;
+        const requestError = new Error("No se encontro el proyecto para comentar.");
+        setSubmissionError(requestError.message);
+        throw requestError;
       }
 
       const normalizedParent =
@@ -326,8 +337,7 @@ export function useProjectComments({
             ? Number(parentCommentId)
             : parentCommentId;
 
-      setLoading(true);
-      setError("");
+      setSubmissionError("");
 
       try {
         const data = await api.projects.createComment({
@@ -344,10 +354,8 @@ export function useProjectComments({
           setComments((current) => upsertCommentById(current, data.comment));
         }
       } catch (requestError) {
-        setError(requestError.message || "No se pudo guardar la observación.");
+        setSubmissionError(requestError.message || "No se pudo guardar la observación.");
         throw requestError;
-      } finally {
-        setLoading(false);
       }
     },
     [projectId],
@@ -359,14 +367,14 @@ export function useProjectComments({
     }
 
     setLoading(true);
-    setError("");
+    setReadError("");
 
     try {
       const data = await api.projects.listAllComments({ projectId });
 
       setComments(Array.isArray(data.comments) ? data.comments : []);
     } catch (requestError) {
-      setError(
+      setReadError(
         requestError.message || "No se pudieron cargar las observaciones.",
       );
     } finally {
@@ -383,7 +391,8 @@ export function useProjectComments({
   return {
     comments,
     drawerComments,
-    error,
+    error: readError || submissionError,
+    readError,
     loading,
     submitComment,
     refresh,
@@ -575,8 +584,9 @@ export function useRecentProjectComments({
  * @param {boolean} [params.enabled=true] - Habilita carga automática.
  * @param {number} [params.refreshIntervalMs=0] - Polling en ms; cero lo desactiva.
  * @param {Object|null} params.user - Usuario para decorar autor y avatar.
- * @returns {Object} comments, drawerComments, error, loading, refresh y submitComment.
- * Las acciones devuelven Promise<void>; loading se comparte entre lectura y creación.
+ * @returns {Object} comments, drawerComments, error, readError, loading, refresh y submitComment.
+ * Las acciones devuelven Promise<void>; loading solo cubre lecturas. readError distingue
+ * los fallos de carga de error, que conserva también el último fallo de envío.
  */
 export function useEnvironmentComments({
   enabled = true,
@@ -584,7 +594,8 @@ export function useEnvironmentComments({
   user,
 }) {
   const [comments, setComments] = useState([]);
-  const [error, setError] = useState("");
+  const [readError, setReadError] = useState("");
+  const [submissionError, setSubmissionError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const fetchComments = useCallback(async () => {
@@ -602,7 +613,7 @@ export function useEnvironmentComments({
     queueMicrotask(() => {
       if (!isMounted) return;
       setLoading(true);
-      setError("");
+      setReadError("");
     });
 
     fetchComments()
@@ -611,7 +622,7 @@ export function useEnvironmentComments({
       })
       .catch((requestError) => {
         if (isMounted) {
-          setError(
+          setReadError(
             requestError.message || "No se pudieron cargar las observaciones.",
           );
         }
@@ -641,6 +652,14 @@ export function useEnvironmentComments({
     };
   }, [enabled, fetchComments, refreshIntervalMs]);
 
+  /**
+   * Crea una observación del entorno y normaliza el id de su padre.
+   * Conserva y propaga errores; deja loading para las lecturas para no desmontar
+   * compositores ni bloquear envíos independientes desde otro campo.
+   * @param {string|Object} input Texto o payload de la observación.
+   * @returns {Promise<void>} Confirma la creación y actualiza la colección por id.
+   * @throws {Error} Rechazo de la API de observaciones del entorno.
+   */
   const submitComment = useCallback(async (input) => {
     const payload =
       typeof input === "string"
@@ -650,8 +669,7 @@ export function useEnvironmentComments({
       ? getEnvironmentCommentId(payload.parentCommentId)
       : null;
 
-    setLoading(true);
-    setError("");
+    setSubmissionError("");
 
     try {
       const data = await api.environmentComments.create({
@@ -663,21 +681,19 @@ export function useEnvironmentComments({
         setComments((current) => upsertCommentById(current, data.comment));
       }
     } catch (requestError) {
-      setError(requestError.message || "No se pudo guardar la observación.");
+      setSubmissionError(requestError.message || "No se pudo guardar la observación.");
       throw requestError;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setError("");
+    setReadError("");
 
     try {
       setComments(await fetchComments());
     } catch (requestError) {
-      setError(
+      setReadError(
         requestError.message || "No se pudieron cargar las observaciones.",
       );
     } finally {
@@ -693,7 +709,8 @@ export function useEnvironmentComments({
   return {
     comments,
     drawerComments,
-    error,
+    error: readError || submissionError,
+    readError,
     loading,
     refresh,
     submitComment,

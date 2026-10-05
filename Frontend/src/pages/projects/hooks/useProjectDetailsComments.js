@@ -19,7 +19,7 @@ import {
  * @param {boolean} params.isNotificationsDrawerOpen - Determina la frecuencia de refresco.
  * @param {Object|null} params.project - Proyecto usado para comprobar el modo de solo lectura al enviar.
  * @param {number|null} params.resolvedProjectId - Id usado en consultas, eventos y env?o; sin id no carga.
- * @returns {{comments: Array, error: string, loading: boolean, submitComment: Function}} Observaciones, estado y env?o de observaciones o respuestas.
+ * @returns {Object} Observaciones, error combinado, readError de lectura, loading de lectura y submitComment.
  */
 export default function useProjectDetailsComments({
   isNotificationsDrawerOpen,
@@ -27,16 +27,22 @@ export default function useProjectDetailsComments({
   resolvedProjectId,
 }) {
   const [comments, setComments] = useState([]);
-  const [error, setError] = useState("");
+  const [readError, setReadError] = useState("");
+  const [submissionError, setSubmissionError] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!resolvedProjectId) {
-      setComments([]);
-      return undefined;
-    }
-
     let isMounted = true;
+
+    if (!resolvedProjectId) {
+      queueMicrotask(() => {
+        if (!isMounted) return;
+        setComments([]);
+        setReadError("");
+        setLoading(false);
+      });
+      return () => { isMounted = false; };
+    }
 
     /**
      * Inicia la carga de todas las p?ginas de observaciones y combina la respuesta con el estado actual.
@@ -51,7 +57,7 @@ export default function useProjectDetailsComments({
         setLoading(true);
       }
 
-      setError("");
+      setReadError("");
 
       api.projects
         .listAllComments({ projectId: resolvedProjectId })
@@ -67,7 +73,7 @@ export default function useProjectDetailsComments({
         })
         .catch((requestError) => {
           if (isMounted) {
-            setError(
+            setReadError(
               requestError.message || "No se pudieron cargar las observaciones.",
             );
           }
@@ -79,7 +85,11 @@ export default function useProjectDetailsComments({
         });
     }
 
-    loadProjectComments({ showLoading: true });
+    // La microtarea evita actualizaciones durante el efecto; su guarda descarta
+    // cargas cuyo proyecto o montaje ya cambió antes de iniciarse.
+    queueMicrotask(() => {
+      if (isMounted) loadProjectComments({ showLoading: true });
+    });
 
     const unsubscribe = api.projects.subscribeToEvents({
       projectId: resolvedProjectId,
@@ -104,26 +114,29 @@ export default function useProjectDetailsComments({
 
   /**
    * Impide enviar en proyectos de solo lectura o sin id y publica la observaci?n mediante la API.
-   * Inserta o actualiza el resultado por id y conserva los errores como texto para la interfaz.
+   * Inserta o actualiza el resultado por id y conserva y propaga los errores de envío.
+   * No activa la carga de lectura: el compositor controla su pending sin desmontarse.
    *
    * @param {Object} params - Contenido y relaci?n de respuesta.
    * @param {string} params.message - Texto enviado como content.
    * @param {number|null} [params.parentCommentId=null] - Observaci?n padre; null crea una ra?z.
-   * @returns {Promise<void>} Actualiza observaciones, carga y error; los fallos de API se capturan.
+   * @returns {Promise<void>} Confirma la creación y actualiza las observaciones.
+   * @throws {Error} Proyecto de solo lectura, destino ausente o rechazo de la API.
    */
   const submitComment = async ({ message, parentCommentId = null }) => {
     if (isProjectOperationallyReadOnly(project)) {
-      setError(getProjectReadOnlyMessage(project));
-      return;
+      const requestError = new Error(getProjectReadOnlyMessage(project));
+      setSubmissionError(requestError.message);
+      throw requestError;
     }
 
     if (!resolvedProjectId) {
-      setError("No se encontro el proyecto para comentar.");
-      return;
+      const requestError = new Error("No se encontro el proyecto para comentar.");
+      setSubmissionError(requestError.message);
+      throw requestError;
     }
 
-    setLoading(true);
-    setError("");
+    setSubmissionError("");
 
     try {
       const data = await api.projects.createComment({
@@ -136,15 +149,15 @@ export default function useProjectDetailsComments({
         setComments((current) => upsertCommentById(current, data.comment));
       }
     } catch (requestError) {
-      setError(requestError.message || "No se pudo guardar la observación.");
-    } finally {
-      setLoading(false);
+      setSubmissionError(requestError.message || "No se pudo guardar la observación.");
+      throw requestError;
     }
   };
 
   return {
     comments,
-    error,
+    error: readError || submissionError,
+    readError,
     loading,
     submitComment,
   };
