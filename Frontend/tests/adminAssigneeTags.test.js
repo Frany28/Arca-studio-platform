@@ -6,14 +6,14 @@ test("architect dashboard assignment areas use the shared tag selector with avat
   const [activeProjects, overview] = await Promise.all([
     readFile(
       new URL(
-        "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+        "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx",
         import.meta.url,
       ),
       "utf8",
     ),
     readFile(
       new URL(
-        "../src/pages/architect-dashboard/components/AdminDashboardOverview.jsx",
+        "../src/pages/admin-dashboard/components/AdminDashboardOverview.jsx",
         import.meta.url,
       ),
       "utf8",

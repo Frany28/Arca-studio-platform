@@ -60,7 +60,7 @@ test("project assignee removals require confirmation and expose coherent success
       ),
       readFile(
         new URL(
-          "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+          "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx",
           import.meta.url,
         ),
         "utf8",

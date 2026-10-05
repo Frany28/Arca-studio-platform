@@ -7,7 +7,7 @@ test("admin request alert follows Figma and appears after every explicit login",
     await Promise.all([
       readFile(
         new URL(
-          "../src/pages/architect-dashboard/components/AdminRequestLoginAlert.jsx",
+          "../src/pages/admin-dashboard/components/AdminRequestLoginAlert.jsx",
           import.meta.url,
         ),
         "utf8",
@@ -22,7 +22,7 @@ test("admin request alert follows Figma and appears after every explicit login",
       ),
       readFile(
         new URL(
-          "../src/pages/architect-dashboard/components/AdminDashboardOverview.jsx",
+          "../src/pages/admin-dashboard/components/AdminDashboardOverview.jsx",
           import.meta.url,
         ),
         "utf8",
@@ -59,7 +59,7 @@ test("assigning from the login alert uses a confirm-only modal flow", async () =
     ),
     readFile(
       new URL(
-        "../src/pages/architect-dashboard/components/AdminRequestAssignmentModal.jsx",
+        "../src/pages/admin-dashboard/components/AdminRequestAssignmentModal.jsx",
         import.meta.url,
       ),
       "utf8",

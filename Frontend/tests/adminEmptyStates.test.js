@@ -9,7 +9,7 @@ test("admin empty-state routes reuse the production pages without API data", asy
     "utf8",
   );
   const adminDashboardDataSource = await readFile(
-    new URL("../src/pages/architect-dashboard/hooks/useAdminDashboardData.js", import.meta.url),
+    new URL("../src/pages/admin-dashboard/hooks/useAdminDashboardData.js", import.meta.url),
     "utf8",
   );
   const usersSource = await readFile(
@@ -33,15 +33,15 @@ test("admin empty-state routes reuse the production pages without API data", asy
 
 test("admin dashboard exposes every collection empty state", async () => {
   const operationsSource = await readFile(
-    new URL("../src/pages/architect-dashboard/components/AdminDashboardOperations.jsx", import.meta.url),
+    new URL("../src/pages/admin-dashboard/components/AdminDashboardOperations.jsx", import.meta.url),
     "utf8",
   );
   const overviewSource = await readFile(
-    new URL("../src/pages/architect-dashboard/components/AdminDashboardOverview.jsx", import.meta.url),
+    new URL("../src/pages/admin-dashboard/components/AdminDashboardOverview.jsx", import.meta.url),
     "utf8",
   );
   const projectsSource = await readFile(
-    new URL("../src/pages/architect-dashboard/components/AdminActiveProjects.jsx", import.meta.url),
+    new URL("../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx", import.meta.url),
     "utf8",
   );
 

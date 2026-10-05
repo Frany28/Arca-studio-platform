@@ -26,7 +26,7 @@ test("archived badges use their registered warning palette theme", async () => {
 
   const adminProjectsSource = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+      "../src/pages/admin-dashboard/components/admin-active-projects/utils/adminProjectPresentation.js",
       import.meta.url,
     ),
     "utf8",

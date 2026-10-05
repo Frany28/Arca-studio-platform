@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowSwapVertical,
   DocumentForward,
@@ -11,41 +11,26 @@ import {
   SearchNormal1,
 } from "iconsax-react";
 
-import Avatar from "../../../components/ui/Avatar/Avatar.jsx";
-import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
-import AssigneeMultiSelect from "../../../components/ui/AssigneeMultiSelect/AssigneeMultiSelect.jsx";
-import Badge from "../../../components/ui/Badge/Badge.jsx";
-import Button from "../../../components/ui/Button/Button.jsx";
-import Checkbox from "../../../components/ui/Checkbox/Checkbox.jsx";
-import DropdownMenu from "../../../components/ui/DropdownMenu/DropdownMenu.jsx";
-import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
-import Input from "../../../components/ui/Input/Input.jsx";
-import Loader from "../../../components/ui/Loader/Loader.jsx";
-import ScrollBar from "../../../components/ui/ScrollBar/ScrollBar.jsx";
-import Tag from "../../../components/ui/Tag/Tag.jsx";
-import { getAvatarPresentation } from "../../../utils/avatarPresentation.js";
-import { isProjectOperationallyReadOnly } from "../../../utils/projectReadOnly.js";
-import { getBulkActionAvailability } from "./adminProjectBulkActions.js";
-import { getAdminProjectsPagination } from "./adminProjectPagination.js";
+import Avatar from "../../../../components/ui/Avatar/Avatar.jsx";
+import AlertToast from "../../../../components/ui/AlertToast/AlertToast.jsx";
+import AssigneeMultiSelect from "../../../../components/ui/AssigneeMultiSelect/AssigneeMultiSelect.jsx";
+import Badge from "../../../../components/ui/Badge/Badge.jsx";
+import Button from "../../../../components/ui/Button/Button.jsx";
+import Checkbox from "../../../../components/ui/Checkbox/Checkbox.jsx";
+import DropdownMenu from "../../../../components/ui/DropdownMenu/DropdownMenu.jsx";
+import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
+import Input from "../../../../components/ui/Input/Input.jsx";
+import Loader from "../../../../components/ui/Loader/Loader.jsx";
+import ScrollBar from "../../../../components/ui/ScrollBar/ScrollBar.jsx";
+import Tag from "../../../../components/ui/Tag/Tag.jsx";
+import { isProjectOperationallyReadOnly } from "../../../../utils/projectReadOnly.js";
+import { getBulkActionAvailability } from "./utils/adminProjectBulkActions.js";
+import { getAdminProjectsPagination } from "./utils/adminProjectPagination.js";
+import { getAssignees, getClient, getStatus } from "./utils/adminProjectPresentation.js";
+import { useAdminProjectFilters } from "./hooks/useAdminProjectFilters.js";
+import { useAdminProjectSelection } from "./hooks/useAdminProjectSelection.js";
+import { useAdminProjectsTableScroll } from "./hooks/useAdminProjectsTableScroll.js";
 import "./AdminActiveProjects.css";
-
-const STATUS_DETAILS = {
-  completed: { label: "Finalizado", theme: "Success" },
-  finished: { label: "Finalizado", theme: "Success" },
-  archived: { label: "Archivado", theme: "Archived" },
-  in_process: { label: "En progreso", theme: "Info" },
-  in_review: { label: "En revisión", theme: "Brand 2" },
-  pending_approval: { label: "Solicitud", theme: "Neutral" },
-  request: { label: "Solicitud", theme: "Neutral" },
-};
-
-const STATUS_FILTER_ITEMS = [
-  { id: "in_process", label: "En progreso", type: "Checkbox" },
-  { id: "in_review", label: "En revisión", type: "Checkbox" },
-  { id: "pending_approval", label: "Solicitud", type: "Checkbox" },
-  { id: "completed", label: "Finalizado", type: "Checkbox" },
-  { id: "archived", label: "Archivado", type: "Checkbox" },
-];
 
 const BULK_ACTION_FEEDBACK = {
   archive: {
@@ -65,39 +50,6 @@ const BULK_ACTION_FEEDBACK = {
   },
 };
 
-function getStatusFilterId(status) {
-  if (status === "finished") return "completed";
-  if (status === "request") return "pending_approval";
-  return status;
-}
-
-function getStatus(project) {
-  return STATUS_DETAILS[project.status] || { label: "Solicitud", theme: "Neutral" };
-}
-
-function getClient(project) {
-  const client = project.client || {};
-  const name = client.name || project.clientName || "Sin cliente";
-  const photo = client.profilePhotoUrl || client.avatarUrl || "";
-  return {
-    avatar: getAvatarPresentation({
-      identity: client.id || project.clientId || name,
-      name,
-      roleCode: "client",
-      src: photo,
-    }),
-    name,
-  };
-}
-
-function getAssignees(project) {
-  if (Array.isArray(project.assignees) && project.assignees.length) return project.assignees;
-  if (Array.isArray(project.assignedArchitects) && project.assignedArchitects.length) {
-    return project.assignedArchitects;
-  }
-  return project.assignedArchitect ? [project.assignedArchitect] : [];
-}
-
 function TableHeaderLabel({ children, filter = false }) {
   const Icon = filter ? Filter : ArrowSwapVertical;
   return (
@@ -108,6 +60,13 @@ function TableHeaderLabel({ children, filter = false }) {
   );
 }
 
+/**
+ * Compone la tabla administrativa y coordina filtros, página, selección y feedback.
+ * Mantiene aquí las mutaciones y snapshots ligados a los callbacks del consumidor;
+ * los hooks locales no conocen la API ni los resets entre responsabilidades.
+ * @param {Object} props Proyectos, catálogo de responsables, carga y callbacks existentes.
+ * @returns {import("react").ReactElement} Tabla y controles con su presentación actual.
+ */
 function AdminActiveProjects({
   assignees: employeeOptions = [],
   assigneesLoading = false,
@@ -119,24 +78,17 @@ function AdminActiveProjects({
   onRetry,
   projects,
 }) {
-  const [query, setQuery] = useState("");
-  const [statusFilterIds, setStatusFilterIds] = useState([]);
-  const [personFilterIds, setPersonFilterIds] = useState([]);
+  const {
+    query, setQuery, setStatusFilterIds, setPersonFilterIds,
+    personnelFilterItems, statusFilterItems, filteredProjects, hasFilters,
+  } = useAdminProjectFilters(projects);
   const [pageIndex, setPageIndex] = useState(0);
-  const [selectedProjectIds, setSelectedProjectIds] = useState(() => new Set());
   const [bulkActionPending, setBulkActionPending] = useState("");
   const [bulkActionFeedback, setBulkActionFeedback] = useState(null);
   const [assigneeRemovalFeedback, setAssigneeRemovalFeedback] = useState(null);
+  // State controla la UI; estas refs bloquean repeticiones antes del siguiente render.
   const assigneeUndoPendingRef = useRef(false);
   const bulkActionPendingRef = useRef(false);
-  const tableViewportRef = useRef(null);
-  const tableFooterRef = useRef(null);
-  const scrollToTableEndAfterPreviousRef = useRef(false);
-  const [tableScrollState, setTableScrollState] = useState({
-    length: 1,
-    position: 0,
-    width: 0,
-  });
   const assigneeFeedbackProject = assigneeRemovalFeedback
     ? projects.find(
         (project) => String(project.id) === String(assigneeRemovalFeedback.project.id),
@@ -147,50 +99,7 @@ function AdminActiveProjects({
       && isProjectOperationallyReadOnly(assigneeFeedbackProject),
   );
 
-  const personnel = useMemo(() => {
-    const people = new Map();
-    projects.forEach((project) => {
-      getAssignees(project).forEach((person) => {
-        if (person?.id || person?.name) people.set(String(person.id || person.name), person);
-      });
-    });
-    return [...people.values()];
-  }, [projects]);
-
-  const personnelFilterItems = useMemo(() => [
-    ...personnel.map((person) => ({
-      id: String(person.id || person.name),
-      label: person.name,
-      type: "Checkbox",
-      checked: personFilterIds.includes(String(person.id || person.name))
-        ? "Yes"
-        : "No",
-    })),
-  ], [personFilterIds, personnel]);
-
   const personnelFilterLabel = "Filtrar por personal";
-  const statusFilterItems = useMemo(
-    () => STATUS_FILTER_ITEMS.map((item) => ({
-      ...item,
-      checked: statusFilterIds.includes(item.id) ? "Yes" : "No",
-    })),
-    [statusFilterIds],
-  );
-
-  const filteredProjects = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase("es");
-    return projects.filter((project) => {
-      const assignees = getAssignees(project);
-      const matchesQuery = !normalizedQuery || [project.title, project.name, getClient(project).name]
-        .some((value) => String(value || "").toLocaleLowerCase("es").includes(normalizedQuery));
-      const matchesStatus = statusFilterIds.length === 0
-        || statusFilterIds.includes(getStatusFilterId(project.status));
-      const matchesPerson = personFilterIds.length === 0 || assignees.some(
-        (person) => personFilterIds.includes(String(person.id || person.name)),
-      );
-      return matchesQuery && matchesStatus && matchesPerson;
-    });
-  }, [personFilterIds, projects, query, statusFilterIds]);
 
   const pagination = useMemo(
     () => getAdminProjectsPagination(filteredProjects, pageIndex),
@@ -198,109 +107,27 @@ function AdminActiveProjects({
   );
   const visibleProjects = pagination.pageProjects;
 
-  const selectedVisibleProjects = useMemo(
-    () => visibleProjects.filter(
-      (project) => selectedProjectIds.has(String(project.id)),
-    ),
-    [selectedProjectIds, visibleProjects],
-  );
-  const selectedVisibleCount = selectedVisibleProjects.length;
+  const selection = useAdminProjectSelection(visibleProjects);
+  const {
+    selectedProjectIds, setSelectedProjectIds, selectedVisibleProjects,
+    selectedVisibleCount, headerChecked,
+  } = selection;
   const {
     canArchive,
     canChangeVisibility,
     canUnarchive,
   } = getBulkActionAvailability(selectedVisibleProjects);
-  const allVisibleSelected = visibleProjects.length > 0
-    && selectedVisibleCount === visibleProjects.length;
-  const headerChecked = allVisibleSelected
-    ? "Yes"
-    : selectedVisibleCount > 0
-      ? "Indeterminate"
-      : "No";
-  const hasFilters = Boolean(
-    query || statusFilterIds.length > 0 || personFilterIds.length > 0,
-  );
+  const {
+    tableViewportRef, tableFooterRef, scrollToTableEndAfterPreviousRef,
+    tableScrollState, syncTableScrollState, handleTableScrollPositionChange,
+  } = useAdminProjectsTableScroll({
+    error, loading, visibleProjectCount: visibleProjects.length, pageIndex: pagination.pageIndex,
+  });
 
-  const syncTableScrollState = useCallback(() => {
-    const viewport = tableViewportRef.current;
-
-    if (!viewport) {
-      return;
-    }
-
-    const maxScroll = Math.max(viewport.scrollWidth - viewport.clientWidth, 0);
-    const nextState = {
-      length: viewport.scrollWidth
-        ? Math.min(viewport.clientWidth / viewport.scrollWidth, 1)
-        : 1,
-      position: maxScroll ? viewport.scrollLeft / maxScroll : 0,
-      width: viewport.clientWidth,
-    };
-
-    setTableScrollState((current) =>
-      Math.abs(current.length - nextState.length) < 0.001 &&
-      Math.abs(current.position - nextState.position) < 0.001 &&
-      current.width === nextState.width
-        ? current
-        : nextState,
-    );
-  }, []);
-
-  useEffect(() => {
-    const viewport = tableViewportRef.current;
-
-    if (!viewport) {
-      return undefined;
-    }
-
-    syncTableScrollState();
-
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", syncTableScrollState);
-      return () => window.removeEventListener("resize", syncTableScrollState);
-    }
-
-    const resizeObserver = new ResizeObserver(syncTableScrollState);
-    resizeObserver.observe(viewport);
-
-    return () => resizeObserver.disconnect();
-  }, [error, loading, syncTableScrollState, visibleProjects.length]);
-
-  useEffect(() => {
-    if (!scrollToTableEndAfterPreviousRef.current) {
-      return undefined;
-    }
-
-    scrollToTableEndAfterPreviousRef.current = false;
-    const animationFrame = window.requestAnimationFrame(() => {
-      const prefersReducedMotion = window.matchMedia?.(
-        "(prefers-reduced-motion: reduce)",
-      ).matches;
-
-      tableFooterRef.current?.scrollIntoView({
-        behavior: prefersReducedMotion ? "auto" : "smooth",
-        block: "end",
-      });
-    });
-
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [pagination.pageIndex, visibleProjects.length]);
-
-  const handleTableScrollPositionChange = useCallback(
-    (position) => {
-      const viewport = tableViewportRef.current;
-
-      if (!viewport) {
-        return;
-      }
-
-      const maxScroll = Math.max(viewport.scrollWidth - viewport.clientWidth, 0);
-      viewport.scrollLeft = maxScroll * position;
-      syncTableScrollState();
-    },
-    [syncTableScrollState],
-  );
-
+  /**
+   * Restablece todos los filtros junto con página, selección y feedback de acciones.
+   * @returns {void}
+   */
   const clearFilters = () => {
     setQuery("");
     setStatusFilterIds([]);
@@ -310,6 +137,11 @@ function AdminActiveProjects({
     setBulkActionFeedback(null);
   };
 
+  /**
+   * Aplica la búsqueda conservando el reset coordinado aunque solo contenga espacios.
+   * @param {import("react").ChangeEvent<HTMLInputElement>} event Cambio del input compartido.
+   * @returns {void}
+   */
   const handleQueryChange = (event) => {
     setQuery(event.target.value);
     setPageIndex(0);
@@ -317,6 +149,11 @@ function AdminActiveProjects({
     setBulkActionFeedback(null);
   };
 
+  /**
+   * Recoge los IDs de personal marcados y reinicia la vista afectada por el filtro.
+   * @param {Object[]} nextItems Opciones controladas del menú múltiple, checked Yes/No.
+   * @returns {void}
+   */
   const handlePersonFilterItemsChange = (nextItems) => {
     setPersonFilterIds(
       nextItems
@@ -328,6 +165,11 @@ function AdminActiveProjects({
     setBulkActionFeedback(null);
   };
 
+  /**
+   * Recoge los estados marcados y reinicia página, selección y feedback conjuntamente.
+   * @param {Object[]} nextItems Opciones controladas del menú múltiple, checked Yes/No.
+   * @returns {void}
+   */
   const handleStatusFilterItemsChange = (nextItems) => {
     setStatusFilterIds(
       nextItems
@@ -339,6 +181,11 @@ function AdminActiveProjects({
     setBulkActionFeedback(null);
   };
 
+  /**
+   * Solicita la página anterior y marca el desplazamiento del footer tras el nuevo layout.
+   * Durante una acción masiva conserva página y selección para no cambiar el contexto.
+   * @returns {void}
+   */
   const goToPreviousPage = () => {
     if (!pagination.canGoPrevious || bulkActionPending) return;
     scrollToTableEndAfterPreviousRef.current = true;
@@ -347,6 +194,10 @@ function AdminActiveProjects({
     setBulkActionFeedback(null);
   };
 
+  /**
+   * Avanza desde el índice efectivo, limpiando selección y feedback sin desplazar el footer.
+   * @returns {void}
+   */
   const goToNextPage = () => {
     if (!pagination.canGoNext || bulkActionPending) return;
     setPageIndex(pagination.pageIndex + 1);
@@ -356,28 +207,21 @@ function AdminActiveProjects({
 
   const toggleAllVisible = () => {
     setBulkActionFeedback(null);
-    setSelectedProjectIds((current) => {
-      const next = new Set(current);
-      visibleProjects.forEach((project) => {
-        const id = String(project.id);
-        if (allVisibleSelected) next.delete(id);
-        else next.add(id);
-      });
-      return next;
-    });
+    selection.toggleAllVisible();
   };
 
   const toggleProject = (projectId) => {
     setBulkActionFeedback(null);
-    setSelectedProjectIds((current) => {
-      const next = new Set(current);
-      const id = String(projectId);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    selection.toggleProject(projectId);
   };
 
+  /**
+   * Ejecuta una acción permitida sobre el snapshot de objetos seleccionados visibles.
+   * La ref protege inmediatamente; pending controla botones. Solo el éxito limpia selección,
+   * y el rechazo conserva el mensaje original y permite reintentar con la selección actual.
+   * @param {"archive"|"change_visibility"|"unarchive"} action Acción del contrato existente.
+   * @returns {Promise<void>} Finalización del callback, con errores mostrados en el feedback.
+   */
   const handleBulkAction = async (action) => {
     const actionIsAllowed = {
       archive: canArchive,
@@ -412,6 +256,35 @@ function AdminActiveProjects({
     } finally {
       bulkActionPendingRef.current = false;
       setBulkActionPending("");
+    }
+  };
+
+  /**
+   * Restaura el proyecto y la lista originales capturados al confirmar una baja.
+   * Comprueba el estado actual del proyecto y bloquea duplicados mediante una ref inmediata.
+   * Conserva el cierre del aviso al finalizar y el canal compartido de errores del consumidor.
+   * @returns {Promise<void>} Finalización de la restauración, con error visible si falla.
+   */
+  const handleUndoAssigneeRemoval = async () => {
+    if (assigneeUndoPendingRef.current || assigneeUndoUnavailable) return;
+
+    assigneeUndoPendingRef.current = true;
+    try {
+      await onProjectAssigneesChange?.(
+        assigneeRemovalFeedback.project,
+        assigneeRemovalFeedback.previousAssignees,
+      );
+    } catch (undoError) {
+      setBulkActionFeedback({
+        id: Date.now(),
+        type: "error",
+        title: "No se pudo restaurar al encargado",
+        message: undoError?.message
+          || "Inténtalo nuevamente desde la asignación del proyecto.",
+      });
+    } finally {
+      assigneeUndoPendingRef.current = false;
+      setAssigneeRemovalFeedback(null);
     }
   };
 
@@ -760,28 +633,7 @@ function AdminActiveProjects({
               secondaryActionLabel="Cerrar"
               primaryActionLabel="Deshacer"
               primaryActionDisabled={assigneeUndoUnavailable}
-              onPrimaryAction={async () => {
-                if (assigneeUndoPendingRef.current || assigneeUndoUnavailable) return;
-
-                assigneeUndoPendingRef.current = true;
-                try {
-                  await onProjectAssigneesChange?.(
-                    assigneeRemovalFeedback.project,
-                    assigneeRemovalFeedback.previousAssignees,
-                  );
-                } catch (undoError) {
-                  setBulkActionFeedback({
-                    id: Date.now(),
-                    type: "error",
-                    title: "No se pudo restaurar al encargado",
-                    message: undoError?.message
-                      || "Inténtalo nuevamente desde la asignación del proyecto.",
-                  });
-                } finally {
-                  assigneeUndoPendingRef.current = false;
-                  setAssigneeRemovalFeedback(null);
-                }
-              }}
+              onPrimaryAction={handleUndoAssigneeRemoval}
               onDismiss={() => setAssigneeRemovalFeedback(null)}
               aria-label="El encargado fue retirado correctamente"
             />

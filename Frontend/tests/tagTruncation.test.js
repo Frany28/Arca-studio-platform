@@ -8,7 +8,7 @@ test("long tag values stay inside their assigned column", async () => {
     readFile(new URL("../src/components/ui/Tag/tagConfig.js", import.meta.url), "utf8"),
     readFile(
       new URL(
-        "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+        "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx",
         import.meta.url,
       ),
       "utf8",

@@ -41,7 +41,7 @@ test("archived project details propagate one shared read-only policy", async () 
 
 test("archived projects disable dashboard mutations but keep unarchive selection", async () => {
   const [dashboardSource, rowSource] = await Promise.all([
-    readFile(new URL("../src/pages/architect-dashboard/components/AdminActiveProjects.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/architect-dashboard/components/ArchitectProjectRow.jsx", import.meta.url), "utf8"),
   ]);
 

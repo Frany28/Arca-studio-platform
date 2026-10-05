@@ -594,3 +594,13 @@ La primera ejecución de tests dentro del sandbox falló por `spawn EPERM`; al e
 - `utils/videoThumbnail.js`
 - `utils/vrLocomotion.js`
 
+## Actualización de ubicaciones: fase 1 administrativa (5 de octubre de 2026)
+
+El inventario anterior conserva las ubicaciones históricas de la auditoría. Las ubicaciones actuales de los archivos exclusivos del dashboard administrativo son:
+
+- `src/pages/admin-dashboard/components/`: `AdminDashboardHeader.jsx`, `AdminDashboardMetrics.jsx`, `AdminDashboardOperations.jsx`, `AdminDashboardOverview.jsx`, `AdminRequestAssignmentModal.jsx` y `AdminRequestLoginAlert.jsx`.
+- `src/pages/admin-dashboard/components/admin-active-projects/`: subárbol completo, con su componente, CSS, index, hooks y utils en la misma estructura interna.
+- `src/pages/admin-dashboard/hooks/useAdminDashboardData.js`.
+
+`ArchitectDashboard.jsx` permanece en `architect-dashboard/` y consume temporalmente estas nuevas ubicaciones. Esta fase solo traslada archivos y actualiza referencias; conserva rutas, lógica y comportamiento, sin crear `AdminDashboard.jsx` ni separar `useDashboardRequestWorkflow.js`.
+

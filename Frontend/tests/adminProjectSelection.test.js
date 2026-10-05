@@ -3,14 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { getBulkActionAvailability } from
-  "../src/pages/architect-dashboard/components/adminProjectBulkActions.js";
+  "../src/pages/admin-dashboard/components/admin-active-projects/utils/adminProjectBulkActions.js";
 import { getAdminProjectsPagination } from
-  "../src/pages/architect-dashboard/components/adminProjectPagination.js";
+  "../src/pages/admin-dashboard/components/admin-active-projects/utils/adminProjectPagination.js";
 
 test("selected admin project rows use the Figma neutral selection surface", async () => {
   const source = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+      "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx",
       import.meta.url,
     ),
     "utf8",
@@ -31,9 +31,13 @@ test("selected admin project rows use the Figma neutral selection surface", asyn
 });
 
 test("the Figma table footer stays visible and exposes functional pagination", async () => {
+  const scrollSource = await readFile(
+    new URL("../src/pages/admin-dashboard/components/admin-active-projects/hooks/useAdminProjectsTableScroll.js", import.meta.url),
+    "utf8",
+  );
   const source = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+      "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx",
       import.meta.url,
     ),
     "utf8",
@@ -76,10 +80,10 @@ test("the Figma table footer stays visible and exposes functional pagination", a
   );
   assert.match(source, /ref=\{tableFooterRef\}/);
   assert.match(
-    source,
+    scrollSource,
     /tableFooterRef\.current\?\.scrollIntoView\(\{[\s\S]*block: "end"/,
   );
-  assert.match(source, /prefers-reduced-motion: reduce/);
+  assert.match(scrollSource, /prefers-reduced-motion: reduce/);
   assert.match(source, /setPageIndex\(pagination\.pageIndex - 1\);[\s\S]*setSelectedProjectIds\(new Set\(\)\)/);
   assert.match(source, /setPageIndex\(pagination\.pageIndex \+ 1\);[\s\S]*setSelectedProjectIds\(new Set\(\)\)/);
   assert.match(source, /await onBulkAction\(\{ action, projects: selectedVisibleProjects \}\)/);
@@ -131,29 +135,33 @@ test("admin project pagination clamps pages and reports button states", () => {
 });
 
 test("admin filters use connected four-row multiple-checkbox menus", async () => {
+  const filtersSource = await readFile(
+    new URL("../src/pages/admin-dashboard/components/admin-active-projects/hooks/useAdminProjectFilters.js", import.meta.url),
+    "utf8",
+  );
   const source = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminActiveProjects.jsx",
+      "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx",
       import.meta.url,
     ),
     "utf8",
   );
   const styles = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminActiveProjects.css",
+      "../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.css",
       import.meta.url,
     ),
     "utf8",
   );
 
-  assert.match(source, /type: "Checkbox"/);
+  assert.match(filtersSource, /type: "Checkbox"/);
   assert.match(source, /<DropdownMenu[\s\S]*multiple[\s\S]*onItemsChange=\{handlePersonFilterItemsChange\}/);
   assert.match(source, /const personnelFilterLabel = "Filtrar por personal"/);
   assert.match(source, /label="Filtrar por status"[\s\S]*items=\{statusFilterItems\}[\s\S]*multiple[\s\S]*onItemsChange=\{handleStatusFilterItemsChange\}/);
   assert.match(source, /onItemsChange=\{handleStatusFilterItemsChange\}/);
-  assert.match(source, /statusFilterIds\.includes\(getStatusFilterId\(project\.status\)\)/);
+  assert.match(filtersSource, /statusFilterIds\.includes\(getStatusFilterId\(project\.status\)\)/);
   assert.match(source, /rowHeightClassName="h-\[35px\]"/);
-  assert.match(source, /personFilterIds\.includes\(String\(person\.id \|\| person\.name\)\)/);
+  assert.match(filtersSource, /personFilterIds\.includes\(String\(person\.id \|\| person\.name\)\)/);
   assert.match(styles, /admin-active-projects__filter-menu[\s\S]*top: calc\(100% - 1px\)/);
   assert.match(styles, /admin-active-projects__filter-menu[\s\S]*max-height: 168px/);
   assert.match(styles, /admin-active-projects__filter-menu[\s\S]*width: 100%/);

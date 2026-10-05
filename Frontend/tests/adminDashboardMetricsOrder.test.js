@@ -5,7 +5,7 @@ import test from "node:test";
 test("admin dashboard metrics preserve their approved visual order", async () => {
   const source = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminDashboardMetrics.jsx",
+      "../src/pages/admin-dashboard/components/AdminDashboardMetrics.jsx",
       import.meta.url,
     ),
     "utf8",

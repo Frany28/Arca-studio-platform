@@ -51,7 +51,7 @@ test("admin drawer activity is centralized and isolated by authenticated scope",
 test("recent activity time matches the double-ring Figma component", async () => {
   const source = await readFile(
     new URL(
-      "../src/pages/architect-dashboard/components/AdminDashboardOverview.jsx",
+      "../src/pages/admin-dashboard/components/AdminDashboardOverview.jsx",
       import.meta.url,
     ),
     "utf8",
