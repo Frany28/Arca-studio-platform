@@ -152,6 +152,7 @@ export default function Model3DViewerModal({
   const [isModelLoading, setIsModelLoading] = useState(false);
   const [modelLoadState, setModelLoadState] = useState("loading");
   const [modelProgress, setModelProgress] = useState(0);
+  const [viewerLoaded, setViewerLoaded] = useState(false);
   const [modelReloadKey, setModelReloadKey] = useState(0);
   const [navigationMode, setNavigationMode] = useState("drag");
   const [texturePreset, setTexturePreset] = useState("auto");
@@ -219,6 +220,7 @@ export default function Model3DViewerModal({
         setDisplayItem(item);
         setIsActive(false);
         setModelReloadKey(0);
+        setViewerLoaded(false);
         setNavigationMode("drag");
         setTexturePreset("auto");
         closeVrOnModalReset();
@@ -269,7 +271,7 @@ export default function Model3DViewerModal({
   const showPanoramaAnnotations = canShowPanoramaAnnotations({
     isLoading: isModelLoading,
     loadState: modelLoadState,
-    viewerLoaded: modelViewerRef.current?.loaded === true,
+    viewerLoaded,
     visible,
   });
 
@@ -343,6 +345,7 @@ export default function Model3DViewerModal({
     }
 
     function handleLoad() {
+      setViewerLoaded(true);
       enhanceModelViewerMaterials(modelViewer, renderSettings);
       setArchitecturalMaterials(
         (modelViewer.model?.materials || []).map((material, index) => ({
@@ -358,6 +361,7 @@ export default function Model3DViewerModal({
     }
 
     function handleError() {
+      setViewerLoaded(false);
       clearModelLoadingTimers();
       setModelProgress(100);
       setModelLoadState("error");
@@ -403,6 +407,7 @@ export default function Model3DViewerModal({
 
   function handleModelRetry() {
     clearModelLoadingTimers();
+    setViewerLoaded(false);
     setIsModelLoading(true);
     setModelLoadState("loading");
     setModelProgress(8);

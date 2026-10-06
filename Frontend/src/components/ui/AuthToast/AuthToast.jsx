@@ -69,10 +69,12 @@ function AuthToast({
     window.clearTimeout(unmountTimerRef.current);
 
     const nextTimestamp = Date.now();
-    setTimestamp(nextTimestamp);
-    setElapsedLabel("Ahora");
-    setMounted(false);
-    setVisible(false);
+    queueMicrotask(() => {
+      setTimestamp(nextTimestamp);
+      setElapsedLabel("Ahora");
+      setMounted(false);
+      setVisible(false);
+    });
 
     mountTimerRef.current = window.setTimeout(() => {
       setMounted(true);
@@ -94,7 +96,6 @@ function AuthToast({
 
   useEffect(() => {
     if (!timestamp || !mounted) {
-      setElapsedLabel("Ahora");
       window.clearInterval(elapsedIntervalRef.current);
       return undefined;
     }
@@ -103,7 +104,6 @@ function AuthToast({
       setElapsedLabel(buildElapsedLabel(timestamp));
     };
 
-    updateElapsedLabel();
     elapsedIntervalRef.current = window.setInterval(updateElapsedLabel, 1000);
 
     return () => {

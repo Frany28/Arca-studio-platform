@@ -119,6 +119,7 @@ export default function ProjectRendersPanel({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     clearModelLoadingTimers();
 
     if (!activeModelSrc) {
@@ -133,9 +134,12 @@ export default function ProjectRendersPanel({
       };
     }
 
-    setIsLoading(true);
-    setLoadState("loading");
-    setProgress(0);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setIsLoading(true);
+      setLoadState("loading");
+      setProgress(0);
+    });
 
     slowLoadingTimeoutRef.current = window.setTimeout(() => {
       setLoadState((current) =>
@@ -151,6 +155,7 @@ export default function ProjectRendersPanel({
     }, MODEL_LOAD_TIMEOUT_MS);
 
     return () => {
+      cancelled = true;
       clearModelLoadingTimers();
     };
   }, [

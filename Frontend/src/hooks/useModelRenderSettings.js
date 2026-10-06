@@ -9,15 +9,22 @@ export default function useModelRenderSettings({ fileId, projectId }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!fileId || !projectId) {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
       setSettings(DEFAULT_ARCHITECTURAL_SETTINGS);
       setIsLoading(false);
-      return undefined;
-    }
-    setIsLoading(false);
-    setError("");
-    setSettings(DEFAULT_ARCHITECTURAL_SETTINGS);
-    return undefined;
+
+      if (fileId && projectId) {
+        setError("");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [fileId, projectId]);
 
   const save = useCallback(

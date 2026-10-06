@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ReactCountryFlag from "react-country-flag";
 
 function normalizeCountryCode(countryCode) {
@@ -20,17 +20,19 @@ function Flag({
   ...flagProps
 }) {
   const resolvedCountryCode = normalizeCountryCode(countryCode);
-  const [hasSvgError, setHasSvgError] = useState(false);
-
-  useEffect(() => {
-    setHasSvgError(false);
-  }, [resolvedCountryCode, useSvg, cdnUrl, cdnSuffix]);
+  const svgSourceKey = [
+    resolvedCountryCode,
+    useSvg ? "svg" : "fallback",
+    cdnUrl || "",
+    cdnSuffix || "",
+  ].join("|");
+  const [failedSvgSourceKey, setFailedSvgSourceKey] = useState("");
 
   if (!resolvedCountryCode) {
     return null;
   }
 
-  const shouldUseSvg = useSvg && !hasSvgError;
+  const shouldUseSvg = useSvg && failedSvgSourceKey !== svgSourceKey;
   const fallbackLabel = resolvedCountryCode.slice(0, 2);
 
   return (
@@ -58,7 +60,7 @@ function Flag({
           {...(cdnSuffix ? { cdnSuffix } : {})}
           {...(loading ? { loading } : {})}
           onError={(event) => {
-            setHasSvgError(true);
+            setFailedSvgSourceKey(svgSourceKey);
             onError?.(event);
           }}
           style={{

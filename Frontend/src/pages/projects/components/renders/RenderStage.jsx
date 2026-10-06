@@ -52,8 +52,17 @@ export default function RenderStage({
   const renderSettings = renderSettingsState.settings;
 
   useEffect(() => {
-    setNavigationMode("drag");
-    setTexturePreset("auto");
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setNavigationMode("drag");
+      setTexturePreset("auto");
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [modelSrc]);
 
   useSketchfabLikeModelWheel(modelViewerRef, hasInteractiveModel && !isLoading);

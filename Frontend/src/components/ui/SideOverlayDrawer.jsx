@@ -30,8 +30,10 @@ function SideOverlayDrawer({
     window.cancelAnimationFrame(frameRef.current);
 
     if (open) {
-      setIsActive(false);
-      setShouldRender(true);
+      queueMicrotask(() => {
+        setIsActive(false);
+        setShouldRender(true);
+      });
       frameRef.current = window.requestAnimationFrame(() => {
         frameRef.current = window.requestAnimationFrame(() => {
           setIsActive(true);
@@ -41,7 +43,9 @@ function SideOverlayDrawer({
       return undefined;
     }
 
-    setIsActive(false);
+    queueMicrotask(() => {
+      setIsActive(false);
+    });
     closeTimeoutRef.current = window.setTimeout(() => {
       setShouldRender(false);
     }, UNMOUNT_DELAY_MS);
