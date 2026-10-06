@@ -14,11 +14,6 @@ export default function Model3DThumbnail({ alt = "Modelo 3D", className, item })
   const isLoading = Boolean(previewSource) && loadedSource !== previewSource && failedSource !== previewSource;
 
   useEffect(() => {
-    setLoadedSource("");
-    setFailedSource("");
-  }, [previewSource]);
-
-  useEffect(() => {
     const modelViewer = modelViewerRef.current;
 
     if (!modelViewer || !modelSrc) {
