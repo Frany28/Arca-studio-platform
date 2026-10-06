@@ -276,12 +276,18 @@ export default function Model3DViewerModal({
   });
 
   useEffect(() => {
-    if (!showPanoramaAnnotations) {
-      setFocusedSelectionCommentId(null);
-      return;
-    }
+    let cancelled = false;
 
-    setFocusedSelectionCommentId(focusedCommentId);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setFocusedSelectionCommentId(
+        showPanoramaAnnotations ? focusedCommentId : null,
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [focusedCommentId, showPanoramaAnnotations]);
   const activeNavigationMode =
     MODEL_3D_NAVIGATION_MODES[navigationMode] ?? MODEL_3D_NAVIGATION_MODES.drag;
@@ -294,15 +300,27 @@ export default function Model3DViewerModal({
   );
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!visible || !shouldRender || !hasInteractiveModel) {
-      setIsModelLoading(false);
       clearModelLoadingTimers();
-      return undefined;
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setIsModelLoading(false);
+        }
+      });
+
+      return () => {
+        cancelled = true;
+      };
     }
 
-    setIsModelLoading(true);
-    setModelLoadState("loading");
-    setModelProgress(0);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setIsModelLoading(true);
+      setModelLoadState("loading");
+      setModelProgress(0);
+    });
 
     slowLoadingTimeoutRef.current = window.setTimeout(() => {
       setModelLoadState((current) =>
@@ -318,6 +336,7 @@ export default function Model3DViewerModal({
     }, MODEL_LOAD_TIMEOUT_MS);
 
     return () => {
+      cancelled = true;
       clearModelLoadingTimers();
     };
   }, [
