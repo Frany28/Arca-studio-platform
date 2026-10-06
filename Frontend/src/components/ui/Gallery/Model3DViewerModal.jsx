@@ -407,6 +407,7 @@ export default function Model3DViewerModal({
 
   function handleModelRetry() {
     clearModelLoadingTimers();
+    setViewerLoaded(false);
     setIsModelLoading(true);
     setModelLoadState("loading");
     setModelProgress(8);
