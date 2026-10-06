@@ -24,9 +24,21 @@ export default function useProjectDetailsTabs({
   });
 
   useEffect(() => {
+    let cancelled = false;
     const requestedTab = searchParams.get("tab");
-    if (requestedTab === "renders") setActiveProjectTabIndex(1);
-    if (requestedTab === "documents") setActiveProjectTabIndex(2);
+
+    if (requestedTab !== "renders" && requestedTab !== "documents") {
+      return undefined;
+    }
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setActiveProjectTabIndex(requestedTab === "renders" ? 1 : 2);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   /**
