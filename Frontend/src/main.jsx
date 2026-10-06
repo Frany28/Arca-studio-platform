@@ -9,7 +9,7 @@ import PublicOnlyRoute from "./auth/PublicOnlyRoute.jsx";
 import ThemeSync from "./components/ui/ThemeSync.jsx";
 
 const InternalDashboardRouter = lazy(
-  () => import("./pages/InternalDashboardRouter.jsx"),
+  () => import("./pages/internal-dashboard/InternalDashboardRouter.jsx"),
 );
 const AdminUsersPage = lazy(
   () => import("./pages/admin-users/AdminUsersPage.jsx"),
@@ -17,44 +17,44 @@ const AdminUsersPage = lazy(
 const AdminFilesPage = lazy(
   () => import("./pages/admin-files/AdminFilesPage.jsx"),
 );
-const CreateAccount = lazy(() => import("./pages/CreateAccount.jsx"));
-const CreatePassword = lazy(() => import("./pages/CreatePassword.jsx"));
+const CreateAccount = lazy(() => import("./pages/auth/CreateAccount.jsx"));
+const CreatePassword = lazy(() => import("./pages/auth/CreatePassword.jsx"));
 const EmptyArchitectDashboardExample = lazy(
-  () => import("./pages/EmptyArchitectDashboardExample.jsx"),
+  () => import("./pages/examples/EmptyArchitectDashboardExample.jsx"),
 );
 const EmptyProjectDocumentsExample = lazy(
-  () => import("./pages/EmptyProjectDocumentsExample.jsx"),
+  () => import("./pages/examples/EmptyProjectDocumentsExample.jsx"),
 );
 const EmptyProjectInfoExample = lazy(
-  () => import("./pages/EmptyProjectInfoExample.jsx"),
+  () => import("./pages/examples/EmptyProjectInfoExample.jsx"),
 );
 const EmptyProjectRendersExample = lazy(
-  () => import("./pages/EmptyProjectRendersExample.jsx"),
+  () => import("./pages/examples/EmptyProjectRendersExample.jsx"),
 );
 const EmptyProjectTrackingExample = lazy(
-  () => import("./pages/EmptyProjectTrackingExample.jsx"),
+  () => import("./pages/examples/EmptyProjectTrackingExample.jsx"),
 );
 const EmptyProjectWarrantiesExample = lazy(
-  () => import("./pages/EmptyProjectWarrantiesExample.jsx"),
+  () => import("./pages/examples/EmptyProjectWarrantiesExample.jsx"),
 );
 const EmptyProjectsExample = lazy(
-  () => import("./pages/EmptyProjectsExample.jsx"),
+  () => import("./pages/examples/EmptyProjectsExample.jsx"),
 );
 const Requests = lazy(() => import("./pages/Home.jsx"));
 const Home = lazy(() => import("./pages/Home.jsx"));
-const InactiveAccount = lazy(() => import("./pages/InactiveAccount.jsx"));
-const Login = lazy(() => import("./pages/Login.jsx"));
+const InactiveAccount = lazy(() => import("./pages/auth/InactiveAccount.jsx"));
+const Login = lazy(() => import("./pages/auth/Login.jsx"));
 const NewArchitectProjectPage = lazy(
   () => import("./pages/architect-dashboard/NewArchitectProjectPage.jsx"),
 );
-const NewPassword = lazy(() => import("./pages/NewPassword.jsx"));
-const ProjectDetails = lazy(() => import("./pages/ProjectDetails.jsx"));
+const NewPassword = lazy(() => import("./pages/auth/NewPassword.jsx"));
+const ProjectDetails = lazy(() => import("./pages/projects/ProjectDetailsPage.jsx"));
 const PublicProjectsGallery = lazy(
-  () => import("./pages/PublicProjectsGallery.jsx"),
+  () => import("./pages/projects/PublicProjectsGallery.jsx"),
 );
 const ProjectRequestPage = lazy(() => import("./pages/ProjectRequestPage.jsx"));
-const RecoverAccount = lazy(() => import("./pages/RecoverAccount.jsx"));
-const Settings = lazy(() => import("./pages/Settings.jsx"));
+const RecoverAccount = lazy(() => import("./pages/auth/RecoverAccount.jsx"));
+const Settings = lazy(() => import("./pages/settings/SettingsPage.jsx"));
 
 function RouteFallback() {
   return <main className="min-h-screen bg-[var(--color-neutral-bg)]" />;
