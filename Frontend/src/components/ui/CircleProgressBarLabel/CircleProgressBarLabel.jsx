@@ -4,6 +4,7 @@ import clsx from "clsx";
 import {
   CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS,
   CIRCLE_PROGRESS_BAR_LABEL_SIZES,
+  CIRCLE_PROGRESS_BAR_LABEL_THEME_COLORS,
 } from "./circleProgressBarLabelConfig.js";
 
 const CIRCLE_PROGRESS_BAR_LABEL_NODE_IDS = {
@@ -80,6 +81,7 @@ function CircleProgressBarLabel({
   value = CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.value,
   max = CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.max,
   size = CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.size,
+  theme = CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.theme,
   showText = CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.showText,
   ...props
 }) {
@@ -87,6 +89,8 @@ function CircleProgressBarLabel({
     ? size
     : CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.size;
   const sizeStyles = CIRCLE_PROGRESS_BAR_SIZE_STYLES[resolvedSize];
+  const progressColor = CIRCLE_PROGRESS_BAR_LABEL_THEME_COLORS[theme]
+    || CIRCLE_PROGRESS_BAR_LABEL_THEME_COLORS[CIRCLE_PROGRESS_BAR_LABEL_DEFAULT_PROPS.theme];
   const percentage = getPercentage(value, max);
   const [animatedPercentage, setAnimatedPercentage] = useState(0);
   const roundedPercentage = getRoundedPercentage(animatedPercentage);
@@ -155,7 +159,7 @@ function CircleProgressBarLabel({
             cy={sizeStyles.circleSize / 2}
             r={circleRadius}
             fill="none"
-            stroke="var(--color-accent-300)"
+            stroke={progressColor}
             strokeWidth={sizeStyles.strokeWidth}
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}

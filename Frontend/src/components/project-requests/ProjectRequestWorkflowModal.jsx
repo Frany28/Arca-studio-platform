@@ -20,8 +20,18 @@ function CloseIcon() {
   );
 }
 
+/**
+ * Modal de revisión técnica o decisión administrativa de una solicitud.
+ * `initialAction` solo preselecciona la opción al montar; el consumidor debe cambiar
+ * la `key` del modal para reiniciar la selección entre aperturas.
+ *
+ * @param {Object} props - Solicitud, modo, estado del envío y callbacks.
+ * @param {string} [props.initialAction="approve"] - approve, reject o changes_requested.
+ * @returns {import("react").ReactElement|null} Modal o null sin solicitud.
+ */
 function ProjectRequestWorkflowModal({
   error = "",
+  initialAction = "approve",
   mode = "review",
   onClose,
   onSubmit,
@@ -29,7 +39,9 @@ function ProjectRequestWorkflowModal({
   projectRequest,
   submitting = false,
 }) {
-  const [action, setAction] = useState("approve");
+  const [action, setAction] = useState(
+    OPTIONS.some((option) => option.id === initialAction) ? initialAction : "approve",
+  );
   const [note, setNote] = useState("");
   const [localError, setLocalError] = useState("");
 

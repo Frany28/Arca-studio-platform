@@ -14,10 +14,12 @@ import AdminDashboardMetrics from "./components/AdminDashboardMetrics.jsx";
 import AdminDashboardOperations from "./components/AdminDashboardOperations.jsx";
 import AdminDashboardOverview from "./components/AdminDashboardOverview.jsx";
 import AdminActiveProjects from "./components/admin-active-projects/index.js";
+import AdminRequestDetailsDrawer from "./components/admin-request-details/index.js";
 import AdminRequestLoginAlert from "./components/AdminRequestLoginAlert.jsx";
 import AdminRequestAssignmentModal from "./components/AdminRequestAssignmentModal.jsx";
 import { useAdminDashboardData } from "./hooks/useAdminDashboardData.js";
 import { useAdminRequestAssignments } from "./hooks/useAdminRequestAssignments.js";
+import { useAdminRequestDetails } from "./hooks/useAdminRequestDetails.js";
 import { submitAdminRequestDecision } from "./utils/adminRequestDecision.js";
 import { useDashboardProjects } from "../../hooks/useDashboardProjects.js";
 import ProjectRequestWorkflowModal from "../../components/project-requests/ProjectRequestWorkflowModal.jsx";
@@ -102,6 +104,11 @@ function AdminDashboard({ empty = false }) {
     openRequestWorkflow: workflow.open,
     retryReviewQueue: reviewQueue.retry,
     onRequestAssigneesUpdated: handleRequestAssigneesUpdated,
+  });
+  const requestDetails = useAdminRequestDetails({
+    newRequests: adminOverview?.newRequests,
+    reviewQueue,
+    openRequestWorkflow: workflow.open,
   });
   const upcomingDeliveries = useMemo(
     () =>
@@ -234,7 +241,7 @@ function AdminDashboard({ empty = false }) {
           }
         }}
         onRequestAssigneesChange={assignment.updateAssignees}
-        onRequestOpen={workflow.open}
+        onRequestOpen={requestDetails.open}
         onRetry={() =>
           setAdminOverviewRequestKey((current) => current + 1)
         }
@@ -255,9 +262,24 @@ function AdminDashboard({ empty = false }) {
         onClose={() => setIsNotificationsDrawerOpen(false)}
         onActivitySelect={handleActivitySelect}
       />
+      <AdminRequestDetailsDrawer
+        open={requestDetails.isOpen}
+        status={requestDetails.status}
+        details={requestDetails.details}
+        client={requestDetails.client}
+        queueError={requestDetails.queueError}
+        onClose={requestDetails.close}
+        onOpenWorkflow={requestDetails.openWorkflow}
+        onRetryQueue={requestDetails.retryQueue}
+      />
       <ProjectRequestWorkflowModal
-        key={workflow.selectedRequest?.id || "closed-request-workflow"}
+        key={
+          workflow.selectedRequest
+            ? `${workflow.selectedRequest.id}-${workflow.initialAction || "default"}`
+            : "closed-request-workflow"
+        }
         error={workflow.error}
+        initialAction={workflow.initialAction}
         mode="decision"
         open={Boolean(workflow.selectedRequest)}
         projectRequest={workflow.selectedRequest}

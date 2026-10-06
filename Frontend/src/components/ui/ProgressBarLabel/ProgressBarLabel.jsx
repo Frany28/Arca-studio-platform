@@ -45,6 +45,9 @@ function ProgressBarLabel({
   const percentage = getPercentage(value, max);
   const resolvedValueLabel =
     typeof valueLabel === "string" ? valueLabel : formatPercentage(percentage);
+  // El color por defecto solo se aplica sin override: ambas clases arbitrarias tienen la
+  // misma especificidad y el orden del CSS generado haría prevalecer siempre el default.
+  const resolvedFillClassName = fillClassName || "bg-[var(--color-text-300)]";
 
   return (
     <div
@@ -80,9 +83,9 @@ function ProgressBarLabel({
         >
           <div
             className={clsx(
-              "h-full rounded-full bg-[var(--color-text-300)]",
+              "h-full rounded-full",
               animated && "progress-fill-reveal",
-              fillClassName,
+              resolvedFillClassName,
             )}
             style={animated
               ? { width: "100%", "--progress-scale": percentage / 100 }
@@ -104,9 +107,9 @@ function ProgressBarLabel({
           >
             <div
               className={clsx(
-                "h-full rounded-full bg-[var(--color-text-300)]",
+                "h-full rounded-full",
                 animated && "progress-fill-reveal",
-                fillClassName,
+                resolvedFillClassName,
               )}
               style={animated
                 ? { width: "100%", "--progress-scale": percentage / 100 }

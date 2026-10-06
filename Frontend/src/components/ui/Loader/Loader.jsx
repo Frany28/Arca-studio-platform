@@ -293,6 +293,53 @@ function AdminUserDetailsSkeleton() {
   );
 }
 
+// Reproduce el drawer "Detalles de Solicitud": fecha/estado, anillo de compatibilidad de
+// 64 px, dos barras de indicadores, recomendación, justificación y campos del proyecto.
+function AdminRequestDetailsSkeleton() {
+  return (
+    <div className="flex w-full flex-col gap-[24px]">
+      <div className="flex gap-[24px]">
+        {Array.from({ length: 2 }, (_, index) => (
+          <div key={index} className="flex flex-col gap-[8px]">
+            <SkeletonBlock className="h-[14px] w-[96px] rounded-[var(--radius-1)]" delay={index * 55} tone="muted" />
+            <SkeletonBlock className="h-[18px] w-[80px] rounded-[var(--radius-full)]" delay={40 + index * 55} tone="text" />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-[8px]">
+        <SkeletonBlock className="h-[14px] w-[96px] rounded-[var(--radius-1)]" delay={110} tone="muted" />
+        <div className="flex items-center gap-[16px]">
+          <SkeletonBlock className="size-[64px] shrink-0 rounded-[var(--radius-full)]" delay={140} />
+          <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
+            <SkeletonBlock className="h-[14px] w-[160px] max-w-full rounded-[var(--radius-1)]" delay={170} tone="text" />
+            <SkeletonBlock className="h-[12px] w-[110px] rounded-[var(--radius-1)]" delay={200} tone="muted" />
+          </div>
+        </div>
+      </div>
+      {Array.from({ length: 2 }, (_, index) => (
+        <div key={index} className="flex flex-col gap-[8px]">
+          <SkeletonBlock className="h-[14px] w-[140px] rounded-[var(--radius-1)]" delay={230 + index * 45} tone="muted" />
+          <SkeletonBlock className="h-[8px] w-full rounded-[var(--radius-full)]" delay={260 + index * 45} />
+        </div>
+      ))}
+      <div className="flex flex-col gap-[8px]">
+        <SkeletonBlock className="h-[14px] w-[110px] rounded-[var(--radius-1)]" delay={340} tone="muted" />
+        <SkeletonBlock className="h-[25px] w-[140px] rounded-[var(--radius-full)]" delay={370} tone="text" />
+      </div>
+      <div className="flex flex-col gap-[8px]">
+        <SkeletonBlock className="h-[14px] w-[90px] rounded-[var(--radius-1)]" delay={400} tone="muted" />
+        <SkeletonBlock className="h-[34px] w-full rounded-[var(--radius-1)]" delay={430} tone="text" />
+      </div>
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={`field-${index}`} className="flex flex-col gap-[8px]">
+          <SkeletonBlock className="h-[14px] w-[72px] rounded-[var(--radius-1)]" delay={460 + index * 45} tone="muted" />
+          <SkeletonBlock className="h-[17px] w-[min(180px,70%)] rounded-[var(--radius-1)]" delay={490 + index * 45} tone="text" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function VideoStageSkeleton() {
   return (
     <div className="relative size-full overflow-hidden rounded-[inherit]">
@@ -507,6 +554,11 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <AdminUserTableSkeleton />;
   } else if (preset === "adminUserDetails") {
     content = <AdminUserDetailsSkeleton />;
+  } else if (preset === "adminRequestDetails") {
+    content = <AdminRequestDetailsSkeleton />;
+  } else if (preset === "detailValue") {
+    // Valor de una línea (heading-8) dentro de una ficha de detalle.
+    content = <SkeletonBlock className="h-[17px] w-[96px] max-w-full rounded-[var(--radius-1)]" tone="text" />;
   } else if (preset === "videoStage") {
     content = <VideoStageSkeleton />;
   } else if (preset === "documentPreview") {

@@ -1,21 +1,24 @@
+// badgeTheme sigue los temas semánticos de `Badge` definidos en DESIGN_SYSTEM.md
+// (Neutral: solicitud pendiente; Brand 2: en revisión; Success; Danger).
 export const PROJECT_REQUEST_STATUS = {
-  approved: { label: "Aprobada", progress: 90 },
-  changes_requested: { label: "Requiere correcciones", progress: 40 },
-  converted: { label: "Proyecto creado", progress: 100 },
-  pending_review: { label: "En revisión", progress: 65 },
-  pending_verification: { label: "En verificación", progress: 30 },
-  rejected: { label: "Rechazada", progress: 100 },
+  approved: { badgeTheme: "Success", label: "Aprobada", progress: 90 },
+  changes_requested: { badgeTheme: "Neutral", label: "Requiere correcciones", progress: 40 },
+  converted: { badgeTheme: "Success", label: "Proyecto creado", progress: 100 },
+  pending_review: { badgeTheme: "Brand 2", label: "En revisión", progress: 65 },
+  pending_verification: { badgeTheme: "Neutral", label: "En verificación", progress: 30 },
+  rejected: { badgeTheme: "Danger", label: "Rechazada", progress: 100 },
 };
 
 /**
- * Resuelve etiqueta y progreso visual desde el catálogo de solicitudes.
- * Estados desconocidos, incluido draft, usan Solicitud enviada con progreso 15.
+ * Resuelve etiqueta, progreso visual y tema de Badge desde el catálogo de solicitudes.
+ * Estados desconocidos, incluido draft, usan Solicitud enviada con progreso 15 y tema Neutral.
  *
  * @param {string|null} status - Código de estado.
- * @returns {Object} label y progress de presentación.
+ * @returns {{badgeTheme: string, label: string, progress: number}} Datos de presentación.
  */
 export function getProjectRequestStatus(status) {
   return PROJECT_REQUEST_STATUS[status] || {
+    badgeTheme: "Neutral",
     label: "Solicitud enviada",
     progress: 15,
   };

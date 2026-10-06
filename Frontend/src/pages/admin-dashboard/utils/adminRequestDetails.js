@@ -1,0 +1,89 @@
+import { getPrototypeRequestIndicators } from "../data/adminRequestDetailsPrototype.js";
+import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
+import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
+import { getProjectTypeLabel } from "../../../utils/projectTypeDisplay.js";
+
+// Recomendaciones técnicas admitidas por el backend (`project_request_review_recommendation`).
+const RECOMMENDATION_PRESENTATION = {
+  approve: { label: "Aprobar", theme: "Info" },
+  changes_requested: { label: "Solicitar correcciones", theme: "Info" },
+  reject: { label: "Rechazar", theme: "Danger" },
+};
+
+/**
+ * Selecciona la revisión técnica más reciente de una solicitud.
+ * No depende del orden de la API: compara `updatedAt` y descarta fechas inválidas al final.
+ *
+ * @param {Array<{updatedAt?: string}>|null|undefined} reviews - Revisiones de arquitectos.
+ * @returns {Object|null} Revisión más reciente o null si no existe ninguna.
+ */
+export function getLatestRequestReview(reviews) {
+  if (!Array.isArray(reviews) || !reviews.length) return null;
+
+  const toTime = (review) => {
+    const time = new Date(review?.updatedAt).getTime();
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+  };
+  return reviews.reduce((latest, review) => (toTime(review) > toTime(latest) ? review : latest));
+}
+
+/**
+ * Traduce la recomendación de una revisión a etiqueta y tema de Badge.
+ * Las recomendaciones desconocidas conservan el código original con tema Neutral.
+ *
+ * @param {string|null|undefined} recommendation - approve, reject o changes_requested.
+ * @returns {{label: string, theme: string, value: string}|null} Presentación o null sin valor.
+ */
+export function getRecommendationPresentation(recommendation) {
+  if (!recommendation) return null;
+  const presentation = RECOMMENDATION_PRESENTATION[recommendation];
+  return presentation
+    ? { ...presentation, value: recommendation }
+    : { label: recommendation, theme: "Neutral", value: recommendation };
+}
+
+/**
+ * Construye el modelo del drawer "Detalles de Solicitud" combinando el resumen del overview
+ * administrativo con la entrada de la cola técnica (ubicación, compatibilidad, revisiones).
+ * Si la solicitud no está en la primera página de la cola, `isPartial` indica que faltan
+ * esos datos para que la vista muestre estados vacíos en lugar de valores inventados.
+ * Los indicadores sin backend llegan separados en `prototypeIndicators`.
+ *
+ * @param {Object} params - Fuentes ya cargadas por el dashboard.
+ * @param {Object} params.summary - Solicitud de `overview.newRequests`.
+ * @param {Object|null} [params.queueRequest] - Misma solicitud en `reviewQueue.requests`.
+ * @returns {Object} Modelo de presentación del drawer.
+ */
+export function buildAdminRequestDetails({ summary, queueRequest = null }) {
+  const source = { ...summary, ...(queueRequest || {}) };
+  const status = getProjectRequestStatus(source.status);
+  const latestReview = getLatestRequestReview(queueRequest?.reviews);
+
+  return {
+    clientId: queueRequest?.clientId ?? null,
+    compatibility: getCompatibilityPresentation(queueRequest?.compatibility),
+    createdAt: source.createdAt || null,
+    id: source.id,
+    isPartial: !queueRequest,
+    justification: latestReview?.note?.trim() || null,
+    location: queueRequest?.location?.trim() || null,
+    projectName: source.projectName || "Solicitud de proyecto",
+    projectTypeLabel: getProjectTypeLabel(source.projectType, "Sin tipo registrado"),
+    prototypeIndicators: getPrototypeRequestIndicators(),
+    recommendation: getRecommendationPresentation(latestReview?.recommendation),
+    reviewerName: latestReview?.reviewer?.name || null,
+    status: { label: status.label, theme: status.badgeTheme },
+  };
+}
+
+/**
+ * Busca una solicitud por ID numérico; los IDs pueden llegar como texto desde la UI.
+ *
+ * @param {Array<{id: number|string}>|null|undefined} requests - Colección donde buscar.
+ * @param {number|string|null} requestId - ID buscado.
+ * @returns {Object|null} Solicitud encontrada o null.
+ */
+export function findRequestById(requests, requestId) {
+  if (requestId == null || !Array.isArray(requests)) return null;
+  return requests.find((request) => Number(request.id) === Number(requestId)) || null;
+}
