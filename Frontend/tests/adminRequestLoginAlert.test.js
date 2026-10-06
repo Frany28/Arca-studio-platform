@@ -29,7 +29,7 @@ test("admin request alert follows Figma and appears after every explicit login",
       ),
       readFile(
         new URL(
-          "../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js",
+          "../src/pages/admin-dashboard/hooks/useAdminRequestAssignments.js",
           import.meta.url,
         ),
         "utf8",
@@ -66,7 +66,7 @@ test("assigning from the login alert uses a confirm-only modal flow", async () =
     ),
     readFile(
       new URL(
-        "../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js",
+        "../src/pages/admin-dashboard/hooks/useAdminRequestAssignments.js",
         import.meta.url,
       ),
       "utf8",
