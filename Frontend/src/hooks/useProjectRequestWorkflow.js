@@ -84,15 +84,15 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
    * El error conserva selección y borrador del modal; siempre libera submitting.
    * La recarga posterior se programa sin esperar la nueva lectura de la cola.
    *
-   * @param {Object} params - Acción y nota normalizadas por el modal consumidor.
+   * @param {Object} params - Acción, reunión opcional y nota normalizadas por el modal consumidor.
    * @returns {Promise<void>} Completa el envío; los errores quedan en workflow.error.
    */
-  const submitRequestWorkflow = async ({ action, note }) => {
+  const submitRequestWorkflow = async ({ action, meetingRecommendation, note }) => {
     if (!selectedRequest) return;
     setWorkflowSubmitting(true);
     setWorkflowError("");
     try {
-      await submitOperation(selectedRequest, { action, note });
+      await submitOperation(selectedRequest, { action, meetingRecommendation, note });
       setSelectedRequest(null);
       setReviewRequestsRevision((current) => current + 1);
     } catch (error) {

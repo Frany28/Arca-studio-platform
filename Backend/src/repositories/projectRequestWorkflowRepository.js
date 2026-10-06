@@ -20,8 +20,8 @@ function toPerson(value) {
 }
 
 /**
- * Transforma el valor de flujo solicitud a la representación pública esperada.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Mapea la cola técnica a su contrato público, separando workflow, reunión y justificación.
+ * Normaliza a null las decisiones de reunión ausentes sin inferir valores históricos.
  *
  * @param {unknown} row - Fila obtenida desde PostgreSQL.
  * @returns {object} Resultado producido por la operación.
@@ -55,6 +55,7 @@ function toWorkflowRequest(row) {
     rejectionReason: row.rejection_reason || null,
     reviews: Array.isArray(row.reviews)
       ? row.reviews.map((review) => ({
+          meetingRecommendation: review.meetingRecommendation ?? null,
           note: review.note,
           recommendation: review.recommendation,
           reviewer: toPerson(review.reviewer),
@@ -146,6 +147,7 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
         select json_agg(
           json_build_object(
             'note', request_review.note,
+            'meetingRecommendation', request_review.meeting_recommendation,
             'recommendation', request_review.recommendation,
             'updatedAt', request_review.updated_at,
             'reviewer', json_build_object(
@@ -208,10 +210,11 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
 }
 
 /**
- * Procesa el valor de upsert proyecto solicitud review para completar la responsabilidad asignada al módulo.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Guarda atómicamente la revisión y su decisión de reunión, bloqueando la solicitud en PostgreSQL.
+ * Mantiene la reunión al omitirla; null explícito la elimina sin alterar la valoración de workflow.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
+ * @param {string|null} [options.meetingRecommendation] - Decisión de reunión; undefined conserva el valor previo.
  * @param {unknown} options.note - Valor de `options.note` requerido por esta operación.
  * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
  * @param {unknown} options.recommendation - Valor de `options.recommendation` requerido por esta operación.
@@ -220,6 +223,7 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
  * @returns {Promise<object>} Resultado producido por la operación.
  */
 export async function upsertProjectRequestReview({
+  meetingRecommendation,
   note,
   projectRequestId,
   recommendation,
@@ -249,17 +253,21 @@ export async function upsertProjectRequestReview({
       ),
       saved as (
         insert into public.project_request_reviews (
-          project_request_id, reviewer_id, recommendation, note
+          project_request_id, reviewer_id, recommendation, note, meeting_recommendation
         )
-        select target.id, $2, $3::public.project_request_review_recommendation, $4
+        select target.id, $2, $3::public.project_request_review_recommendation, $4,
+          $6::public.project_request_meeting_recommendation
         from target
         where target.status = 'pending_review'
           and (select allowed from access)
         on conflict (project_request_id, reviewer_id) do update
           set recommendation = excluded.recommendation,
+              meeting_recommendation = case when $7::boolean
+                then excluded.meeting_recommendation
+                else project_request_reviews.meeting_recommendation end,
               note = excluded.note,
               updated_at = now()
-        returning id, recommendation, note, updated_at
+        returning id, recommendation, note, meeting_recommendation, updated_at
       )
       select
         exists(select 1 from target) as target_exists,
@@ -267,7 +275,8 @@ export async function upsertProjectRequestReview({
         (select allowed from access) as allowed,
         (select row_to_json(saved) from saved) as review
     `,
-    [projectRequestId, reviewerId, recommendation, note, reviewerRole],
+    [projectRequestId, reviewerId, recommendation, note, reviewerRole,
+      meetingRecommendation ?? null, meetingRecommendation !== undefined],
   );
 
   const row = result.rows[0] || {};
@@ -276,6 +285,7 @@ export async function upsertProjectRequestReview({
     review: row.review
       ? {
           id: Number(row.review.id),
+          meetingRecommendation: row.review.meeting_recommendation ?? null,
           note: row.review.note,
           recommendation: row.review.recommendation,
           updatedAt: row.review.updated_at,

@@ -1,4 +1,5 @@
-import { CloseCircle, InfoCircle, TickCircle } from "iconsax-react";
+import meetingDeclinedIcon from "../../../../assets/project-requests/meeting-declined.svg";
+import meetingSuggestedIcon from "../../../../assets/project-requests/meeting-suggested.svg";
 
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import CircleProgressBarLabel from "../../../../components/ui/CircleProgressBarLabel/CircleProgressBarLabel.jsx";
@@ -8,14 +9,13 @@ import RequestDetailField from "./RequestDetailField.jsx";
 
 // Icono de la recomendación; el texto del Badge comunica el valor, no solo el color.
 const RECOMMENDATION_ICONS = {
-  approve: TickCircle,
-  changes_requested: InfoCircle,
-  reject: CloseCircle,
+  SCHEDULE_MEETING: meetingSuggestedIcon,
+  DO_NOT_SCHEDULE_MEETING: meetingDeclinedIcon,
 };
 
 /**
  * Bloque de evaluación del drawer: compatibilidad (real), indicadores de prototipo,
- * recomendación y justificación de la última revisión técnica (reales cuando existen).
+ * decisión de reunión y justificación de la última revisión técnica, sin derivarlas del workflow.
  * `unavailableText` se usa cuando la solicitud no llegó en la cola técnica.
  *
  * @param {Object} props - Modelo de `buildAdminRequestDetails`.
@@ -25,7 +25,7 @@ const RECOMMENDATION_ICONS = {
 function AdminRequestEvaluation({ details }) {
   const { compatibility, isPartial, justification, prototypeIndicators, recommendation } = details;
   const unavailableText = "Información no disponible";
-  const RecommendationIcon = RECOMMENDATION_ICONS[recommendation?.value];
+  const recommendationIcon = RECOMMENDATION_ICONS[recommendation?.value];
 
   return (
     <section className="flex flex-col gap-[24px]" aria-label="Evaluación de la solicitud">
@@ -61,7 +61,7 @@ function AdminRequestEvaluation({ details }) {
           showTitle
           showSublabel={indicator.isPrototype}
           sublabel={PROTOTYPE_INDICATOR_HINT}
-          fillClassName="bg-[var(--color-success-200)]"
+          fillClassName={indicator.fillClassName}
           animated
           data-prototype={indicator.isPrototype ? "true" : undefined}
         />
@@ -74,8 +74,14 @@ function AdminRequestEvaluation({ details }) {
               label={recommendation.label}
               theme={recommendation.theme}
               size="L"
-              iconLeft={Boolean(RecommendationIcon)}
-              leftIcon={RecommendationIcon ? <RecommendationIcon size="16" color="currentColor" /> : null}
+              iconLeft={Boolean(recommendationIcon)}
+              leftIcon={recommendationIcon ? (
+                <span
+                  className="inline-block size-4 shrink-0 bg-current [mask-repeat:no-repeat] [mask-position:center]"
+                  style={{ maskImage: `url("${recommendationIcon}")` }}
+                  aria-hidden="true"
+                />
+              ) : null}
             />
           ) : isPartial ? unavailableText : "Sin recomendación técnica registrada"}
         </RequestDetailField>

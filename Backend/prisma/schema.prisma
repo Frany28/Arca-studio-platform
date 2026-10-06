@@ -311,6 +311,8 @@ model project_request_reviews {
   project_request_id       BigInt
   reviewer_id              BigInt
   recommendation           project_request_review_recommendation
+  /// Nullable para conservar el significado de revisiones históricas sin decisión de reunión.
+  meeting_recommendation   project_request_meeting_recommendation?
   note                     String
   created_at               DateTime                              @default(now()) @db.Timestamptz(6)
   updated_at               DateTime                              @default(now()) @db.Timestamptz(6)
@@ -673,6 +675,11 @@ enum project_request_review_recommendation {
   approve
   reject
   changes_requested
+}
+
+enum project_request_meeting_recommendation {
+  SCHEDULE_MEETING
+  DO_NOT_SCHEDULE_MEETING
 }
 
 enum project_request_size {

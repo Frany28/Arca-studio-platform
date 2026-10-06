@@ -2,13 +2,7 @@ import { getPrototypeRequestIndicators } from "../data/adminRequestDetailsProtot
 import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
 import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
 import { getProjectTypeLabel } from "../../../utils/projectTypeDisplay.js";
-
-// Recomendaciones técnicas admitidas por el backend (`project_request_review_recommendation`).
-const RECOMMENDATION_PRESENTATION = {
-  approve: { label: "Aprobar", theme: "Info" },
-  changes_requested: { label: "Solicitar correcciones", theme: "Info" },
-  reject: { label: "Rechazar", theme: "Danger" },
-};
+import { getMeetingRecommendationPresentation } from "../../../utils/projectRequestMeetingRecommendation.js";
 
 /**
  * Selecciona la revisión técnica más reciente de una solicitud.
@@ -28,26 +22,12 @@ export function getLatestRequestReview(reviews) {
 }
 
 /**
- * Traduce la recomendación de una revisión a etiqueta y tema de Badge.
- * Las recomendaciones desconocidas conservan el código original con tema Neutral.
- *
- * @param {string|null|undefined} recommendation - approve, reject o changes_requested.
- * @returns {{label: string, theme: string, value: string}|null} Presentación o null sin valor.
- */
-export function getRecommendationPresentation(recommendation) {
-  if (!recommendation) return null;
-  const presentation = RECOMMENDATION_PRESENTATION[recommendation];
-  return presentation
-    ? { ...presentation, value: recommendation }
-    : { label: recommendation, theme: "Neutral", value: recommendation };
-}
-
-/**
  * Construye el modelo del drawer "Detalles de Solicitud" combinando el resumen del overview
  * administrativo con la entrada de la cola técnica (ubicación, compatibilidad, revisiones).
  * Si la solicitud no está en la primera página de la cola, `isPartial` indica que faltan
  * esos datos para que la vista muestre estados vacíos en lugar de valores inventados.
- * Los indicadores sin backend llegan separados en `prototypeIndicators`.
+ * La reunión y la nota salen de la misma revisión; una histórica reciente no hereda
+ * reuniones anteriores. Los indicadores sin backend llegan separados en `prototypeIndicators`.
  *
  * @param {Object} params - Fuentes ya cargadas por el dashboard.
  * @param {Object} params.summary - Solicitud de `overview.newRequests`.
@@ -69,8 +49,8 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     location: queueRequest?.location?.trim() || null,
     projectName: source.projectName || "Solicitud de proyecto",
     projectTypeLabel: getProjectTypeLabel(source.projectType, "Sin tipo registrado"),
-    prototypeIndicators: getPrototypeRequestIndicators(),
-    recommendation: getRecommendationPresentation(latestReview?.recommendation),
+    prototypeIndicators: getPrototypeRequestIndicators(queueRequest?.compatibility?.level),
+    recommendation: getMeetingRecommendationPresentation(latestReview?.meetingRecommendation),
     reviewerName: latestReview?.reviewer?.name || null,
     status: { label: status.label, theme: status.badgeTheme },
   };

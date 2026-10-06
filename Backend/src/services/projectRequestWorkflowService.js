@@ -20,8 +20,8 @@ export function loadProjectRequestReviewQueue({ cursor, limit, user }) {
 }
 
 /**
- * Envía la revisión de la solicitud de proyecto después de validar el estado y las reglas aplicables.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Guarda la valoración de workflow, la decisión de reunión y su justificación en PostgreSQL.
+ * Conserva permisos y estado; omitir la decisión de reunión preserva el valor registrado.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.payload - Valor de `options.payload` requerido por esta operación.
@@ -32,6 +32,7 @@ export function loadProjectRequestReviewQueue({ cursor, limit, user }) {
  */
 export async function submitProjectRequestReview({ payload, projectRequestId, user }) {
   const result = await upsertProjectRequestReview({
+    meetingRecommendation: payload.meetingRecommendation,
     note: payload.note,
     projectRequestId,
     recommendation: payload.recommendation,

@@ -140,7 +140,7 @@ Registro: fullName 3–300 caracteres, al menos dos palabras; company máximo 15
 | DELETE `/project-requests/:projectRequestId/files/:fileId` | — | 200 `{deleted:true,fileId}` | Sesión + borrador propio; 404 |
 | GET `/project-requests/:projectRequestId/files/:fileId/content` | Range opcional | 200/206 binario | Sesión + propiedad o acceso de revisión; 404 |
 | GET `/project-requests/review-queue` | P | 200 `{projectRequests:WorkflowRequest[],nextCursor}` | Sesión + admin/architect; arquitecto limitado a asignaciones |
-| PUT `/project-requests/:projectRequestId/review` | `{recommendation:approve|reject|changes_requested,note}`; nota 10–2000 | 200 `{review:{id,note,recommendation,updatedAt}}` | Ruta admin/architect; servicio exige arquitecto asignado; 403 PROJECT_REQUEST_REVIEW_FORBIDDEN, 409 PROJECT_REQUEST_CLOSED |
+| PUT `/project-requests/:projectRequestId/review` | `{recommendation:approve|reject|changes_requested,note,meetingRecommendation?:SCHEDULE_MEETING|DO_NOT_SCHEDULE_MEETING|null}`; nota 10–2000 | 200 `{review:{id,note,recommendation,meetingRecommendation,updatedAt}}` | Ruta admin/architect; conserva acceso del admin y del arquitecto asignado; 403 PROJECT_REQUEST_REVIEW_FORBIDDEN, 409 PROJECT_REQUEST_CLOSED |
 
 RequestPayload (JSON estricto, rechaza propiedades desconocidas):
 
@@ -168,7 +168,9 @@ RequestPayload (JSON estricto, rechaza propiedades desconocidas):
 
 `ProjectRequest`: campos anteriores con diferencias públicas `location` (projectLocation), `formattedAddress`, `providerPlaceId`, `locationCoordinates` y `hasPlans`; añade `id,clientId,requestedBy,status,createdAt,updatedAt,correctionReason,rejectionReason,reviewedAt,convertedProjectId,compatibility`. No devuelve submissionId. Compatibility es null o `{score:number,level,observations:string[]}` (hasta 3). Estados usados por flujo: draft, pending_verification, pending_review, changes_requested, approved, rejected. El frontend debe usar la evaluación devuelta; pesos y persistencia no son contrato HTTP.
 
-`WorkflowRequest` es una proyección distinta: `id,clientId,projectName,projectType,location,description,status,createdAt,updatedAt,correctionReason,rejectionReason,compatibility:{score,level}|null,assignees:[{id,name,roleCode,hasProfilePhoto}],files:[{id,name,fileType}],reviews:[{note,recommendation,reviewer,updatedAt}]`. No equivale a ProjectRequest completo.
+`WorkflowRequest` es una proyección distinta: `id,clientId,projectName,projectType,location,description,status,createdAt,updatedAt,correctionReason,rejectionReason,compatibility:{score,level}|null,assignees:[{id,name,roleCode,hasProfilePhoto}],files:[{id,name,fileType}],reviews:[{note,recommendation,meetingRecommendation,reviewer,updatedAt}]`. No equivale a ProjectRequest completo.
+
+`meetingRecommendation` es una decisión estructurada de reunión independiente del workflow (`recommendation`) y de la justificación (`note`). Sus únicos códigos son `SCHEDULE_MEETING` y `DO_NOT_SCHEDULE_MEETING`; las lecturas históricas devuelven `null`. En escritura, omitir el campo conserva el valor registrado y `null` explícito lo elimina. La validación Zod rechaza códigos desconocidos. El drawer muestra reunión y nota de la misma revisión más reciente; no hereda decisiones antiguas ni interpreta el texto. No se agrega una acción de workflow ni un endpoint. Ver [modelo, migración y mapping frontend](PROJECT_REQUEST_MEETING_RECOMMENDATION.md).
 
 `update` y `deleteFile` de solicitudes están consumidos por formularios/modales; `listReviewQueue` por dashboard. No existe GET de detalle individual de solicitud en la fachada.
 

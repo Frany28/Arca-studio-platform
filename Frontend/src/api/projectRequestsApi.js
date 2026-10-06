@@ -31,9 +31,16 @@ export const projectRequestsApi = {
     );
   },
 
-  review({ note, projectRequestId, recommendation }) {
+  /**
+   * Guarda la reunión como dato complementario de la revisión técnica.
+   * undefined omite el campo para conservar contratos antiguos; null lo elimina explícitamente.
+   *
+   * @param {Object} values - ID, workflow, justificación y reunión opcional.
+   * @returns {Promise<Object|null>} Revisión confirmada por el backend.
+   */
+  review({ meetingRecommendation, note, projectRequestId, recommendation }) {
     return apiRequest(`/project-requests/${projectRequestId}/review`, {
-      body: JSON.stringify({ note, recommendation }),
+      body: JSON.stringify({ meetingRecommendation, note, recommendation }),
       method: "PUT",
     });
   },

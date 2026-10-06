@@ -5,6 +5,7 @@ import { api } from "../../api/http.js";
 import Modal from "../ui/Modal/Modal.jsx";
 import TextArea from "../ui/TextArea/TextArea.jsx";
 import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
+import MeetingRecommendationField from "./MeetingRecommendationField.jsx";
 
 const OPTIONS = [
   { id: "changes_requested", label: "Solicitar correcciones" },
@@ -22,6 +23,7 @@ function CloseIcon() {
 
 /**
  * Modal de revisión técnica o decisión administrativa de una solicitud.
+ * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * `initialAction` solo preselecciona la opción al montar; el consumidor debe cambiar
  * la `key` del modal para reiniciar la selección entre aperturas.
  *
@@ -44,19 +46,28 @@ function ProjectRequestWorkflowModal({
   );
   const [note, setNote] = useState("");
   const [localError, setLocalError] = useState("");
+  const [meetingRecommendation, setMeetingRecommendation] = useState(null);
+  const [meetingError, setMeetingError] = useState("");
 
   if (!projectRequest) return null;
 
   const status = getProjectRequestStatus(projectRequest.status);
   const requiresReason = mode === "review" || action !== "approve";
   const submit = async () => {
+    if (submitting) return;
+    if (mode === "review" && !meetingRecommendation) {
+      setMeetingError("Selecciona una recomendación de reunión.");
+      return;
+    }
     const normalizedNote = note.trim();
     if (requiresReason && normalizedNote.length < 10) {
       setLocalError("Explica la recomendación o decisión con al menos 10 caracteres.");
       return;
     }
     setLocalError("");
-    await onSubmit?.({ action, note: normalizedNote });
+    await onSubmit?.({ action, note: normalizedNote,
+      ...(mode === "review" ? { meetingRecommendation } : {}),
+    });
   };
 
   return (
@@ -146,6 +157,15 @@ function ProjectRequestWorkflowModal({
             </Button>
           ))}
         </div>
+
+        {mode === "review" ? (
+          <MeetingRecommendationField
+            disabled={submitting}
+            error={meetingError}
+            value={meetingRecommendation}
+            onChange={(value) => { setMeetingRecommendation(value); setMeetingError(""); }}
+          />
+        ) : null}
 
         <TextArea
           label={mode === "decision" && action === "approve" ? "Nota interna (opcional)" : "Motivo"}

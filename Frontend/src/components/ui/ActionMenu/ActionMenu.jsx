@@ -6,6 +6,12 @@ import { More } from "iconsax-react";
 import Button from "../Button/Button.jsx";
 import { getActionMenuPosition, getNextActionMenuIndex } from "./actionMenuPosition.js";
 
+// Divisor de ancho completo; role="separator" lo expone dentro del menú sin hacerlo enfocable.
+// Como en Figma, la línea se dibuja 1 px hacia arriba y no ocupa altura en el flujo (-mt-px).
+function MenuDivider() {
+  return <div role="separator" className="-mt-px h-px w-full shrink-0 bg-[var(--color-neutral-200)]" />;
+}
+
 /**
  * @typedef {Object} ActionMenuItem
  * @property {string} id - Identificador estable devuelto en `onSelect`.
@@ -165,43 +171,56 @@ function ActionMenu({
             ref={menuRef}
             role="menu"
             aria-label={menuLabel || title || triggerLabel}
-            className="fixed z-[var(--z-tooltip)] flex w-[230px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-bg)] shadow-[0_8px_24px_rgba(0,0,0,0.24)]"
+            className="fixed z-[var(--z-tooltip)] flex w-[230px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-bg)] shadow-[inset_0_0_0_var(--stroke-0)_var(--color-neutral-200)]"
             style={position || { left: 0, top: 0, visibility: "hidden" }}
             onKeyDown={handleMenuKeyDown}
           >
+            {/* Geometría del "Dropdown button" de Figma (3470:110120): cada fila es dueña de
+                su padding vertical y el divisor cuelga del final de la fila anterior con gap 4.
+                El contorno es un ring inset porque Figma dibuja el stroke por dentro (230×167);
+                un border CSS sumaría 2 px a cada eje. */}
             {title ? (
-              <p className="text-body-3 m-0 border-b border-[var(--color-neutral-200)] px-[16px] py-[12px] text-[var(--color-text-100)]" aria-hidden="true">
-                {title}
-              </p>
+              <div className="flex flex-col gap-[4px] py-[2px]" aria-hidden="true">
+                <p className="text-heading-8 m-0 flex h-[35px] items-center px-[16px] text-[var(--color-text-200)]">
+                  {title}
+                </p>
+                <MenuDivider />
+              </div>
             ) : null}
-            <div className="flex flex-col pb-[2px] pt-[4px]">
-              {items.map((item) => {
+            <div className="flex flex-col">
+              {items.map((item, index) => {
                 const ItemIcon = item.icon;
                 const isDanger = item.tone === "danger";
+                const dividerAfter = Boolean(items[index + 1]?.separated);
                 return (
                   <div
                     key={item.id}
                     className={clsx(
-                      "px-[8px] py-[2px]",
-                      item.separated && "mt-[2px] border-t border-[var(--color-neutral-200)] pt-[4px]",
+                      "flex flex-col gap-[4px]",
+                      index === 0 ? "pt-[4px]" : "py-[2px]",
+                      index === items.length - 1 && "pb-[2px]",
                     )}
                   >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={item.disabled}
-                      className={clsx(
-                        "text-heading-8 flex h-[36px] w-full items-center gap-[12px] rounded-[var(--radius-2)] px-[8px] text-left transition-colors duration-150 focus:outline-none motion-reduce:transition-none",
-                        isDanger ? "text-[var(--color-danger-100)]" : "text-[var(--color-text-200)]",
-                        item.disabled
-                          ? "cursor-not-allowed opacity-50"
-                          : "hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]",
-                      )}
-                      onClick={() => selectItem(item)}
-                    >
-                      {ItemIcon ? <ItemIcon size="20" color="currentColor" aria-hidden="true" /> : null}
-                      <span className="min-w-0 truncate">{item.label}</span>
-                    </button>
+                    <div className="px-[8px]">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={item.disabled}
+                        className={clsx(
+                          "text-heading-8 flex h-[36px] w-full items-center gap-[12px] rounded-[var(--radius-2)] px-[8px] text-left transition-colors duration-150 focus:outline-none motion-reduce:transition-none",
+                          isDanger ? "text-[var(--color-danger-100)]" : "text-[var(--color-text-200)]",
+                          // Figma usa la misma superficie neutral-200 para hover, foco y selección.
+                          item.disabled
+                            ? "cursor-not-allowed opacity-50"
+                            : "hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)] active:bg-[var(--color-neutral-200)]",
+                        )}
+                        onClick={() => selectItem(item)}
+                      >
+                        {ItemIcon ? <ItemIcon size="20" color="currentColor" aria-hidden="true" /> : null}
+                        <span className="min-w-0 truncate">{item.label}</span>
+                      </button>
+                    </div>
+                    {dividerAfter ? <MenuDivider /> : null}
                   </div>
                 );
               })}

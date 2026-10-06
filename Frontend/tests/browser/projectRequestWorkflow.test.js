@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -109,6 +111,7 @@ test("Architect: recomendación, pending, cierre bloqueado y refresco de la cola
   await openRequest(page);
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox").fill("  Recomiendo aprobar el proyecto  ");
+  await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
   await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
   await waitMutation(page, mutations);
   assert.equal(await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).count(), 0);
@@ -116,10 +119,11 @@ test("Architect: recomendación, pending, cierre bloqueado y refresco de la cola
   await page.evaluate(() => window.workflowHarness.result.workflow.close());
   assert.equal((await state(page)).workflow.selectedRequest.id, 7);
   assert.deepEqual(calls.find((call) => call.method === "PUT"), {
-    method: "PUT", path: "/api/project-requests/7/review", body: { note: "Recomiendo aprobar el proyecto", recommendation: "approve" },
+    method: "PUT", path: "/api/project-requests/7/review", body: { note: "Recomiendo aprobar el proyecto", recommendation: "approve", meetingRecommendation: "SCHEDULE_MEETING" },
   });
   await mutations[0].fulfill({ json: {} });
   await waitState(page, (result) => !result.workflow.selectedRequest && !result.workflow.submitting && !result.reviewQueue.loading);
+  await page.waitForLoadState("networkidle");
   assert.equal(queueCalls(calls), 2);
   assert.deepEqual(await page.evaluate(() => window.workflowHarness.events), []);
 });
@@ -130,11 +134,13 @@ for (const role of ["architect", "admin"]) {
     await openRequest(page);
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("textbox").fill("Nota conservada para reintentar");
+    if (role === "architect") await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
     await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Guardar revisión", exact: true }).click();
     await waitMutation(page, mutations);
     await mutations[0].fulfill({ status: 409, json: { code: "REVIEW_CONFLICT", message: "La revisión debe reintentarse." } });
     await waitState(page, (result) => !result.workflow.submitting && Boolean(result.workflow.error));
     assert.equal(await dialog.getByRole("textbox").inputValue(), "Nota conservada para reintentar");
+    if (role === "architect") assert.equal(await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).getAttribute("aria-pressed"), "true");
     assert.equal((await state(page)).workflow.selectedRequest.id, 7);
     assert.equal(queueCalls(calls), 1);
     await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Guardar revisión", exact: true }).click();
@@ -156,6 +162,7 @@ for (const [action, label, expected] of [
     const { page, calls, mutations } = await openPage(context, { role: "admin" });
     await openRequest(page);
     const dialog = page.getByRole("dialog");
+    assert.equal(await dialog.getByRole("group", { name: "Recomendación de reunión" }).count(), 0);
     await dialog.getByRole("button", { name: label, exact: true }).click();
     await dialog.getByRole("textbox").fill("Nota de decisión");
     await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
@@ -293,7 +300,7 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
     createdAt: "2026-03-22T12:00:00.000Z",
     location: "Maracaibo, Zulia",
     projectType: "residential",
-    reviews: [{ note: "El cliente posee terreno y presupuesto adecuado.", recommendation: "approve", reviewer: { id: 9, name: "Ana" }, updatedAt: "2026-03-23T10:00:00.000Z" }],
+    reviews: [{ note: "El cliente posee terreno y presupuesto adecuado.", recommendation: "approve", meetingRecommendation: "SCHEDULE_MEETING", reviewer: { id: 9, name: "Ana" }, updatedAt: "2026-03-23T10:00:00.000Z" }],
   };
   const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [detailedRequest] });
   await page.waitForLoadState("networkidle");
@@ -301,7 +308,7 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
 
   const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
-  for (const text of ["Excelente compatibilidad", "Score general: 92/100", "Maracaibo, Zulia", "Residencial", "Aprobar", "El cliente posee terreno y presupuesto adecuado.", "Esteban Ruiz", "Nextj"]) {
+  for (const text of ["Excelente compatibilidad", "Score general: 92/100", "Maracaibo, Zulia", "Residencial", "Agendar reunión", "El cliente posee terreno y presupuesto adecuado.", "Esteban Ruiz", "Nextj"]) {
     await drawer.getByText(text, { exact: true }).first().waitFor();
   }
   // Los indicadores sin backend se rotulan como ejemplo y no se presentan como datos reales.
@@ -326,4 +333,150 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   assert.equal(await decisionDialog.getByRole("heading", { name: "Casa Norte" }).count(), 1);
   // Abrir una acción no ejecuta la decisión: solo el modal confirma contra la API.
   assert.equal(mutations.length, 0);
+});
+
+test("Architect: la reunión exige elección explícita y es independiente de aprobar", async (context) => {
+  const { page, calls, mutations } = await openPage(context);
+  await openRequest(page);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox").fill("La propuesta permite revisión pero no reunión todavía.");
+  await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
+  await dialog.getByRole("alert").getByText("Selecciona una recomendación de reunión.").waitFor();
+  assert.equal(mutations.length, 0);
+  const selection = dialog.getByRole("button", { name: "No agendar reunión", exact: true });
+  await selection.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await selection.getAttribute("aria-pressed"), "true");
+  await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
+  await waitMutation(page, mutations);
+  assert.deepEqual(calls.find((call) => call.method === "PUT").body, {
+    note: "La propuesta permite revisión pero no reunión todavía.", recommendation: "approve", meetingRecommendation: "DO_NOT_SCHEDULE_MEETING",
+  });
+  await mutations[0].fulfill({ json: {} });
+});
+
+for (const [meetingRecommendation, label, colorToken] of [
+  ["SCHEDULE_MEETING", "Agendar reunión", "--color-info-100"],
+  ["DO_NOT_SCHEDULE_MEETING", "No agendar reunión", "--color-danger-100"],
+  [null, "Sin recomendación técnica registrada", null],
+]) {
+  test(`Drawer: baja compatibilidad y reunión ${String(meetingRecommendation)}, con historial y temas`, async (context) => {
+    const queue = [{ ...REQUEST, clientId: 41, location: "Maracaibo, Zulia", projectType: "residential",
+      compatibility: { level: "low", score: 28 },
+      reviews: [
+        { meetingRecommendation, recommendation: "approve", note: "Justificación de la revisión más reciente.", updatedAt: "2026-10-06T12:00:00Z" },
+        { meetingRecommendation: "SCHEDULE_MEETING", recommendation: "reject", note: "Justificación anterior.", updatedAt: "2026-10-05T12:00:00Z" },
+      ],
+    }];
+    const { page } = await openPage(context, { role: "admin", realDashboard: true, queue });
+    await page.waitForLoadState("networkidle");
+    await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+    const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+    await drawer.getByText("Baja compatibilidad", { exact: true }).waitFor();
+    await drawer.getByText("Score general: 28/100", { exact: true }).waitFor();
+    await drawer.getByText(label, { exact: true }).waitFor();
+    await drawer.getByText("Justificación de la revisión más reciente.", { exact: true }).waitFor();
+    assert.equal(await drawer.getByText("Justificación anterior.", { exact: true }).count(), 0);
+    assert.equal(await drawer.getByText("Aprobar", { exact: true }).count(), 0);
+
+    // Compara colores calculados con los tokens semánticos sin acoplarse a Tailwind.
+    const tokenColor = (token) => page.evaluate((token) => {
+      const probe = document.createElement("span");
+      probe.style.color = `var(${token})`; document.body.append(probe);
+      const color = getComputedStyle(probe).color; probe.remove(); return color;
+    }, token);
+    for (const dark of [false, true]) {
+      await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), dark);
+      if (colorToken) {
+        const badge = drawer.getByText(label, { exact: true });
+        assert.equal(await badge.evaluate((element) => getComputedStyle(element).color), await tokenColor(colorToken));
+        const mask = badge.locator("..").locator('[aria-hidden="true"] span');
+        const geometry = await mask.boundingBox();
+        assert.equal(geometry.width, 16); assert.equal(geometry.height, 16);
+        const asset = await mask.evaluate((element) => getComputedStyle(element).maskImage.match(/url\(["']?(.+?)["']?\)/)?.[1]);
+        assert.ok(asset, await mask.evaluate((element) => `${element.outerHTML}: ${getComputedStyle(element).maskImage}`));
+        const assetSize = await page.evaluate(async (url) => {
+          const response = await fetch(url); return response.ok ? (await response.text()).length : 0;
+        }, asset);
+        assert.ok(assetSize > 0);
+      }
+      const bars = drawer.locator('[data-prototype="true"] [role="progressbar"]');
+      assert.equal(await bars.nth(0).getAttribute("aria-valuenow"), "22");
+      assert.equal(await bars.nth(1).getAttribute("aria-valuenow"), "61");
+      for (const [index, token] of [[0, "--color-danger-200"], [1, "--color-warning-200"]]) {
+        assert.equal(await bars.nth(index).locator(":scope > div").evaluate((element) => getComputedStyle(element).backgroundColor), await tokenColor(token));
+      }
+      const circle = drawer.getByRole("progressbar", { name: "Compatibilidad: 28 de 100" });
+      assert.equal(await circle.getAttribute("aria-valuenow"), "28");
+      assert.equal(await circle.locator("svg circle").nth(1).evaluate((element) => getComputedStyle(element).stroke), await tokenColor("--color-danger-100"));
+      if (process.env.ARCA_TEST_ARTIFACT_DIR && meetingRecommendation) {
+        await mkdir(process.env.ARCA_TEST_ARTIFACT_DIR, { recursive: true });
+        await page.waitForTimeout(800); // Solo para capturar el final de las animaciones existentes.
+        await drawer.screenshot({ path: path.join(process.env.ARCA_TEST_ARTIFACT_DIR, `${meetingRecommendation}-${dark ? "dark" : "light"}.png`) });
+      }
+    }
+    await page.setViewportSize({ width: 375, height: 812 });
+    const bounds = await drawer.boundingBox();
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 375);
+    assert.equal(await drawer.locator('[data-admin-request-details="true"]').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  });
+}
+
+test("Dashboard admin real: menú de acciones del drawer — orden, teclado y preselección", async (context) => {
+  const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true });
+  await page.waitForLoadState("networkidle");
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  const trigger = drawer.getByRole("button", { name: "Acciones para Casa Norte", exact: true });
+
+  // Apertura con teclado: el foco entra en la primera acción.
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "Acciones para Casa Norte" });
+  await menu.waitFor();
+  assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["Aprobar", "Solicitar más información", "Rechazar"]);
+  // Un único divisor interactivo, antes de la acción destructiva (el del encabezado es decorativo).
+  assert.equal(await menu.getByRole("separator").count(), 1);
+  const focused = () => page.evaluate(() => document.activeElement?.textContent);
+  await page.waitForFunction(() => document.activeElement?.textContent === "Aprobar");
+  await page.keyboard.press("ArrowUp");
+  assert.equal(await focused(), "Rechazar");
+  await page.keyboard.press("Home");
+  assert.equal(await focused(), "Aprobar");
+  await page.keyboard.press("End");
+  assert.equal(await focused(), "Rechazar");
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await focused(), "Aprobar");
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await focused(), "Solicitar más información");
+
+  // Escape cierra solo el menú y devuelve el foco al disparador.
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await drawer.isVisible(), true);
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Acciones para Casa Norte");
+
+  // El menú abre por encima del botón, alineado a su borde derecho y dentro del viewport.
+  await trigger.click();
+  await menu.waitFor();
+  const [menuBox, triggerBox] = [await menu.boundingBox(), await trigger.boundingBox()];
+  assert.equal(Math.round(menuBox.x + menuBox.width), Math.round(triggerBox.x + triggerBox.width));
+  assert.ok(menuBox.y + menuBox.height <= triggerBox.y);
+  assert.ok(menuBox.y >= 0);
+
+  // Space selecciona; la decisión real sigue saliendo solo del modal confirmado.
+  await menu.getByRole("menuitem", { name: "Solicitar más información" }).focus();
+  await page.keyboard.press("Space");
+  await drawer.waitFor({ state: "detached" });
+  const decisionDialog = page.getByRole("dialog");
+  await decisionDialog.getByRole("textbox").fill("Falta adjuntar los planos del terreno.");
+  assert.equal(mutations.length, 0);
+  const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
+  await decisionDialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await decisionRequest;
+  assert.deepEqual(calls.find((call) => call.method === "PATCH").body, {
+    action: "request_changes",
+    reason: "Falta adjuntar los planos del terreno.",
+  });
+  await mutations[0].fulfill({ json: {} });
 });

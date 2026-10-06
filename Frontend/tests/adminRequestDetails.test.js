@@ -10,13 +10,13 @@ import {
   buildAdminRequestDetails,
   findRequestById,
   getLatestRequestReview,
-  getRecommendationPresentation,
 } from "../src/pages/admin-dashboard/utils/adminRequestDetails.js";
 import {
   getCompatibilityLevelLabel,
   getCompatibilityPresentation,
 } from "../src/utils/projectRequestCompatibility.js";
 import { getProjectRequestStatus } from "../src/utils/projectRequestStatus.js";
+import { getMeetingRecommendationPresentation } from "../src/utils/projectRequestMeetingRecommendation.js";
 
 const SUMMARY = {
   assignees: [],
@@ -33,8 +33,8 @@ const QUEUE_REQUEST = {
   id: 7,
   location: "Maracaibo, Zulia",
   reviews: [
-    { note: "Revisión anterior", recommendation: "reject", reviewer: { name: "Ana" }, updatedAt: "2026-03-20T10:00:00.000Z" },
-    { note: "El cliente posee terreno y presupuesto adecuado.", recommendation: "approve", reviewer: { name: "Luis" }, updatedAt: "2026-03-21T10:00:00.000Z" },
+    { note: "Revisión anterior", recommendation: "reject", meetingRecommendation: "DO_NOT_SCHEDULE_MEETING", reviewer: { name: "Ana" }, updatedAt: "2026-03-20T10:00:00.000Z" },
+    { note: "El cliente posee terreno y presupuesto adecuado.", recommendation: "approve", meetingRecommendation: "SCHEDULE_MEETING", reviewer: { name: "Luis" }, updatedAt: "2026-03-21T10:00:00.000Z" },
   ],
   status: "pending_review",
 };
@@ -49,7 +49,7 @@ test("combina overview y cola técnica con datos reales", () => {
   assert.equal(details.location, "Maracaibo, Zulia");
   assert.deepEqual(details.status, { label: "En revisión", theme: "Brand 2" });
   assert.deepEqual(details.compatibility, { label: "Excelente compatibilidad", score: 92, theme: "Success" });
-  assert.equal(details.recommendation.label, "Aprobar");
+  assert.equal(details.recommendation.label, "Agendar reunión");
   assert.equal(details.justification, "El cliente posee terreno y presupuesto adecuado.");
   assert.equal(details.reviewerName, "Luis");
 });
@@ -88,11 +88,36 @@ test("la revisión más reciente no depende del orden de la API", () => {
   assert.equal(getLatestRequestReview(undefined), null);
 });
 
-test("las recomendaciones usan etiquetas del backend y no comunican solo por color", () => {
-  assert.deepEqual(getRecommendationPresentation("reject"), { label: "Rechazar", theme: "Danger", value: "reject" });
-  assert.equal(getRecommendationPresentation("changes_requested").label, "Solicitar correcciones");
-  assert.deepEqual(getRecommendationPresentation("schedule_meeting"), { label: "schedule_meeting", theme: "Neutral", value: "schedule_meeting" });
-  assert.equal(getRecommendationPresentation(null), null);
+test("las recomendaciones de reunión tienen etiquetas propias y no se derivan del workflow", () => {
+  assert.deepEqual(getMeetingRecommendationPresentation("DO_NOT_SCHEDULE_MEETING"), { label: "No agendar reunión", theme: "Danger", value: "DO_NOT_SCHEDULE_MEETING" });
+  assert.deepEqual(getMeetingRecommendationPresentation("SCHEDULE_MEETING"), { label: "Agendar reunión", theme: "Info", value: "SCHEDULE_MEETING" });
+  for (const value of [null, undefined, "approve", "reject", "changes_requested", "schedule_meeting", "unknown", "constructor", "__proto__", "toString"]) {
+    assert.equal(getMeetingRecommendationPresentation(value), null);
+  }
+});
+
+test("baja compatibilidad usa Danger y conserva indicadores de referencia identificados", () => {
+  const details = buildAdminRequestDetails({ summary: SUMMARY, queueRequest: { ...QUEUE_REQUEST, compatibility: { level: "low", score: 28 } } });
+  assert.deepEqual(details.compatibility, { label: "Baja compatibilidad", score: 28, theme: "Danger" });
+  assert.deepEqual(details.prototypeIndicators.map(({ value, isPrototype }) => ({ value, isPrototype })), [{ value: 22, isPrototype: true }, { value: 61, isPrototype: true }]);
+});
+
+test("una revisión histórica reciente no hereda la reunión de una revisión anterior", () => {
+  const details = buildAdminRequestDetails({ summary: SUMMARY, queueRequest: { ...QUEUE_REQUEST, reviews: [
+    ...QUEUE_REQUEST.reviews,
+    { note: "Justificación histórica, aunque mencione agendar reunión.", recommendation: "approve", updatedAt: "2026-03-24T10:00:00.000Z" },
+  ] } });
+  assert.equal(details.recommendation, null);
+  assert.equal(details.justification, "Justificación histórica, aunque mencione agendar reunión.");
+});
+
+test("la reunión y justificación provienen de la misma revisión más reciente", () => {
+  const reviews = [{ ...QUEUE_REQUEST.reviews[0], recommendation: "approve", updatedAt: "2026-03-25T10:00:00.000Z" }, QUEUE_REQUEST.reviews[1]];
+  for (const orderedReviews of [reviews, [...reviews].reverse()]) {
+    const details = buildAdminRequestDetails({ summary: SUMMARY, queueRequest: { ...QUEUE_REQUEST, reviews: orderedReviews } });
+    assert.equal(details.recommendation.value, "DO_NOT_SCHEDULE_MEETING");
+    assert.equal(details.justification, "Revisión anterior");
+  }
 });
 
 test("busca solicitudes con IDs numéricos o de texto", () => {
@@ -123,8 +148,11 @@ test("el menú de acciones abre debajo si cabe y hacia arriba al pie del viewpor
   const viewport = { height: 1000, width: 1440 };
   const menu = { height: 167, width: 230 };
 
-  assert.deepEqual(getActionMenuPosition({ bottom: 144, right: 1424, top: 100 }, menu, viewport), { left: 1194, top: 148 });
-  assert.deepEqual(getActionMenuPosition({ bottom: 974, right: 1424, top: 930 }, menu, viewport), { left: 1194, top: 759 });
+  // Figma: borde derecho alineado con el botón y 12 px de separación.
+  assert.deepEqual(getActionMenuPosition({ bottom: 144, right: 1424, top: 100 }, menu, viewport), { left: 1194, top: 156 });
+  assert.deepEqual(getActionMenuPosition({ bottom: 974, right: 1424, top: 930 }, menu, viewport), { left: 1194, top: 751 });
+  // Si no cabe ni arriba ni abajo, se fija al margen superior del viewport.
+  assert.equal(getActionMenuPosition({ bottom: 150, right: 300, top: 106 }, menu, { height: 200, width: 375 }).top, 8);
   // En móvil el menú no sobresale por la izquierda.
   assert.equal(getActionMenuPosition({ bottom: 44, right: 100, top: 0 }, menu, { height: 700, width: 375 }).left, 8);
 });

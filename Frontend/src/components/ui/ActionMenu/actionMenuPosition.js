@@ -1,5 +1,6 @@
 export const ACTION_MENU_VIEWPORT_MARGIN = 8;
-export const ACTION_MENU_GAP = 4;
+// Separación entre disparador y menú del "Dropdown button" de Figma (spacing-gap-3).
+export const ACTION_MENU_GAP = 12;
 
 /**
  * Calcula la posición fija del menú alineando su borde derecho con el del disparador.
