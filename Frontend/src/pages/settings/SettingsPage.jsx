@@ -18,7 +18,7 @@ import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer
 import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
 import SettingsVerticalTabMenu from "../../components/ui/SettingsVerticalTabMenu.jsx";
 import TabPanel from "../../components/ui/TabPanel.jsx";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../clientDrawerData.js";
+import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
 import { getCommentNavigationParams } from "../../utils/commentSelection.js";
 import PreferencesPanel from "./panels/PreferencesPanel.jsx";
 import ProfilePanel from "./panels/ProfilePanel.jsx";
