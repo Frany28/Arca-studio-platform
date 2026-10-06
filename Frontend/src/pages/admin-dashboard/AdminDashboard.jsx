@@ -19,8 +19,8 @@ import AdminRequestAssignmentModal from "./components/AdminRequestAssignmentModa
 import { useAdminDashboardData } from "./hooks/useAdminDashboardData.js";
 import { useAdminRequestAssignments } from "./hooks/useAdminRequestAssignments.js";
 import { submitAdminRequestDecision } from "./utils/adminRequestDecision.js";
-import { useDashboardProjects } from "../architect-dashboard/hooks/useDashboardProjects.js";
-import ProjectRequestWorkflowModal from "../architect-dashboard/components/ProjectRequestWorkflowModal.jsx";
+import { useDashboardProjects } from "../../hooks/useDashboardProjects.js";
+import ProjectRequestWorkflowModal from "../../components/project-requests/ProjectRequestWorkflowModal.jsx";
 
 /**
  * Compone exclusivamente métricas, operación, solicitudes y proyectos administrativos.
