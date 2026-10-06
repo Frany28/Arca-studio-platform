@@ -224,13 +224,15 @@ export default function ImageViewerModal({
     window.cancelAnimationFrame(frameRef.current);
 
     if (visible && galleryItems.length > 0) {
-      setActiveIndex(initialIndex);
-      setDisplayIndex(initialIndex);
-      setIsImageVisible(true);
-      setIsActive(false);
-      setPendingSelection(null);
-      setFocusedSelectionCommentId(focusedCommentId);
-      setShouldRender(true);
+      queueMicrotask(() => {
+        setActiveIndex(initialIndex);
+        setDisplayIndex(initialIndex);
+        setIsImageVisible(true);
+        setIsActive(false);
+        setPendingSelection(null);
+        setFocusedSelectionCommentId(focusedCommentId);
+        setShouldRender(true);
+      });
       frameRef.current = window.requestAnimationFrame(() => {
         frameRef.current = window.requestAnimationFrame(() => {
           setIsActive(true);
@@ -240,7 +242,9 @@ export default function ImageViewerModal({
       return undefined;
     }
 
-    setIsActive(false);
+    queueMicrotask(() => {
+      setIsActive(false);
+    });
     closeTimeoutRef.current = window.setTimeout(() => {
       setShouldRender(false);
     }, MODAL_TRANSITION_MS);
@@ -257,7 +261,9 @@ export default function ImageViewerModal({
     }
 
     window.clearTimeout(imageTimeoutRef.current);
-    setIsImageVisible(false);
+    queueMicrotask(() => {
+      setIsImageVisible(false);
+    });
 
     imageTimeoutRef.current = window.setTimeout(() => {
       setDisplayIndex(activeIndex);
