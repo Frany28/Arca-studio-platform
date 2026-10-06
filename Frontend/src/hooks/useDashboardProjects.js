@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { api } from "../../../api/http.js";
-import { getProjectImageSource } from "../../../utils/projectImage.js";
-import { getProjectAssigneeAvatar } from "../../../utils/projectAssigneeDisplay.js";
-import { groupProjectsByStatus } from "../../../utils/projectStatusGroups.js";
-import { isProjectOperationallyReadOnly } from "../../../utils/projectReadOnly.js";
+import { api } from "../api/http.js";
+import { getProjectImageSource } from "../utils/projectImage.js";
+import { getProjectAssigneeAvatar } from "../utils/projectAssigneeDisplay.js";
+import { groupProjectsByStatus } from "../utils/projectStatusGroups.js";
+import { isProjectOperationallyReadOnly } from "../utils/projectReadOnly.js";
 
 /**
  * Adapta un proyecto a las filas del dashboard conservando sus campos originales.

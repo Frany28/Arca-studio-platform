@@ -1,10 +1,10 @@
 import { useState } from "react";
 
-import Button from "../../../components/ui/Button/Button.jsx";
-import { api } from "../../../api/http.js";
-import Modal from "../../../components/ui/Modal/Modal.jsx";
-import TextArea from "../../../components/ui/TextArea/TextArea.jsx";
-import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
+import Button from "../ui/Button/Button.jsx";
+import { api } from "../../api/http.js";
+import Modal from "../ui/Modal/Modal.jsx";
+import TextArea from "../ui/TextArea/TextArea.jsx";
+import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
 
 const OPTIONS = [
   { id: "changes_requested", label: "Solicitar correcciones" },

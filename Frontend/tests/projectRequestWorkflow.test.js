@@ -24,7 +24,7 @@ test("client, architect and admin surfaces consume the shared workflow", async (
     readFile(new URL("../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js", import.meta.url), "utf8"),
     readFile(new URL("../src/hooks/useProjectRequestWorkflow.js", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/admin-dashboard/utils/adminRequestDecision.js", import.meta.url), "utf8"),
-    readFile(new URL("../src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/project-requests/ProjectRequestWorkflowModal.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/api/projectRequestsApi.js", import.meta.url), "utf8"),
     readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);

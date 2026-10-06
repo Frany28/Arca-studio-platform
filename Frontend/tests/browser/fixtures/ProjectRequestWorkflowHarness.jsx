@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useDashboardRequestWorkflow } from "../../../src/pages/architect-dashboard/hooks/useDashboardRequestWorkflow.js";
-import ProjectRequestWorkflowModal from "../../../src/pages/architect-dashboard/components/ProjectRequestWorkflowModal.jsx";
+import ProjectRequestWorkflowModal from "../../../src/components/project-requests/ProjectRequestWorkflowModal.jsx";
 import "../../../src/index.css";
 
 const root = createRoot(document.getElementById("root"));
