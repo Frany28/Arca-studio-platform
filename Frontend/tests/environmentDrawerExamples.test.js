@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { ENVIRONMENT_DRAWER_RECENT_ACTIVITY } from "../src/data/environmentDrawerExamples.js";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../src/pages/clientDrawerData.js";
+import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../src/data/clientDrawerData.js";
 
 test("los ejemplos de actividad cubren eventos y archivos variados", () => {
   const eventTypes = new Set(
