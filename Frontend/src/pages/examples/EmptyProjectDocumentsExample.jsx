@@ -1,5 +1,5 @@
-import ProjectDetailsPage from "./projects/ProjectDetailsPage.jsx";
-import { PROJECT_DETAIL_DATA } from "./projects/projectDetailsData.js";
+import ProjectDetailsPage from "../projects/ProjectDetailsPage.jsx";
+import { PROJECT_DETAIL_DATA } from "../projects/projectDetailsData.js";
 
 const EMPTY_DOCUMENTS_PROJECT = {
   ...PROJECT_DETAIL_DATA,

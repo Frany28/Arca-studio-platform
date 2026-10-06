@@ -1,4 +1,4 @@
-import { ENVIRONMENT_DRAWER_RECENT_ACTIVITY } from "../data/environmentDrawerExamples.js";
+import { ENVIRONMENT_DRAWER_RECENT_ACTIVITY } from "./environmentDrawerExamples.js";
 
 export const CLIENT_DRAWER_COMMENTS = [
   {

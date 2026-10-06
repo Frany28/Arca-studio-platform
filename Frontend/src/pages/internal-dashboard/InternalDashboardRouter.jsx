@@ -1,10 +1,10 @@
 import { lazy } from "react";
 
-import { useAuth } from "../auth/AuthContext.jsx";
-import { getUserDisplay } from "../auth/userDisplay.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { getUserDisplay } from "../../auth/userDisplay.js";
 
-const AdminDashboard = lazy(() => import("./admin-dashboard/AdminDashboard.jsx"));
-const ArchitectDashboard = lazy(() => import("./architect-dashboard/ArchitectDashboard.jsx"));
+const AdminDashboard = lazy(() => import("../admin-dashboard/AdminDashboard.jsx"));
+const ArchitectDashboard = lazy(() => import("../architect-dashboard/ArchitectDashboard.jsx"));
 
 /**
  * Mantiene las URLs actuales seleccionando únicamente la página del rol activo.

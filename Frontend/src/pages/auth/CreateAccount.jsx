@@ -2,13 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Buildings, Sms, User } from "iconsax-react";
 
-import group1Logo from "../assets/logos/Group 1.svg";
-import { api } from "../api/http.js";
-import AuthLayout from "../components/layout/AuthLayout.jsx";
-import AuthToast, { AuthToastMailIcon } from "../components/ui/AuthToast/AuthToast.jsx";
-import Button from "../components/ui/Button/Button.jsx";
-import HorizontalTabMenu from "../components/ui/HorizontalTabMenu/HorizontalTabMenu.jsx";
-import Input from "../components/ui/Input/Input.jsx";
+import group1Logo from "../../assets/logos/Group 1.svg";
+import { api } from "../../api/http.js";
+import AuthLayout from "../../components/layout/AuthLayout.jsx";
+import AuthToast, { AuthToastMailIcon } from "../../components/ui/AuthToast/AuthToast.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
+import HorizontalTabMenu from "../../components/ui/HorizontalTabMenu/HorizontalTabMenu.jsx";
+import Input from "../../components/ui/Input/Input.jsx";
 
 const referralItems = ["Instagram", "Referido", "WhatsApp", "Otro"];
 const referralValues = ["instagram", "referred", "whatsapp", "other"];

@@ -1,4 +1,4 @@
-import InternalDashboardRouter from "./InternalDashboardRouter.jsx";
+import InternalDashboardRouter from "../internal-dashboard/InternalDashboardRouter.jsx";
 
 function EmptyArchitectDashboardExample() {
   return <InternalDashboardRouter empty />;

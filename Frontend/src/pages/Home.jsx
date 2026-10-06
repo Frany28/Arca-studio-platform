@@ -10,7 +10,7 @@ import Button from "../components/ui/Button/Button.jsx";
 import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
 import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
 import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "./clientDrawerData.js";
+import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../data/clientDrawerData.js";
 import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
 import useHomeProjects from "./home/hooks/useHomeProjects.js";
 import useHomeNotifications from "./home/hooks/useHomeNotifications.js";

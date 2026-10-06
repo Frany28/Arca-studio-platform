@@ -1,4 +1,4 @@
-import ProjectDetailsPage from "./projects/ProjectDetailsPage.jsx";
+import ProjectDetailsPage from "../projects/ProjectDetailsPage.jsx";
 
 export default function EmptyProjectWarrantiesExample() {
   return (

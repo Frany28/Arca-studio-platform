@@ -615,3 +615,17 @@ La composición actual está separada en `src/pages/admin-dashboard/AdminDashboa
 
 Las dependencias compartidas posteriores a la separación de páginas ya no viven dentro de `architect-dashboard/`: `src/hooks/useDashboardProjects.js` conserva la carga/adaptación común de proyectos y `src/components/project-requests/ProjectRequestWorkflowModal.jsx` conserva la presentación compartida de revisión/decisión. El drawer visual sigue siendo `EnvironmentNotificationsDrawer`; los lectores de observaciones de proyecto solo se montan en `ArchitectDashboard`. Client, API, estilos y navegación global no forman parte de estas fases.
 
+
+
+## Organización posterior de la raíz de pages (6 de octubre de 2026)
+
+La raíz de `src/pages` se redujo moviendo entradas a módulos con responsabilidad explícita, sin cambiar rutas ni comportamiento:
+
+- autenticación: `src/pages/auth/` contiene Login, creación/recuperación de cuenta y contraseñas, e InactiveAccount;
+- ejemplos/estados vacíos: `src/pages/examples/`;
+- router interno admin/arquitecto: `src/pages/internal-dashboard/InternalDashboardRouter.jsx`;
+- galería pública: `src/pages/projects/PublicProjectsGallery.jsx`;
+- datos reutilizados por drawers: `src/data/clientDrawerData.js`;
+- `main.jsx` importa directamente `projects/ProjectDetailsPage.jsx` y `settings/SettingsPage.jsx`, por lo que se retiraron los wrappers redundantes `pages/ProjectDetails.jsx` y `pages/Settings.jsx`.
+
+`Home.jsx`, `home/`, `ProjectRequestPage.jsx` y `project-request/` permanecen temporalmente sin mover porque forman el siguiente bloque de separación del dominio cliente y requieren una migración específica para no mezclar comportamiento con reorganización estructural.

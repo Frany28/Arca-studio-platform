@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { api } from "../api/http.js";
-import group1Logo from "../assets/logos/Group 1.svg";
-import AuthLayout from "../components/layout/AuthLayout.jsx";
-import ExpiredLinkCard from "../components/ExpiredLinkCard.jsx";
-import Button from "../components/ui/Button/Button.jsx";
-import Input from "../components/ui/Input/Input.jsx";
+import { api } from "../../api/http.js";
+import group1Logo from "../../assets/logos/Group 1.svg";
+import AuthLayout from "../../components/layout/AuthLayout.jsx";
+import ExpiredLinkCard from "../../components/ExpiredLinkCard.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
+import Input from "../../components/ui/Input/Input.jsx";
 
 const PASSWORD_REQUIREMENTS = [
   {

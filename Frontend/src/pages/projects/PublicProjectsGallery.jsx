@@ -2,36 +2,36 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 
-import { api } from "../api/http.js";
-import { useAuth } from "../auth/AuthContext.jsx";
-import { getUserDisplay } from "../auth/userDisplay.js";
-import MainLogo from "../assets/logos/MainLogo.jsx";
-import AvatarGroup from "../components/ui/AvatarGroup/AvatarGroup.jsx";
-import Button from "../components/ui/Button/Button.jsx";
-import EmptyState from "../components/ui/EmptyState.jsx";
-import Loader from "../components/ui/Loader/Loader.jsx";
-import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
-import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
-import ProjectImage from "../components/ui/ProjectImage/ProjectImage.jsx";
-import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
-import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
-import Tooltip from "../components/ui/Tooltip/Tooltip.jsx";
-import ProjectDocumentsToolbar from "./projects/components/ProjectDocumentsToolbar.jsx";
-import { getProjectAssigneeAvatar } from "../utils/projectAssigneeDisplay.js";
-import { getProjectImageSource } from "../utils/projectImage.js";
-import { getProjectPath } from "../utils/projectRoutes.js";
-import { getProjectTypeDisplay } from "../utils/projectTypeDisplay.js";
-import { getAvatarPresentation } from "../utils/avatarPresentation.js";
+import { api } from "../../api/http.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { getUserDisplay } from "../../auth/userDisplay.js";
+import MainLogo from "../../assets/logos/MainLogo.jsx";
+import AvatarGroup from "../../components/ui/AvatarGroup/AvatarGroup.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
+import EmptyState from "../../components/ui/EmptyState.jsx";
+import Loader from "../../components/ui/Loader/Loader.jsx";
+import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
+import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
+import ProjectImage from "../../components/ui/ProjectImage/ProjectImage.jsx";
+import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import SideOverlayDrawer from "../../components/ui/SideOverlayDrawer.jsx";
+import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
+import ProjectDocumentsToolbar from "./components/ProjectDocumentsToolbar.jsx";
+import { getProjectAssigneeAvatar } from "../../utils/projectAssigneeDisplay.js";
+import { getProjectImageSource } from "../../utils/projectImage.js";
+import { getProjectPath } from "../../utils/projectRoutes.js";
+import { getProjectTypeDisplay } from "../../utils/projectTypeDisplay.js";
+import { getAvatarPresentation } from "../../utils/avatarPresentation.js";
 import {
   filterPublicProjects,
   getPublicGalleryProjects,
   sortPublicProjects,
-} from "../utils/publicProjectGallery.js";
-import { getPublicGalleryColumnCount } from "../utils/publicProjectGalleryLayout.js";
+} from "../../utils/publicProjectGallery.js";
+import { getPublicGalleryColumnCount } from "../../utils/publicProjectGalleryLayout.js";
 import {
   createUserSideNavigationItems,
   getDashboardPath,
-} from "../utils/sideNavigationItems.js";
+} from "../../utils/sideNavigationItems.js";
 
 const TABLET_BREAKPOINT_PX = 768;
 

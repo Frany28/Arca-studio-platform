@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 
-import { api } from "../api/http.js";
-import group1Logo from "../assets/logos/Group 1.svg";
-import AuthLayout from "../components/layout/AuthLayout.jsx";
-import Button from "../components/ui/Button/Button.jsx";
+import { api } from "../../api/http.js";
+import group1Logo from "../../assets/logos/Group 1.svg";
+import AuthLayout from "../../components/layout/AuthLayout.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
 import AuthToast, {
   AuthToastMailIcon,
-} from "../components/ui/AuthToast/AuthToast.jsx";
-import Input from "../components/ui/Input/Input.jsx";
+} from "../../components/ui/AuthToast/AuthToast.jsx";
+import Input from "../../components/ui/Input/Input.jsx";
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());

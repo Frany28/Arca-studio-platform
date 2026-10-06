@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "../auth/AuthContext.jsx";
-import { getUserDisplay } from "../auth/userDisplay.js";
-import { useImageCommentNotifications } from "../components/ui/Gallery/useImageComments.js";
-import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
-import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
-import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "./clientDrawerData.js";
-import ProjectDetailTabMenu from "./projects/components/ProjectDetailTabMenu.jsx";
-import TabPanel from "../components/ui/TabPanel.jsx";
-import ProjectOverviewHeader from "./projects/components/ProjectOverviewHeader.jsx";
-import ProjectInfoPanel from "./projects/panels/ProjectInfoPanel.jsx";
-import ProjectRendersPanel from "./projects/panels/ProjectRendersPanel.jsx";
-import { PROJECT_DETAIL_DATA } from "./projects/projectDetailsData.js";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { getUserDisplay } from "../../auth/userDisplay.js";
+import { useImageCommentNotifications } from "../../components/ui/Gallery/useImageComments.js";
+import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
+import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
+import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
+import ProjectDetailTabMenu from "../projects/components/ProjectDetailTabMenu.jsx";
+import TabPanel from "../../components/ui/TabPanel.jsx";
+import ProjectOverviewHeader from "../projects/components/ProjectOverviewHeader.jsx";
+import ProjectInfoPanel from "../projects/panels/ProjectInfoPanel.jsx";
+import ProjectRendersPanel from "../projects/panels/ProjectRendersPanel.jsx";
+import { PROJECT_DETAIL_DATA } from "../projects/projectDetailsData.js";
 
 const TABLET_BREAKPOINT_PX = 768;
 

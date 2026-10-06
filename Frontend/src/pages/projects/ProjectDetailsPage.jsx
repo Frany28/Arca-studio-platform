@@ -9,7 +9,7 @@ import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import TabPanel from "../../components/ui/TabPanel.jsx";
 import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../clientDrawerData.js";
+import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
 import ProjectDetailTabMenu from "./components/ProjectDetailTabMenu.jsx";
 import ProjectOverviewHeader from "./components/ProjectOverviewHeader.jsx";
 import ProjectActivePanel from "./components/ProjectActivePanel.jsx";

@@ -5,9 +5,9 @@ import test from "node:test";
 const AUTHENTICATED_PAGE_FILES = [
   "src/pages/Home.jsx",
   "src/pages/ProjectRequestPage.jsx",
-  "src/pages/PublicProjectsGallery.jsx",
-  "src/pages/EmptyProjectsExample.jsx",
-  "src/pages/EmptyProjectRendersExample.jsx",
+  "src/pages/projects/PublicProjectsGallery.jsx",
+  "src/pages/examples/EmptyProjectsExample.jsx",
+  "src/pages/examples/EmptyProjectRendersExample.jsx",
   "src/layouts/InternalDashboardLayout.jsx",
   "src/pages/admin-users/AdminUsersPage.jsx",
   "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",

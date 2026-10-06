@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router-dom";
 
-import group1Logo from "../assets/logos/Group 1.svg";
-import AuthLayout from "../components/layout/AuthLayout.jsx";
-import Button from "../components/ui/Button/Button.jsx";
+import group1Logo from "../../assets/logos/Group 1.svg";
+import AuthLayout from "../../components/layout/AuthLayout.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
 
 function InactiveAccount() {
   const navigate = useNavigate();

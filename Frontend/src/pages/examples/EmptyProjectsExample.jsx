@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "../auth/AuthContext.jsx";
-import { getUserDisplay } from "../auth/userDisplay.js";
-import EmptyState from "../components/ui/EmptyState.jsx";
-import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
-import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
-import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
-import Tooltip from "../components/ui/Tooltip/Tooltip.jsx";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { getUserDisplay } from "../../auth/userDisplay.js";
+import EmptyState from "../../components/ui/EmptyState.jsx";
+import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
+import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
+import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
 
 const EXPANDED_SIDEBAR_WIDTH = 312;
 const COLLAPSED_SIDEBAR_WIDTH = 76;

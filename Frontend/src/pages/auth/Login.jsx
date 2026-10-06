@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { useAuth } from "../auth/AuthContext.jsx";
-import { getDefaultAuthenticatedPath } from "../auth/authRoutes.js";
-import group1Logo from "../assets/logos/Group 1.svg";
-import AuthLayout from "../components/layout/AuthLayout.jsx";
-import Button from "../components/ui/Button/Button.jsx";
+import { useAuth } from "../../auth/AuthContext.jsx";
+import { getDefaultAuthenticatedPath } from "../../auth/authRoutes.js";
+import group1Logo from "../../assets/logos/Group 1.svg";
+import AuthLayout from "../../components/layout/AuthLayout.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
 import AuthToast, {
   AuthToastLockIcon,
-} from "../components/ui/AuthToast/AuthToast.jsx";
-import Input from "../components/ui/Input/Input.jsx";
+} from "../../components/ui/AuthToast/AuthToast.jsx";
+import Input from "../../components/ui/Input/Input.jsx";
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
