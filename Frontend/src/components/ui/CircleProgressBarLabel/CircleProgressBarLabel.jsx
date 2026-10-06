@@ -97,18 +97,19 @@ function CircleProgressBarLabel({
   const viewBox = `0 0 ${sizeStyles.circleSize} ${sizeStyles.circleSize}`;
 
   useEffect(() => {
+    let animateFrameId = null;
     const resetFrameId = window.requestAnimationFrame(() => {
       setAnimatedPercentage(0);
-    });
-    const animateFrameId = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
+      animateFrameId = window.requestAnimationFrame(() => {
         setAnimatedPercentage(percentage);
       });
     });
 
     return () => {
       window.cancelAnimationFrame(resetFrameId);
-      window.cancelAnimationFrame(animateFrameId);
+      if (animateFrameId != null) {
+        window.cancelAnimationFrame(animateFrameId);
+      }
     };
   }, [percentage]);
 
