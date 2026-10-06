@@ -45,16 +45,15 @@ export default function useProjectDetailsData({
 
   useEffect(() => {
     if (providedProject) {
-      if (!providedProject && !initialProjectId) {
-        setProjectError("El identificador del proyecto no es válido.");
-        setProjectLoading(false);
-      }
       return undefined;
     }
 
     let isMounted = true;
-    setProjectLoading(true);
-    setProjectError("");
+    queueMicrotask(() => {
+      if (!isMounted) return;
+      setProjectLoading(true);
+      setProjectError("");
+    });
 
     if (!initialProjectId) {
       api.projects
