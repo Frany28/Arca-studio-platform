@@ -629,3 +629,10 @@ La raíz de `src/pages` se redujo moviendo entradas a módulos con responsabilid
 - `main.jsx` importa directamente `projects/ProjectDetailsPage.jsx` y `settings/SettingsPage.jsx`, por lo que se retiraron los wrappers redundantes `pages/ProjectDetails.jsx` y `pages/Settings.jsx`.
 
 `Home.jsx`, `home/`, `ProjectRequestPage.jsx` y `project-request/` permanecen temporalmente sin mover porque forman el siguiente bloque de separación del dominio cliente y requieren una migración específica para no mezclar comportamiento con reorganización estructural.
+
+
+## Refactor de ProjectRequestPage (6 de octubre de 2026)
+
+`src/pages/ProjectRequestPage.jsx` queda como coordinador del flujo cliente: autenticación, navegación, notificaciones, validación previa, ubicación, archivos y envío. La presentación extensa del formulario se extrajo a `src/pages/project-request/components/ProjectRequestFormView.jsx`.
+
+La extracción no mueve reglas de validación ni llamadas API al componente visual. Los hooks existentes de `project-request/hooks/` conservan sus responsabilidades y contratos. Se añadió documentación JSDoc selectiva en la página y en el nuevo componente, junto con `tests/projectRequestPageStructure.test.js` para proteger la composición, las cinco secciones del formulario, drag-and-drop, reset y paso de validación.
