@@ -17,8 +17,8 @@ import { getCommentNavigationParams } from "../../utils/commentSelection.js";
 import { ARCHITECT_DRAWER_RECENT_ACTIVITY } from "./architectDashboardData.js";
 import ArchitectProjectGroup from "./components/ArchitectProjectGroup.jsx";
 import ProjectRequestReviewQueue from "./components/ProjectRequestReviewQueue.jsx";
-import ProjectRequestWorkflowModal from "./components/ProjectRequestWorkflowModal.jsx";
-import { useDashboardProjects } from "./hooks/useDashboardProjects.js";
+import ProjectRequestWorkflowModal from "../../components/project-requests/ProjectRequestWorkflowModal.jsx";
+import { useDashboardProjects } from "../../hooks/useDashboardProjects.js";
 
 import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import { useProjectRequestWorkflow } from "../../hooks/useProjectRequestWorkflow.js";
