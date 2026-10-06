@@ -51,6 +51,7 @@ async function openPage(context, { role = "architect", queue = [REQUEST], holdQu
       "/api/admin/dashboard-metrics": { metrics: {} },
       "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: queue } },
       "/api/admin/assignees": { assignees: [] },
+      "/api/admin/users/41": { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } },
     };
     if (realDashboard && fixtures[path]) { await route.fulfill({ json: fixtures[path] }); return; }
     errors.push(`HTTP inesperado: ${path}`);
@@ -265,7 +266,10 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true });
   await page.waitForLoadState("networkidle");
   await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
-  const paths = ["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/projects", "/api/project-requests/review-queue"];
+  // El ojo abre primero el drawer de detalle; "Ver solicitud" lleva al modal de decisión.
+  await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  await page.getByRole("dialog", { name: "Detalles de solicitud" }).waitFor({ state: "detached" });
+  const paths =["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/projects", "/api/project-requests/review-queue"];
   const before = paths.map((path) => calls.filter((call) => call.path === path).length);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
   await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
@@ -279,4 +283,47 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   for (const [index, path] of paths.entries()) {
     assert.equal(calls.filter((call) => call.path === path).length, before[index] + 1, `${path}: ${JSON.stringify(calls)}`);
   }
+});
+
+test("Dashboard admin real: el drawer de detalle muestra datos reales y preselecciona la decisión", async (context) => {
+  const detailedRequest = {
+    ...REQUEST,
+    clientId: 41,
+    compatibility: { level: "excellent", score: 92 },
+    createdAt: "2026-03-22T12:00:00.000Z",
+    location: "Maracaibo, Zulia",
+    projectType: "residential",
+    reviews: [{ note: "El cliente posee terreno y presupuesto adecuado.", recommendation: "approve", reviewer: { id: 9, name: "Ana" }, updatedAt: "2026-03-23T10:00:00.000Z" }],
+  };
+  const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [detailedRequest] });
+  await page.waitForLoadState("networkidle");
+  const queueReadsBeforeDrawer = queueCalls(calls);
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  for (const text of ["Excelente compatibilidad", "Score general: 92/100", "Maracaibo, Zulia", "Residencial", "Aprobar", "El cliente posee terreno y presupuesto adecuado.", "Esteban Ruiz", "Nextj"]) {
+    await drawer.getByText(text, { exact: true }).first().waitFor();
+  }
+  // Los indicadores sin backend se rotulan como ejemplo y no se presentan como datos reales.
+  assert.equal(await drawer.locator('[data-prototype="true"]').count(), 2);
+  assert.equal(calls.filter((call) => call.path === "/api/admin/users/41").length, 1);
+  // El drawer reutiliza la cola ya cargada por el dashboard: abrirlo no la vuelve a leer.
+  assert.equal(queueCalls(calls), queueReadsBeforeDrawer);
+
+  // Escape cierra solo el menú y conserva el drawer abierto.
+  const actionsTrigger = drawer.getByRole("button", { name: "Acciones para Casa Norte", exact: true });
+  await actionsTrigger.click();
+  await page.getByRole("menu", { name: "Acciones para Casa Norte" }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByRole("menu").waitFor({ state: "detached" });
+  assert.equal(await drawer.isVisible(), true);
+
+  await actionsTrigger.click();
+  await page.getByRole("menuitem", { name: "Rechazar", exact: true }).click();
+  await drawer.waitFor({ state: "detached" });
+  const decisionDialog = page.getByRole("dialog");
+  await decisionDialog.getByText("Motivo", { exact: true }).waitFor();
+  assert.equal(await decisionDialog.getByRole("heading", { name: "Casa Norte" }).count(), 1);
+  // Abrir una acción no ejecuta la decisión: solo el modal confirma contra la API.
+  assert.equal(mutations.length, 0);
 });

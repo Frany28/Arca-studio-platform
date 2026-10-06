@@ -22,6 +22,7 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
   );
   const [reviewRequestsRevision, setReviewRequestsRevision] = useState(0);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedInitialAction, setSelectedInitialAction] = useState(undefined);
   const [workflowError, setWorkflowError] = useState("");
   const [workflowSubmitting, setWorkflowSubmitting] = useState(false);
 
@@ -61,16 +62,20 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
   /**
    * Selecciona la versión de la solicitud presente en la cola por ID numérico.
    * Si no está en la cola usa el objeto recibido, sin cargar detalles adicionales;
-   * limpia el error anterior antes de abrir el workflow.
+   * limpia el error anterior antes de abrir el workflow. La acción inicial se guarda
+   * junto con la selección para que cada apertura defina la suya y no herede la anterior.
    *
    * @param {Object} request - Solicitud elegida desde la cola o el overview.
-   * @returns {void} Actualiza selectedRequest y workflowError.
+   * @param {Object} [options] - Preferencias de presentación de esta apertura.
+   * @param {string} [options.initialAction] - Acción preseleccionada en el modal.
+   * @returns {void} Actualiza selectedRequest, initialAction y workflowError.
    */
-  const openRequestWorkflow = (request) => {
+  const openRequestWorkflow = (request, { initialAction } = {}) => {
     const detailedRequest = reviewRequests.find(
       (candidate) => Number(candidate.id) === Number(request.id),
     );
     setWorkflowError("");
+    setSelectedInitialAction(initialAction);
     setSelectedRequest(detailedRequest || request);
   };
 
@@ -116,6 +121,7 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
     },
     workflow: {
       selectedRequest,
+      initialAction: selectedInitialAction,
       error: workflowError,
       submitting: workflowSubmitting,
       open: openRequestWorkflow,

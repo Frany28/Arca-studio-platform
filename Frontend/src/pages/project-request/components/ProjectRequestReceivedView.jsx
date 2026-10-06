@@ -1,6 +1,7 @@
 import Button from "../../../components/ui/Button/Button.jsx";
 import ProgressBarLabel from "../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
 import ProgressStepBase from "../../../components/ui/ProgressStepBase/ProgressStepBase.jsx";
+import { getCompatibilityLevelLabel } from "../../../utils/projectRequestCompatibility.js";
 
 const REQUEST_STATUS_STEPS = [
   {
@@ -70,19 +71,11 @@ function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
   );
 }
 
-const LEVEL_LABELS = {
-  excellent: "Excelente compatibilidad",
-  high: "Buena compatibilidad",
-  medium: "Compatibilidad media",
-  low: "Baja compatibilidad",
-  poorly_defined: "Solicitud poco definida",
-};
-
 function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRequest, projectRequest }) {
   const score = Number.isFinite(Number(compatibility?.score))
     ? Math.max(0, Math.min(100, Number(compatibility.score)))
     : 0;
-  const levelLabel = LEVEL_LABELS[compatibility?.level] || "Evaluación disponible";
+  const levelLabel = getCompatibilityLevelLabel(compatibility?.level);
   const observations = Array.isArray(compatibility?.observations)
     ? compatibility.observations.slice(0, 3)
     : [];

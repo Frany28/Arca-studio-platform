@@ -135,13 +135,13 @@ La fuente de interfaz es Inter mediante `--font-sans`. Todo texto debe conservar
 
 Antes de desarrollar un equivalente, revisar especialmente:
 
-- Acciones: `Button`, `ButtonGroupItem`, `Toggle`, `Checkbox`.
+- Acciones: `Button`, `ButtonGroupItem`, `Toggle`, `Checkbox`, `ActionMenu` (menú de acciones con encabezado opcional, divisores y tono `danger`, abierto desde un botón de icono).
 - Formularios: `Input`, `TextArea`, `DropdownMenu`, `Label`, `HintText`, `Tag`.
 - Navegación: `NavigationBar`, `SideNavigation`, `HorizontalTabMenu`, `TabItem`.
 - Retroalimentación: `Alert`, `Notification`, `AuthToast`, `Tooltip`, `EmptyState`.
 - Capas: `Modal` y los modales compartidos ya existentes.
 - Identidad y contenido: `Avatar`, `AvatarGroup`, `Badge`, `Gallery`.
-- Progreso: `ProgressBarLabel`, `ProgressStepBase`, `ProgressStepGroup`.
+- Progreso: `ProgressBarLabel`, `ProgressStepBase`, `ProgressStepGroup`, `CircleProgressBarLabel` (tema `Accent` por defecto; `Success`, `Warning` y `Danger` para valoraciones como la compatibilidad de solicitudes).
 
 ### Botones
 
@@ -169,6 +169,8 @@ Usar `Badge` y sus temas semánticos para que un mismo estado conserve su identi
 - `Neutral`: solicitud pendiente.
 - `Success`: proyecto finalizado.
 - `Archived`: proyecto archivado. Usa fondo sutil, texto y punto de la familia `warning`; su borde coincide con el fondo para mantener la misma estética limpia de los demás estados.
+
+Los estados de solicitudes de proyecto obtienen su tema desde `getProjectRequestStatus(status).badgeTheme` (`src/utils/projectRequestStatus.js`); no se asignan temas locales en cada vista.
 
 El tema `Archived` identifica contenido conservado pero fuera del flujo activo. No debe reutilizarse para advertencias, errores ni acciones destructivas.
 
