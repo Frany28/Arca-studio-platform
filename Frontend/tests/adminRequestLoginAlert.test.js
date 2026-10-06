@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("admin request alert follows Figma and appears after every explicit login", async () => {
+test("admin request alert follows Figma and receives the explicit login trigger", async () => {
   const [alertSource, authSource, dashboardSource, overviewSource, workflowSource] =
     await Promise.all([
       readFile(
@@ -15,7 +15,7 @@ test("admin request alert follows Figma and appears after every explicit login",
       readFile(new URL("../src/auth/AuthContext.jsx", import.meta.url), "utf8"),
       readFile(
         new URL(
-          "../src/pages/architect-dashboard/ArchitectDashboard.jsx",
+          "../src/pages/admin-dashboard/AdminDashboard.jsx",
           import.meta.url,
         ),
         "utf8",
@@ -37,7 +37,7 @@ test("admin request alert follows Figma and appears after every explicit login",
     ]);
 
   assert.match(authSource, /setLoginEventId\(\(current\) => current \+ 1\)/);
-  assert.match(dashboardSource, /currentUser\.roleCode === "admin"[\s\S]*<AdminRequestLoginAlert/);
+  assert.match(dashboardSource, /<AdminRequestLoginAlert/);
   assert.match(dashboardSource, /trigger=\{loginEventId \|\| null\}/);
   assert.match(alertSource, /theme="Warning"/);
   assert.match(alertSource, /title="Nueva solicitud recibida\."/);
@@ -52,7 +52,7 @@ test("assigning from the login alert uses a confirm-only modal flow", async () =
   const [dashboardSource, modalSource, workflowSource] = await Promise.all([
     readFile(
       new URL(
-        "../src/pages/architect-dashboard/ArchitectDashboard.jsx",
+        "../src/pages/admin-dashboard/AdminDashboard.jsx",
         import.meta.url,
       ),
       "utf8",

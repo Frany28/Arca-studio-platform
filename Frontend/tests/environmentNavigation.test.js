@@ -8,7 +8,7 @@ const AUTHENTICATED_PAGE_FILES = [
   "src/pages/PublicProjectsGallery.jsx",
   "src/pages/EmptyProjectsExample.jsx",
   "src/pages/EmptyProjectRendersExample.jsx",
-  "src/pages/architect-dashboard/ArchitectDashboard.jsx",
+  "src/layouts/InternalDashboardLayout.jsx",
   "src/pages/admin-users/AdminUsersPage.jsx",
   "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
   "src/pages/projects/ProjectDetailsPage.jsx",
@@ -16,6 +16,11 @@ const AUTHENTICATED_PAGE_FILES = [
 ];
 
 test("authenticated pages use the shared environment navbar without local overrides", async () => {
+  for (const role of ["admin", "architect"]) {
+    const source = await readFile(new URL(`../src/pages/${role}-dashboard/${role === "admin" ? "Admin" : "Architect"}Dashboard.jsx`, import.meta.url), "utf8");
+    assert.match(source, /layouts\/InternalDashboardLayout\.jsx/);
+    assert.match(source, /<InternalDashboardLayout/);
+  }
   for (const filePath of AUTHENTICATED_PAGE_FILES) {
     const source = await readFile(new URL(`../${filePath}`, import.meta.url), "utf8");
     const navbarUsage = source.match(/<NavigationBar[\s\S]*?\/>/)?.[0] ?? "";

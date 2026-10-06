@@ -604,3 +604,14 @@ El inventario anterior conserva las ubicaciones históricas de la auditoría. La
 
 `ArchitectDashboard.jsx` permanece en `architect-dashboard/` y consume temporalmente estas nuevas ubicaciones. Esta fase solo traslada archivos y actualiza referencias; conserva rutas, lógica y comportamiento, sin crear `AdminDashboard.jsx` ni separar `useDashboardRequestWorkflow.js`.
 
+## Estado posterior: fases 2 y 3 del dashboard (5 de octubre de 2026)
+
+La composición actual está separada en `src/pages/admin-dashboard/AdminDashboard.jsx` y `src/pages/architect-dashboard/ArchitectDashboard.jsx`. La primera concentra datos, decisiones, asignaciones, operaciones, bulk actions y feedback administrativos; la segunda conserva revisión técnica, publicación, proyectos y observaciones del arquitecto.
+
+- `src/pages/InternalDashboardRouter.jsx` mantiene las entradas existentes y selecciona una sola página por rol; los guards y URLs permanecen en `main.jsx`.
+- `src/layouts/InternalDashboardLayout.jsx` y `src/hooks/useDashboardNavigation.js` comparten el layout, sidebar, navbar, logout y callbacks de navegación originales.
+- `src/hooks/useProjectRequestWorkflow.js` mantiene la única cola común y el estado del modal, con operaciones inyectadas desde `admin-dashboard/utils/adminRequestDecision.js` y `architect-dashboard/utils/architectRequestReview.js`.
+- `admin-dashboard/hooks/useAdminRequestAssignments.js` concentra asignación y acciones del login. Las páginas componen las piezas directamente; la fachada `useDashboardRequestWorkflow.js` conserva su contrato compatible.
+
+`useDashboardProjects.js` y `ProjectRequestWorkflowModal.jsx` siguen en `architect-dashboard/` como dependencias compartidas de ambas páginas. Su ubicación se conserva para limitar esta fase a composición. El drawer visual sigue siendo `EnvironmentNotificationsDrawer`; los lectores de observaciones de proyecto solo se montan en `ArchitectDashboard`. Client, API, estilos y navegación global no forman parte de estas fases.
+

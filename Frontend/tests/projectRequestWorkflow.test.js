@@ -31,7 +31,7 @@ test("client, architect and admin surfaces consume the shared workflow", async (
 
   assert.match(homeRows, /Corregir solicitud/);
   assert.match(home, /convertedProjectId/);
-  assert.match(dashboard, /useDashboardRequestWorkflow/);
+  assert.match(dashboard, /useProjectRequestWorkflow/);
   assert.match(requestWorkflow, /useProjectRequestWorkflow/);
   assert.match(sharedWorkflow, /listReviewQueue/);
   assert.match(adminDecision, /decideProjectRequest/);

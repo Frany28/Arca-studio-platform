@@ -8,8 +8,8 @@ import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import PublicOnlyRoute from "./auth/PublicOnlyRoute.jsx";
 import ThemeSync from "./components/ui/ThemeSync.jsx";
 
-const ArchitectDashboard = lazy(
-  () => import("./pages/architect-dashboard/ArchitectDashboard.jsx"),
+const InternalDashboardRouter = lazy(
+  () => import("./pages/InternalDashboardRouter.jsx"),
 );
 const AdminUsersPage = lazy(
   () => import("./pages/admin-users/AdminUsersPage.jsx"),
@@ -94,7 +94,7 @@ createRoot(document.getElementById("root")).render(
             >
               <Route
                 path="/dashboard-arquitecto"
-                element={<ArchitectDashboard />}
+                element={<InternalDashboardRouter />}
               />
               <Route
                 path="/dashboard-arquitecto/nuevo-proyecto"
@@ -115,7 +115,7 @@ createRoot(document.getElementById("root")).render(
               />
               <Route
                 path="/dashboard-admin-vacio"
-                element={<ArchitectDashboard empty />}
+                element={<InternalDashboardRouter empty />}
               />
             </Route>
 

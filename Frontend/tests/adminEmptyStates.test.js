@@ -5,7 +5,7 @@ import test from "node:test";
 test("admin empty-state routes reuse the production pages without API data", async () => {
   const mainSource = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
   const dashboardSource = await readFile(
-    new URL("../src/pages/architect-dashboard/ArchitectDashboard.jsx", import.meta.url),
+    new URL("../src/pages/admin-dashboard/AdminDashboard.jsx", import.meta.url),
     "utf8",
   );
   const adminDashboardDataSource = await readFile(
@@ -22,7 +22,7 @@ test("admin empty-state routes reuse the production pages without API data", asy
     "utf8",
   );
 
-  assert.match(mainSource, /path="\/dashboard-admin-vacio"[\s\S]*<ArchitectDashboard empty/);
+  assert.match(mainSource, /path="\/dashboard-admin-vacio"[\s\S]*<InternalDashboardRouter empty/);
   assert.match(mainSource, /path="\/usuarios-vacio"[\s\S]*<AdminUsersPage empty/);
   assert.match(dashboardSource, /events=\{empty \? \[\] : undefined\}/);
   assert.match(adminDashboardDataSource, /roleCode !== "admin" \|\| empty/);
