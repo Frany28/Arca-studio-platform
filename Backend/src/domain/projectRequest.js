@@ -129,6 +129,18 @@ const BASE_SCORE = {
 };
 
 /**
+ * Indica si la solicitud declara un terreno o inmueble disponible para el proyecto.
+ * Solo en ese caso se preguntan y persisten la situación legal, la documentación,
+ * los propietarios y los planos del lugar.
+ *
+ * @param {string|null|undefined} landStatus - Respuesta sobre disponibilidad del terreno.
+ * @returns {boolean} true cuando la respuesta es "available".
+ */
+export function hasAvailableProperty(landStatus) {
+  return landStatus === "available";
+}
+
+/**
  * Clasifica el valor de nivel a partir de la puntuación calculada.
  * Mantiene esta regla de dominio aislada de HTTP y de la persistencia.
  *

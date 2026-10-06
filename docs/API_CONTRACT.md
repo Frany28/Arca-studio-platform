@@ -154,14 +154,14 @@ RequestPayload (JSON estricto, rechaza propiedades desconocidas):
 | capitalAvailability | available_now, within_3_months, seeking_financing, undefined (literal string) |
 | developmentMode | phased, full, undecided |
 | investmentRange | undefined, under_10k, 10k_50k, 50k_150k, over_150k |
-| legalDocumentationStatus | available, in_process, unavailable |
-| legalDocumentTypes | Array obligatorio, máximo 4, sin duplicados: property_deed, purchase_contract, lease_contract, other. No vacío si available; vacío en otros estados |
-| hasMultipleOwners | boolean obligatorio |
+| legalDocumentationStatus | available, in_process, unavailable. Obligatorio solo si landStatus=available; en otro caso debe ser null u omitirse |
+| legalDocumentTypes | Array (default []), máximo 4, sin duplicados: property_deed, purchase_contract, lease_contract, other. Con landStatus=available: no vacío si legalDocumentationStatus=available y vacío en otros estados; sin terreno disponible siempre vacío |
+| hasMultipleOwners | boolean obligatorio si landStatus=available; en otro caso null u omitido |
 | startTime | immediate, 1_3_months, 3_6_months, over_6_months |
 | decisionMaker | Opcional/null: self, partner, extended_family, company_board |
 | experience | Opcional/null: positive, negative, first_time |
-| hasBlueprints | boolean opcional/null; se devuelve como hasPlans |
-| landStatus | Opcional/null: available, acquiring, unavailable |
+| hasBlueprints | boolean opcional/null solo si landStatus=available; en otro caso null u omitido. Se devuelve como hasPlans |
+| landStatus | Obligatorio: available, acquiring, unavailable. Solo available habilita los datos del inmueble; enviar datos legales, propietarios o planos sin él responde 400 |
 | projectSize | Opcional/null: small_lt_80, medium_80_200, large_200_500, very_large_gt_500, unknown |
 | quality | Opcional/null: functional_economic, standard, premium, luxury |
 | referenceLink | Texto http/https o null, máximo 500 |

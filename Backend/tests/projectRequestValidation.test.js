@@ -14,7 +14,7 @@ const VALID_BODY = {
   experience: null,
   hasBlueprints: null,
   investmentRange: "10k_50k",
-  landStatus: null,
+  landStatus: "available",
   legalDocumentationStatus: "available",
   legalDocumentTypes: ["property_deed"],
   hasMultipleOwners: false,
@@ -80,4 +80,54 @@ test("unknown and sensitive fields are rejected", () => {
 
 test("only http and https reference links are accepted", () => {
   assert.equal(createProjectRequestSchema.safeParse({ body: { ...VALID_BODY, referenceLink: "javascript:alert(1)", submissionId: "550e8400-e29b-41d4-a716-446655440000" } }).success, false);
+});
+
+const updateBody = (body) => updateProjectRequestSchema.safeParse({ body, params: { projectRequestId: "1" } });
+const NO_PROPERTY_BODY = {
+  ...VALID_BODY,
+  hasBlueprints: null,
+  hasMultipleOwners: null,
+  landStatus: "unavailable",
+  legalDocumentationStatus: null,
+  legalDocumentTypes: [],
+};
+
+test("land status is required because it decides the property fields", () => {
+  assert.equal(updateBody({ ...VALID_BODY, landStatus: null }).success, false);
+  assert.equal(updateBody({ ...VALID_BODY, landStatus: "invalid" }).success, false);
+});
+
+test("with available property, legal status and owners are required", () => {
+  const missingStatus = updateBody({ ...VALID_BODY, legalDocumentationStatus: null, legalDocumentTypes: [] });
+  assert.equal(missingStatus.success, false);
+  assert.deepEqual(missingStatus.error.issues.map((issue) => issue.path.join(".")), ["body.legalDocumentationStatus"]);
+  assert.equal(updateBody({ ...VALID_BODY, hasMultipleOwners: null }).success, false);
+  assert.equal(updateBody({ ...VALID_BODY, hasBlueprints: true }).success, true);
+});
+
+test("without available property, legal fields are optional and default to empty", () => {
+  for (const landStatus of ["unavailable", "acquiring"]) {
+    const result = updateBody({ ...NO_PROPERTY_BODY, landStatus });
+    assert.equal(result.success, true, landStatus);
+  }
+  const { hasBlueprints: _b, hasMultipleOwners: _o, legalDocumentationStatus: _s, legalDocumentTypes: _t, ...omitted } = NO_PROPERTY_BODY;
+  const result = updateBody(omitted);
+  assert.equal(result.success, true);
+  assert.equal(result.data.body.legalDocumentationStatus, null);
+  assert.deepEqual(result.data.body.legalDocumentTypes, []);
+  assert.equal(result.data.body.hasMultipleOwners, null);
+  assert.equal(result.data.body.hasBlueprints, null);
+});
+
+test("without available property, contradictory legal data is rejected", () => {
+  for (const [field, value] of [
+    ["legalDocumentationStatus", "available"],
+    ["legalDocumentTypes", ["property_deed"]],
+    ["hasMultipleOwners", false],
+    ["hasBlueprints", true],
+  ]) {
+    const result = updateBody({ ...NO_PROPERTY_BODY, [field]: value });
+    assert.equal(result.success, false, field);
+    assert.ok(result.error.issues.some((issue) => issue.path.join(".") === `body.${field}`), field);
+  }
 });

@@ -5,6 +5,7 @@ import {
   buildProjectRequestPayload,
   getProjectRequestFieldErrors,
   getProjectRequestFileErrors,
+  hasAvailableProperty,
 } from "../src/utils/projectRequestValidation.js";
 
 const VALID_VALUES = {
@@ -12,6 +13,7 @@ const VALID_VALUES = {
   description: "Remodelación integral de cocina y sala principal.",
   developmentMode: "undecided",
   investmentRange: "undefined",
+  landStatus: "available",
   legalDocumentationStatus: "available",
   legalDocumentTypes: ["property_deed"],
   location: "Maracaibo, Estado Zulia",
@@ -80,4 +82,57 @@ test("payload never includes the temporary code or computed score", () => {
   assert.equal(payload.hasMultipleOwners, false);
   assert.deepEqual(payload.legalDocumentTypes, ["property_deed"]);
   assert.equal(payload.submissionId, "550e8400-e29b-41d4-a716-446655440000");
+});
+
+const NO_PROPERTY_VALUES = {
+  ...VALID_VALUES,
+  hasBlueprints: "Indeterminate",
+  landStatus: "unavailable",
+  legalDocumentationStatus: "",
+  legalDocumentTypes: [],
+  multipleOwners: "",
+};
+
+test("land status is required because it decides the property section", () => {
+  assert.ok(getProjectRequestFieldErrors({ ...VALID_VALUES, landStatus: "" }).landStatus);
+  assert.equal(hasAvailableProperty("available"), true);
+  for (const status of ["acquiring", "unavailable", "", null, undefined]) {
+    assert.equal(hasAvailableProperty(status), false, String(status));
+  }
+});
+
+test("with available property the legal fields are validated", () => {
+  const errors = getProjectRequestFieldErrors({ ...NO_PROPERTY_VALUES, landStatus: "available" });
+  assert.ok(errors.legalDocumentationStatus);
+  assert.ok(errors.multipleOwners);
+});
+
+test("without available property the hidden legal fields never produce errors", () => {
+  for (const landStatus of ["unavailable", "acquiring"]) {
+    assert.deepEqual(getProjectRequestFieldErrors({ ...NO_PROPERTY_VALUES, landStatus }), {}, landStatus);
+  }
+  // Valores residuales inválidos tampoco bloquean mientras la sección no aplica.
+  assert.deepEqual(getProjectRequestFieldErrors({
+    ...NO_PROPERTY_VALUES,
+    legalDocumentationStatus: "in_process",
+    legalDocumentTypes: ["property_deed", "property_deed"],
+  }), {});
+});
+
+test("payload excludes legal data when the property is not available", () => {
+  const payload = buildProjectRequestPayload({
+    ...VALID_VALUES,
+    hasBlueprints: "Yes",
+    landStatus: "unavailable",
+  });
+  assert.equal(payload.landStatus, "unavailable");
+  assert.equal(payload.legalDocumentationStatus, null);
+  assert.deepEqual(payload.legalDocumentTypes, []);
+  assert.equal(payload.hasMultipleOwners, null);
+  assert.equal(payload.hasBlueprints, null);
+
+  const withProperty = buildProjectRequestPayload({ ...VALID_VALUES, hasBlueprints: "Yes" });
+  assert.equal(withProperty.legalDocumentationStatus, "available");
+  assert.equal(withProperty.hasMultipleOwners, false);
+  assert.equal(withProperty.hasBlueprints, true);
 });

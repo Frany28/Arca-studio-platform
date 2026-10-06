@@ -1,11 +1,17 @@
 import { useId, useState } from "react";
-import { ArrowDown2, InfoCircle } from "iconsax-react";
+import { InfoCircle } from "iconsax-react";
 import clsx from "clsx";
 
 import Checkbox from "../../../components/ui/Checkbox/Checkbox.jsx";
 import DropdownMenu from "../../../components/ui/DropdownMenu/DropdownMenu.jsx";
 import HintText from "../../../components/ui/HintText/HintText.jsx";
-import { PROJECT_REQUEST_OPTIONS } from "../../../utils/projectRequestOptions.js";
+import Input from "../../../components/ui/Input/Input.jsx";
+import TextArea from "../../../components/ui/TextArea/TextArea.jsx";
+import {
+  fromLegalDocumentItems,
+  getLegalDocumentsSummary,
+  toLegalDocumentItems,
+} from "../utils/projectRequestLegalDocuments.js";
 
 function FieldLabel({ asSpan = false, children, optional = false, info = false, ...props }) {
   const content = (
@@ -21,22 +27,62 @@ function FieldLabel({ asSpan = false, children, optional = false, info = false, 
     : <label {...props} className={className}>{content}</label>;
 }
 
-function TextField({ children, containerClassName, error = "", icon: Icon, inputRef, invalid = false, label, multiline = false, optional = false, supportingContent, ...props }) {
-  const controlClass = `w-full rounded-[8px] border bg-[var(--color-neutral-100)] px-[12px] text-[14px] leading-[17px] tracking-[-0.5px] text-[var(--color-text-300)] outline-none transition focus:ring-2 placeholder:text-[var(--color-text-100)] ${invalid ? "border-[var(--color-danger-100)] focus:border-[var(--color-danger-100)] focus:ring-[var(--color-danger-10)]" : "border-[var(--color-neutral-200)] focus:border-[var(--color-primary-300)] focus:ring-[var(--color-primary-10)]"}`;
+// Alto total del área de texto en Figma (130 px) menos su padding vertical de 12 + 12.
+const DESCRIPTION_TEXTAREA_MIN_HEIGHT = 106;
+
+/**
+ * Campo de texto del formulario compuesto con los componentes compartidos `Input` y
+ * `TextArea`, que aportan label asociado, estados hover/focus/error, icono y hint accesible.
+ * `children` se ancla bajo el campo (p. ej. sugerencias de ubicación) y `supportingContent`
+ * agrega ayudas propias del flujo después del hint de error.
+ *
+ * @param {Object} props - Etiqueta, valor, error y atributos nativos del control.
+ * @param {string} [props.error] - Mensaje visible cuando el campo es inválido.
+ * @param {import("react").ComponentType} [props.icon] - Icono Iconsax del lado izquierdo.
+ * @param {boolean} [props.invalid] - Activa el estado Error.
+ * @param {boolean} [props.multiline] - Usa `TextArea` en lugar de `Input`.
+ * @param {boolean} [props.optional] - Omite el asterisco y el `required` nativo.
+ * @returns {import("react").ReactElement} Campo completo.
+ */
+function TextField({ children, containerClassName, error = "", icon: Icon, invalid = false, label, multiline = false, optional = false, supportingContent, ...props }) {
+  const errorProps = {
+    hintText: error,
+    showHint: Boolean(error),
+    state: invalid ? "Error" : "Default",
+    // La página enfoca el primer [aria-invalid="true"]; TextArea no lo deriva de state.
+    "aria-invalid": invalid || undefined,
+    "aria-errormessage": invalid ? "project-request-required-alert" : undefined,
+  };
 
   return (
     <div className={clsx("flex w-full flex-col gap-[8px]", containerClassName)}>
-      <FieldLabel optional={optional}>{label}</FieldLabel>
-      <div className="relative flex w-full">
-        {Icon ? <Icon className="absolute left-[12px] top-[8px] size-[20px] text-[var(--color-text-100)]" aria-hidden="true" /> : null}
+      <div className="relative w-full">
         {multiline ? (
-          <textarea ref={inputRef} className={`${controlClass} block min-h-[130px] resize-y py-[12px] ${Icon ? "pl-[40px]" : ""}`} required={!optional} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} {...props} />
+          <TextArea
+            {...props}
+            {...errorProps}
+            label={label}
+            required={!optional}
+            showLabelInfo={false}
+            minHeight={DESCRIPTION_TEXTAREA_MIN_HEIGHT}
+            resize
+            className="max-w-none"
+          />
         ) : (
-          <input ref={inputRef} className={`${controlClass} block h-[36px] ${Icon ? "pl-[40px]" : ""}`} required={!optional} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} {...props} />
+          <Input
+            {...props}
+            {...errorProps}
+            label={label}
+            required={!optional}
+            showLabelInfo={false}
+            showLeftIcon={Boolean(Icon)}
+            leftIcon={Icon ? <Icon size="20" color="currentColor" aria-hidden="true" /> : null}
+            showRightIcon={false}
+            className="max-w-none"
+          />
         )}
         {children}
       </div>
-      {error ? <HintText state="Error" hintText={error} className="w-full" role="alert" /> : null}
       {supportingContent}
     </div>
   );
@@ -80,20 +126,20 @@ function SelectField({ error = "", invalid = false, label, value, onChange, opti
   );
 }
 
-function ChoiceGroup({ error = "", invalid = false, label, value, options, onChange, info = false, optional = false, orientation = "horizontal" }) {
+function ChoiceGroup({ error = "", invalid = false, label, value, options, onChange, info = false, optional = false }) {
   const labelId = useId();
 
   return (
     <div role="group" aria-labelledby={labelId} aria-invalid={invalid || undefined} aria-errormessage={invalid ? "project-request-required-alert" : undefined} aria-required={!optional} className="flex w-full flex-col gap-[8px]">
       <FieldLabel asSpan id={labelId} info={info} optional={optional}>{label}</FieldLabel>
-      <div className={orientation === "vertical" ? "flex flex-col items-start gap-[8px]" : "flex flex-wrap gap-[8px]"}>
+      <div className="flex flex-wrap gap-[8px]">
         {options.map((option) => (
           <button
             key={option.value}
             type="button"
             aria-pressed={value === option.value}
             onClick={() => onChange(option.value)}
-            className={`${orientation === "vertical" && value === option.value ? "h-[33px] py-[7px]" : "h-[36px] py-[8px]"} rounded-[8px] border px-[12px] text-[14px] font-medium leading-[17px] tracking-[-0.5px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)] ${value === option.value ? "border-transparent bg-[var(--color-neutral-200)] text-[var(--color-text-300)]" : invalid ? "border-[var(--color-danger-100)] bg-transparent text-[var(--color-text-100)]" : "border-[var(--color-neutral-200)] bg-transparent text-[var(--color-text-100)] hover:border-[var(--color-neutral-300)] hover:text-[var(--color-text-300)]"}`}
+            className={`h-[36px] py-[8px] rounded-[8px] border px-[12px] text-[14px] font-medium leading-[17px] tracking-[-0.5px] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)] ${value === option.value ? "border-transparent bg-[var(--color-neutral-200)] text-[var(--color-text-300)]" : invalid ? "border-[var(--color-danger-100)] bg-transparent text-[var(--color-text-100)]" : "border-[var(--color-neutral-200)] bg-transparent text-[var(--color-text-100)] hover:border-[var(--color-neutral-300)] hover:text-[var(--color-text-300)]"}`}
           >
             {option.label}
           </button>
@@ -119,84 +165,44 @@ function CheckboxField({ label, value, onChange }) {
   );
 }
 
+/**
+ * Selección múltiple de documentos legales con `DropdownMenu` (ítems Checkbox), el patrón
+ * del sistema para opciones múltiples. Es obligatoria solo cuando el usuario declara tener
+ * documentación disponible; en los demás estados se deshabilita y no muestra asterisco.
+ *
+ * @param {Object} props - Valores, error y habilitación.
+ * @param {Array<string>} props.value - Documentos marcados.
+ * @param {(values: Array<string>) => void} props.onChange - Recibe la nueva selección.
+ * @param {boolean} props.disabled - true si la documentación no está disponible.
+ * @returns {import("react").ReactElement} Campo de documentos.
+ */
 function LegalDocumentTypesField({ error = "", invalid = false, value, onChange, disabled }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [hoveredDocumentType, setHoveredDocumentType] = useState(null);
-  const selectedValues = Array.isArray(value) ? value : [];
-  const selectedLabels = PROJECT_REQUEST_OPTIONS.legalDocumentTypes
-    .filter((option) => selectedValues.includes(option.value))
-    .map((option) => option.label);
-
-  const toggleDocument = (documentType) => {
-    const nextValues = selectedValues.includes(documentType)
-      ? selectedValues.filter((valueToKeep) => valueToKeep !== documentType)
-      : [...selectedValues, documentType];
-    onChange(nextValues);
-  };
+  const labelId = useId();
 
   return (
     <div className="flex w-full flex-col gap-[8px]">
-      <FieldLabel>Documentación disponible</FieldLabel>
-      <div className="relative w-full">
-        <button
-          type="button"
-          disabled={disabled}
-          aria-expanded={isOpen}
-          aria-haspopup="listbox"
-          aria-invalid={invalid || undefined}
-          onClick={() => {
-            setIsOpen((current) => !current);
-            setHoveredDocumentType(null);
-          }}
-          className={clsx(
-            "flex h-[37px] w-full items-center justify-between gap-[8px] rounded-[12px] border bg-[var(--color-neutral-100)] px-[12px] text-left text-[14px] text-[var(--color-text-300)] outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)] disabled:cursor-not-allowed disabled:opacity-60",
-            invalid ? "border-[var(--color-danger-100)]" : "border-[var(--color-neutral-200)]",
-          )}
-        >
-          <span className="truncate">
-            {selectedLabels.length ? selectedLabels.join(", ") : "Selecciona la documentación"}
-          </span>
-          <ArrowDown2
-            size="18"
-            color="currentColor"
-            aria-hidden="true"
-            className={clsx("shrink-0 transition-transform", isOpen && "rotate-180")}
-          />
-        </button>
-        {isOpen && !disabled ? (
-          <div
-            role="listbox"
-            aria-multiselectable="true"
-            className="mt-[4px] flex w-full flex-col gap-[4px] rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[6px] shadow-[var(--shadow-e1)]"
-          >
-            {PROJECT_REQUEST_OPTIONS.legalDocumentTypes.map((option) => {
-              const selected = selectedValues.includes(option.value);
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={selected}
-                  onClick={() => toggleDocument(option.value)}
-                  onMouseEnter={() => setHoveredDocumentType(option.value)}
-                  onMouseLeave={() => setHoveredDocumentType(null)}
-                  className={clsx(
-                    "flex min-h-[32px] w-full items-center gap-[8px] rounded-[8px] px-[8px] py-[6px] text-left text-[14px] text-[var(--color-text-300)] hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
-                    selected && "bg-[var(--color-neutral-200)]",
-                  )}
-                >
-                  <Checkbox
-                    checked={selected ? "Yes" : "No"}
-                    size="S"
-                    state={hoveredDocumentType === option.value ? "Hover" : undefined}
-                  />
-                  <span>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
+      <FieldLabel asSpan id={labelId} optional={disabled}>Documentación disponible</FieldLabel>
+      <DropdownMenu
+        type="Text"
+        label={getLegalDocumentsSummary(value)}
+        supportingText=""
+        items={toLegalDocumentItems(value)}
+        multiple
+        disabled={disabled}
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        onItemsChange={(items) => onChange(fromLegalDocumentItems(items))}
+        interactive
+        rowHeightClassName="h-[35px]"
+        triggerHeightClassName="h-[37px]"
+        triggerWrapperClassName={invalid ? "!border-[var(--color-danger-100)]" : undefined}
+        className="w-full max-w-none"
+        aria-label="Documentación disponible"
+        aria-invalid={invalid || undefined}
+        aria-errormessage={invalid ? "project-request-required-alert" : undefined}
+        aria-required={!disabled}
+      />
       {error ? <HintText state="Error" hintText={error} className="w-full" role="alert" /> : null}
     </div>
   );
@@ -210,18 +216,22 @@ function FormDivider() {
   );
 }
 
-function FormSection({ title, description, children, fieldsVariant = "stacked" }) {
-  const fieldsClassName = fieldsVariant === "responsive-grid"
-    ? "flex min-w-[214.5px] flex-1 flex-wrap items-start gap-[16px] [&>*]:min-w-[214.5px] [&>*]:basis-[214.5px] [&>*]:grow"
-    : "flex w-full min-w-0 max-w-[445px] flex-col gap-[16px] min-[480px]:w-[445px]";
-
+/**
+ * Sección del formulario: descripción a la izquierda y campos a la derecha (Figma 401 | 48 | 401).
+ * Ambas columnas parten de 401 px y crecen; cuando el contenedor no alcanza 850 px se apilan
+ * a ancho completo, sin breakpoints propios ni scroll horizontal.
+ *
+ * @param {Object} props - Título, descripción y campos.
+ * @returns {import("react").ReactElement} Sección semántica.
+ */
+function FormSection({ title, description, children }) {
   return (
     <section className="flex w-full max-w-[850px] flex-wrap content-start items-start gap-[48px]">
-      <div className="flex w-full min-w-0 flex-col gap-[16px] text-[var(--color-text-200)] min-[480px]:min-w-[300px] min-[480px]:w-[350px]">
+      <div className="flex min-w-0 flex-[1_1_401px] flex-col gap-[16px] text-[var(--color-text-200)]">
         <h2 className="text-[16px] font-bold leading-[19px] tracking-[-0.5px]">{title}</h2>
         <p className="text-[14px] leading-[17px] tracking-[-0.5px]">{description}</p>
       </div>
-      <div className={fieldsClassName}>{children}</div>
+      <div className="flex min-w-0 flex-[1_1_401px] flex-col gap-[16px]">{children}</div>
     </section>
   );
 }

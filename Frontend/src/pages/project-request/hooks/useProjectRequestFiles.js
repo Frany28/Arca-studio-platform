@@ -1,34 +1,22 @@
 import { useRef, useState } from "react";
 
 import { getProjectRequestFileErrors } from "../../../utils/projectRequestValidation.js";
+import { isProjectRequestFileRemovable } from "../utils/projectRequestFilePresentation.js";
 
 /**
- * Adapta la selecci?n del input a items pendientes con progreso y error propios.
- * Combina metadatos e ?ndice para identificar cada archivo dentro de la selecci?n.
+ * Mantiene los adjuntos seleccionados y sus errores; no realiza uploads.
+ * Cada selección se agrega a la anterior (el usuario puede elegir archivos de varias
+ * carpetas) y los adjuntos pendientes o fallidos se pueden quitar uno a uno. Delega
+ * límites, formatos y duplicados al validador compartido. Si ya existe un borrador
+ * remoto se bloquea agregar archivos, como antes, para no mezclar selecciones con uploads
+ * ya persistidos; quitar adjuntos no subidos sigue permitido porque no afecta al borrador.
  *
- * @param {Object|Array|null} fileList - FileList o colecci?n de archivos.
- * @returns {Array} Items con file, id, status pending, progress cero y error vac?o.
- */
-function toFileItems(fileList) {
-  return Array.from(fileList || []).map((file, index) => ({
-    error: "",
-    file,
-    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
-    progress: 0,
-    status: "pending",
-  }));
-}
-
-/**
- * Mantiene archivos seleccionados, sus errores y la referencia al input; no realiza uploads.
- * Delega l?mites y formatos al validador compartido y bloquea cambios si existe borrador.
- *
- * @param {Object} params - Estado externo usado para coordinar validaci?n y env?o.
+ * @param {Object} params - Estado externo usado para coordinar validación y envío.
  * @param {Object} params.currentFieldErrors - Errores actuales del formulario.
- * @param {number|string|null} params.draftId - Identificador de borrador; si es truthy bloquea cambios.
- * @param {boolean} params.hasAttemptedSubmit - Si ya se intent? validar el env?o.
+ * @param {number|string|null} params.draftId - Identificador de borrador; si es truthy bloquea agregar.
+ * @param {boolean} params.hasAttemptedSubmit - Si ya se intentó validar el envío.
  * @param {Function} params.setShowRequiredAlert - Controla el aviso conjunto de campos y archivos.
- * @returns {Object} Archivos, errores, referencia al input y acciones de selecci?n, actualizaci?n y reset.
+ * @returns {Object} Adjuntos, errores y acciones para agregar, quitar, actualizar y reiniciar.
  */
 export default function useProjectRequestFiles({
   currentFieldErrors,
@@ -38,22 +26,17 @@ export default function useProjectRequestFiles({
 }) {
   const [files, setFiles] = useState([]);
   const [fileErrors, setFileErrors] = useState([]);
-  const fileInputRef = useRef(null);
+  // Contador local: los metadatos del archivo no son únicos si se agrega dos veces el mismo.
+  const nextFileIdRef = useRef(0);
 
   /**
-   * Reemplaza la selecci?n y aplica la validaci?n compartida, salvo que exista borrador.
-   * Tras un intento de env?o oculta el aviso solo si no quedan errores de campos ni archivos.
+   * Aplica una nueva colección validándola completa y, tras un intento de envío, oculta
+   * el aviso global cuando ya no quedan errores de campos ni de archivos.
    *
-   * @param {Object|Array|null} fileList - Nueva selecci?n de archivos.
-   * @returns {void} Actualiza archivos, errores y eventualmente el aviso.
+   * @param {Array} nextFiles - Colección resultante.
+   * @returns {void}
    */
-  const handleFilesChange = (fileList) => {
-    if (draftId) {
-      setFileErrors(["Ya existe un borrador en proceso. Reintenta el envío antes de cambiar los archivos."]);
-      return;
-    }
-
-    const nextFiles = toFileItems(fileList);
+  const applyFiles = (nextFiles) => {
     const nextErrors = getProjectRequestFileErrors(nextFiles);
     setFiles(nextFiles);
     setFileErrors(nextErrors);
@@ -67,6 +50,46 @@ export default function useProjectRequestFiles({
     }
   };
 
+  /**
+   * Agrega los archivos elegidos o soltados como adjuntos pendientes.
+   *
+   * @param {FileList|Array|null} fileList - Archivos nuevos.
+   * @returns {void}
+   */
+  const handleFilesChange = (fileList) => {
+    if (draftId) {
+      setFileErrors(["Ya existe un borrador en proceso. Reintenta el envío antes de cambiar los archivos."]);
+      return;
+    }
+
+    const addedFiles = Array.from(fileList || []).map((file) => {
+      nextFileIdRef.current += 1;
+      return {
+        error: "",
+        file,
+        id: `project-request-file-${nextFileIdRef.current}`,
+        progress: 0,
+        status: "pending",
+      };
+    });
+    if (!addedFiles.length) return;
+
+    applyFiles([...files, ...addedFiles]);
+  };
+
+  /**
+   * Quita un adjunto pendiente o fallido; ignora los subidos o en curso.
+   *
+   * @param {string} id - Identificador local del adjunto.
+   * @returns {void}
+   */
+  const removeFile = (id) => {
+    const target = files.find((item) => item.id === id);
+    if (!isProjectRequestFileRemovable(target)) return;
+
+    applyFiles(files.filter((item) => item.id !== id));
+  };
+
   const updateFileItem = (id, values) => {
     setFiles((current) => current.map((item) => (
       item.id === id ? { ...item, ...values } : item
@@ -76,16 +99,13 @@ export default function useProjectRequestFiles({
   const resetFiles = () => {
     setFiles([]);
     setFileErrors([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   return {
     fileErrors,
-    fileInputRef,
     files,
     handleFilesChange,
+    removeFile,
     resetFiles,
     setFileErrors,
     updateFileItem,

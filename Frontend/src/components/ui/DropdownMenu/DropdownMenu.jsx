@@ -431,7 +431,8 @@ function DropdownMenu({
   open,
   defaultOpen = DROPDOWN_MENU_DEFAULT_PROPS.defaultOpen,
   interactive = DROPDOWN_MENU_DEFAULT_PROPS.interactive,
-  items = DROPDOWN_MENU_DEFAULT_PROPS.items,
+  disabled = DROPDOWN_MENU_DEFAULT_PROPS.disabled,
+  items =DROPDOWN_MENU_DEFAULT_PROPS.items,
   hoveredItemId = DROPDOWN_MENU_DEFAULT_PROPS.hoveredItemId,
   selectedItemId = DROPDOWN_MENU_DEFAULT_PROPS.selectedItemId,
   multiple = false,
@@ -463,7 +464,8 @@ function DropdownMenu({
 
   const resolvedType = getResolvedType(type);
   const isOpenControlled = typeof open === "boolean";
-  const resolvedOpen = isOpenControlled ? open : internalOpen;
+  // Un menú deshabilitado nunca se muestra abierto, aunque el consumidor conserve open=true.
+  const resolvedOpen = !disabled && (isOpenControlled ? open : internalOpen);
 
   const baseResolvedState = getResolvedState(state, isHovered, isPressed);
   const resolvedState =
@@ -695,7 +697,8 @@ function DropdownMenu({
           ref={triggerRef}
           type="button"
           className={clsx(
-            "group flex w-full cursor-pointer items-center gap-[8px] rounded-[12px] text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
+            "group flex w-full items-center gap-[8px] rounded-[12px] text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
+            disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
             triggerHeightClassName,
             triggerPaddingXClassName,
             resolvedState !== "Default" &&
@@ -729,6 +732,7 @@ function DropdownMenu({
               handlePressEnd();
             }
           }}
+          disabled={disabled}
           onClick={handleToggle}
         >
           <div

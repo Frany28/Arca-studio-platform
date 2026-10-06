@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { PROJECT_REQUEST_VALUES } from "../domain/projectRequest.js";
+import { hasAvailableProperty, PROJECT_REQUEST_VALUES } from "../domain/projectRequest.js";
 
 const positiveId = z.coerce.number().int().positive();
 /**
@@ -58,6 +58,33 @@ function validManualAddress(value) {
   return (normalized.match(/[a-z0-9]+/g) || []).some((word) => word.length >= 5);
 }
 
+/**
+ * Aplica la regla de dominio del inmueble: con terreno disponible exige la situación legal
+ * y los propietarios; sin él, rechaza cualquier dato legal, de propietarios o de planos
+ * para no persistir información incompatible con la respuesta del cliente.
+ *
+ * @param {object} body - Cuerpo normalizado por Zod.
+ * @param {import("zod").RefinementCtx} context - Contexto para registrar incidencias.
+ * @returns {void} Registra incidencias en el contexto cuando corresponde.
+ */
+function validatePropertyDependentFields(body, context) {
+  if (hasAvailableProperty(body.landStatus)) {
+    if (body.legalDocumentationStatus === null) {
+      context.addIssue({ code: "custom", message: "Indica la situación legal del inmueble.", path: ["legalDocumentationStatus"] });
+    }
+    if (body.hasMultipleOwners === null) {
+      context.addIssue({ code: "custom", message: "Indica si el inmueble tiene más de un propietario.", path: ["hasMultipleOwners"] });
+    }
+    return;
+  }
+
+  const message = "Solo aplica cuando se dispone de terreno o inmueble.";
+  if (body.legalDocumentationStatus !== null) context.addIssue({ code: "custom", message, path: ["legalDocumentationStatus"] });
+  if (body.legalDocumentTypes.length > 0) context.addIssue({ code: "custom", message, path: ["legalDocumentTypes"] });
+  if (body.hasMultipleOwners !== null) context.addIssue({ code: "custom", message, path: ["hasMultipleOwners"] });
+  if (body.hasBlueprints !== null) context.addIssue({ code: "custom", message, path: ["hasBlueprints"] });
+}
+
 const projectRequestBody = z
   .object({
     capitalAvailability: z.enum(PROJECT_REQUEST_VALUES.capitalAvailability),
@@ -67,10 +94,11 @@ const projectRequestBody = z
     experience: optionalChoice(PROJECT_REQUEST_VALUES.experience),
     hasBlueprints: z.boolean().nullable().optional().default(null),
     investmentRange: z.enum(PROJECT_REQUEST_VALUES.investmentRange),
-    landStatus: optionalChoice(PROJECT_REQUEST_VALUES.landStatus),
-    legalDocumentationStatus: z.enum(PROJECT_REQUEST_VALUES.legalDocumentationStatus),
-    legalDocumentTypes: z.array(z.enum(PROJECT_REQUEST_VALUES.legalDocumentTypes)).max(4),
-    hasMultipleOwners: z.boolean(),
+    // Obligatorio: determina si aplican los campos del inmueble (ver validatePropertyDependentFields).
+    landStatus: z.enum(PROJECT_REQUEST_VALUES.landStatus),
+    legalDocumentationStatus: optionalChoice(PROJECT_REQUEST_VALUES.legalDocumentationStatus),
+    legalDocumentTypes: z.array(z.enum(PROJECT_REQUEST_VALUES.legalDocumentTypes)).max(4).optional().default([]),
+    hasMultipleOwners: z.boolean().nullable().optional().default(null),
     projectLocation: z.string().trim().min(5).max(255).refine(validManualAddress, "Ingresa una ubicación válida."),
     projectLocationFormattedAddress: nullableText(500),
     projectLocationLatitude: optionalCoordinate,
@@ -92,6 +120,7 @@ const projectRequestBody = z
   })
   .strict()
   .superRefine((body, context) => {
+    validatePropertyDependentFields(body, context);
     const uniqueLegalDocumentTypes = new Set(body.legalDocumentTypes);
     if (uniqueLegalDocumentTypes.size !== body.legalDocumentTypes.length) {
       context.addIssue({
@@ -100,14 +129,14 @@ const projectRequestBody = z
         path: ["legalDocumentTypes"],
       });
     }
-    if (body.legalDocumentationStatus === "available" && body.legalDocumentTypes.length === 0) {
+    if (hasAvailableProperty(body.landStatus) && body.legalDocumentationStatus === "available" && body.legalDocumentTypes.length === 0) {
       context.addIssue({
         code: "custom",
         message: "Selecciona al menos un documento disponible.",
         path: ["legalDocumentTypes"],
       });
     }
-    if (body.legalDocumentationStatus !== "available" && body.legalDocumentTypes.length > 0) {
+    if (hasAvailableProperty(body.landStatus) && body.legalDocumentationStatus !== "available" && body.legalDocumentTypes.length > 0) {
       context.addIssue({
         code: "custom",
         message: "Solo indica documentos que ya estén disponibles.",

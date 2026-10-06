@@ -19,7 +19,7 @@ export const PROJECT_REQUEST_OPTIONS = {
   experience: [
     { label: "Sí, buena experiencia", value: "positive" },
     { label: "Sí, mala experiencia", value: "negative" },
-    { label: "No, es la primera vez", value: "first_time" },
+    { label: "No, primera vez", value: "first_time" },
   ],
   investmentRange: [
     { label: "No lo tengo definido aún", value: "undefined" },

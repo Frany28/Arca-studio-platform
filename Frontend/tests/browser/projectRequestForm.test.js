@@ -1,0 +1,263 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+const REQUEST_ID = 31;
+let server;
+let browser;
+let origin;
+
+before(async () => {
+  server = await createServer({
+    root: fileURLToPath(new URL("../../", import.meta.url)), configFile: false, envDir: false,
+    plugins: [react(), tailwindcss()], define: { "import.meta.env.VITE_API_URL": JSON.stringify("/api") },
+    server: { host: "127.0.0.1", port: 0 },
+  });
+  await server.listen();
+  origin = `http://127.0.0.1:${server.httpServer.address().port}`;
+  browser = await chromium.launch({ channel: process.env.ARCA_TEST_BROWSER_CHANNEL || (process.platform === "win32" ? "msedge" : undefined) });
+});
+after(async () => { await browser?.close(); await server?.close(); });
+
+/**
+ * Abre la solicitud como cliente con la API simulada: registra cada llamada y responde
+ * al borrador, la carga de archivos y el envío final como lo hace el backend real.
+ */
+async function openRequestPage(context, { viewport = { width: 1440, height: 1000 } } = {}) {
+  const session = await browser.newContext({ viewport });
+  const page = await session.newPage();
+  const calls = [];
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    calls.push({ body: method === "POST" && path === "/api/project-requests" ? request.postDataJSON() : null, fileName: request.headers()["x-file-name"], method, path });
+    if (path === "/api/auth/me") return route.fulfill({ json: { user: { id: 5, firstName: "Cliente", email: "cliente@example.test", role: { code: "client", name: "Cliente" }, status: "active" } } });
+    if (path === "/api/geoapify/address-suggestions") return route.fulfill({ json: { suggestions: [] } });
+    if (method === "POST" && path === "/api/project-requests") return route.fulfill({ status: 201, json: { projectRequest: { id: REQUEST_ID, status: "draft" } } });
+    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/files`) return route.fulfill({ status: 201, json: { file: { id: 1 } } });
+    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/submit`) {
+      return route.fulfill({ json: { projectRequest: { id: REQUEST_ID, projectName: "Casa Lago", status: "pending_verification", compatibility: { level: "excellent", score: 84, observations: [] } } } });
+    }
+    return route.fulfill({ json: {} });
+  });
+  context.after(async () => { await session.close(); assert.deepEqual(errors, []); });
+  await page.goto(`${origin}/solicitudes/nueva`);
+  await page.getByRole("heading", { name: "Solicitud de proyecto" }).waitFor();
+  return { calls, page };
+}
+
+/** Elige una opción de un SelectField (DropdownMenu de selección única). */
+async function choose(page, fieldLabel, optionLabel) {
+  await page.getByRole("button", { name: fieldLabel, exact: true }).click();
+  await page.getByRole("menuitem", { name: optionLabel, exact: true }).click();
+}
+
+const pngFile = (name) => ({ name, mimeType: "image/png", buffer: Buffer.from(`fake-${name}`) });
+
+const LEGAL_HEADING = "Documentación legal del inmueble";
+const LEGAL_STATUS_LABEL = "¿Cuenta con documentación que acredite la situación legal del inmueble?";
+const OWNERS_LABEL = "¿El inmueble tiene más de un propietario?";
+
+/** Completa los campos obligatorios que no dependen del inmueble. */
+async function fillCommonFields(page) {
+  await page.getByRole("textbox", { name: "Nombre del proyecto" }).fill("Casa Lago");
+  await choose(page, "Tipo de proyecto", "Residencial");
+  await page.getByRole("combobox", { name: "Ubicación del proyecto" }).fill("Maracaibo, Estado Zulia");
+  await page.getByRole("textbox", { name: "Descripción del proyecto" }).fill("Vivienda unifamiliar de dos plantas frente al lago, con terraza.");
+  await choose(page, "¿Cómo desea desarrollar el proyecto?", "Por fases");
+  await choose(page, "Rango de inversión estimado", "$10,000 - $50,000 USD");
+  await choose(page, "Disponibilidad del capital", "Disponible ahora");
+  await page.getByRole("button", { name: "De inmediato", exact: true }).click();
+}
+
+/** Responde la pregunta del terreno (ChoiceGroup con botones aria-pressed). */
+async function chooseLand(page, label) {
+  await page.getByRole("button", { name: label, exact: true }).click();
+}
+
+const legalSection = (page) => page.getByRole("heading", { name: LEGAL_HEADING });
+
+/** Completa la sección legal con documentos y propietarios. */
+async function fillLegalSection(page) {
+  await choose(page, LEGAL_STATUS_LABEL, "Sí, tengo la documentación disponible");
+  const documents = page.getByRole("button", { name: "Documentación disponible" });
+  await documents.click();
+  for (const name of ["Documento de propiedad", "Contrato de compra", "Otro documento"]) {
+    await page.getByRole("menuitemcheckbox", { name }).click();
+  }
+  await documents.click();
+  await page.getByText("Documento de propiedad, Contrato de compra, otros", { exact: true }).waitFor();
+  await choose(page, OWNERS_LABEL, "No");
+}
+
+/** Envía con el código temporal y devuelve el cuerpo con el que se creó el borrador. */
+async function submitWithCode(page, calls) {
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByRole("textbox", { name: "Código" }).fill("123456");
+  const submitted = page.waitForRequest((request) => request.url().endsWith(`/project-requests/${REQUEST_ID}/submit`));
+  await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
+  await submitted;
+  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
+  return calls.find((call) => call.method === "POST" && call.path === "/api/project-requests").body;
+}
+
+/** Afirma que la solicitud no transporta datos del inmueble. */
+function assertNoPropertyData(body) {
+  assert.equal(body.legalDocumentationStatus, null);
+  assert.deepEqual(body.legalDocumentTypes, []);
+  assert.equal(body.hasMultipleOwners, null);
+  assert.equal(body.hasBlueprints, null);
+}
+
+test("Solicitud: enviar sin datos muestra errores, enfoca el primer campo y no llama a la API", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  // Sin respuesta sobre el terreno, la sección legal no existe en el formulario.
+  assert.equal(await legalSection(page).count(), 0);
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+
+  await page.getByText("Por favor, proporcione la información necesaria.").waitFor();
+  const nameInput = page.getByRole("textbox", { name: "Nombre del proyecto" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-invalid") === "true");
+  assert.equal(await nameInput.getAttribute("aria-invalid"), "true");
+  await page.getByText("Ingresa al menos 3 caracteres.").waitFor();
+  assert.equal(await page.getByRole("group", { name: "¿Tiene terreno o inmueble disponible?" }).getAttribute("aria-invalid"), "true");
+  assert.equal(calls.filter((call) => call.method !== "GET").length, 0);
+
+  await nameInput.fill("Casa Lago");
+  assert.equal(await page.getByText("Ingresa al menos 3 caracteres.").count(), 0);
+});
+
+test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con archivos y confirmación", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "Sí, disponible");
+  await legalSection(page).waitFor();
+
+  // La validación aplica: sin datos legales no se abre el código ni se llama a la API.
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.getByText("Selecciona el estado de la documentación.").waitFor();
+  await page.getByText("Indica si el inmueble tiene más de un propietario.").waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+
+  await fillLegalSection(page);
+
+  // Las selecciones se agregan; un adjunto pendiente se puede quitar (la tarjeta omite la extensión).
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.setInputFiles([pngFile("fachada.png")]);
+  await fileInput.setInputFiles([pngFile("terraza.png")]);
+  await page.getByText("terraza", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Eliminar archivo" }).count(), 2);
+  await page.getByRole("button", { name: "Eliminar archivo" }).last().click();
+  assert.equal(await page.getByText("terraza", { exact: true }).count(), 0);
+
+  // Abrir el código y volver atrás no pierde datos ni crea el borrador.
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await codeDialog.waitFor({ state: "detached" });
+  assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago");
+  assert.equal(calls.filter((call) => call.method === "POST").length, 0);
+
+  const body = await submitWithCode(page, calls);
+  await page.getByText("Excelente compatibilidad").first().waitFor();
+  assert.equal(body.projectName, "Casa Lago");
+  assert.equal(body.landStatus, "available");
+  assert.equal(body.legalDocumentationStatus, "available");
+  assert.deepEqual(body.legalDocumentTypes, ["property_deed", "purchase_contract", "other"]);
+  assert.equal(body.hasMultipleOwners, false);
+  assert.equal(body.startTime, "immediate");
+  assert.match(body.submissionId, /^[0-9a-f-]{36}$/);
+  const uploads = calls.filter((call) => call.path === `/api/project-requests/${REQUEST_ID}/files`);
+  assert.deepEqual(uploads.map((call) => decodeURIComponent(call.fileName || "")), ["fachada.png"]);
+});
+
+test("Caso 2 · No tiene inmueble: la sección no aparece, no bloquea y no envía datos legales", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  assert.equal(await legalSection(page).count(), 0);
+  assert.equal(await page.getByRole("button", { name: LEGAL_STATUS_LABEL }).count(), 0);
+
+  const body = await submitWithCode(page, calls);
+  assert.equal(body.landStatus, "unavailable");
+  assertNoPropertyData(body);
+});
+
+test("Caso 3 · Sí → No: los datos legales se descartan y no se envían", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "Sí, disponible");
+  await fillLegalSection(page);
+
+  await chooseLand(page, "No todavía");
+  await legalSection(page).waitFor({ state: "detached" });
+
+  // Volver a "Sí" muestra la sección vacía: los datos anteriores no siguen activos.
+  await chooseLand(page, "Sí, disponible");
+  await legalSection(page).waitFor();
+  assert.equal((await page.getByRole("button", { name: LEGAL_STATUS_LABEL }).textContent()).trim(), "Selecciona una opción");
+  assert.equal(await page.getByText("Documento de propiedad, Contrato de compra, otros", { exact: true }).count(), 0);
+
+  await chooseLand(page, "En proceso de adquirirlo");
+  await legalSection(page).waitFor({ state: "detached" });
+  const body = await submitWithCode(page, calls);
+  assert.equal(body.landStatus, "acquiring");
+  assertNoPropertyData(body);
+});
+
+test("Caso 4 · No → Sí: la sección aparece y sus validaciones se activan", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await chooseLand(page, "Sí, disponible");
+  await legalSection(page).waitFor();
+
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.getByText("Selecciona el estado de la documentación.").waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(calls.filter((call) => call.method === "POST").length, 0);
+
+  // "Documentación disponible" solo es obligatoria si la documentación está disponible.
+  await choose(page, LEGAL_STATUS_LABEL, "Sí, tengo la documentación disponible");
+  await page.getByText("Selecciona al menos un documento disponible.").waitFor();
+});
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 768, height: 1000 }, { width: 375, height: 812 }]) {
+  test(`Solicitud ${viewport.width}px: la sección legal entra y sale sin huecos ni scroll horizontal`, async (context) => {
+    const { page } = await openRequestPage(context, { viewport });
+    // Secuencia de hijos del formulario: S = sección, D = divisor decorativo.
+    const layout = () => page.locator("form").evaluate((form) => [...form.children]
+      .map((child) => (child.tagName === "SECTION" ? "S" : child.getAttribute("aria-hidden") === "true" ? "D" : "x"))
+      .join(""));
+    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+    const hidden = await layout();
+    await chooseLand(page, "Sí, disponible");
+    await legalSection(page).waitFor();
+    const visible = await layout();
+    assert.equal(visible.split("S").length - hidden.split("S").length, 1);
+    assert.equal(await overflow(), 0);
+
+    await chooseLand(page, "No todavía");
+    await legalSection(page).waitFor({ state: "detached" });
+    // Sin la sección no quedan dos divisores seguidos ni espacio reservado.
+    assert.equal(await layout(), hidden);
+    assert.doesNotMatch(hidden, /DD/);
+    assert.equal(await overflow(), 0);
+
+    if (viewport.width < 1024) {
+      const [description, fields] = await page.locator("form > section").first().evaluate((section) => (
+        [...section.children].map((child) => child.getBoundingClientRect().width)
+      ));
+      assert.equal(Math.round(description), Math.round(fields));
+    }
+  });
+}

@@ -122,9 +122,10 @@ Este input también participa en las reglas de coherencia entre tamaño e invers
 
 - Pertenece a: `Detalles del proyecto`.
 - Tipo de input: selección de botones.
-- Obligatorio: no.
+- Obligatorio: sí.
 - Máximo: `10` puntos.
 - Uso: mide la preparación material del proyecto.
+- Condición: solo “Sí, disponible” muestra la sección `Documentación legal del inmueble` (inputs 8–11). Con otra respuesta esos datos no se preguntan, se limpian y se envían vacíos, por lo que aportan 0 puntos.
 
 | Respuesta disponible | Puntos |
 | --- | ---: |
@@ -139,7 +140,7 @@ Este input también se contrasta con el plazo de inicio.
 
 - Pertenece a: `Documentación legal del inmueble`.
 - Tipo de input: selección.
-- Obligatorio: sí.
+- Obligatorio: sí, cuando hay terreno o inmueble disponible (input 7); en otro caso no se pregunta.
 - Máximo: `6` puntos.
 - Uso: mide si la situación documental básica está preparada, sin favorecer una forma de tenencia sobre otra.
 
@@ -172,7 +173,7 @@ Seleccionar varios documentos no multiplica los puntos. Todos los tipos válidos
 
 - Pertenece a: `Documentación legal del inmueble`.
 - Tipo de input: selección Sí/No.
-- Obligatorio: sí.
+- Obligatorio: sí, cuando hay terreno o inmueble disponible (input 7); en otro caso no se pregunta.
 - Aporta puntos: no.
 - Uso: permite organizar la revisión y las autorizaciones necesarias sin juzgar negativamente la copropiedad.
 
@@ -185,7 +186,7 @@ Seleccionar varios documentos no multiplica los puntos. Todos los tipos válidos
 
 - Pertenece a: `Documentación legal del inmueble`.
 - Tipo de input: checkbox de tres estados.
-- Obligatorio: no.
+- Obligatorio: no. Solo se pregunta cuando hay terreno o inmueble disponible (input 7).
 - Máximo: `2` puntos.
 - Uso: información operativa para la revisión humana.
 

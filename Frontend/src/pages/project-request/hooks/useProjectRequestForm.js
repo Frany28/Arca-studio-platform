@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 
-import { getProjectRequestFieldErrors } from "../../../utils/projectRequestValidation.js";
+import {
+  getProjectRequestFieldErrors,
+  hasAvailableProperty,
+} from "../../../utils/projectRequestValidation.js";
 
 const INITIAL_FORM = {
   projectName: "",
@@ -26,6 +29,9 @@ const INITIAL_FORM = {
   hasBlueprints: "Indeterminate",
   referenceLink: "",
 };
+
+// Campos que solo existen con terreno o inmueble disponible (misma regla que el backend).
+const PROPERTY_DEPENDENT_FIELDS = ["legalDocumentationStatus", "legalDocumentTypes", "multipleOwners", "hasBlueprints"];
 
 /**
  * Adapta campos de la solicitud a los valores editables y sus defaults.
@@ -142,6 +148,25 @@ export default function useProjectRequestForm({
   };
 
   /**
+   * Cambia la disponibilidad del terreno. Si deja de estar disponible, restablece los
+   * campos del inmueble a su valor inicial: la sección se oculta y sus datos no deben
+   * reaparecer ni enviarse como parte activa de la solicitud.
+   *
+   * @param {string} status - Respuesta seleccionada sobre el terreno.
+   * @param {Array} [fileErrors=[]] - Errores para coordinar el aviso.
+   * @returns {void} Actualiza el formulario y revalida cuando corresponde.
+   */
+  const updateLandStatus = (status, fileErrors = []) => {
+    const clearedPropertyFields = hasAvailableProperty(status)
+      ? {}
+      : Object.fromEntries(PROPERTY_DEPENDENT_FIELDS.map((field) => [field, INITIAL_FORM[field]]));
+    const nextForm = { ...form, ...clearedPropertyFields, landStatus: status };
+
+    setForm(nextForm);
+    updateErrorsAfterChange(nextForm, fileErrors);
+  };
+
+  /**
    * Descarta la direcci?n estructurada y coordenadas previas al editar el texto libre.
    *
    * @param {Object} event - Evento cuyo target.value contiene la ubicaci?n.
@@ -221,6 +246,7 @@ export default function useProjectRequestForm({
     resetFormState,
     setIsLocationInputFocused,
     update,
+    updateLandStatus,
     updateLegalDocumentationStatus,
     updateLocation,
     validateForSubmit,

@@ -29,6 +29,8 @@ export const DROPDOWN_MENU_DEFAULT_PROPS = {
   open: undefined,
   defaultOpen: false,
   interactive: true,
+  // Bloquea apertura y selección (p. ej. campos dependientes de otra respuesta del formulario).
+  disabled: false,
   preserveMenuSpace: false,
   items: DROPDOWN_MENU_DEFAULT_ITEMS,
   hoveredItemId: undefined,

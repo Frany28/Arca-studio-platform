@@ -6,6 +6,7 @@ export const PROJECT_REQUEST_REQUIRED_FIELDS = [
   "location",
   "description",
   "developmentMode",
+  "landStatus",
   "legalDocumentationStatus",
   "legalDocumentTypes",
   "multipleOwners",
@@ -20,6 +21,18 @@ export const PROJECT_REQUEST_FILE_LIMITS = {
   maxNameLength: 150,
   maxTotalBytes: 200 * 1024 * 1024,
 };
+
+/**
+ * Indica si el cliente declaró un terreno o inmueble disponible. Es la misma regla de
+ * dominio que aplica el backend: solo entonces existen la situación legal, la documentación,
+ * los propietarios y los planos del lugar; en otro caso esos campos no aplican.
+ *
+ * @param {string|null|undefined} landStatus - Respuesta sobre disponibilidad del terreno.
+ * @returns {boolean} true cuando la respuesta es "available".
+ */
+export function hasAvailableProperty(landStatus) {
+  return landStatus === "available";
+}
 
 const FILE_MIME_BY_EXTENSION = new Map([
   ["jpeg", "image/jpeg"],
@@ -58,8 +71,9 @@ function isValidLocation(value) {
 
 /**
  * Valida campos de la solicitud y devuelve mensajes indexados por campo.
- * Comprueba longitudes, opciones del catálogo, enlace HTTP(S), documentos legales
- * sin duplicados y su relación con disponibilidad. Exige coordenadas presentes
+ * Comprueba longitudes, opciones del catálogo y enlace HTTP(S). La situación legal, los
+ * documentos (sin duplicados y coherentes con su disponibilidad) y los propietarios solo
+ * se validan cuando hay terreno o inmueble disponible. Exige coordenadas presentes
  * en pareja y compara sus rangos numéricos; no verifica explícitamente su finitud.
  *
  * @param {Object} [values={}] - Valores actuales del formulario.
@@ -82,34 +96,37 @@ export function getProjectRequestFieldErrors(values = {}) {
   if (description.length < 30) errors.description = "Ingresa una descripción de al menos 30 caracteres.";
   else if (description.length > 100) errors.description = "Máximo 100 caracteres.";
 
-  for (const field of ["developmentMode", "investmentRange", "capitalAvailability", "startTime"]) {
+  for (const field of ["developmentMode", "landStatus", "investmentRange", "capitalAvailability", "startTime"]) {
     if (!optionValues(field).has(values[field])) errors[field] = "Selecciona una opción válida.";
   }
-  for (const field of ["projectSize", "landStatus", "decisionMaker", "quality", "experience"]) {
+  for (const field of ["projectSize", "decisionMaker", "quality", "experience"]) {
     if (values[field] && !optionValues(field).has(values[field])) errors[field] = "Selecciona una opción válida.";
   }
 
-  if (!optionValues("legalDocumentationStatus").has(values.legalDocumentationStatus)) {
-    errors.legalDocumentationStatus = "Selecciona el estado de la documentación.";
-  }
+  // Los datos del inmueble solo se validan si aplican; ocultos no generan errores.
+  if (hasAvailableProperty(values.landStatus)) {
+    if (!optionValues("legalDocumentationStatus").has(values.legalDocumentationStatus)) {
+      errors.legalDocumentationStatus = "Selecciona el estado de la documentación.";
+    }
 
-  const legalDocumentTypes = Array.isArray(values.legalDocumentTypes)
-    ? values.legalDocumentTypes
-    : [];
-  const allowedLegalDocumentTypes = optionValues("legalDocumentTypes");
-  const hasInvalidLegalDocumentType = legalDocumentTypes.some(
-    (type) => !allowedLegalDocumentTypes.has(type),
-  );
-  if (hasInvalidLegalDocumentType || new Set(legalDocumentTypes).size !== legalDocumentTypes.length) {
-    errors.legalDocumentTypes = "Selecciona documentos válidos sin repetirlos.";
-  } else if (values.legalDocumentationStatus === "available" && legalDocumentTypes.length === 0) {
-    errors.legalDocumentTypes = "Selecciona al menos un documento disponible.";
-  } else if (values.legalDocumentationStatus !== "available" && legalDocumentTypes.length > 0) {
-    errors.legalDocumentTypes = "Los documentos solo pueden seleccionarse cuando están disponibles.";
-  }
+    const legalDocumentTypes = Array.isArray(values.legalDocumentTypes)
+      ? values.legalDocumentTypes
+      : [];
+    const allowedLegalDocumentTypes = optionValues("legalDocumentTypes");
+    const hasInvalidLegalDocumentType = legalDocumentTypes.some(
+      (type) => !allowedLegalDocumentTypes.has(type),
+    );
+    if (hasInvalidLegalDocumentType || new Set(legalDocumentTypes).size !== legalDocumentTypes.length) {
+      errors.legalDocumentTypes = "Selecciona documentos válidos sin repetirlos.";
+    } else if (values.legalDocumentationStatus === "available" && legalDocumentTypes.length === 0) {
+      errors.legalDocumentTypes = "Selecciona al menos un documento disponible.";
+    } else if (values.legalDocumentationStatus !== "available" && legalDocumentTypes.length > 0) {
+      errors.legalDocumentTypes = "Los documentos solo pueden seleccionarse cuando están disponibles.";
+    }
 
-  if (!optionValues("multipleOwners").has(values.multipleOwners)) {
-    errors.multipleOwners = "Indica si el inmueble tiene más de un propietario.";
+    if (!optionValues("multipleOwners").has(values.multipleOwners)) {
+      errors.multipleOwners = "Indica si el inmueble tiene más de un propietario.";
+    }
   }
 
   if (referenceLink && (referenceLink.length > 500 || !isHttpUrl(referenceLink))) {
@@ -180,28 +197,33 @@ function nullableText(value) {
 /**
  * Transforma el formulario al payload de solicitud sin validarlo ni incluir adjuntos.
  * Recorta textos, convierte opciones vacías a null, traduce hasBlueprints Yes/No
- * a boolean o null y multipleOwners yes a boolean. Añade submissionId solo si es truthy.
+ * a boolean o null y multipleOwners yes a boolean. Sin terreno disponible envía los datos
+ * del inmueble como null y la documentación vacía, como exige el contrato del backend. Añade submissionId solo si es truthy.
  *
  * @param {Object} form - Campos de formulario y metadatos de ubicación.
  * @param {string} [submissionId] - Referencia opcional del envío.
  * @returns {Object} Payload con nombres de campos esperados por la API.
  */
 export function buildProjectRequestPayload(form, submissionId) {
+  // Sin inmueble disponible los datos legales se omiten aunque sigan en el estado local.
+  const hasProperty = hasAvailableProperty(form.landStatus);
+
   return {
     capitalAvailability: form.capitalAvailability,
     decisionMaker: form.decisionMaker || null,
     description: nullableText(form.description),
     developmentMode: form.developmentMode,
     experience: form.experience || null,
-    hasBlueprints:
-      form.hasBlueprints === "Yes" ? true : form.hasBlueprints === "No" ? false : null,
+    hasBlueprints: hasProperty
+      ? form.hasBlueprints === "Yes" ? true : form.hasBlueprints === "No" ? false : null
+      : null,
     investmentRange: form.investmentRange,
     landStatus: form.landStatus || null,
-    legalDocumentationStatus: form.legalDocumentationStatus,
-    legalDocumentTypes: Array.isArray(form.legalDocumentTypes)
+    legalDocumentationStatus: hasProperty ? form.legalDocumentationStatus : null,
+    legalDocumentTypes: hasProperty && Array.isArray(form.legalDocumentTypes)
       ? form.legalDocumentTypes
       : [],
-    hasMultipleOwners: form.multipleOwners === "yes",
+    hasMultipleOwners: hasProperty ? form.multipleOwners === "yes" : null,
     projectLocation: String(form.location || "").trim(),
     projectLocationFormattedAddress: nullableText(form.locationFormattedAddress),
     projectLocationLatitude: form.locationLatitude ?? null,
