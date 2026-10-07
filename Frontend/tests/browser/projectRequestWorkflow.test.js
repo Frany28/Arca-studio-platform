@@ -29,19 +29,33 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Intercepta HTTP del hook real y permite resolver lecturas y mutaciones de forma controlada.
  * Registra peticiones y errores; cada prueba dispone de sesión y transportes aislados.
  */
-async function openPage(context, { role = "architect", queue = [REQUEST], holdQueue = false, realDashboard = false } = {}) {
+async function openPage(context, { role = "architect", queue = [REQUEST], holdQueue = false, realDashboard = false, clientResponse } = {}) {
   const session = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await session.newPage();
   const calls = [];
   const mutations = [];
   const reads = [];
   const errors = [];
+  const clientReads = [];
+  await page.addInitScript(() => {
+    window.__clientSignals = [];
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (url, options) => {
+      if (String(url).includes("/admin/users/")) window.__clientSignals.push(options?.signal);
+      return originalFetch(url, options);
+    };
+  });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     calls.push({ method: request.method(), path, body: request.postDataJSON() });
     if (request.method() !== "GET") { mutations.push(route); return; }
+    if (path === "/api/admin/users/41" && clientResponse) {
+      clientReads.push(route);
+      await clientResponse(route, clientReads.length);
+      return;
+    }
     if (path === "/api/project-requests/review-queue") {
       if (holdQueue) { reads.push(route); return; }
       await route.fulfill({ json: { projectRequests: queue, nextCursor: "ignored-next-page" } });
@@ -67,7 +81,7 @@ async function openPage(context, { role = "architect", queue = [REQUEST], holdQu
     await page.waitForFunction(() => Boolean(window.workflowHarness?.result));
     if (!holdQueue) await waitState(page, (state) => !state.reviewQueue.loading);
   }
-  return { page, calls, mutations, reads };
+  return { page, calls, mutations, reads, clientReads };
 }
 
 /** Espera una condición sobre la salida pública del hook, sin inspeccionar internals de React. */
@@ -295,7 +309,8 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
 test("Dashboard admin real: el drawer de detalle muestra datos reales y preselecciona la decisión", async (context) => {
   const detailedRequest = {
     ...REQUEST,
-    clientId: 41,
+    clientId: 2,
+    requestedBy: 41,
     compatibility: { level: "excellent", score: 92 },
     createdAt: "2026-03-22T12:00:00.000Z",
     location: "Maracaibo, Zulia",
@@ -314,6 +329,7 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   // Los indicadores sin backend se rotulan como ejemplo y no se presentan como datos reales.
   assert.equal(await drawer.locator('[data-prototype="true"]').count(), 2);
   assert.equal(calls.filter((call) => call.path === "/api/admin/users/41").length, 1);
+  assert.equal(calls.filter((call) => ["/api/admin/users/2", "/api/admin/users/7"].includes(call.path)).length, 0);
   // El drawer reutiliza la cola ya cargada por el dashboard: abrirlo no la vuelve a leer.
   assert.equal(queueCalls(calls), queueReadsBeforeDrawer);
 
@@ -333,6 +349,81 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   assert.equal(await decisionDialog.getByRole("heading", { name: "Casa Norte" }).count(), 1);
   // Abrir una acción no ejecuta la decisión: solo el modal confirma contra la API.
   assert.equal(mutations.length, 0);
+});
+
+/** Abre el drawer desde el resumen real, conservando las cargas iniciales del dashboard. */
+async function openClientDetails(page) {
+  await page.waitForLoadState("networkidle");
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  await drawer.waitFor();
+  return drawer;
+}
+
+for (const requestedBy of [undefined, null, "undefined", "null", "NaN", -1, 0, 1.5, true]) {
+  test(`Drawer cliente: ID ausente/inválido ${String(requestedBy)} omite HTTP`, async (context) => {
+    const { page, calls } = await openPage(context, { role: "admin", realDashboard: true, queue: [{ ...REQUEST, clientId: 2, requestedBy }] });
+    const drawer = await openClientDetails(page);
+    await drawer.getByText("Información del cliente no disponible", { exact: true }).waitFor();
+    assert.equal(calls.filter((call) => call.path.startsWith("/api/admin/users/")).length, 0);
+    assert.equal(await drawer.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
+    await drawer.getByText("Casa Norte", { exact: true }).waitFor();
+  });
+}
+
+for (const [status, code, message, expected, retryable] of [
+  [404, "USER_NOT_FOUND", "El usuario seleccionado no existe.", "Información del cliente no disponible", false],
+  [403, "FORBIDDEN", "No tienes permiso para consultar este usuario.", "No tienes permiso para consultar este usuario.", false],
+  [401, "UNAUTHENTICATED", "Debes iniciar sesión.", "Debes iniciar sesión.", false],
+  [500, "42703", "Ocurrió un error inesperado.", "No fue posible cargar los datos del cliente.", true],
+  [null, "NETWORK_ERROR", "", "No pudimos conectarnos con el servidor. Revisa tu conexión e inténtalo nuevamente.", true],
+]) {
+  test(`Drawer cliente: ${code}, aislamiento y reintento independiente`, async (context) => {
+    const { page, calls } = await openPage(context, {
+      role: "admin", realDashboard: true,
+      queue: [{ ...REQUEST, clientId: 2, requestedBy: 41, location: "Ubicación real", compatibility: { level: "excellent", score: 92 } }],
+      clientResponse: async (route, attempt) => {
+        if (attempt > 1) { await route.fulfill({ json: { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } } }); return; }
+        if (status === null) await route.abort("failed");
+        else await route.fulfill({ status, json: { code, message } });
+      },
+    });
+    const drawer = await openClientDetails(page);
+    await drawer.getByText(expected, { exact: true }).waitFor();
+    await drawer.getByText("Excelente compatibilidad", { exact: true }).waitFor();
+    await drawer.getByText("Ubicación real", { exact: true }).waitFor();
+    assert.equal(await drawer.getByRole("button", { name: "Ver solicitud", exact: true }).isEnabled(), true);
+    const retry = drawer.getByRole("button", { name: "Reintentar", exact: true });
+    assert.equal(await retry.count(), retryable ? 1 : 0);
+    if (retryable) {
+      const previousCalls = calls.length;
+      await retry.click();
+      await drawer.getByText("Esteban Ruiz", { exact: true }).waitFor();
+      await drawer.getByText("Nextj", { exact: true }).waitFor();
+      assert.deepEqual(calls.slice(previousCalls).map((call) => call.path), ["/api/admin/users/41"]);
+      assert.equal(await retry.count(), 0);
+    }
+  });
+}
+
+test("Drawer cliente: cerrar cancela la lectura y reabrir carga sin mostrar AbortError", async (context) => {
+  const { page, clientReads } = await openPage(context, {
+    role: "admin", realDashboard: true, queue: [{ ...REQUEST, clientId: 2, requestedBy: 41 }],
+    clientResponse: async (route, attempt) => {
+      if (attempt > 1) await route.fulfill({ json: { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } } });
+    },
+  });
+  const drawer = await openClientDetails(page);
+  await page.waitForFunction(() => window.__clientSignals.length > 0);
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__clientSignals.every((signal) => signal.aborted));
+  await drawer.waitFor({ state: "detached" });
+  // Completar el transporte viejo después del cierre no debe introducir un error visible.
+  await clientReads[0].fulfill({ status: 500, json: { message: "Error de lectura obsoleta" } });
+  const reopened = await openClientDetails(page);
+  await reopened.getByText("Esteban Ruiz", { exact: true }).waitFor();
+  assert.equal(await reopened.getByText("Error de lectura obsoleta", { exact: true }).count(), 0);
+  assert.equal(await reopened.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
 });
 
 test("Architect: la reunión exige elección explícita y es independiente de aprobar", async (context) => {
@@ -361,7 +452,7 @@ for (const [meetingRecommendation, label, colorToken] of [
   [null, "Sin recomendación técnica registrada", null],
 ]) {
   test(`Drawer: baja compatibilidad y reunión ${String(meetingRecommendation)}, con historial y temas`, async (context) => {
-    const queue = [{ ...REQUEST, clientId: 41, location: "Maracaibo, Zulia", projectType: "residential",
+    const queue = [{ ...REQUEST, clientId: 2, requestedBy: 41, location: "Maracaibo, Zulia", projectType: "residential",
       compatibility: { level: "low", score: 28 },
       reviews: [
         { meetingRecommendation, recommendation: "approve", note: "Justificación de la revisión más reciente.", updatedAt: "2026-10-06T12:00:00Z" },

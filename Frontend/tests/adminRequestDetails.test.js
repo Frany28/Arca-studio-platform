@@ -29,6 +29,7 @@ const SUMMARY = {
 
 const QUEUE_REQUEST = {
   clientId: 41,
+  requestedBy: 52,
   compatibility: { level: "excellent", score: 92 },
   id: 7,
   location: "Maracaibo, Zulia",
@@ -44,6 +45,7 @@ test("combina overview y cola técnica con datos reales", () => {
 
   assert.equal(details.isPartial, false);
   assert.equal(details.clientId, 41);
+  assert.equal(details.clientUserId, 52);
   assert.equal(details.projectName, "Apartamento Noventa y Uno");
   assert.equal(details.projectTypeLabel, "Residencial");
   assert.equal(details.location, "Maracaibo, Zulia");
@@ -63,6 +65,7 @@ test("sin entrada en la cola no inventa compatibilidad, revisión, ubicación ni
   assert.equal(details.justification, null);
   assert.equal(details.location, null);
   assert.equal(details.clientId, null);
+  assert.equal(details.clientUserId, null);
   assert.equal(details.projectName, SUMMARY.projectName);
 });
 

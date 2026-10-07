@@ -37,6 +37,7 @@ function PartialDataNotice({ queueError, onRetry }) {
  */
 function ClientValue({ client, field, emptyText }) {
   if (client.loading) return <Loader preset="detailValue" label="Cargando datos del cliente" />;
+  if (client.unavailable) return "Información no disponible";
   if (client.error) return "No disponible";
   return client.client?.[field] || emptyText;
 }
@@ -47,7 +48,7 @@ function ClientValue({ client, field, emptyText }) {
  *
  * @param {Object} props - Modelo de la solicitud, estado del cliente y de la cola.
  * @param {Object} props.details - Resultado de `buildAdminRequestDetails`.
- * @param {{client: Object|null, error: string, loading: boolean, retry: Function}} props.client - Lectura del cliente.
+ * @param {Object} props.client - Lectura independiente, ausencia y política de reintento del cliente.
  * @param {string} [props.queueError] - Error de la cola técnica, si la solicitud no está en ella.
  * @param {Function} props.onRetryQueue - Reintenta la lectura de la cola.
  * @returns {import("react").ReactElement} Secciones del drawer.
@@ -96,22 +97,22 @@ function AdminRequestDetailsContent({ client, details, onRetryQueue, queueError 
       <section className="flex flex-col gap-[8px]" aria-label="Cliente">
         <dl className="m-0 flex flex-wrap gap-[24px]">
           <RequestDetailField label="Nombre">
-            {details.clientId == null
+            {details.clientUserId == null
               ? unavailableText
               : <ClientValue client={client} field="name" emptyText="Sin nombre" />}
           </RequestDetailField>
           <RequestDetailField label="Empresa">
-            {details.clientId == null
+            {details.clientUserId == null
               ? unavailableText
               : <ClientValue client={client} field="companyName" emptyText="Sin empresa registrada" />}
           </RequestDetailField>
         </dl>
-        {client.error && details.clientId != null ? (
+        {client.error || client.unavailable ? (
           <div className="flex flex-col items-start gap-[4px]" role="status">
-            <p className="text-body-4 m-0 text-[var(--color-text-100)]">{client.error}</p>
-            <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} onClick={client.retry}>
+            <p className="text-body-4 m-0 text-[var(--color-text-100)]">{client.error || "Información del cliente no disponible"}</p>
+            {client.canRetry ? <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={client.loading} onClick={client.retry}>
               Reintentar
-            </Button>
+            </Button> : null}
           </div>
         ) : null}
       </section>

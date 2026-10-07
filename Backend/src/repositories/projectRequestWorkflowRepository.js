@@ -21,6 +21,7 @@ function toPerson(value) {
 
 /**
  * Mapea la cola técnica a su contrato público, separando workflow, reunión y justificación.
+ * Conserva por separado el cliente comercial y el usuario solicitante para evitar confundir sus IDs.
  * Normaliza a null las decisiones de reunión ausentes sin inferir valores históricos.
  *
  * @param {unknown} row - Fila obtenida desde PostgreSQL.
@@ -52,6 +53,7 @@ function toWorkflowRequest(row) {
     location: row.location,
     projectName: row.project_name,
     projectType: row.project_type,
+    requestedBy: row.requested_by == null ? null : Number(row.requested_by),
     rejectionReason: row.rejection_reason || null,
     reviews: Array.isArray(row.reviews)
       ? row.reviews.map((review) => ({
@@ -113,6 +115,7 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
       select
         request.id,
         request.client_id,
+        request.requested_by,
         request.project_name,
         request.project_type,
         request.location,

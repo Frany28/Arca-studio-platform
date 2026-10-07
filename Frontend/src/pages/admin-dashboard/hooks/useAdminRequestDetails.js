@@ -27,7 +27,7 @@ export function useAdminRequestDetails({ newRequests, reviewQueue, openRequestWo
     [queueRequest, summary],
   );
   const client = useAdminRequestClient({
-    clientId: details?.clientId ?? null,
+    userId: details?.clientUserId ?? null,
     enabled: selection.open,
   });
 

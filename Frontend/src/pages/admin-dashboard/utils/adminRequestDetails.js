@@ -28,6 +28,7 @@ export function getLatestRequestReview(reviews) {
  * esos datos para que la vista muestre estados vacíos en lugar de valores inventados.
  * La reunión y la nota salen de la misma revisión; una histórica reciente no hereda
  * reuniones anteriores. Los indicadores sin backend llegan separados en `prototypeIndicators`.
+ * `clientUserId` procede de requestedBy; clientId conserva la identidad comercial del cliente.
  *
  * @param {Object} params - Fuentes ya cargadas por el dashboard.
  * @param {Object} params.summary - Solicitud de `overview.newRequests`.
@@ -41,6 +42,7 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
 
   return {
     clientId: queueRequest?.clientId ?? null,
+    clientUserId: queueRequest?.requestedBy ?? null,
     compatibility: getCompatibilityPresentation(queueRequest?.compatibility),
     createdAt: source.createdAt || null,
     id: source.id,
