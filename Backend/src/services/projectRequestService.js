@@ -1,5 +1,6 @@
 import { AppError, ConflictError, NotFoundError } from "../errors/appError.js";
-import { evaluateProjectCompatibility, publicCompatibility } from "../domain/projectRequest.js";
+import { evaluateProjectCompatibility, publicCompatibility } from "../domain/projectRequestCompatibility.js";
+import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import {
   createProjectRequestDraft,
   findExistingProjectNameForClient,
@@ -29,16 +30,18 @@ function requireClient(user) {
 }
 
 /**
- * Transforma la representación pública de la solicitud a la representación pública esperada.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Transforma el registro de la solicitud a su contrato público.
+ * Expone la compatibilidad persistida y calcula al vuelo la completitud y la viabilidad
+ * financiera; son métricas separadas que no modifican ni se derivan del score.
  *
- * @param {unknown} record - Valor de `record` requerido por esta operación.
- * @returns {object} Resultado producido por la operación.
+ * @param {object} record - Registro obtenido del repositorio de solicitudes.
+ * @returns {object} Solicitud pública con `compatibility`, `completeness` y `financialViability`.
  */
 export function toPublicProjectRequest(record) {
   const { compatibility, submissionId: _submissionId, ...projectRequest } = record;
   return {
     ...projectRequest,
+    ...buildProjectRequestMetrics(record),
     compatibility: publicCompatibility(compatibility),
   };
 }

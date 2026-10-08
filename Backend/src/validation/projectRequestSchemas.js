@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { hasAvailableProperty, PROJECT_REQUEST_VALUES } from "../domain/projectRequest.js";
+import { hasAvailableProperty, PROJECT_REQUEST_TEXT_LIMITS, PROJECT_REQUEST_VALUES } from "../domain/projectRequest.js";
 
 const positiveId = z.coerce.number().int().positive();
 /**
@@ -89,7 +89,7 @@ const projectRequestBody = z
   .object({
     capitalAvailability: z.enum(PROJECT_REQUEST_VALUES.capitalAvailability),
     decisionMaker: optionalChoice(PROJECT_REQUEST_VALUES.decisionMaker),
-    description: z.string().trim().min(30).max(100),
+    description: z.string().trim().min(PROJECT_REQUEST_TEXT_LIMITS.description.min).max(PROJECT_REQUEST_TEXT_LIMITS.description.max),
     developmentMode: z.enum(PROJECT_REQUEST_VALUES.developmentMode),
     experience: optionalChoice(PROJECT_REQUEST_VALUES.experience),
     hasBlueprints: z.boolean().nullable().optional().default(null),
@@ -99,12 +99,12 @@ const projectRequestBody = z
     legalDocumentationStatus: optionalChoice(PROJECT_REQUEST_VALUES.legalDocumentationStatus),
     legalDocumentTypes: z.array(z.enum(PROJECT_REQUEST_VALUES.legalDocumentTypes)).max(4).optional().default([]),
     hasMultipleOwners: z.boolean().nullable().optional().default(null),
-    projectLocation: z.string().trim().min(5).max(255).refine(validManualAddress, "Ingresa una ubicación válida."),
+    projectLocation: z.string().trim().min(PROJECT_REQUEST_TEXT_LIMITS.projectLocation.min).max(PROJECT_REQUEST_TEXT_LIMITS.projectLocation.max).refine(validManualAddress, "Ingresa una ubicación válida."),
     projectLocationFormattedAddress: nullableText(500),
     projectLocationLatitude: optionalCoordinate,
     projectLocationLongitude: optionalCoordinate,
     projectLocationProviderPlaceId: nullableText(255),
-    projectName: z.string().trim().min(3).max(150),
+    projectName: z.string().trim().min(PROJECT_REQUEST_TEXT_LIMITS.projectName.min).max(PROJECT_REQUEST_TEXT_LIMITS.projectName.max),
     projectSize: optionalChoice(PROJECT_REQUEST_VALUES.projectSize),
     projectType: z.enum(PROJECT_REQUEST_VALUES.projectType),
     quality: optionalChoice(PROJECT_REQUEST_VALUES.quality),

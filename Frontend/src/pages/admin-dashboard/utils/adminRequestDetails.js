@@ -1,5 +1,8 @@
-import { getPrototypeRequestIndicators } from "../data/adminRequestDetailsPrototype.js";
 import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
+import {
+  getCompletenessPresentation,
+  getFinancialViabilityPresentation,
+} from "../../../utils/projectRequestMetrics.js";
 import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
 import { getProjectTypeLabel } from "../../../utils/projectTypeDisplay.js";
 import { getMeetingRecommendationPresentation } from "../../../utils/projectRequestMeetingRecommendation.js";
@@ -27,7 +30,8 @@ export function getLatestRequestReview(reviews) {
  * Si la solicitud no está en la primera página de la cola, `isPartial` indica que faltan
  * esos datos para que la vista muestre estados vacíos en lugar de valores inventados.
  * La reunión y la nota salen de la misma revisión; una histórica reciente no hereda
- * reuniones anteriores. Los indicadores sin backend llegan separados en `prototypeIndicators`.
+ * reuniones anteriores. Completitud y viabilidad financiera son métricas propias de la API,
+ * independientes de la compatibilidad; si faltan quedan en null para mostrar estados vacíos.
  * `clientUserId` procede de requestedBy; clientId conserva la identidad comercial del cliente.
  *
  * @param {Object} params - Fuentes ya cargadas por el dashboard.
@@ -44,14 +48,15 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     clientId: queueRequest?.clientId ?? null,
     clientUserId: queueRequest?.requestedBy ?? null,
     compatibility: getCompatibilityPresentation(queueRequest?.compatibility),
+    completeness: getCompletenessPresentation(queueRequest?.completeness),
     createdAt: source.createdAt || null,
+    financialViability: getFinancialViabilityPresentation(queueRequest?.financialViability),
     id: source.id,
     isPartial: !queueRequest,
     justification: latestReview?.note?.trim() || null,
     location: queueRequest?.location?.trim() || null,
     projectName: source.projectName || "Solicitud de proyecto",
     projectTypeLabel: getProjectTypeLabel(source.projectType, "Sin tipo registrado"),
-    prototypeIndicators: getPrototypeRequestIndicators(queueRequest?.compatibility?.level),
     recommendation: getMeetingRecommendationPresentation(latestReview?.meetingRecommendation),
     reviewerName: latestReview?.reviewer?.name || null,
     status: { label: status.label, theme: status.badgeTheme },

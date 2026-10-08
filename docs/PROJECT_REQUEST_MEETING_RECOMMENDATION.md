@@ -87,7 +87,7 @@ La cola compartida sigue leyendo la primera página. Una solicitud fuera de esa 
 | `Frontend/src/utils/projectRequestMeetingRecommendation.js` | Mapping único de etiquetas, temas y opciones visibles. |
 | `Frontend/src/pages/admin-dashboard/utils/adminRequestDetails.js` | Reunión y justificación de la última revisión. |
 | `Frontend/src/pages/admin-dashboard/components/admin-request-details/AdminRequestEvaluation.jsx` | Render de badges, iconos y barras semánticas. |
-| `Frontend/src/pages/admin-dashboard/data/adminRequestDetailsPrototype.js` | Variante baja del prototipo, siempre identificada. |
+| `Frontend/src/utils/projectRequestMetrics.js` | Completitud y viabilidad financiera reales (sustituye al prototipo eliminado `adminRequestDetailsPrototype.js`). |
 | `Frontend/src/assets/project-requests/meeting-declined.svg` | Icono X local de Figma, 16×16. |
 | `Frontend/src/assets/project-requests/meeting-suggested.svg` | Visto bueno local de la instancia real, 16×16. |
 | `Backend/tests/projectRequestMeetingRecommendation.test.js` | Dominio, Zod, servicio/repositorio, HTTP y permisos. |

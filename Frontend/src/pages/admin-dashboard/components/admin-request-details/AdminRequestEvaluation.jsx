@@ -4,7 +4,6 @@ import meetingSuggestedIcon from "../../../../assets/project-requests/meeting-su
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import CircleProgressBarLabel from "../../../../components/ui/CircleProgressBarLabel/CircleProgressBarLabel.jsx";
 import ProgressBarLabel from "../../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
-import { PROTOTYPE_INDICATOR_HINT } from "../../data/adminRequestDetailsPrototype.js";
 import RequestDetailField from "./RequestDetailField.jsx";
 
 // Icono de la recomendación; el texto del Badge comunica el valor, no solo el color.
@@ -14,8 +13,11 @@ const RECOMMENDATION_ICONS = {
 };
 
 /**
- * Bloque de evaluación del drawer: compatibilidad (real), indicadores de prototipo,
- * decisión de reunión y justificación de la última revisión técnica, sin derivarlas del workflow.
+ * Bloque de evaluación del drawer: compatibilidad, información completada y viabilidad
+ * financiera como métricas independientes de la API, más la decisión de reunión y la
+ * justificación de la última revisión técnica, sin derivarlas del workflow.
+ * Sin score, la viabilidad muestra su estado de coherencia, una aclaración y los motivos,
+ * nunca una barra ni un porcentaje; "sin incoherencias" no se presenta como aprobación.
  * `unavailableText` se usa cuando la solicitud no llegó en la cola técnica.
  *
  * @param {Object} props - Modelo de `buildAdminRequestDetails`.
@@ -23,7 +25,7 @@ const RECOMMENDATION_ICONS = {
  * @returns {import("react").ReactElement} Sección de evaluación.
  */
 function AdminRequestEvaluation({ details }) {
-  const { compatibility, isPartial, justification, prototypeIndicators, recommendation } = details;
+  const { compatibility, completeness, financialViability, isPartial, justification, recommendation } = details;
   const unavailableText = "Información no disponible";
   const recommendationIcon = RECOMMENDATION_ICONS[recommendation?.value];
 
@@ -50,22 +52,60 @@ function AdminRequestEvaluation({ details }) {
         </dd>
       </dl>
 
-      {prototypeIndicators.map((indicator) => (
+      {financialViability?.score != null ? (
         <ProgressBarLabel
-          key={indicator.id}
           className="w-full"
           position="side"
-          title={indicator.title}
-          value={indicator.value}
+          title="Viabilidad financiera"
+          value={financialViability.score}
           max={100}
           showTitle
-          showSublabel={indicator.isPrototype}
-          sublabel={PROTOTYPE_INDICATOR_HINT}
-          fillClassName={indicator.fillClassName}
           animated
-          data-prototype={indicator.isPrototype ? "true" : undefined}
+          data-metric="financial-viability"
         />
-      ))}
+      ) : (
+        <dl className="m-0" data-metric="financial-viability" data-status={financialViability?.status}>
+          <RequestDetailField label="Viabilidad financiera">
+            {financialViability ? (
+              <span className="flex flex-col gap-[8px]">
+                <span className={financialViability.toneClassName || undefined}>{financialViability.text}</span>
+                {financialViability.hint ? (
+                  <span className="text-[12px] leading-[14px] tracking-[-0.5px] text-[var(--color-text-100)] dark:text-[var(--color-text-200)]">
+                    {financialViability.hint}
+                  </span>
+                ) : null}
+                {financialViability.reasons.length ? (
+                  <ul className="text-body-3 m-0 flex list-disc flex-col gap-[4px] pl-[20px]" aria-label="Motivos de la evaluación financiera">
+                    {financialViability.reasons.map((reason) => (
+                      <li key={reason.code} data-outcome={reason.outcome}>{reason.explanation}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </span>
+            ) : unavailableText}
+          </RequestDetailField>
+        </dl>
+      )}
+
+      {completeness ? (
+        <ProgressBarLabel
+          className="w-full"
+          position="side"
+          title="Información completada"
+          value={completeness.score}
+          max={100}
+          showTitle
+          showSublabel
+          sublabel={`${completeness.answered} de ${completeness.applicable} preguntas aplicables respondidas`}
+          fillClassName={completeness.fillClassName}
+          animated
+          data-metric="completeness"
+        />
+      ) : (
+        <dl className="m-0" data-metric="completeness">
+          <RequestDetailField label="Información completada">{unavailableText}</RequestDetailField>
+        </dl>
+      )}
 
       <dl className="m-0 flex flex-col gap-[24px]">
         <RequestDetailField label="Recomendación">

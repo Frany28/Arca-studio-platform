@@ -5,7 +5,6 @@ import {
   getActionMenuPosition,
   getNextActionMenuIndex,
 } from "../src/components/ui/ActionMenu/actionMenuPosition.js";
-import { getPrototypeRequestIndicators } from "../src/pages/admin-dashboard/data/adminRequestDetailsPrototype.js";
 import {
   buildAdminRequestDetails,
   findRequestById,
@@ -16,6 +15,11 @@ import {
   getCompatibilityPresentation,
 } from "../src/utils/projectRequestCompatibility.js";
 import { getProjectRequestStatus } from "../src/utils/projectRequestStatus.js";
+import {
+  FINANCIAL_VIABILITY_PENDING_TEXT,
+  getCompletenessPresentation,
+  getFinancialViabilityPresentation,
+} from "../src/utils/projectRequestMetrics.js";
 import { getMeetingRecommendationPresentation } from "../src/utils/projectRequestMeetingRecommendation.js";
 
 const SUMMARY = {
@@ -31,6 +35,12 @@ const QUEUE_REQUEST = {
   clientId: 41,
   requestedBy: 52,
   compatibility: { level: "excellent", score: 92 },
+  completeness: { answered: 13, applicable: 13, missingFields: [], score: 100 },
+  financialViability: {
+    findings: [{ category: "TEMPORAL", code: "CAPITAL_TIMING_MISMATCH", evidence: [{ code: "financingImmediate", explanation: "El financiamiento debe estar encaminado antes de plantear un inicio inmediato." }], explanation: "El financiamiento debe estar encaminado antes de plantear un inicio inmediato.", outcome: "REVIEW_REQUIRED", severity: "MEDIUM" }],
+    score: null,
+    status: "REVIEW_REQUIRED",
+  },
   id: 7,
   location: "Maracaibo, Zulia",
   reviews: [
@@ -69,15 +79,61 @@ test("sin entrada en la cola no inventa compatibilidad, revisión, ubicación ni
   assert.equal(details.projectName, SUMMARY.projectName);
 });
 
-test("los indicadores de prototipo quedan separados, marcados e inmutables", () => {
+test("completitud y viabilidad financiera llegan de la API, sin valores de prototipo", () => {
   const details = buildAdminRequestDetails({ queueRequest: QUEUE_REQUEST, summary: SUMMARY });
 
-  assert.ok(details.prototypeIndicators.length > 0);
-  assert.ok(details.prototypeIndicators.every((indicator) => indicator.isPrototype === true));
-  // Los datos reales no contienen ni sobrescriben campos de prototipo.
-  assert.equal("financialViability" in details, false);
-  details.prototypeIndicators[0].value = 0;
-  assert.notEqual(getPrototypeRequestIndicators()[0].value, 0);
+  assert.deepEqual(details.completeness, {
+    answered: 13,
+    applicable: 13,
+    fillClassName: "bg-[var(--color-success-200)]",
+    score: 100,
+  });
+  assert.deepEqual(details.financialViability, {
+    hint: "",
+    reasons: [{ code: "CAPITAL_TIMING_MISMATCH", explanation: "El financiamiento debe estar encaminado antes de plantear un inicio inmediato.", outcome: "REVIEW_REQUIRED" }],
+    score: null,
+    status: "REVIEW_REQUIRED",
+    text: "Requiere revisión financiera",
+    toneClassName: "text-[var(--color-warning-100)]",
+  });
+  assert.equal("prototypeIndicators" in details, false);
+
+  // Las métricas son independientes: una compatibilidad baja no altera la completitud.
+  const low = buildAdminRequestDetails({
+    queueRequest: { ...QUEUE_REQUEST, compatibility: { level: "low", score: 28 } },
+    summary: SUMMARY,
+  });
+  assert.equal(low.completeness.score, 100);
+  assert.equal(low.financialViability.score, null);
+
+  const partial = buildAdminRequestDetails({ summary: SUMMARY });
+  assert.equal(partial.completeness, null);
+  assert.equal(partial.financialViability, null);
+});
+
+test("la completitud solo distingue completa de incompleta y rechaza datos no numéricos", () => {
+  assert.equal(getCompletenessPresentation({ answered: 12, applicable: 16, score: 75 }).fillClassName, "bg-[var(--color-warning-200)]");
+  assert.equal(getCompletenessPresentation({ answered: 16, applicable: 16, score: 140 }).score, 100);
+  assert.equal(getCompletenessPresentation({ score: "x", answered: 1, applicable: 2 }), null);
+  assert.equal(getCompletenessPresentation(null), null);
+});
+
+test("la viabilidad financiera solo muestra porcentaje cuando la API lo calcula", () => {
+  assert.equal(getFinancialViabilityPresentation({ score: null, status: "PENDING_RULES" }).text, FINANCIAL_VIABILITY_PENDING_TEXT);
+  // "Sin incoherencias" no es una aprobación: tono neutral y aclaración explícita.
+  const noConflict = getFinancialViabilityPresentation({ findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" });
+  assert.equal(noConflict.text, "Sin incoherencias financieras detectadas");
+  assert.equal(noConflict.toneClassName, "");
+  assert.equal(noConflict.hint, "No equivale a una aprobación financiera.");
+  const highRisk = getFinancialViabilityPresentation({ score: null, status: "HIGH_RISK" });
+  assert.equal(highRisk.text, "Riesgo financiero elevado");
+  assert.equal(highRisk.toneClassName, "text-[var(--color-danger-100)]");
+  assert.equal(highRisk.hint, "No demuestra que el proyecto sea inviable.");
+  assert.equal(getFinancialViabilityPresentation({ score: null, status: "INSUFFICIENT_DATA" }).text, "Información financiera insuficiente");
+  assert.equal(getFinancialViabilityPresentation({ score: null, status: "OTHER" }).text, "Evaluación no disponible");
+  assert.deepEqual(getFinancialViabilityPresentation({ findings: [{ code: "X" }], score: null, status: "REVIEW_REQUIRED" }).reasons, []);
+  assert.equal(getFinancialViabilityPresentation({ score: 64, status: "EVALUATED" }).score, 64);
+  assert.equal(getFinancialViabilityPresentation(undefined), null);
 });
 
 test("la revisión más reciente no depende del orden de la API", () => {
@@ -99,10 +155,17 @@ test("las recomendaciones de reunión tienen etiquetas propias y no se derivan d
   }
 });
 
-test("baja compatibilidad usa Danger y conserva indicadores de referencia identificados", () => {
-  const details = buildAdminRequestDetails({ summary: SUMMARY, queueRequest: { ...QUEUE_REQUEST, compatibility: { level: "low", score: 28 } } });
+test("baja compatibilidad usa Danger sin derivar de su nivel las demás métricas", () => {
+  // Antes el nivel elegía valores fijos de prototipo (22/61); ahora cada métrica viene de la API.
+  const details = buildAdminRequestDetails({ summary: SUMMARY, queueRequest: {
+    ...QUEUE_REQUEST,
+    compatibility: { level: "low", score: 28 },
+    completeness: { answered: 11, applicable: 17, missingFields: [], score: 65 },
+  } });
   assert.deepEqual(details.compatibility, { label: "Baja compatibilidad", score: 28, theme: "Danger" });
-  assert.deepEqual(details.prototypeIndicators.map(({ value, isPrototype }) => ({ value, isPrototype })), [{ value: 22, isPrototype: true }, { value: 61, isPrototype: true }]);
+  assert.equal(details.completeness.score, 65);
+  assert.equal(details.completeness.fillClassName, "bg-[var(--color-warning-200)]");
+  assert.equal(details.financialViability.score, null);
 });
 
 test("una revisión histórica reciente no hereda la reunión de una revisión anterior", () => {

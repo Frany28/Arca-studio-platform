@@ -20,15 +20,46 @@ function toPerson(value) {
 }
 
 /**
+ * Extrae las respuestas del formulario necesarias para las métricas derivadas de la solicitud.
+ * Usa los mismos nombres de campo que el registro de solicitudes para reutilizar el dominio;
+ * el servicio las transforma en métricas y no se exponen en bruto.
+ *
+ * @param {object} row - Fila obtenida desde PostgreSQL.
+ * @returns {object} Respuestas de la solicitud con nombres de dominio.
+ */
+function toWorkflowAnswers(row) {
+  return {
+    capitalAvailability: row.capital_availability,
+    decisionMaker: row.decision_maker,
+    description: row.description,
+    developmentMode: row.development_mode,
+    experience: row.prior_design_experience,
+    hasMultipleOwners: row.has_multiple_owners,
+    hasPlans: row.has_plans,
+    investmentRange: row.investment_range,
+    landStatus: row.land_status,
+    legalDocumentationStatus: row.legal_documentation_status,
+    legalDocumentTypes: Array.isArray(row.legal_document_types) ? row.legal_document_types : [],
+    location: row.location,
+    projectName: row.project_name,
+    projectSize: row.project_size,
+    projectType: row.project_type,
+    quality: row.quality_expectation,
+    startTime: row.expected_start_time,
+  };
+}
+
+/**
  * Mapea la cola técnica a su contrato público, separando workflow, reunión y justificación.
  * Conserva por separado el cliente comercial y el usuario solicitante para evitar confundir sus IDs.
- * Normaliza a null las decisiones de reunión ausentes sin inferir valores históricos.
+ * Normaliza a null las decisiones de reunión ausentes; `answers` es interno para el servicio.
  *
  * @param {unknown} row - Fila obtenida desde PostgreSQL.
  * @returns {object} Resultado producido por la operación.
  */
 function toWorkflowRequest(row) {
   return {
+    answers: toWorkflowAnswers(row),
     assignees: Array.isArray(row.assignees)
       ? row.assignees.map(toPerson).filter(Boolean)
       : [],
@@ -123,6 +154,19 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
         request.status,
         request.compatibility_score,
         request.compatibility_level,
+        request.project_size,
+        request.development_mode,
+        request.land_status,
+        request.legal_documentation_status,
+        request.legal_document_types,
+        request.has_multiple_owners,
+        request.has_plans,
+        request.investment_range,
+        request.capital_availability,
+        request.expected_start_time,
+        request.decision_maker,
+        request.quality_expectation,
+        request.prior_design_experience,
         request.correction_reason,
         request.rejection_reason,
         request.created_at,

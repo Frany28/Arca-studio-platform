@@ -312,6 +312,8 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
     clientId: 2,
     requestedBy: 41,
     compatibility: { level: "excellent", score: 92 },
+    completeness: { answered: 12, applicable: 13, missingFields: ["decisionMaker"], score: 92 },
+    financialViability: { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" },
     createdAt: "2026-03-22T12:00:00.000Z",
     location: "Maracaibo, Zulia",
     projectType: "residential",
@@ -326,8 +328,15 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   for (const text of ["Excelente compatibilidad", "Score general: 92/100", "Maracaibo, Zulia", "Residencial", "Agendar reunión", "El cliente posee terreno y presupuesto adecuado.", "Esteban Ruiz", "Nextj"]) {
     await drawer.getByText(text, { exact: true }).first().waitFor();
   }
-  // Los indicadores sin backend se rotulan como ejemplo y no se presentan como datos reales.
-  assert.equal(await drawer.locator('[data-prototype="true"]').count(), 2);
+  // Completitud real de la API; la viabilidad sin reglas aprobadas no muestra porcentaje.
+  assert.equal(await drawer.locator('[data-prototype="true"]').count(), 0);
+  await drawer.getByText("12 de 13 preguntas aplicables respondidas", { exact: true }).waitFor();
+  assert.equal(await drawer.locator('[data-metric="completeness"] [role="progressbar"]').getAttribute("aria-valuenow"), "92");
+  const viability = drawer.locator('[data-metric="financial-viability"]');
+  await viability.getByText("Sin incoherencias financieras detectadas", { exact: true }).waitFor();
+  // Sin conflicto no se presenta como aprobación financiera.
+  await viability.getByText("No equivale a una aprobación financiera.", { exact: true }).waitFor();
+  assert.equal(await viability.locator('[role="progressbar"]').count(), 0);
   assert.equal(calls.filter((call) => call.path === "/api/admin/users/41").length, 1);
   assert.equal(calls.filter((call) => ["/api/admin/users/2", "/api/admin/users/7"].includes(call.path)).length, 0);
   // El drawer reutiliza la cola ya cargada por el dashboard: abrirlo no la vuelve a leer.
@@ -454,6 +463,12 @@ for (const [meetingRecommendation, label, colorToken] of [
   test(`Drawer: baja compatibilidad y reunión ${String(meetingRecommendation)}, con historial y temas`, async (context) => {
     const queue = [{ ...REQUEST, clientId: 2, requestedBy: 41, location: "Maracaibo, Zulia", projectType: "residential",
       compatibility: { level: "low", score: 28 },
+      completeness: { answered: 11, applicable: 17, missingFields: [], score: 65 },
+      financialViability: {
+        findings: [{ category: "TEMPORAL", code: "CAPITAL_TIMING_MISMATCH", evidence: [{ code: "capitalUndefinedImmediate", explanation: "La disponibilidad de capital necesita aclararse para un inicio inmediato." }], explanation: "La disponibilidad de capital necesita aclararse para un inicio inmediato.", outcome: "HIGH_RISK", severity: "HIGH" }],
+        score: null,
+        status: "HIGH_RISK",
+      },
       reviews: [
         { meetingRecommendation, recommendation: "approve", note: "Justificación de la revisión más reciente.", updatedAt: "2026-10-06T12:00:00Z" },
         { meetingRecommendation: "SCHEDULE_MEETING", recommendation: "reject", note: "Justificación anterior.", updatedAt: "2026-10-05T12:00:00Z" },
@@ -491,12 +506,17 @@ for (const [meetingRecommendation, label, colorToken] of [
         }, asset);
         assert.ok(assetSize > 0);
       }
-      const bars = drawer.locator('[data-prototype="true"] [role="progressbar"]');
-      assert.equal(await bars.nth(0).getAttribute("aria-valuenow"), "22");
-      assert.equal(await bars.nth(1).getAttribute("aria-valuenow"), "61");
-      for (const [index, token] of [[0, "--color-danger-200"], [1, "--color-warning-200"]]) {
-        assert.equal(await bars.nth(index).locator(":scope > div").evaluate((element) => getComputedStyle(element).backgroundColor), await tokenColor(token));
-      }
+      // La completitud no se deriva de la compatibilidad baja: llega de la API (65 %, incompleta).
+      const completenessBar = drawer.locator('[data-metric="completeness"] [role="progressbar"]');
+      assert.equal(await completenessBar.getAttribute("aria-valuenow"), "65");
+      assert.equal(await completenessBar.locator(":scope > div").evaluate((element) => getComputedStyle(element).backgroundColor), await tokenColor("--color-warning-200"));
+      // Riesgo elevado: texto con tono Danger, motivo visible y sin barra porcentual.
+      const viability = drawer.locator('[data-metric="financial-viability"]');
+      assert.equal(await viability.locator('[role="progressbar"]').count(), 0);
+      const riskLabel = viability.getByText("Riesgo financiero elevado", { exact: true });
+      assert.equal(await riskLabel.evaluate((element) => getComputedStyle(element).color), await tokenColor("--color-danger-100"));
+      await viability.getByRole("list", { name: "Motivos de la evaluación financiera" })
+        .getByText("La disponibilidad de capital necesita aclararse para un inicio inmediato.", { exact: true }).waitFor();
       const circle = drawer.getByRole("progressbar", { name: "Compatibilidad: 28 de 100" });
       assert.equal(await circle.getAttribute("aria-valuenow"), "28");
       assert.equal(await circle.locator("svg circle").nth(1).evaluate((element) => getComputedStyle(element).stroke), await tokenColor("--color-danger-100"));

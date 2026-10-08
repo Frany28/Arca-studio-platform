@@ -24,3 +24,42 @@ test("review queue conserva ausencia del solicitante como null", async (context)
   const page = await listProjectRequestReviewQueue({ cursor: null, limit: 25, user: { id: 1, role: { code: "admin" } } });
   assert.equal(page.items[0].requestedBy, null);
 });
+
+test("review queue expone completitud y viabilidad separadas sin publicar las respuestas internas", async (context) => {
+  const { loadProjectRequestReviewQueue } = await import("../src/services/projectRequestWorkflowService.js");
+  context.mock.method(pool, "query", async () => ({
+    rows: [{
+      capital_availability: "seeking_financing",
+      client_id: "2",
+      compatibility_level: "excellent",
+      compatibility_score: 100,
+      decision_maker: null,
+      description: "Remodelación de cocina pequeña.",
+      development_mode: "full",
+      expected_start_time: "over_6_months",
+      has_multiple_owners: null,
+      has_plans: null,
+      id: "9",
+      investment_range: "10k_50k",
+      land_status: "unavailable",
+      legal_document_types: [],
+      legal_documentation_status: null,
+      location: "Maracaibo, Zulia",
+      prior_design_experience: "first_time",
+      project_name: "Cocina Norte",
+      project_size: "small_lt_80",
+      project_type: "residential",
+      quality_expectation: "standard",
+      requested_by: "11",
+      status: "pending_review",
+    }],
+  }));
+
+  const page = await loadProjectRequestReviewQueue({ cursor: null, limit: 25, user: { id: 1, role: { code: "admin" } } });
+  const [request] = page.items;
+  assert.equal("answers" in request, false);
+  assert.deepEqual(request.compatibility, { level: "excellent", score: 100 });
+  assert.deepEqual(request.completeness, { answered: 12, applicable: 13, missingFields: ["decisionMaker"], score: 92 });
+  // Busca financiamiento con plazo flexible y presupuesto coherente: sin hallazgos financieros.
+  assert.deepEqual(request.financialViability, { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" });
+});

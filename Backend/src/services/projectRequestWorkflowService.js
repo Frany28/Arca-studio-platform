@@ -1,4 +1,5 @@
 import { AppError, ConflictError, NotFoundError } from "../errors/appError.js";
+import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import {
   decideProjectRequest as decideProjectRequestRecord,
   listProjectRequestReviewQueue,
@@ -6,17 +7,30 @@ import {
 } from "../repositories/projectRequestWorkflowRepository.js";
 
 /**
- * Carga la cola de revisión de solicitudes y deja el resultado disponible para el flujo actual.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Sustituye las respuestas internas de una solicitud de la cola por sus métricas públicas.
+ * Completitud y viabilidad financiera se calculan al vuelo con el mismo dominio que la
+ * solicitud pública, sin exponer las respuestas completas en la proyección de workflow.
+ *
+ * @param {{answers: object}} request - Solicitud mapeada por el repositorio.
+ * @returns {object} Solicitud de la cola con `completeness` y `financialViability`.
+ */
+function toPublicWorkflowRequest({ answers, ...request }) {
+  return { ...request, ...buildProjectRequestMetrics(answers) };
+}
+
+/**
+ * Carga la cola de revisión de solicitudes con sus métricas de evaluación separadas.
+ * Respeta el alcance y la paginación del repositorio; no altera la compatibilidad guardada.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.cursor - Valor de `options.cursor` requerido por esta operación.
  * @param {number} options.limit - Valor de `options.limit` requerido por esta operación.
  * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {unknown} Resultado producido por la operación.
+ * @returns {Promise<{items: Array<object>, nextCursor: string|null}>} Página de la cola técnica.
  */
-export function loadProjectRequestReviewQueue({ cursor, limit, user }) {
-  return listProjectRequestReviewQueue({ cursor, limit, user });
+export async function loadProjectRequestReviewQueue({ cursor, limit, user }) {
+  const page = await listProjectRequestReviewQueue({ cursor, limit, user });
+  return { ...page, items: page.items.map(toPublicWorkflowRequest) };
 }
 
 /**
