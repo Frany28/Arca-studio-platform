@@ -188,16 +188,19 @@ for (const desktopExpanded of [true, false]) {
     }
     await page.setViewportSize({ width: 375, height: 812 });
     const menu = page.getByRole("button", { name: "Abrir menú", exact: true });
-    const drawer = page.getByRole("dialog", { name: "Panel lateral", exact: true });
+    const drawer = page.getByRole("dialog", { name: "Menú de navegación", exact: true });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await menu.focus();
       await menu.press("Enter");
       await drawer.waitFor({ state: "visible" });
-      const toggle = drawer.getByRole("button", { name: "Contraer navegación lateral", exact: true });
-      assert.equal(await toggle.getAttribute("aria-expanded"), "true");
-      await toggle.tap();
+      assert.equal(await menu.getAttribute("aria-expanded"), "true");
+      // El drawer de Figma no incluye el toggle del riel; se cierra con su botón accesible.
+      assert.equal(await drawer.getByRole("button", { name: TOGGLE_NAME }).count(), 0);
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Enter");
       await drawer.waitFor({ state: "detached" });
       assert.equal(await menu.evaluate((element) => element === document.activeElement), true);
+      assert.equal(await menu.getAttribute("aria-expanded"), "false");
     }
     await menu.press("Enter");
     await drawer.waitFor({ state: "visible" });
@@ -419,4 +422,155 @@ test("Componente: teclado conserva foco y tooltip del menú colapsado", async (c
   await expectSelected(page, "Configuraciones", true);
   const events = await page.evaluate(() => window.sideNavigationHarness.events);
   assert.deepEqual(events.filter(({ type }) => type === "select").map(({ value }) => value.id), ["settings"]);
+});
+
+const MOBILE_DRAWER_NAME = "Menú de navegación";
+const MOBILE_CASES = [
+  { path: "/dashboard-arquitecto", role: "admin", item: "Archivos", destination: "/archivos" },
+  { path: "/dashboard-arquitecto", role: "architect", item: "Ver más proyectos", destination: "/proyectos" },
+  { path: "/usuarios", role: "admin", item: "Archivos", destination: "/archivos" },
+  { path: "/archivos", role: "admin", item: "Usuarios", destination: "/usuarios" },
+  { path: "/configuraciones", role: "admin", item: "Usuarios", destination: "/usuarios" },
+  { path: "/proyectos", role: "admin", item: "Usuarios", destination: "/usuarios" },
+  { path: "/dashboard-clientes", role: "client", item: "Ver más proyectos", destination: "/proyectos" },
+  { path: "/solicitudes", role: "client", item: "Dashboard", destination: "/dashboard-clientes" },
+  { path: "/proyectos", role: "client", item: "Dashboard", destination: "/dashboard-clientes" },
+  { path: "/dashboard-arquitecto/nuevo-proyecto", role: "architect", item: "Ver más proyectos", destination: "/proyectos" },
+];
+
+/**
+ * Comprueba que la página no desborde horizontalmente y que el riel persistente no ocupe
+ * espacio en móvil, condición que antes empujaba el contenido al expandirse.
+ *
+ * @param {import("playwright").Page} page Página en prueba.
+ * @returns {Promise<void>} Finaliza cuando ambas condiciones se cumplen.
+ */
+async function expectMobileLayout(page) {
+  // Espera el viewport móvil antes de evaluar, para no medir el layout previo al resize.
+  await page.waitForFunction((selector) => window.innerWidth < 768
+    && document.documentElement.scrollWidth <= window.innerWidth
+    && [...document.querySelectorAll(selector)]
+      .filter((element) => !element.closest("[role=dialog]"))
+      .every((element) => element.getClientRects().length === 0), SIDEBAR_SELECTOR);
+}
+
+/**
+ * Abre el drawer con el botón del navbar y espera a que termine la transición de entrada.
+ *
+ * @param {import("playwright").Page} page Página en prueba.
+ * @param {number} width Ancho final esperado del panel.
+ * @returns {Promise<import("playwright").Locator>} Diálogo abierto.
+ */
+async function openMobileDrawer(page, width) {
+  const menu = page.getByRole("button", { name: "Abrir menú", exact: true });
+  await menu.focus();
+  await menu.press("Enter");
+  const drawer = page.getByRole("dialog", { name: MOBILE_DRAWER_NAME, exact: true });
+  await drawer.waitFor({ state: "visible" });
+  await page.waitForFunction(({ name, width }) => {
+    const panel = document.querySelector(`[role="dialog"][aria-label="${name}"]`);
+    const rect = panel?.getBoundingClientRect();
+    return rect && Math.abs(rect.left) < 0.5 && Math.abs(rect.width - width) < 0.5
+      && getComputedStyle(panel).opacity === "1";
+  }, { name: MOBILE_DRAWER_NAME, width });
+  return drawer;
+}
+
+/**
+ * Espera el cierre completo del drawer y comprueba foco devuelto y scroll desbloqueado.
+ *
+ * @param {import("playwright").Page} page Página en prueba.
+ * @returns {Promise<void>} Finaliza cuando el diálogo ya no existe.
+ */
+async function expectMobileDrawerClosed(page) {
+  // Consulta el DOM: getByRole ignora un panel oculto por CSS que aún no terminó su salida.
+  await page.waitForFunction((name) => !document.querySelector(`[role="dialog"][aria-label="${name}"]`), MOBILE_DRAWER_NAME);
+  assert.equal(await page.evaluate(() => document.body.style.overflow), "");
+  const menu = page.getByRole("button", { name: "Abrir menú", exact: true });
+  if (await menu.isVisible()) {
+    assert.equal(await menu.evaluate((element) => element === document.activeElement), true);
+  }
+}
+
+for (const mobileCase of MOBILE_CASES) {
+  test(`${mobileCase.role} ${mobileCase.path} móvil: drawer de Figma abre, cierra y navega`, async (context) => {
+    const page = await openPage(context, mobileCase.role, { hasTouch: true, viewport: { width: 375, height: 812 } });
+    await page.goto(`${origin}${mobileCase.path}`);
+    await page.getByRole("button", { name: "Abrir menú", exact: true }).waitFor();
+    await expectMobileLayout(page);
+
+    let drawer = await openMobileDrawer(page, 312);
+    assert.equal(await page.evaluate(() => document.body.style.overflow), "hidden");
+    assert.equal(await drawer.getByRole("button", { name: TOGGLE_NAME }).count(), 0, "El drawer de Figma no incluye el toggle del riel");
+    assert.equal(await drawer.getByRole("searchbox", { name: "Buscar navegación", exact: true }).count(), 1);
+    await page.keyboard.press("Escape");
+    await expectMobileDrawerClosed(page);
+    await expectMobileLayout(page);
+
+    drawer = await openMobileDrawer(page, 312);
+    await page.mouse.click(360, 400);
+    await expectMobileDrawerClosed(page);
+
+    drawer = await openMobileDrawer(page, 312);
+    const close = drawer.getByRole("button", { name: "Cerrar menú de navegación", exact: true });
+    await page.keyboard.press("Tab");
+    assert.equal(await close.evaluate((element) => element === document.activeElement), true);
+    await page.waitForFunction(() => getComputedStyle(document.activeElement).opacity === "1");
+    await page.keyboard.press("Shift+Tab");
+    const logout = drawer.getByRole("button", { name: "Cerrar sesión", exact: true });
+    assert.equal(await logout.evaluate((element) => element === document.activeElement), true, "Shift+Tab permanece dentro del drawer");
+    await page.keyboard.press("Tab");
+    assert.equal(await close.evaluate((element) => element === document.activeElement), true, "Tab vuelve al inicio del drawer");
+    await close.press("Enter");
+    await expectMobileDrawerClosed(page);
+
+    drawer = await openMobileDrawer(page, 312);
+    await drawer.getByRole("button", { name: mobileCase.item, exact: true }).tap();
+    await page.waitForURL(`${origin}${mobileCase.destination}`);
+    await page.getByRole("dialog", { name: MOBILE_DRAWER_NAME, exact: true }).waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(() => document.body.style.overflow), "");
+  });
+}
+
+test("Drawer móvil: anchos de prueba conservan overlay visible y sin desplazamiento horizontal", async (context) => {
+  const page = await openPage(context, "admin", { hasTouch: true, viewport: { width: 320, height: 640 } });
+  for (const width of [320, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 812 });
+    await page.goto(`${origin}/dashboard-arquitecto`);
+    await page.getByRole("button", { name: "Abrir menú", exact: true }).waitFor();
+    await expectMobileLayout(page);
+    const drawer = await openMobileDrawer(page, Math.min(312, width - 32));
+    await page.waitForFunction(() => document.documentElement.scrollWidth <= window.innerWidth);
+    const opportunity = drawer.getByRole("button", { name: "Nuevo proyecto", exact: true });
+    assert.equal(Math.round((await opportunity.boundingBox()).height), 52);
+    await page.mouse.click(width - 8, 400);
+    await expectMobileDrawerClosed(page);
+  }
+});
+
+test("Drawer móvil: crecer a tablet o escritorio lo cierra sin alterar el riel persistente", async (context) => {
+  const page = await openPage(context, "admin", { viewport: { width: 900, height: 1000 } });
+  await page.goto(`${origin}/usuarios`);
+  // Bajo 1280 px el riel inicia contraído; se expande manualmente para detectar cualquier reinicio.
+  await expectSidebar(page, false, 76);
+  await page.locator(`${SIDEBAR_SELECTOR}:visible`).getByRole("button", { name: TOGGLE_NAME }).click();
+  await expectSidebar(page, true, 312);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expectMobileLayout(page);
+  await openMobileDrawer(page, 312);
+
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await expectMobileDrawerClosed(page);
+  await expectSidebar(page, true, 312);
+  assert.equal(await page.locator(`${SIDEBAR_SELECTOR}:visible`).count(), 1, "En tablet solo existe un menú");
+  assert.equal(await page.getByRole("button", { name: "Abrir menú", exact: true }).isVisible(), false);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expectMobileLayout(page);
+  assert.equal(await page.getByRole("dialog", { name: MOBILE_DRAWER_NAME, exact: true }).count(), 0, "No reaparece un drawer abierto");
+  await openMobileDrawer(page, 312);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expectMobileDrawerClosed(page);
+  // Cruzar 1280 px aplica la política existente del riel: expandido en escritorio.
+  await expectSidebar(page, true, 312);
 });

@@ -259,6 +259,8 @@ El enfoque es mobile-first. Los breakpoints de referencia existentes son:
 - tablet: desde 768 px;
 - web: desde 1280 px.
 
+Los breakpoints viven en `src/utils/layoutBreakpoints.js`. Para elegir props de presentación que no aceptan clases responsive (tamaño de `Button`, `IconContainer`, `Tag` o la clase tipográfica) se usa `useMobileLayout`; el layout se resuelve con clases `max-[767px]:`/`min-[768px]:`. Las clases de `typography.css` no están en una capa de Tailwind y ganan a cualquier utilidad responsive (`max-[767px]:text-[24px]` no tiene efecto sobre `text-heading-3`), por lo que el cambio de escala tipográfica debe hacerse eligiendo la clase.
+
 Una implementación debe comprobar como mínimo 375, 768, 1024 y 1440 px. Evitar anchos fijos para contenedores principales; usar límites máximos, rejillas y envoltura. Ninguna acción esencial debe depender de hover.
 
 En pantallas pequeñas:
@@ -327,7 +329,7 @@ El formato relativo compacto destinado a espacios restringidos constituye una va
 - Asignar el primer arquitecto inicia la revisión técnica. Una solicitud en revisión debe conservar al menos un arquitecto asignado.
 - Solamente administradores y arquitectos asignados consultan la cola técnica. El arquitecto registra una recomendación con motivo; el administrador conserva la decisión final.
 - El drawer de solicitudes muestra la decisión de reunión persistida en `meetingRecommendation` de la revisión más reciente. `projectRequestMeetingRecommendation.js` centraliza etiquetas y temas: `SCHEDULE_MEETING` → “Agendar reunión” (`Info`, visto bueno), `DO_NOT_SCHEDULE_MEETING` → “No agendar reunión” (`Danger`, X). La decisión no se deriva de `recommendation` (workflow) ni de `note` (justificación); históricos sin reunión usan un fallback neutral.
-- La baja compatibilidad del drawer sigue `getCompatibilityPresentation` y el nodo Figma `3727:677617`: círculo `Danger`. “Información completada” es una barra real (`completeness` de la API): `Success` solo al 100 % y `Warning` si falta alguna pregunta aplicable, sin umbrales intermedios. “Viabilidad financiera” muestra el texto neutral “Pendiente de reglas de evaluación” mientras la API responda `PENDING_RULES`; nunca se dibuja una barra sin porcentaje calculado. Ninguna de las dos se deriva del nivel de compatibilidad (`utils/projectRequestMetrics.js`). Conservar las animaciones, los tokens claro/oscuro y la geometría del drawer.
+- La baja compatibilidad del drawer sigue `getCompatibilityPresentation` y el nodo Figma `3727:677617`: círculo `Danger`. “Información completada” es una barra real (`completeness` de la API): `Success` solo al 100 % y `Warning` si falta alguna pregunta aplicable, sin umbrales intermedios. “Viabilidad financiera” muestra un estado textual, sin barra mientras `score` sea null: “Sin incoherencias financieras detectadas” (tono neutral + aclaración “No equivale a una aprobación financiera.”), “Requiere revisión financiera” (`--color-warning-100`), “Riesgo financiero elevado” (`--color-danger-100` + aclaración “No demuestra que el proyecto sea inviable.”), “Información financiera insuficiente” o “Pendiente de reglas de evaluación”. Debajo, los motivos en una lista accesible (`aria-label` “Motivos de la evaluación financiera”). Ningún estado usa `Success`. Ninguna de las dos se deriva del nivel de compatibilidad (`utils/projectRequestMetrics.js`). Conservar las animaciones, los tokens claro/oscuro y la geometría del drawer.
 - El formulario técnico exige elegir explícitamente la reunión mediante un campo separado de las tres acciones de workflow. No preselecciona una reunión, conserva su borrador ante errores y bloquea controles durante el guardado. La decisión administrativa no muestra ni envía este campo.
 - Aprobar, rechazar o solicitar correcciones exige al menos una revisión de un arquitecto que continúe asignado.
 - Correcciones y rechazo son decisiones diferentes: `changes_requested` vuelve a habilitar la edición del cliente; `rejected` es final y permite iniciar una solicitud nueva reutilizando los datos.
@@ -392,6 +394,19 @@ El formato relativo compacto destinado a espacios restringidos constituye una va
 - Una página no puede ocultar, omitir ni reconstruir parcialmente botones autorizados como Panel, Solicitudes, Ver más proyectos o Configuraciones.
 - Los accesos exclusivos de un rol solo se muestran a usuarios autorizados. Por ejemplo, Solicitudes pertenece al entorno del cliente y debe aparecer en todas sus vistas, pero no enlazarse desde roles sin acceso a esa ruta.
 - Los accesos dinámicos a proyectos pueden variar según los proyectos disponibles, sin alterar los destinos persistentes del rol.
+- La navegación responsive se compone con `ResponsiveSideNavigation` y `useMobileNavigationDrawer` (Figma `3727:678728` cerrado y `3727:544029` abierto). Desde 768 px se muestra el riel persistente expandible; en móvil, el riel se oculta y el botón “Abrir menú” de `EnvironmentNavigationBar` abre un drawer modal de 312 px (`min(312px, 100vw - 32px)`) sobre `SideOverlayDrawer`, con la variante `drawer` de `SideNavigation`: logo centrado, sin botón de expansión y botón principal de 52 px con `--radius-3`.
+- El drawer se cierra con el overlay, `Escape`, el botón de cierre accesible por teclado, al navegar o al alcanzar 768 px. Mantiene el foco dentro del panel, lo devuelve al botón de menú y bloquea el scroll del body mientras está abierto. Su apertura es independiente de la expansión del riel: abrir o cerrar el drawer nunca cambia el estado de tablet o escritorio. Ninguna página debe recrear este patrón con estados o drawers locales; todas las páginas autenticadas pasan `onMenuClick={mobileNavigation.open}` y `mobileMenuExpanded={mobileNavigation.isOpen}` al navbar.
+- En móvil, `EnvironmentNavigationBar` aplica la barra de Figma `3727:678728`: 68 px de alto, 16 px laterales, botones de 44 px, fecha en Headings/h8 con día y mes capitalizados (`utils/environmentDate.js`) y línea inferior interna.
+
+### Dashboard administrativo móvil
+
+El dashboard administrativo sigue Figma `3727:678728` por debajo de 768 px; tablet y escritorio conservan su presentación. `pages/admin-dashboard/utils/adminDashboardMobilePresentation.js` centraliza los tamaños móviles de botones (44 px de icono, 41 px de texto) y tags (Body/b3, 25 px).
+
+- Título en Headings/h4 y acciones “Exportar reporte”/“Ver historial” a todo el ancho con igual tamaño.
+- Métricas en dos columnas (16 px horizontal, 24 px vertical), etiqueta Body/b2, valor h4 e icono de 40 px. “Archivos registrados” se oculta en móvil, como en Figma.
+- Eventos críticos: la etiqueta y la acción pasan a la segunda línea, con la acción a la derecha. Actividad reciente y Nuevas Solicitudes reproducen la estructura que se envuelve en Figma.
+- Fechas de entrega con `utils/projectDeliveryDate.js` (“24 Mar 2026”), formateadas en UTC porque `end_date` es `@db.Date`.
+- Proyectos activos: filtros en una fila (180 px y resto). “Quitar filtros”, que Figma deja fuera del ancho, pasa a la fila siguiente para seguir siendo accesible. Los nombres largos de la tabla se truncan dentro de su columna.
 
 - En las filas de proyectos del dashboard, el avatar junto al nombre del proyecto debe representar al arquitecto asignado mediante su foto real o sus iniciales como fallback y mostrar su nombre en un `Tooltip` al hacer hover o recibir foco. Esta regla es local a esas filas: no se debe activar el tooltip globalmente en `AvatarGroup`, comentarios, navegación ni carruseles.
 

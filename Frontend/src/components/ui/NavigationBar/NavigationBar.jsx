@@ -86,6 +86,8 @@ function NavigationBar({
   mobileMenuLabel = "Abrir menú",
   utilityText = "Lunes, 23 de Marzo",
   showUtilityMenu = false,
+  mobileMenuExpanded,
+  utilityLayout = "default",
   variant = "desktop",
   onNavChange,
   onContactClick,
@@ -101,6 +103,9 @@ function NavigationBar({
   );
   const isMobile = variant === "mobile";
   const isUtility = variant === "utility";
+  // "mobile" aplica la barra MOBILE de Figma: botones de 44 px y fecha en Headings/h8.
+  const isMobileUtility = utilityLayout === "mobile";
+  const utilityButtonSize = isMobileUtility ? "M" : "S";
   const isNavControlled = Number.isInteger(activeIndex) && activeIndex >= 0;
   const resolvedActiveIndex = isNavControlled
     ? activeIndex
@@ -118,36 +123,40 @@ function NavigationBar({
     return (
       <nav
         className={clsx(
-          "flex w-full items-center justify-between bg-neutral-bg px-[24px] py-[12px]",
-          className,
+          "flex w-full items-center justify-between bg-neutral-bg",
+          // El padding por defecto solo aplica sin className: dos utilidades px-* del mismo
+          // nivel no tienen precedencia garantizada y ocultaban el padding móvil de 16 px.
+          className || "px-[24px] py-[12px]",
         )}
         aria-label="Navigation bar"
         {...props}
       >
-        <div className="flex w-full flex-1 items-center justify-between">
+        {/* Figma móvil (3727:678728): línea inferior interna sin alterar la altura de 68 px. */}
+        <div className="flex w-full flex-1 items-center justify-between max-[767px]:shadow-[inset_0_-1px_0_var(--color-neutral-200)]">
           {showUtilityMenu ? (
             <Button
               theme="Primary"
               type="Ghost"
-              size="S"
+              size={utilityButtonSize}
               showText={false}
               showLeftIcon
               showRightIcon={false}
               iconLeft={<MenuIcon className="size-5" />}
               aria-label={mobileMenuLabel}
+              aria-expanded={mobileMenuExpanded}
               className="min-[768px]:hidden"
               onClick={onMenuClick}
             />
           ) : null}
 
-          <span className="text-body-3 text-[var(--color-text-100)]">
+          <span className={clsx(isMobileUtility ? "text-heading-8" : "text-body-3", "text-[var(--color-text-100)]")}>
             {utilityText}
           </span>
 
           <Button
             theme="Primary"
             type="Ghost"
-            size="S"
+            size={utilityButtonSize}
             showText={false}
             showLeftIcon
             showRightIcon={false}

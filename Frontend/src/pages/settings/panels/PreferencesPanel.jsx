@@ -1,7 +1,9 @@
+import clsx from "clsx";
 import DropdownMenu from "../../../components/ui/DropdownMenu/DropdownMenu.jsx";
 import Toggle from "../../../components/ui/Toggle/Toggle.jsx";
 import PreferenceItem from "../PreferenceItem.jsx";
 import { BellIcon, CallIcon, SmsIcon, SunIcon } from "../settingsIcons.jsx";
+import { SETTINGS_MOBILE_FIELD_CLASS_NAME } from "../settingsLayoutClassNames.js";
 
 export default function PreferencesPanel({
   themePreference,
@@ -47,7 +49,7 @@ export default function PreferencesPanel({
               setIsThemeMenuOpen(false);
             }}
             interactive
-            className="!w-[320px]"
+            className={clsx("!w-[320px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
             triggerWrapperClassName="!h-[39px]"
             triggerClassName="!h-[39px] px-[16px]"
             contentClassName="!px-0 !py-[2px] !pb-[2px] flex-col items-start gap-[4px]"

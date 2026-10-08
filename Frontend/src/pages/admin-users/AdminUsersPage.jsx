@@ -33,7 +33,8 @@ import Input from "../../components/ui/Input/Input.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import Modal from "../../components/ui/Modal/Modal.jsx";
 import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import { getAvatarPresentation } from "../../utils/avatarPresentation.js";
 import { formatHumanDate } from "../../utils/relativeTime.js";
 import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.js";
@@ -72,6 +73,7 @@ function AdminUsersPage({ empty = false }) {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= WEB_BREAKPOINT_PX,
   );
@@ -168,7 +170,9 @@ function AdminUsersPage({ empty = false }) {
   return (
     <main className="h-screen overflow-hidden bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex h-full min-h-0 w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId="users"
           expanded={isSidebarExpanded}
           items={navigationItems}
@@ -185,6 +189,8 @@ function AdminUsersPage({ empty = false }) {
 
         <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
           <NavigationBar
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsOpen}
             onUtilityActionClick={() => setIsNotificationsOpen((open) => !open)}
           />

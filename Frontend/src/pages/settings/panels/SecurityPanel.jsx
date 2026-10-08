@@ -1,6 +1,8 @@
+import clsx from "clsx";
 import Input from "../../../components/ui/Input/Input.jsx";
 import Button from "../../../components/ui/Button/Button.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
+import { SETTINGS_MOBILE_FIELD_CLASS_NAME, SETTINGS_MOBILE_ROW_CLASS_NAME, SETTINGS_MOBILE_SPACER_CLASS_NAME } from "../settingsLayoutClassNames.js";
 
 export default function SecurityPanel({
   currentPassword,
@@ -16,7 +18,7 @@ export default function SecurityPanel({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center gap-4">
-      <div className="flex w-[664px] max-w-full items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]">
+      <div className={clsx("flex w-[664px] max-w-full items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
         <Input
           label="Contraseña actual"
           required={false}
@@ -35,11 +37,12 @@ export default function SecurityPanel({
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
           disabled={isSubmitting}
+          className={SETTINGS_MOBILE_FIELD_CLASS_NAME}
         />
-        <div className="w-[320px]" />
+        <div className={clsx("w-[320px]", SETTINGS_MOBILE_SPACER_CLASS_NAME)} />
       </div>
 
-      <div className="flex w-[664px] max-w-full items-start gap-[24px] pb-[16px] border-b border-[var(--color-neutral-200)]">
+      <div className={clsx("flex w-[664px] max-w-full items-start gap-[24px] pb-[16px] border-b border-[var(--color-neutral-200)]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
         <Input
           label="Nueva contraseña"
           required={false}
@@ -60,7 +63,7 @@ export default function SecurityPanel({
           showPasswordStrength
           passwordRequirements={passwordRequirements}
           passwordHintTitle="Debe contener al menos:"
-          className="w-[320px] max-w-none"
+          className={clsx("w-[320px] max-w-none", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
           disabled={isSubmitting}
         />
         <Input
@@ -80,7 +83,7 @@ export default function SecurityPanel({
           }
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          className="w-[320px] max-w-none"
+          className={clsx("w-[320px] max-w-none", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
           disabled={isSubmitting}
         />
       </div>
@@ -88,7 +91,7 @@ export default function SecurityPanel({
         {isSubmitting ? (
           <Loader
             preset="action"
-            label="Cambiando contraseÃ±a"
+            label="Cambiando contraseña"
           />
         ) : null}
         <Button

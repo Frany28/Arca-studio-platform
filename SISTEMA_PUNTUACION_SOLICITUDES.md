@@ -12,7 +12,7 @@ Una solicitud se evalúa con **tres métricas independientes**:
 | --- | --- | --- |
 | **Compatibilidad** | ¿Lo respondido es claro, está preparado donde corresponde y es coherente? | Implementada (`3.0`). Se calcula y persiste al enviar. |
 | **Información completada** | ¿Qué porcentaje de las preguntas aplicables se respondió? | Implementada. Se calcula al vuelo. |
-| **Viabilidad financiera** | ¿El presupuesto y la disponibilidad son coherentes con el proyecto solicitado? | `PENDING_RULES`: faltan reglas aprobadas (sección 9). |
+| **Viabilidad financiera** | ¿Las condiciones financieras declaradas son coherentes con el proyecto solicitado? | Implementada como coherencia orientativa: un estado sin porcentaje (sección 9). |
 
 Ninguna se deriva de otra:
 
@@ -27,11 +27,12 @@ Las métricas **informan** la revisión. No aprueban, rechazan ni bloquean solic
 | Catálogo de opciones, límites de texto y reglas de aplicabilidad | `Backend/src/domain/projectRequest.js` |
 | Compatibilidad: evidencias, hallazgos, score y contrato público | `Backend/src/domain/projectRequestCompatibility.js` |
 | Información completada | `Backend/src/domain/projectRequestCompleteness.js` |
-| Viabilidad financiera | `Backend/src/domain/projectRequestFinancialViability.js` |
+| Viabilidad financiera: evaluador | `Backend/src/domain/projectRequestFinancialViability.js` |
+| Viabilidad financiera: matriz relativa | `Backend/src/domain/projectRequestFinancialMatrix.js` |
 | Composición de métricas derivadas | `Backend/src/domain/projectRequestEvaluation.js` |
 | Validación del contrato | `Backend/src/validation/projectRequestSchemas.js` |
 | Presentación de completitud y viabilidad | `Frontend/src/utils/projectRequestMetrics.js` |
-| Pruebas | `Backend/tests/projectRequestScoring.test.js`, `Backend/tests/projectRequestCompleteness.test.js` |
+| Pruebas | `Backend/tests/projectRequestScoring.test.js`, `Backend/tests/projectRequestCompleteness.test.js`, `Backend/tests/projectRequestFinancialViability.test.js` |
 
 ---
 
@@ -237,21 +238,118 @@ Ejemplos: con todo respondido y sin inmueble, 13/13 = 100 %. Con inmueble y sin 
 
 ---
 
-## 9. Viabilidad financiera
+## 9. Viabilidad financiera (coherencia financiera orientativa)
 
-**Regla de negocio.** No mide cantidad de dinero. Responde a:
+### 9.1. Qué evalúa y qué no
 
-> ¿El presupuesto y la disponibilidad declarados son razonablemente coherentes con el tipo, alcance, condiciones y expectativas del proyecto?
+Evalúa la **coherencia económica observable** entre las respuestas del cliente:
 
-Debería producir una viabilidad alta para un proyecto pequeño con presupuesto bajo pero coherente, y baja para un presupuesto alto si el alcance declarado es todavía mayor o contradictorio.
+> ¿El presupuesto y la disponibilidad declarados son razonablemente coherentes con el alcance, las expectativas y el plazo del proyecto?
 
-**Estado: `PENDING_RULES`.** La API devuelve `{score: null, status: "PENDING_RULES"}` y el drawer muestra “Pendiente de reglas de evaluación” sin barra ni porcentaje. Se eligió no encapsular las reglas actuales como viabilidad provisional, por tres motivos:
+**No** evalúa si el dinero alcanza para ejecutar la obra. Sin precios de referencia, y sin saber si el presupuesto cubre solo el diseño o también la ejecución, el sistema no puede afirmar que un presupuesto sea suficiente o insuficiente. Solo puede señalar combinaciones que conviene aclarar.
 
-- no consideran el tipo de proyecto ni la modalidad;
-- una ausencia de hallazgos no demuestra viabilidad;
-- un porcentaje derivado de ellas afirmaría una precisión que el sistema no tiene.
+| Usa | No usa |
+| --- | --- |
+| `investmentRange` (rango de inversión) | Tipo de proyecto: no hay diferenciación económica aprobada (D8) |
+| `projectSize` (tamaño) | Ubicación, descripción, inmueble, sección legal, decisor y experiencia |
+| `quality` (calidad esperada) | Precios de mercado, servicios externos o IA |
+| `developmentMode` (solo para contextualizar qué cubre el presupuesto) | Operaciones aritméticas entre niveles de rango o tamaño |
+| `capitalAvailability` y `startTime` | |
 
-Las incoherencias financieras aprobadas siguen visibles como hallazgos `FINANCIAL` de la compatibilidad. El punto único para incorporar las reglas futuras es `evaluateFinancialViability`.
+El formulario **no tiene** una modalidad “diseño / ejecución / diseño y ejecución”. `developmentMode` solo indica si el proyecto se desarrollará por fases, en su totalidad o por definir. Por eso, qué cubre el presupuesto se trata como una **incertidumbre explícita** (hallazgo `BUDGET_COVERAGE_UNSPECIFIED`), y ninguna combinación presupuesto–alcance se clasifica como riesgo elevado.
+
+### 9.2. Matriz relativa
+
+Los rangos y tamaños se usan como **niveles relativos**, con sus límites y orden originales. Cada celda declara su resultado explícitamente; no se suman ni restan niveles. Las celdas con evidencia reutilizan combinaciones que la compatibilidad 3.0 ya aprobó como incoherentes. Fuente: `Backend/src/domain/projectRequestFinancialMatrix.js`.
+
+**Tamaño × inversión**
+
+| Tamaño \ Inversión | < USD 10.000 | USD 10.000–50.000 | USD 50.000–150.000 | > USD 150.000 |
+| --- | --- | --- | --- | --- |
+| Pequeño (< 80 m²) | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
+| Mediano (80–200 m²) | Revisión (`mediumBudgetUnder10k`) | Sin conflicto | Sin conflicto | Sin conflicto |
+| Grande (200–500 m²) | Revisión (`largeBudgetUnder10k`) | Sin conflicto | Sin conflicto | Sin conflicto |
+| Muy grande (> 500 m²) | Revisión (`veryLargeBudgetUnder10k`) | Revisión (`veryLargeBudget10k50k`) | Sin conflicto | Sin conflicto |
+| No lo sé aún | No comparable | No comparable | No comparable | No comparable |
+
+**Calidad × inversión**
+
+| Calidad \ Inversión | < USD 10.000 | USD 10.000–50.000 | USD 50.000–150.000 | > USD 150.000 |
+| --- | --- | --- | --- | --- |
+| Funcional y económico | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
+| Calidad estándar | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
+| Premium | Revisión (`premiumBudgetUnder10k`) | Sin conflicto | Sin conflicto | Sin conflicto |
+| Exclusivo/lujo | Revisión (`luxuryBudgetUnder10k`) | Revisión (`luxuryBudget10k50k`) | Sin conflicto | Sin conflicto |
+| Sin responder | No comparable | No comparable | No comparable | No comparable |
+
+**Disponibilidad del capital × plazo de inicio**
+
+| Capital \ Inicio | De inmediato | 1–3 meses | 3–6 meses | Más de 6 meses |
+| --- | --- | --- | --- | --- |
+| Disponible ahora | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
+| En los próximos 3 meses | Revisión (`capitalWithin3MonthsImmediate`) | Sin conflicto | Sin conflicto | Sin conflicto |
+| Busca financiamiento | Revisión (`financingImmediate`) | Revisión (`financingSoon`) | Sin conflicto | Sin conflicto |
+| Indefinido | **Riesgo elevado** (`capitalUndefinedImmediate`) | Revisión (`capitalUndefinedSoon`) | Informativo (`capitalAvailabilityUncertain`) | Informativo (`capitalAvailabilityUncertain`) |
+
+**Entradas de contexto**
+
+| Condición | Resultado |
+| --- | --- |
+| Inversión “No lo tengo definido aún” | Datos insuficientes (`investmentRangeUndefined`) |
+| Inversión definida, pero sin tamaño comparable ni calidad | Datos insuficientes (`financialScopeUndefined`) |
+| Alguna celda de revisión presupuesto–alcance o presupuesto–calidad | Informativo: `budgetMayCoverPhase` si el proyecto es por fases; `budgetCoverageUnspecified` en otro caso |
+
+### 9.3. Justificación de las clasificaciones
+
+- **Sin conflicto:** ninguna regla aprobada observa la combinación. Un presupuesto mayor nunca mejora una celda, y un proyecto pequeño nunca se observa por tener un presupuesto bajo.
+- **Revisión:** las 12 combinaciones que la compatibilidad ya aprobó como incoherentes. Las de presupuesto–alcance y presupuesto–calidad no suben a riesgo elevado porque se desconoce qué cubre el presupuesto. Una preferencia de lujo no basta como prueba de inviabilidad.
+- **Riesgo elevado:** solo “capital indefinido + inicio inmediato”. Es una dependencia económica fuerte (severidad `HIGH` ya aprobada) que no depende de qué cubra el presupuesto: el cliente no sabe cuándo dispondrá del capital y quiere empezar ya.
+- **Buscar financiamiento** no se penaliza por sí solo: con un plazo de 3–6 meses o más no genera hallazgos. **“Disponible ahora”** es una declaración del cliente: no es una verificación ni equivale a un financiamiento aprobado.
+- **Capital indefinido con plazo flexible:** no se asume solvencia ni insolvencia; solo se informa la incertidumbre.
+- Una prueba exhaustiva verifica que la matriz y el motor de compatibilidad 3.0 detecten exactamente las mismas evidencias en todas las combinaciones reales.
+
+### 9.4. Estados
+
+| Estado | Significado | Etiqueta en el drawer |
+| --- | --- | --- |
+| `NO_OBVIOUS_CONFLICT` | No se detectan contradicciones con las reglas disponibles. **No es una aprobación financiera.** | Sin incoherencias financieras detectadas (tono neutral, con aclaración) |
+| `REVIEW_REQUIRED` | Una combinación debe aclararla un administrador. | Requiere revisión financiera (tono `warning`) |
+| `HIGH_RISK` | Señal fuerte de dependencia económica. **No demuestra inviabilidad.** | Riesgo financiero elevado (tono `danger`, con aclaración) |
+| `INSUFFICIENT_DATA` | Faltan respuestas para contrastar el presupuesto con el alcance. | Información financiera insuficiente |
+| `PENDING_RULES` | Reservado para reglas sin configurar; las reglas actuales no lo producen. | Pendiente de reglas de evaluación |
+
+El estado global es el efecto más fuerte entre sus hallazgos: `HIGH_RISK` > `REVIEW_REQUIRED` > `INSUFFICIENT_DATA` > sin conflicto. Los hallazgos `INFORMATIVE` explican el contexto sin cambiar el estado.
+
+### 9.5. Contrato
+
+```js
+financialViability: {
+  score: null,
+  status: "REVIEW_REQUIRED",
+  findings: [
+    {
+      code: "FINANCIAL_SCOPE_MISMATCH",   // causa (mismo código que en compatibilidad)
+      category: "FINANCIAL",              // o "TEMPORAL" para capital × plazo
+      severity: "HIGH",                   // LOW | MEDIUM | HIGH
+      outcome: "REVIEW_REQUIRED",         // HIGH_RISK | REVIEW_REQUIRED | INSUFFICIENT_DATA | INFORMATIVE
+      explanation: "El rango de inversión requiere revisión para el tamaño grande indicado.",
+      evidence: [{ code: "largeBudgetUnder10k", explanation: "..." }]
+    }
+  ]
+}
+```
+
+- **Por qué `score` es `null`:** no existe una escala porcentual validada. Un porcentaje afirmaría una precisión que el sistema no tiene.
+- **Sin doble penalización:** la métrica financiera no aplica deducciones. Reutiliza las causas y evidencias de la compatibilidad 3.0, que ya descuenta cada causa una sola vez. Calcularla no modifica el score de compatibilidad ni la completitud.
+- **Agrupación:** varias evidencias de una misma causa forman un único hallazgo con el efecto y la severidad más fuertes.
+- **Sin persistencia:** se recalcula al vuelo con las reglas vigentes, tanto para solicitudes nuevas como antiguas, porque solo depende de las respuestas guardadas. No se modifica ningún dato.
+
+### 9.6. Incorporar rangos económicos reales en el futuro
+
+1. Si el negocio lo aprueba, añadir al formulario lo que hoy falta: qué cubre el presupuesto (diseño, ejecución o ambos).
+2. Aprobar rangos por tipo de proyecto y tamaño (D8) y expresarlos como nuevas matrices o filas en `projectRequestFinancialMatrix.js`.
+3. Solo entonces, evaluar `HIGH_RISK` en las celdas presupuesto–alcance y definir una escala para `score`.
+4. Si el resultado llegara a persistirse, guardar la versión de las reglas junto al estado para no alterar evaluaciones anteriores.
 
 ---
 
@@ -265,6 +363,7 @@ Las incoherencias financieras aprobadas siguen visibles como hallazgos `FINANCIA
 | Evaluaciones históricas (`1.x`, `2.x`) | Conservan score, nivel y observaciones; `findings` es `null`. No se recalculan. |
 | `ProjectRequest.compatibility` | `{score, level, observations, findings}` |
 | `WorkflowRequest` | `compatibility: {score, level}`, más `completeness` y `financialViability` |
+| `financialViability` | `{score: null, status, findings}` (sección 9.5), en `ProjectRequest` y en `WorkflowRequest` |
 | Seguridad | El esquema es `strict`: el frontend no puede enviar puntaje, nivel, versión, hallazgos ni presencia de archivos. |
 
 ### Niveles (sin cambios)
@@ -297,17 +396,18 @@ Valores calculados con el motor real.
 - inicio en 1–3 meses y calidad estándar;
 - decisor, experiencia, un archivo y un enlace.
 
-| Caso | Cambios sobre el perfil | Compatibilidad | Hallazgos | Información completada |
-| --- | --- | ---: | --- | ---: |
-| **A** — Proyecto pequeño coherente | Ninguno | 100 · Excelente | — | 100 % (17/17) |
-| **B** — Proyecto grande incoherente | Grande, < USD 10.000, capital en 3 meses, inicio en 3–6 meses | 75 · Buena | `FINANCIAL_SCOPE_MISMATCH` (HIGH) | 100 % |
-| **B2** — Misma brecha desde dos cruces | Muy grande, < USD 10.000, premium | 65 · Buena | `FINANCIAL_SCOPE_MISMATCH` (una sola, −35) | 100 % |
-| **C** — Cliente sin inmueble | “No todavía” o “En proceso”, inicio en > 6 meses | 100 · Excelente | — (sección legal N/A) | 100 % (13/13) |
-| **D** — Mucho presupuesto | > USD 150.000 y calidad de lujo | 100 · Excelente (igual que A) | — | 100 % |
-| **D2** — Busca financiamiento | Busca financiamiento, inicio en 3–6 meses | 100 · Excelente | — | 100 % |
-| **E** — Completo pero contradictorio | En proceso de adquisición, inicio inmediato, busca financiamiento, muy grande, lujo | 50 · Media | `FINANCIAL_SCOPE_MISMATCH` −25, `CAPITAL_TIMING_MISMATCH` −15, `PROPERTY_TIMING_MISMATCH` −10 | **100 %** (13/13) |
-| **H** — Una causa financiera | Inversión no definida, muy grande, lujo, inicio inmediato | 80 · Excelente | `FINANCIAL_DEFINITION_INSUFFICIENT` (4 evidencias, −20) | 100 % |
-| **I** — Opcionales sin responder | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace | 78 · Buena | `PROJECT_SIZE_UNDEFINED`, `REFERENCE_FILES_MISSING`, `REFERENCE_LINK_MISSING` | 76 % (13/17) |
+| Caso | Cambios sobre el perfil | Compatibilidad | Hallazgos | Información completada | Viabilidad financiera |
+| --- | --- | ---: | --- | ---: | --- |
+| **A** — Proyecto pequeño coherente | Ninguno | 100 · Excelente | — | 100 % (17/17) | `NO_OBVIOUS_CONFLICT` |
+| **B** — Proyecto grande incoherente | Grande, < USD 10.000, capital en 3 meses, inicio en 3–6 meses | 75 · Buena | `FINANCIAL_SCOPE_MISMATCH` (HIGH) | 100 % | `REVIEW_REQUIRED` |
+| **B2** — Misma brecha desde dos cruces | Muy grande, < USD 10.000, premium | 65 · Buena | `FINANCIAL_SCOPE_MISMATCH` (una sola, −35) | 100 % | `REVIEW_REQUIRED` (un hallazgo, 2 evidencias) |
+| **C** — Cliente sin inmueble | “No todavía” o “En proceso”, inicio en > 6 meses | 100 · Excelente | — (sección legal N/A) | 100 % (13/13) | `NO_OBVIOUS_CONFLICT` |
+| **D** — Mucho presupuesto | > USD 150.000 y calidad de lujo | 100 · Excelente (igual que A) | — | 100 % | `NO_OBVIOUS_CONFLICT` (igual que A) |
+| **D2** — Busca financiamiento | Busca financiamiento, inicio en 3–6 meses | 100 · Excelente | — | 100 % | `NO_OBVIOUS_CONFLICT` |
+| **E** — Completo pero contradictorio | En proceso de adquisición, inicio inmediato, busca financiamiento, muy grande, lujo | 50 · Media | `FINANCIAL_SCOPE_MISMATCH` −25, `CAPITAL_TIMING_MISMATCH` −15, `PROPERTY_TIMING_MISMATCH` −10 | **100 %** (13/13) | `REVIEW_REQUIRED` |
+| **H** — Una causa financiera | Inversión no definida, muy grande, lujo, inicio inmediato | 80 · Excelente | `FINANCIAL_DEFINITION_INSUFFICIENT` (4 evidencias, −20) | 100 % | `INSUFFICIENT_DATA` |
+| **J** — Capital indefinido e inicio inmediato | Capital “Indefinido”, inicio inmediato | 80 · Excelente | `CAPITAL_TIMING_MISMATCH` −20 | 100 % | `HIGH_RISK` |
+| **I** — Opcionales sin responder | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace | 78 · Buena | `PROJECT_SIZE_UNDEFINED`, `REFERENCE_FILES_MISSING`, `REFERENCE_LINK_MISSING` | 76 % (13/17) | `INSUFFICIENT_DATA` (sin tamaño ni calidad) |
 
 ---
 
@@ -338,19 +438,20 @@ Los textos de códigos históricos (`companyImmediate`, `companyCapitalUndefined
 | D4 | El capital valía 25 / 20 / 10 / 0. | **RESUELTA** | Solo coherencia con el plazo. |
 | D5 | Una misma causa se penalizaba varias veces. | **RESUELTA** | Hallazgos consolidados por causa (sección 6.4). Los valores siguen pendientes de validación de negocio. |
 | D6 | La descripción puntuaba por longitud. | **RESUELTA** | Informativa. La calidad semántica queda pendiente de definición. |
-| D7 | Completitud y viabilidad eran prototipos fijos. | **PARCIAL** | Completitud real e integrada en el drawer. Viabilidad retirada del prototipo, pero en `PENDING_RULES`. |
-| D8 | El tipo de proyecto no participa en la coherencia financiera. | **PENDIENTE** | Requiere la matriz de rangos por tipo. |
+| D7 | Completitud y viabilidad eran prototipos fijos. | **PARCIAL** | Completitud real. La viabilidad se implementó como coherencia orientativa, con estados y motivos (sección 9); la viabilidad basada en rangos económicos reales sigue pendiente. |
+| D8 | El tipo de proyecto no participa en la coherencia financiera. | **PENDIENTE** | No hay diferenciación económica aprobada por tipo; la matriz relativa no lo usa (sección 9.6). |
 | D9 | Solo se persistían tres códigos. | **RESUELTA** | Se persisten y exponen todas las evidencias y hallazgos. |
 
 ---
 
 ## 14. Pendientes de negocio
 
-1. **Matriz de viabilidad financiera:** rangos de inversión razonables por tipo, tamaño, calidad y modalidad, su relación con capital y plazo, y la escala del indicador (D7, D8).
-2. **Magnitud de las deducciones:** validar los valores heredados de `v2.2` (−2 a −35). Por ejemplo, el caso B (gran alcance con presupuesto insuficiente) conserva “Buena compatibilidad” con 75.
-3. **Severidades definitivas:** confirmar la clasificación LOW/MEDIUM/HIGH de cada evidencia, hoy alineada con la magnitud histórica.
-4. **Información completada:** confirmar que las preguntas opcionales (tamaño, decisor, calidad, experiencia y planos) deben contar, y que archivos y enlace quedan fuera.
-5. **Claridad de la descripción:** definir, si se desea, una regla objetiva. No se usará longitud ni IA.
-6. **Sugerencias automáticas:** cualquier sugerencia de reunión o de acción derivada de las métricas debe ser una regla nueva y separada.
+1. **Viabilidad financiera con rangos reales:** rangos por tipo y tamaño (D8), qué cubre el presupuesto (diseño, ejecución o ambos) y, solo después, una escala porcentual (D7).
+2. **Clasificaciones de la matriz relativa:** confirmar que las 12 combinaciones observadas son `REVIEW_REQUIRED`; que solo “capital indefinido + inicio inmediato” es `HIGH_RISK`; y que mediano o grande con USD 10.000–50.000, y premium con USD 10.000–50.000, se consideran sin conflicto.
+3. **Magnitud de las deducciones:** validar los valores heredados de `v2.2` (−2 a −35). Por ejemplo, el caso B (gran alcance con presupuesto insuficiente) conserva “Buena compatibilidad” con 75.
+4. **Severidades definitivas:** confirmar la clasificación LOW/MEDIUM/HIGH de cada evidencia, hoy alineada con la magnitud histórica.
+5. **Información completada:** confirmar que las preguntas opcionales (tamaño, decisor, calidad, experiencia y planos) deben contar, y que archivos y enlace quedan fuera.
+6. **Claridad de la descripción:** definir, si se desea, una regla objetiva. No se usará longitud ni IA.
+7. **Sugerencias automáticas:** cualquier sugerencia de reunión o de acción derivada de las métricas debe ser una regla nueva y separada.
 
 Todo cambio de pesos o reglas debe publicarse como una nueva versión de la fórmula, con pruebas de regresión, y conservar las evaluaciones históricas.

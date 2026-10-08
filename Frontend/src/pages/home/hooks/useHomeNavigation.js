@@ -6,14 +6,15 @@ import { createUserSideNavigationItems } from "../../../utils/sideNavigationItem
 const TABLET_BREAKPOINT_PX = 768;
 
 /**
- * Construye los destinos del cliente y coordina navegaci?n lateral y m?vil.
- * Sincroniza la expansi?n con matchMedia bajo 768 px y retira el listener al desmontar.
+ * Construye los destinos del cliente y coordina la navegación lateral persistente.
+ * Sincroniza la expansión con matchMedia bajo 768 px y retira el listener al desmontar;
+ * la apertura del drawer móvil pertenece a useMobileNavigationDrawer.
  *
- * @param {Object} params - Dependencias de navegaci?n.
- * @param {Function} params.logout - Acci?n de cierre de sesi?n; el handler no espera su promesa.
- * @param {Function} params.navigate - Navegaci?n del router.
- * @param {Array} params.ownedProjectRows - Proyectos propios usados para destinos din?micos.
- * @returns {Object} Items, expansi?n, apertura m?vil y handlers de selecci?n, creaci?n y logout.
+ * @param {Object} params - Dependencias de navegación.
+ * @param {Function} params.logout - Acción de cierre de sesión; el handler no espera su promesa.
+ * @param {Function} params.navigate - Navegación del router.
+ * @param {Array} params.ownedProjectRows - Proyectos propios usados para destinos dinámicos.
+ * @returns {Object} Items, expansión y handlers de selección, creación y logout.
  */
 export default function useHomeNavigation({
   logout,
@@ -21,7 +22,6 @@ export default function useHomeNavigation({
   ownedProjectRows,
 }) {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
 
   const navigationItems = useMemo(
     () => createUserSideNavigationItems(ownedProjectRows, "client"),
@@ -104,42 +104,12 @@ export default function useHomeNavigation({
     navigate("/");
   };
 
-  const openMobileNavigation = () => {
-    setIsMobileNavigationOpen(true);
-  };
-
-  const closeMobileNavigation = () => {
-    setIsMobileNavigationOpen(false);
-  };
-
-  const handleMobileNavigationSelect = (item) => {
-    setIsMobileNavigationOpen(false);
-    handleSideNavigationSelect(item);
-  };
-
-  const handleMobileNewOpportunity = () => {
-    setIsMobileNavigationOpen(false);
-    navigate("/solicitudes/nueva");
-  };
-
-  const handleMobileExpandedChange = (expanded) => {
-    if (!expanded) {
-      setIsMobileNavigationOpen(false);
-    }
-  };
-
   return {
-    closeMobileNavigation,
     handleLogout,
-    handleMobileExpandedChange,
-    handleMobileNavigationSelect,
-    handleMobileNewOpportunity,
     handleNewOpportunity,
     handleSideNavigationSelect,
-    isMobileNavigationOpen,
     isSidebarExpanded,
     navigationItems,
-    openMobileNavigation,
     setIsSidebarExpanded,
   };
 }

@@ -6,7 +6,8 @@ import { getUserDisplay } from "../../auth/userDisplay.js";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
 
 const EXPANDED_SIDEBAR_WIDTH = 312;
@@ -104,6 +105,7 @@ function EmptyProjectsExample() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
   useEffect(() => {
@@ -152,7 +154,9 @@ function EmptyProjectsExample() {
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex min-h-screen w-full">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId="dashboard"
           expanded={isSidebarExpanded}
           userName={currentUser.name}
@@ -180,6 +184,8 @@ function EmptyProjectsExample() {
         >
           <div className="mx-auto flex w-full max-w-[1200px] items-center justify-between self-stretch border-b border-[var(--color-neutral-200)]">
             <NavigationBar
+              onMenuClick={mobileNavigation.open}
+              mobileMenuExpanded={mobileNavigation.isOpen}
               utilityActionActive={isNotificationsDrawerOpen}
               onUtilityActionClick={() => setIsNotificationsDrawerOpen((current) => !current)}
             />

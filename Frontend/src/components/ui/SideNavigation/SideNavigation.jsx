@@ -37,6 +37,30 @@ const SIDE_NAVIGATION_NODE_IDS = {
     menu: "2056:24108",
     footer: "2056:23177",
   },
+  // Instancia del drawer en "Dashboard Clients 2.0 MOBILE/Variant2" (3727:544029).
+  drawer: {
+    wrapper: "I3727:544029;3576:234118",
+    header: "I3727:544029;3576:234118;2061:24580",
+    search: "I3727:544029;3576:234118;2061:24583",
+    menu: "I3727:544029;3576:234118;2061:24584",
+    footer: "I3727:544029;3576:234118;2087:20017",
+  },
+};
+
+/**
+ * Clases del contenedor por presentación. El riel persistente conserva sticky, altura de
+ * viewport y la transición de ancho; el drawer ocupa el panel que lo aloja y respeta las
+ * áreas seguras superior e inferior del dispositivo con el mínimo de 16 px de Figma.
+ */
+const SIDE_NAVIGATION_CONTAINER_CLASSES = {
+  base: "flex flex-col overflow-hidden border-r border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]",
+  persistent:
+    "sticky top-0 h-screen min-h-screen self-start transition-[width,padding] will-change-[width,padding]",
+  expanded: "w-[312px] px-[16px] pb-[16px] pt-[16px] duration-200 ease-out",
+  collapsed:
+    "w-[76px] px-[16px] py-[16px] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]",
+  drawer:
+    "h-full w-full px-[16px] pt-[max(16px,env(safe-area-inset-top))] pb-[max(16px,env(safe-area-inset-bottom))]",
 };
 
 /**
@@ -53,13 +77,18 @@ function clearPointerFocus(event) {
 /**
  * Compone la navegación lateral a partir del usuario, sus proyectos recientes y las props públicas.
  * Conserva búsqueda y normalización local; delega selección y expansión al hook de estado.
+ * La variante `drawer` reproduce el panel móvil de Figma (3727:544029): siempre expandida,
+ * logo centrado y sin botón de expansión, de modo que nunca solicita cambios de expansión
+ * ni altera el estado del riel persistente que comparte la página.
  *
  * @param {Object} props Configuración, identidad y callbacks públicos de la navegación.
+ * @param {"persistent"|"drawer"} [props.variant="persistent"] Presentación de la navegación.
  * @returns {import("react").ReactElement} Sidebar con header, búsqueda, menú y footer.
  */
 function SideNavigation({
   className,
   items,
+  variant = SIDE_NAVIGATION_DEFAULT_PROPS.variant,
   activeItemId = SIDE_NAVIGATION_DEFAULT_PROPS.activeItemId,
   defaultActiveItemId = SIDE_NAVIGATION_DEFAULT_PROPS.defaultActiveItemId,
   expanded,
@@ -91,9 +120,10 @@ function SideNavigation({
   });
   const { projects: recentProjects } = useRecentProjects();
   const [searchValue, setSearchValue] = useState("");
+  const isDrawer = variant === "drawer";
   const {
     resolvedActiveItemId,
-    isExpanded,
+    isExpanded: isExpandedState,
     handleItemSelect,
     handleToggleExpanded,
   } = useSideNavigationState({
@@ -105,6 +135,8 @@ function SideNavigation({
     onExpandedChange,
     onCollapseClick,
   });
+  // El drawer solo existe expandido; la expansión pertenece exclusivamente al riel persistente.
+  const isExpanded = isDrawer || isExpandedState;
   const normalizedItems = useMemo(() => {
     const roleCode =
       typeof user?.role === "string" ? user.role : user?.role?.code;
@@ -119,9 +151,11 @@ function SideNavigation({
       includeProjectShortcuts: roleCode !== "admin",
     });
   }, [items, recentProjects, user?.role]);
-  const nodeIds = isExpanded
-    ? SIDE_NAVIGATION_NODE_IDS.expanded
-    : SIDE_NAVIGATION_NODE_IDS.collapsed;
+  const nodeIds = isDrawer
+    ? SIDE_NAVIGATION_NODE_IDS.drawer
+    : isExpanded
+      ? SIDE_NAVIGATION_NODE_IDS.expanded
+      : SIDE_NAVIGATION_NODE_IDS.collapsed;
   const visibleItems = useMemo(() => {
     const normalizedQuery = searchValue.trim().toLowerCase();
 
@@ -144,10 +178,15 @@ function SideNavigation({
   return (
     <aside
       className={clsx(
-        "sticky top-0 flex h-screen min-h-screen self-start flex-col overflow-hidden border-r border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] transition-[width,padding] will-change-[width,padding]",
-        isExpanded
-          ? "w-[312px] px-[16px] pb-[16px] pt-[16px] duration-200 ease-out"
-          : "w-[76px] px-[16px] py-[16px] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        SIDE_NAVIGATION_CONTAINER_CLASSES.base,
+        isDrawer
+          ? SIDE_NAVIGATION_CONTAINER_CLASSES.drawer
+          : [
+              SIDE_NAVIGATION_CONTAINER_CLASSES.persistent,
+              isExpanded
+                ? SIDE_NAVIGATION_CONTAINER_CLASSES.expanded
+                : SIDE_NAVIGATION_CONTAINER_CLASSES.collapsed,
+            ],
         className,
       )}
       aria-label={ariaLabel}
@@ -163,36 +202,46 @@ function SideNavigation({
         <div
           className={clsx(
             "flex items-center",
-            isExpanded ? "w-full justify-between gap-[12px]" : "justify-start",
+            isDrawer
+              ? "w-full justify-center"
+              : isExpanded
+                ? "w-full justify-between gap-[12px]"
+                : "justify-start",
           )}
           data-node-id={nodeIds.header}
         >
-          {isExpanded ? (
-            <div className="flex min-w-0 flex-1 items-center">
-              {logo ?? <MainLogo size="32px" />}
-            </div>
-          ) : null}
+          {isDrawer ? (
+            (logo ?? <MainLogo size="32px" />)
+          ) : (
+            <>
+              {isExpanded ? (
+                <div className="flex min-w-0 flex-1 items-center">
+                  {logo ?? <MainLogo size="32px" />}
+                </div>
+              ) : null}
 
-          <Button
-            theme="Primary"
-            type="Outline"
-            size="M"
-            showText={false}
-            showLeftIcon
-            showRightIcon={false}
-            iconLeft={<SidebarRightIcon className="size-5" />}
-            className="shrink-0"
-            tooltipPosition="Right"
-            aria-expanded={isExpanded}
-            aria-label={
-              isExpanded
-                ? "Contraer navegación lateral"
-                : "Expandir navegación lateral"
-            }
-            onClick={handleToggleExpanded}
-            onMouseUp={clearPointerFocus}
-            onTouchEnd={clearPointerFocus}
-          />
+              <Button
+                theme="Primary"
+                type="Outline"
+                size="M"
+                showText={false}
+                showLeftIcon
+                showRightIcon={false}
+                iconLeft={<SidebarRightIcon className="size-5" />}
+                className="shrink-0"
+                tooltipPosition="Right"
+                aria-expanded={isExpanded}
+                aria-label={
+                  isExpanded
+                    ? "Contraer navegación lateral"
+                    : "Expandir navegación lateral"
+                }
+                onClick={handleToggleExpanded}
+                onMouseUp={clearPointerFocus}
+                onTouchEnd={clearPointerFocus}
+              />
+            </>
+          )}
         </div>
 
         <div
@@ -243,11 +292,15 @@ function SideNavigation({
               <Button
                 theme="Primary"
                 type="Solid"
-                size="M"
+                size={isDrawer ? "L" : "M"}
                 fitContent={false}
                 showLeftIcon={false}
                 showRightIcon={false}
-                className="w-full"
+                className={clsx(
+                  "w-full",
+                  // Figma móvil: botón de 52 px con radio --radius-3; el riel conserva su tamaño M.
+                  isDrawer && "rounded-[var(--radius-3)]",
+                )}
                 onClick={onNewOpportunityClick}
               >
                 {newOpportunityLabel}

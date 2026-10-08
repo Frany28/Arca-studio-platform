@@ -8,7 +8,8 @@ import { useImageCommentNotifications } from "../../components/ui/Gallery/useIma
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import TabPanel from "../../components/ui/TabPanel.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
 import ProjectDetailTabMenu from "./components/ProjectDetailTabMenu.jsx";
 import ProjectOverviewHeader from "./components/ProjectOverviewHeader.jsx";
@@ -55,6 +56,7 @@ export default function ProjectDetailsPage({
   const [searchParams, setSearchParams] = useSearchParams();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
   const [recentDocumentModal, setRecentDocumentModal] = useState(null);
@@ -73,12 +75,10 @@ export default function ProjectDetailsPage({
     searchParams,
   });
   const {
-    closeSidebar,
     handleLogout,
     handleNewOpportunity,
     handleSideNavigationSelect,
     isSidebarExpanded,
-    openSidebar,
     setIsSidebarExpanded,
   } = useProjectDetailsNavigation({
     currentUser,
@@ -171,16 +171,9 @@ export default function ProjectDetailsPage({
     >
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex min-h-screen w-full items-stretch">
-        {isSidebarExpanded ? (
-          <button
-            type="button"
-            aria-label="Cerrar navegación lateral"
-            className="fixed inset-0 z-40 cursor-pointer bg-[rgba(42,41,41,0.10)] backdrop-blur-[var(--effect-blur-b1)] min-[768px]:hidden"
-            onClick={closeSidebar}
-          />
-        ) : null}
-
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId={
             currentUser.roleCode === "admin"
               ? "projects"
@@ -205,17 +198,14 @@ export default function ProjectDetailsPage({
           onItemSelect={handleSideNavigationSelect}
           onNewOpportunityClick={handleNewOpportunity}
           onLogoutClick={handleLogout}
-          className={`min-h-screen shrink-0 self-stretch max-[767px]:fixed max-[767px]:inset-y-0 max-[767px]:left-0 max-[767px]:z-50 ${
-            isSidebarExpanded
-              ? "max-[767px]:flex"
-              : "max-[767px]:hidden"
-          }`}
+          className="min-h-screen shrink-0 self-stretch"
         />
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
           <NavigationBar
             utilityActionActive={isNotificationsDrawerOpen}
-            onMenuClick={openSidebar}
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             onUtilityActionClick={() =>
               setIsNotificationsDrawerOpen((current) => !current)
             }

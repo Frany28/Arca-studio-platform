@@ -15,7 +15,8 @@ import {
 } from "../../utils/commentDisplay.js";
 import { canAccessObservations } from "../../utils/observationAccess.js";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import SettingsVerticalTabMenu from "../../components/ui/SettingsVerticalTabMenu.jsx";
 import TabPanel from "../../components/ui/TabPanel.jsx";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
@@ -134,6 +135,7 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const { logout, updateUser, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
@@ -543,7 +545,9 @@ export default function SettingsPage() {
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex min-h-screen w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId="settings"
           expanded={isSidebarExpanded}
           items={navigationItems}
@@ -597,21 +601,24 @@ export default function SettingsPage() {
           />
 
           <NavigationBar
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={() =>
               setIsNotificationsDrawerOpen((current) => !current)
             }
           />
 
-          <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px]">
-            <section className="flex w-full min-w-0 items-start gap-12 self-stretch">
+          {/* En móvil se usa el padding del entorno (16 px) y el menú se apila sobre el panel. */}
+          <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px] max-[767px]:px-[16px] max-[767px]:pb-[24px] max-[767px]:pt-[16px]">
+            <section className="flex w-full min-w-0 items-start gap-12 self-stretch max-[767px]:flex-col max-[767px]:gap-[24px]">
               <SettingsVerticalTabMenu
                 activeItemId={activeSettingsTabId}
                 onChange={setActiveSettingsTabId}
               />
               <TabPanel
                 transitionKey={activeSettingsTabId}
-                className="min-w-0 flex-1"
+                className="min-w-0 flex-1 max-[767px]:w-full"
               >
                 {activePanel}
               </TabPanel>

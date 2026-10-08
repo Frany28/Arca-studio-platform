@@ -18,5 +18,7 @@ test("long tag values stay inside their assigned column", async () => {
   assert.match(configSource, /inline-flex min-w-0 max-w-full/);
   assert.match(tagSource, /min-w-0 flex-1[\s\S]*overflow-hidden[\s\S]*text-ellipsis/);
   assert.match(projectsSource, /title=\{projectName\}/);
-  assert.match(projectsSource, /className="w-full max-w-\[107px\]"/);
+  // El ancho máximo aplica en todos los tamaños; móvil solo cambia la tipografía del Tag.
+  assert.match(projectsSource, /className=\{clsx\("w-full max-w-\[107px\]"/);
+  assert.doesNotMatch(projectsSource, /max-w-\[107px\][^\n]*max-w-none/);
 });

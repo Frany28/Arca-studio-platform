@@ -10,7 +10,8 @@ import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
 import EmptyState from "../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import { formatFileUploadDate, formatStorage } from "../../utils/fileMetrics.js";
 import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.js";
 
@@ -27,6 +28,7 @@ function AdminFilesPage() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(() =>
     typeof window === "undefined" ? true : window.innerWidth >= WEB_BREAKPOINT_PX,
   );
@@ -63,7 +65,9 @@ function AdminFilesPage() {
   return (
     <main className="h-screen overflow-hidden bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex h-full min-h-0 w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId="files"
           expanded={isSidebarExpanded}
           items={navigationItems}
@@ -80,6 +84,8 @@ function AdminFilesPage() {
 
         <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
           <NavigationBar
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsOpen}
             onUtilityActionClick={() => setIsNotificationsOpen((open) => !open)}
           />

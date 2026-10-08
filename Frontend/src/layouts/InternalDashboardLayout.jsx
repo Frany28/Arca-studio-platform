@@ -1,16 +1,19 @@
 import { useAuth } from "../auth/AuthContext.jsx";
 import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
-import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 
 /**
  * Renderiza el layout existente de ambos dashboards, incluido el saludo y logout.
  * Recibe navegación y contenido del rol sin añadir contenedores ni estilos nuevos.
+ * En móvil la navegación se presenta como drawer abierto desde el botón de menú del navbar.
  *
  * @param {Object} props - Identidad, navegación compartida, toggle y contenido de la página.
  * @returns {import("react").ReactElement} Sidebar, navbar y contenido dentro del layout actual.
  */
 function InternalDashboardLayout({ currentUser, navigation, onNotificationsToggle, children }) {
   const { logout } = useAuth();
+  const mobileNavigation = useMobileNavigationDrawer();
   const {
     navigate, navigationItems, isSidebarExpanded, setIsSidebarExpanded,
     isNotificationsDrawerOpen, handleSideNavigationSelect,
@@ -20,7 +23,9 @@ function InternalDashboardLayout({ currentUser, navigation, onNotificationsToggl
   return (
     <main className="h-screen overflow-hidden bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex h-full min-h-0 w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId="dashboard"
           expanded={isSidebarExpanded}
           items={navigationItems}
@@ -42,6 +47,8 @@ function InternalDashboardLayout({ currentUser, navigation, onNotificationsToggl
 
         <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col self-stretch overflow-y-auto overflow-x-hidden transition-[width] duration-300 ease-out">
           <NavigationBar
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={handleNotificationsToggle}
           />

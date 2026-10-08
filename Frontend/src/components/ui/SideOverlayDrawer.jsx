@@ -6,7 +6,59 @@ import Modal from "./Modal/Modal.jsx";
 const UNMOUNT_DELAY_MS = 360;
 const DRAWER_TRANSITION_MS = 360;
 const DRAWER_EASING = "ease-in-out";
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
 
+/**
+ * Mantiene Tab y Shift+Tab dentro del panel cuando el drawer actúa como diálogo modal.
+ * Solo considera controles renderizados (con cajas de layout): descarta los ocultos con
+ * `display: none` y conserva los transparentes que aparecen al recibir foco de teclado.
+ *
+ * @param {KeyboardEvent} event Pulsación recibida por el panel.
+ * @param {HTMLElement|null} panel Contenedor del diálogo.
+ * @returns {void} Redirige el foco al extremo opuesto cuando saldría del panel.
+ */
+function keepFocusInsidePanel(event, panel) {
+  if (event.key !== "Tab" || !panel) return;
+
+  const focusable = [...panel.querySelectorAll(FOCUSABLE_SELECTOR)].filter(
+    (element) => element.getClientRects().length > 0,
+  );
+
+  if (focusable.length === 0) {
+    event.preventDefault();
+    panel.focus();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && (active === first || active === panel)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+/**
+ * Panel lateral sobre overlay con animación de entrada/salida, cierre con Escape u overlay
+ * y restauración del foco previo. `trapFocus` es opcional para no alterar los drawers que
+ * abren menús o tooltips en portal fuera del panel.
+ *
+ * @param {Object} props Estado, presentación y contenido del panel.
+ * @param {boolean} [props.trapFocus=false] Mantiene la navegación por teclado dentro del panel.
+ * @returns {import("react").ReactElement|null} Drawer montado mientras está abierto o animando.
+ */
 function SideOverlayDrawer({
   open = false,
   onClose,
@@ -16,6 +68,7 @@ function SideOverlayDrawer({
   side = "right",
   widthClassName = "w-[312px]",
   ariaLabel = "Panel lateral",
+  trapFocus = false,
   ...props
 }) {
   const [shouldRender, setShouldRender] = useState(open);
@@ -144,6 +197,11 @@ function SideOverlayDrawer({
           transitionTimingFunction: DRAWER_EASING,
         }}
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={
+          trapFocus
+            ? (event) => keepFocusInsidePanel(event, panelRef.current)
+            : undefined
+        }
       >
         {children}
       </aside>

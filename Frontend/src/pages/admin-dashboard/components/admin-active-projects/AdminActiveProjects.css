@@ -10,6 +10,19 @@
   gap: 12px;
 }
 
+/*
+ * Figma MOBILE (3727:678728) coloca ambos filtros en una fila: el primero mide 180 px y el
+ * segundo ocupa el espacio visible restante. "Quitar filtros", que Figma deja recortado
+ * fuera del ancho, pasa a la fila siguiente para seguir siendo accesible.
+ */
+.admin-active-projects__filters {
+  grid-template-columns: minmax(0, 180px) minmax(120px, 1fr);
+}
+
+.admin-active-projects__clear-filters {
+  grid-column: 1 / -1;
+}
+
 .admin-active-projects__filter-menu {
   top: calc(100% - 1px);
   width: 100%;

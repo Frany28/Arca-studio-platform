@@ -6,7 +6,8 @@ import { getUserDisplay } from "../../auth/userDisplay.js";
 import { useImageCommentNotifications } from "../../components/ui/Gallery/useImageComments.js";
 import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import {
   ARCHITECT_DRAWER_RECENT_ACTIVITY,
   ARCHITECT_NAVIGATION_ITEMS,
@@ -20,6 +21,7 @@ function NewArchitectProjectPage() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
@@ -97,7 +99,9 @@ function NewArchitectProjectPage() {
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex min-h-screen w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId="dashboard"
           expanded={isSidebarExpanded}
           items={ARCHITECT_NAVIGATION_ITEMS}
@@ -119,6 +123,8 @@ function NewArchitectProjectPage() {
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
           <NavigationBar
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={() =>
               setIsNotificationsDrawerOpen((current) => !current)

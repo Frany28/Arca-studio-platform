@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
@@ -9,6 +10,7 @@ import Input from "../../../components/ui/Input/Input.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import TextArea from "../../../components/ui/TextArea/TextArea.jsx";
 import { InfoCircleIcon } from "../settingsIcons.jsx";
+import { SETTINGS_MOBILE_FIELD_CLASS_NAME, SETTINGS_MOBILE_ROW_CLASS_NAME } from "../settingsLayoutClassNames.js";
 
 const ALLOWED_FILE_EXTENSIONS = new Set(["jpeg", "jpg", "mp4", "pdf", "png"]);
 const ALLOWED_FILE_TYPES = new Set([
@@ -277,7 +279,7 @@ export default function SupportPanel({
           </p>
         </div>
 
-        <div className="flex w-full items-start justify-between">
+        <div className={clsx("flex w-full items-start justify-between", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
           <span className="pt-[2px] text-heading-8 tracking-[-0.5px] text-[var(--color-text-300)]">
             Tipo de problema
           </span>
@@ -298,14 +300,14 @@ export default function SupportPanel({
                   setIsSupportIssueTypeMenuOpen(false);
                 }}
                 interactive
-                className="w-[320px]"
+                className={clsx("w-[320px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
                 aria-label="Seleccionar tipo de problema"
               />
               <HintText
                 state="Default"
                 hintText="Esto nos ayuda a dirigir tu solicitud correctamente"
-                leftIcon={<InfoCircleIcon className="size-4" />}
-                className="w-[320px] items-start [&>p]:whitespace-normal [&>p]:break-words"
+                icon={<InfoCircleIcon className="size-4" />}
+                className={clsx("w-[320px] items-start [&>p]:whitespace-normal [&>p]:break-words", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
               />
             </div>
             <Input
@@ -320,14 +322,14 @@ export default function SupportPanel({
               value={supportSubject}
               placeholder="Ej. No puedo visualizar los renders"
               onChange={(event) => setSupportSubject(event.target.value)}
-              className="w-[320px] max-w-none"
+              className={clsx("w-[320px] max-w-none", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
             />
           </div>
         </div>
 
-        <div className="flex w-full items-start justify-between">
+        <div className={clsx("flex w-full items-start justify-between", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
           <div />
-          <div className="flex w-[325px] max-w-none flex-col gap-[8px]">
+          <div className={clsx("flex w-[325px] max-w-none flex-col gap-[8px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}>
             <TextArea
               label="Descripción"
               required
@@ -344,7 +346,7 @@ export default function SupportPanel({
             <HintText
               state="Default"
               hintText="Mientras más detalles proporciones, más rápido podremos ayudarte."
-              leftIcon={<InfoCircleIcon className="size-4" />}
+              icon={<InfoCircleIcon className="size-4" />}
               className="w-full items-start [&>p]:whitespace-normal [&>p]:break-words"
             />
           </div>
@@ -352,11 +354,11 @@ export default function SupportPanel({
 
         <div className="h-px w-full bg-[var(--color-neutral-200)]" />
 
-          <div className="flex w-full items-start justify-between gap-[16px]">
+          <div className={clsx("flex w-full items-start justify-between gap-[16px]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
             <span className="pt-[2px] text-heading-8 tracking-[-0.5px] text-[var(--color-text-300)]">
               Imagen de referencia (opcional)
             </span>
-          <div className="w-[447px]">
+          <div className={clsx("w-[447px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}>
             <FileUploadSection
               className="h-[177px] w-full"
               title="Imagen de referencia"

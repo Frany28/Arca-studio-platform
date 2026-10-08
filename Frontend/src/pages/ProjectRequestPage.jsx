@@ -13,8 +13,8 @@ import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.js
 import ProjectRequestCancelModal from "../components/ui/ProjectRequestFlow/ProjectRequestCancelModal.jsx";
 import ProjectLocationSuggestions from "../components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx";
 import ProjectRequestValidationStep from "../components/ui/ProjectRequestFlow/ProjectRequestValidationStep.jsx";
-import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
-import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
+import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { getProjectRequestFileErrors, hasAvailableProperty } from "../utils/projectRequestValidation.js";
 import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
@@ -45,6 +45,7 @@ export default function ProjectRequestPage() {
   const location = useLocation();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const viewRequest = location.state?.viewRequest || null;
   const initialRequest = location.state?.initialRequest || viewRequest;
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
@@ -69,15 +70,11 @@ export default function ProjectRequestPage() {
   };
   const {
     cancelRequestAction,
-    closeMobileNavigation,
     collapseSidebar,
     confirmRequestAction,
     expandSidebar,
-    handleMobileExpandedChange,
-    isMobileNavigationOpen,
     isRequestActionModalOpen,
     isSidebarExpanded,
-    openMobileNavigation,
     pendingRequestAction,
     requestLogout,
     requestNavigation,
@@ -191,8 +188,11 @@ export default function ProjectRequestPage() {
   const handleValidationSubmit = (code) => {
     submitValidation(code, { files, updateFileItem });
   };
+  // El drawer móvil se monta en portal: el contenedor oculto en móvil no lo afecta.
   const sidebar = (
-    <SideNavigation
+    <ResponsiveSideNavigation
+      mobileOpen={mobileNavigation.isOpen}
+      onMobileClose={mobileNavigation.close}
       activeItemId="requests"
       expanded={isSidebarExpanded}
       items={navigationItems}
@@ -220,7 +220,8 @@ export default function ProjectRequestPage() {
         </div>
         <div className="min-w-0 flex-1">
           <NavigationBar
-            onMenuClick={openMobileNavigation}
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={toggleNotifications}
           />
@@ -381,15 +382,6 @@ export default function ProjectRequestPage() {
           />
         </div>
       </div>
-
-      <SideOverlayDrawer open={isMobileNavigationOpen} onClose={closeMobileNavigation} side="left" widthClassName="w-[min(312px,calc(100vw-32px))]" className="z-[80] min-[768px]:hidden" panelClassName="rounded-none">
-        <SideNavigation
-          {...sidebar.props}
-          expanded={isMobileNavigationOpen}
-          onExpandedChange={handleMobileExpandedChange}
-          onItemSelect={requestNavigation}
-        />
-      </SideOverlayDrawer>
 
       <ProjectRequestCancelModal
         open={isRequestActionModalOpen}

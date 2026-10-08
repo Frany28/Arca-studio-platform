@@ -8,8 +8,8 @@ import { getUserDisplay } from "../auth/userDisplay.js";
 import AuthToast, { AuthToastLockIcon } from "../components/ui/AuthToast/AuthToast.jsx";
 import Button from "../components/ui/Button/Button.jsx";
 import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
-import SideNavigation from "../components/ui/SideNavigation/SideNavigation.jsx";
-import SideOverlayDrawer from "../components/ui/SideOverlayDrawer.jsx";
+import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../data/clientDrawerData.js";
 import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
 import useHomeProjects from "./home/hooks/useHomeProjects.js";
@@ -30,6 +30,7 @@ function Home({ view = "dashboard" }) {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
+  const mobileNavigation = useMobileNavigationDrawer();
   const {
     loadMoreProjectRequests,
     projectRequests,
@@ -78,17 +79,11 @@ function Home({ view = "dashboard" }) {
     `${view}:${projectRequests.map((request) => request.id).join("|")}`,
   );
   const {
-    closeMobileNavigation,
     handleLogout,
-    handleMobileExpandedChange,
-    handleMobileNavigationSelect,
-    handleMobileNewOpportunity,
     handleNewOpportunity,
     handleSideNavigationSelect,
-    isMobileNavigationOpen,
     isSidebarExpanded,
     navigationItems,
-    openMobileNavigation,
     setIsSidebarExpanded,
   } = useHomeNavigation({
     logout,
@@ -143,7 +138,9 @@ function Home({ view = "dashboard" }) {
         leading={<AuthToastLockIcon />}
       />
       <div className="flex min-h-screen w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           activeItemId={isRequestsView ? "requests" : "dashboard"}
           expanded={isSidebarExpanded}
           items={navigationItems}
@@ -155,14 +152,15 @@ function Home({ view = "dashboard" }) {
           onNewOpportunityClick={handleNewOpportunity}
           onLogoutClick={handleLogout}
           className={clsx(
-            "min-h-screen shrink-0 self-stretch max-[767px]:hidden min-[768px]:max-[1023px]:!px-[12px]",
+            "min-h-screen shrink-0 self-stretch min-[768px]:max-[1023px]:!px-[12px]",
             isSidebarExpanded && "min-[768px]:max-[1023px]:!w-[234px]",
           )}
         />
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
           <NavigationBar
-            onMenuClick={openMobileNavigation}
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={toggleNotifications}
           />
@@ -238,28 +236,6 @@ function Home({ view = "dashboard" }) {
         </div>
       </div>
 
-      <SideOverlayDrawer
-        open={isMobileNavigationOpen}
-        onClose={closeMobileNavigation}
-        side="left"
-        widthClassName="w-[min(312px,calc(100vw-32px))]"
-        className="z-[80] min-[768px]:hidden"
-        panelClassName="rounded-none"
-      >
-        <SideNavigation
-          activeItemId={isRequestsView ? "requests" : "dashboard"}
-          expanded
-          items={navigationItems}
-          userName={currentUser.name}
-          userEmail={currentUser.email}
-          userAvatarSrc={currentUser.profilePhotoUrl}
-          onItemSelect={handleMobileNavigationSelect}
-          onNewOpportunityClick={handleMobileNewOpportunity}
-          onLogoutClick={handleLogout}
-          onExpandedChange={handleMobileExpandedChange}
-          className="!h-full !min-h-full !w-full border-r-0 shadow-none"
-        />
-      </SideOverlayDrawer>
     </main>
   );
 }

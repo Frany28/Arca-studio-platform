@@ -45,7 +45,8 @@ async function openPage(context, props = {}, { theme = "light", resizeFallback =
   });
   context.after(async () => { await session.close(); assert.deepEqual(errors, []); });
   await page.goto(`${origin}/tests/browser/fixtures/admin-active-projects.html?theme=${theme}&resizeFallback=${resizeFallback}&props=${encodeURIComponent(JSON.stringify({ projects: PROJECTS, assignees: [ANA, LUIS, CARMEN], ...props }))}`);
-  await page.getByRole("heading", { name: "Proyectos", exact: true }).waitFor();
+  // Figma MOBILE (bajo 768 px) titula la sección "Proyectos activos"; tablet y escritorio, "Proyectos".
+  await page.getByRole("heading", { name: /^Proyectos( activos)?$/ }).waitFor();
   return page;
 }
 

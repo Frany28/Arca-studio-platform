@@ -1,3 +1,5 @@
+import { TABLET_MIN_WIDTH_PX } from "../../../utils/layoutBreakpoints.js";
+
 export const SIDE_NAVIGATION_DEFAULT_ITEMS = [
   {
     id: "dashboard",
@@ -25,8 +27,19 @@ export const SIDE_NAVIGATION_DEFAULT_ITEMS = [
   },
 ];
 
+/**
+ * Ancho mínimo desde el que se muestra la navegación persistente (tablet y escritorio).
+ * Debe coincidir con las clases `max-[767px]:hidden` y `min-[768px]:hidden` de
+ * ResponsiveSideNavigation, que Tailwind necesita como literales.
+ */
+export const SIDE_NAVIGATION_PERSISTENT_MIN_WIDTH_PX = TABLET_MIN_WIDTH_PX;
+
+/** Presentaciones admitidas: riel persistente expandible o panel del drawer móvil. */
+export const SIDE_NAVIGATION_VARIANTS = ["persistent", "drawer"];
+
 export const SIDE_NAVIGATION_DEFAULT_PROPS = {
   items: SIDE_NAVIGATION_DEFAULT_ITEMS,
+  variant: "persistent",
   activeItemId: undefined,
   defaultActiveItemId: null,
   defaultExpanded: true,

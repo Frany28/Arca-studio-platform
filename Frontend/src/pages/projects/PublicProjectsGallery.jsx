@@ -13,8 +13,8 @@ import Loader from "../../components/ui/Loader/Loader.jsx";
 import NavigationBar from "../../components/EnvironmentNavigationBar.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
 import ProjectImage from "../../components/ui/ProjectImage/ProjectImage.jsx";
-import SideNavigation from "../../components/ui/SideNavigation/SideNavigation.jsx";
-import SideOverlayDrawer from "../../components/ui/SideOverlayDrawer.jsx";
+import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
+import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
 import ProjectDocumentsToolbar from "./components/ProjectDocumentsToolbar.jsx";
 import { getProjectAssigneeAvatar } from "../../utils/projectAssigneeDisplay.js";
@@ -187,7 +187,7 @@ export default function PublicProjectsGallery() {
   const [sortDirection, setSortDirection] = useState("desc");
   const [galleryColumns, setGalleryColumns] = useState(getGalleryColumnCount);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+  const mobileNavigation = useMobileNavigationDrawer();
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
 
@@ -299,19 +299,22 @@ export default function PublicProjectsGallery() {
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
       <div className="flex min-h-screen w-full items-stretch">
-        <SideNavigation
+        <ResponsiveSideNavigation
           {...sideNavigationProps}
+          mobileOpen={mobileNavigation.isOpen}
+          onMobileClose={mobileNavigation.close}
           expanded={isSidebarExpanded}
           onExpandedChange={setIsSidebarExpanded}
           className={clsx(
-            "min-h-screen shrink-0 self-stretch max-[767px]:hidden min-[768px]:max-[1023px]:!px-[12px]",
+            "min-h-screen shrink-0 self-stretch min-[768px]:max-[1023px]:!px-[12px]",
             isSidebarExpanded && "min-[768px]:max-[1023px]:!w-[234px]",
           )}
         />
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto">
           <NavigationBar
-            onMenuClick={() => setIsMobileNavigationOpen(true)}
+            onMenuClick={mobileNavigation.open}
+            mobileMenuExpanded={mobileNavigation.isOpen}
             utilityActionActive={isNotificationsDrawerOpen}
             onUtilityActionClick={() =>
               setIsNotificationsDrawerOpen((current) => !current)
@@ -395,26 +398,6 @@ export default function PublicProjectsGallery() {
         </div>
       </div>
 
-      <SideOverlayDrawer
-        open={isMobileNavigationOpen}
-        onClose={() => setIsMobileNavigationOpen(false)}
-        side="left"
-        widthClassName="w-[min(312px,calc(100vw-32px))]"
-        className="z-[80] min-[768px]:hidden"
-        panelClassName="rounded-none"
-      >
-        <SideNavigation
-          {...sideNavigationProps}
-          onItemSelect={(item) => {
-            setIsMobileNavigationOpen(false);
-            handleNavigation(item);
-          }}
-          onExpandedChange={(expanded) => {
-            if (!expanded) setIsMobileNavigationOpen(false);
-          }}
-          className="!h-full !min-h-full !w-full border-r-0 shadow-none"
-        />
-      </SideOverlayDrawer>
     </main>
   );
 }

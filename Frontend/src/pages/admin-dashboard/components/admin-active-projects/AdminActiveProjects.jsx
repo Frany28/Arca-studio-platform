@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowSwapVertical,
@@ -23,10 +24,12 @@ import Input from "../../../../components/ui/Input/Input.jsx";
 import Loader from "../../../../components/ui/Loader/Loader.jsx";
 import ScrollBar from "../../../../components/ui/ScrollBar/ScrollBar.jsx";
 import Tag from "../../../../components/ui/Tag/Tag.jsx";
+import useMobileLayout from "../../../../hooks/useMobileLayout.js";
 import { isProjectOperationallyReadOnly } from "../../../../utils/projectReadOnly.js";
 import { getBulkActionAvailability } from "./utils/adminProjectBulkActions.js";
 import { getAdminProjectsPagination } from "./utils/adminProjectPagination.js";
 import { getAssignees, getClient, getStatus } from "./utils/adminProjectPresentation.js";
+import { getAdminDashboardPresentation } from "../../utils/adminDashboardMobilePresentation.js";
 import { useAdminProjectFilters } from "./hooks/useAdminProjectFilters.js";
 import { useAdminProjectSelection } from "./hooks/useAdminProjectSelection.js";
 import { useAdminProjectsTableScroll } from "./hooks/useAdminProjectsTableScroll.js";
@@ -78,6 +81,8 @@ function AdminActiveProjects({
   onRetry,
   projects,
 }) {
+  const isMobileLayout = useMobileLayout();
+  const presentation = getAdminDashboardPresentation(isMobileLayout);
   const {
     query, setQuery, setStatusFilterIds, setPersonFilterIds,
     personnelFilterItems, statusFilterItems, filteredProjects, hasFilters,
@@ -294,7 +299,8 @@ function AdminActiveProjects({
       aria-labelledby="admin-active-projects-title"
     >
       <h2 id="admin-active-projects-title" className="text-body-3 text-[var(--color-text-300)]">
-        Proyectos
+        {/* Figma MOBILE (3727:678728) titula la sección "Proyectos activos". */}
+        {isMobileLayout ? "Proyectos activos" : "Proyectos"}
       </h2>
 
       <div className="admin-active-projects__toolbar">
@@ -308,7 +314,7 @@ function AdminActiveProjects({
           showLeftIcon
           showRightIcon={false}
           leftIcon={<SearchNormal1 size="20" color="currentColor" />}
-          className="w-full"
+          className="w-full max-[767px]:max-w-none"
           aria-label="Buscar proyectos"
           required={false}
           onChange={handleQueryChange}
@@ -394,7 +400,8 @@ function AdminActiveProjects({
               <col className="w-[172px]" />
             </colgroup>
             <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
-              <tr className="h-[49px] text-body-4">
+              {/* En móvil las celdas usan Headings/h8 (500); el estilo nativo de <th> es negrita. */}
+              <tr className={isMobileLayout ? "h-[49px] text-heading-8 [&>th]:font-medium" : "h-[49px] text-body-4"}>
                 <th className="p-[16px]">
                   <Checkbox size="S" checked={headerChecked} interactive aria-label="Seleccionar todos los proyectos visibles" onCheckedChange={toggleAllVisible} />
                 </th>
@@ -433,12 +440,14 @@ function AdminActiveProjects({
                       <Tag
                         label={projectName}
                         title={projectName}
-                        size="M"
+                        size={isMobileLayout ? presentation.tagSize : "M"}
                         avatar={false}
                         checkbox={false}
                         closeIcon={false}
                         count={false}
-                        className="w-full max-w-[107px]"
+                        // Los nombres largos se truncan dentro de su columna en todos los tamaños;
+                        // en móvil el Tag usa Body/b3 (14 px) como en Figma.
+                        className={clsx("w-full max-w-[107px]", isMobileLayout && presentation.tagClassName)}
                       />
                     </td>
                     <td className="px-[24px] py-[16px]">
@@ -523,8 +532,8 @@ function AdminActiveProjects({
 
           <footer
             ref={tableFooterRef}
-            className="flex min-h-[42px] w-full flex-wrap items-center justify-between gap-x-[12px] gap-y-[12px]"
-            aria-label="SelecciÃ³n y paginaciÃ³n de proyectos"
+            className="flex min-h-[42px] w-full flex-wrap items-center justify-between gap-x-[12px] gap-y-[12px] max-[767px]:gap-x-[8px]"
+            aria-label="Selección y paginación de proyectos"
             data-selection-footer="true"
           >
             <span
@@ -589,8 +598,9 @@ function AdminActiveProjects({
                   fitContent
                   showLeftIcon={false}
                   showRightIcon={false}
+                  className={presentation.textButtonClassName}
                   disabled={!pagination.canGoPrevious || Boolean(bulkActionPending)}
-                  aria-label="Ir a la pÃ¡gina anterior de proyectos"
+                  aria-label="Ir a la página anterior de proyectos"
                   onClick={goToPreviousPage}
                 >
                   Anterior
@@ -602,8 +612,9 @@ function AdminActiveProjects({
                   fitContent
                   showLeftIcon={false}
                   showRightIcon={false}
+                  className={presentation.textButtonClassName}
                   disabled={!pagination.canGoNext || Boolean(bulkActionPending)}
-                  aria-label="Ir a la pÃ¡gina siguiente de proyectos"
+                  aria-label="Ir a la página siguiente de proyectos"
                   onClick={goToNextPage}
                 >
                   Siguiente pág.

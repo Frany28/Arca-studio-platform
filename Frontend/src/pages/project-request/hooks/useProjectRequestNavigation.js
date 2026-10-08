@@ -3,7 +3,7 @@ import { useState } from "react";
 import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
 
 /**
- * Coordina por separado la expansión de escritorio y la apertura del drawer móvil.
+ * Coordina la expansión de escritorio; el drawer móvil pertenece a useMobileNavigationDrawer.
  * Difiere navegación, logout o reset hasta confirmarlos; cancelar no ejecuta la acción.
  *
  * @param {Object} params - Dependencias del flujo de navegaci?n.
@@ -13,7 +13,7 @@ import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
  * @param {string} params.roleCode - Rol usado para resolver el dashboard.
  * @param {Function} params.setShowRequiredAlert - Controla el aviso de validaci?n.
  * @param {Function} params.setNotificationsOpen - Controla la apertura del drawer externo.
- * @returns {Object} Apertura/expansi?n, modal, acci?n pendiente y handlers para solicitar, cancelar o confirmar acciones.
+ * @returns {Object} Expansión, modal, acci?n pendiente y handlers para solicitar, cancelar o confirmar acciones.
  */
 export default function useProjectRequestNavigation({
   logout,
@@ -24,7 +24,6 @@ export default function useProjectRequestNavigation({
   setNotificationsOpen,
 }) {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const [pendingRequestAction, setPendingRequestAction] = useState(null);
   const [isRequestActionModalOpen, setIsRequestActionModalOpen] = useState(false);
 
@@ -45,7 +44,6 @@ export default function useProjectRequestNavigation({
 
     setShowRequiredAlert(false);
     setNotificationsOpen(false);
-    setIsMobileNavigationOpen(false);
     setPendingRequestAction({ type: "navigate", item });
     setIsRequestActionModalOpen(true);
   };
@@ -53,7 +51,6 @@ export default function useProjectRequestNavigation({
   const requestLogout = () => {
     setShowRequiredAlert(false);
     setNotificationsOpen(false);
-    setIsMobileNavigationOpen(false);
     setPendingRequestAction({ type: "logout" });
     setIsRequestActionModalOpen(true);
   };
@@ -94,27 +91,6 @@ export default function useProjectRequestNavigation({
     }
   };
 
-  const openMobileNavigation = () => {
-    setIsMobileNavigationOpen(true);
-  };
-
-  const closeMobileNavigation = () => {
-    setIsMobileNavigationOpen(false);
-  };
-
-  /**
-   * Traduce la intención de contraer la navegación móvil en el cierre de su drawer.
-   * Conserva el estado de escritorio y delega la restauración de foco al drawer compartido.
-   *
-   * @param {boolean} expanded Expansión solicitada por la instancia móvil.
-   * @returns {void} Cierra únicamente el drawer móvil cuando se solicita contraer.
-   */
-  const handleMobileExpandedChange = (expanded) => {
-    if (!expanded) {
-      closeMobileNavigation();
-    }
-  };
-
   const collapseSidebar = () => {
     setIsSidebarExpanded(false);
   };
@@ -125,15 +101,11 @@ export default function useProjectRequestNavigation({
 
   return {
     cancelRequestAction,
-    closeMobileNavigation,
     collapseSidebar,
     confirmRequestAction,
     expandSidebar,
-    handleMobileExpandedChange,
-    isMobileNavigationOpen,
     isRequestActionModalOpen,
     isSidebarExpanded,
-    openMobileNavigation,
     pendingRequestAction,
     requestLogout,
     requestNavigation,

@@ -6,7 +6,8 @@ import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
 const TABLET_BREAKPOINT_PX = 768;
 
 /**
- * Coordina destinos y apertura del sidebar desde el detalle del proyecto.
+ * Coordina destinos y expansión del sidebar persistente desde el detalle del proyecto;
+ * el drawer móvil pertenece a useMobileNavigationDrawer.
  * El estado inicial usa 1024 px; el efecto lo sincroniza despu?s con matchMedia a 768 px
  * y retira su listener al desmontar. Logout navega sin esperar la promesa de cierre.
  *
@@ -15,7 +16,7 @@ const TABLET_BREAKPOINT_PX = 768;
  * @param {Function} params.logout - Acci?n externa de cierre de sesi?n.
  * @param {Function} params.navigate - Navegaci?n del router.
  * @param {Object|null} params.project - Proyecto actual para resolver su ruta de presentaci?n.
- * @returns {Object} Expansi?n, setter y acciones de sidebar, selecci?n, nueva oportunidad y logout.
+ * @returns {Object} Expansión, setter y acciones de selección, nueva oportunidad y logout.
  */
 export default function useProjectDetailsNavigation({
   currentUser,
@@ -109,21 +110,11 @@ export default function useProjectDetailsNavigation({
     navigate("/");
   };
 
-  const openSidebar = () => {
-    setIsSidebarExpanded(true);
-  };
-
-  const closeSidebar = () => {
-    setIsSidebarExpanded(false);
-  };
-
   return {
-    closeSidebar,
     handleLogout,
     handleNewOpportunity,
     handleSideNavigationSelect,
     isSidebarExpanded,
-    openSidebar,
     setIsSidebarExpanded,
   };
 }
