@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { hasAvailableProperty, PROJECT_REQUEST_TEXT_LIMITS, PROJECT_REQUEST_VALUES } from "../domain/projectRequest.js";
+import { hasAvailableProperty, PROJECT_REQUEST_TEXT_LIMITS, PROJECT_REQUEST_VALUES, READABLE_PROJECT_REQUEST_TYPES } from "../domain/projectRequest.js";
 import { isAdvertisingStand } from "../domain/projectRequestStand.js";
 import { projectRequestStandSchema } from "./projectRequestStandSchema.js";
 
@@ -108,7 +108,8 @@ const projectRequestBody = z
     projectLocationProviderPlaceId: nullableText(255),
     projectName: z.string().trim().min(PROJECT_REQUEST_TEXT_LIMITS.projectName.min).max(PROJECT_REQUEST_TEXT_LIMITS.projectName.max),
     projectSize: optionalChoice(PROJECT_REQUEST_VALUES.projectSize),
-    projectType: z.enum(PROJECT_REQUEST_VALUES.projectType),
+    // Editar admite tipos históricos; el servicio exige conservar el mismo tipo guardado.
+    projectType: z.enum(READABLE_PROJECT_REQUEST_TYPES),
     quality: optionalChoice(PROJECT_REQUEST_VALUES.quality),
     referenceLink: nullableText(500).refine((value) => {
       if (value === null) return true;
@@ -170,7 +171,10 @@ const projectRequestBody = z
   });
 
 export const createProjectRequestSchema = z.object({
-  body: projectRequestBody.extend({ submissionId: z.uuid() }).strict(),
+  body: projectRequestBody.safeExtend({
+    projectType: z.enum(PROJECT_REQUEST_VALUES.projectType),
+    submissionId: z.uuid(),
+  }).strict(),
 });
 
 export const updateProjectRequestSchema = z.object({

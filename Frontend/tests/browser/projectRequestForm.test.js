@@ -45,7 +45,7 @@ async function openRequestPage(context, { viewport = { width: 1440, height: 1000
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
-    calls.push({ body: method === "POST" && path === "/api/project-requests" ? request.postDataJSON() : null, fileName: request.headers()["x-file-name"], method, path });
+    calls.push({ body: (method === "POST" && path === "/api/project-requests") || (method === "PATCH" && path === `/api/project-requests/${REQUEST_ID}`) ? request.postDataJSON() : null, fileName: request.headers()["x-file-name"], method, path });
     if (path === "/api/auth/me") return route.fulfill({ json: { user: { id: 5, firstName: "Cliente", email: "cliente@example.test", role: { code: "client", name: "Cliente" }, status: "active" } } });
     if (path === "/api/geoapify/address-suggestions") return route.fulfill({ json: { suggestions: [] } });
     if (method === "POST" && path === "/api/project-requests") return route.fulfill({ status: 201, json: { projectRequest: { id: REQUEST_ID, status: "draft" } } });
@@ -112,7 +112,11 @@ async function fillStandSection(page) {
 
 test("Stand: únicamente Stand publicitario muestra la sección; excluye la categoría histórica", async (context) => {
   const { page } = await openRequestPage(context);
-  for (const label of ["Residencial", "Comercial", "Corporativo", "Stands y exhibiciones"]) {
+  await page.getByRole("button", { name: "Tipo de proyecto", exact: true }).click();
+  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Residencial", "Comercial", "Corporativo", "Stand publicitario"]);
+  assert.equal(await page.getByText("Stands y exhibiciones", { exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Tipo de proyecto", exact: true }).click();
+  for (const label of ["Residencial", "Comercial", "Corporativo"]) {
     await choose(page, "Tipo de proyecto", label);
     assert.equal(await standSection(page).count(), 0, label);
   }
@@ -129,7 +133,7 @@ test("Stand → otro → Stand: limpia respuestas y errores, conserva el resto y
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
   await page.getByText("Indica si ya tienes asignado el espacio dentro del evento.", { exact: true }).waitFor();
   await fillStandSection(page);
-  await choose(page, "Tipo de proyecto", "Stands y exhibiciones");
+  await choose(page, "Tipo de proyecto", "Comercial");
   await standSection(page).waitFor({ state: "detached" });
   await choose(page, "Tipo de proyecto", "Stand publicitario");
   assert.equal((await page.getByRole("button", { name: STAND_STATUS_LABEL, exact: true }).textContent()).trim(), "Selecciona una opción");
@@ -218,7 +222,7 @@ async function fillLegalSection(page) {
   await choose(page, OWNERS_LABEL, "No");
 }
 
-/** Envía con el código temporal y devuelve el cuerpo con el que se creó el borrador. */
+/** Envía con el código temporal y devuelve el cuerpo guardado al crear o editar el borrador. */
 async function submitWithCode(page, calls) {
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
   const codeDialog = page.getByRole("dialog");
@@ -227,8 +231,29 @@ async function submitWithCode(page, calls) {
   await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
   await submitted;
   await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
-  return calls.find((call) => call.method === "POST" && call.path === "/api/project-requests").body;
+  return calls.find((call) => call.body && ["POST", "PATCH"].includes(call.method)).body;
 }
+
+test("Tipo histórico: restaura, muestra la etiqueta sin opción seleccionable y conserva el tipo al reenviar", async (context) => {
+  const { page, calls } = await openRequestPage(context, { initialRequest: {
+    id: REQUEST_ID, status: "changes_requested", projectName: "Exhibición anterior", projectType: "stands_exhibitions",
+    location: "Maracaibo, Estado Zulia", description: "Diseño del espacio de exposición para el evento.",
+    developmentMode: "full", landStatus: "unavailable", investmentRange: "10k_50k",
+    capitalAvailability: "available_now", startTime: "over_6_months",
+  } });
+  const selector = page.getByRole("button", { name: "Tipo de proyecto", exact: true });
+  assert.match(await selector.textContent(), /Stands y exhibiciones/);
+  await selector.click();
+  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Residencial", "Comercial", "Corporativo", "Stand publicitario"]);
+  assert.equal(await page.getByRole("menuitem", { name: "Stands y exhibiciones", exact: true }).count(), 0);
+  await selector.click();
+  assert.equal(await standSection(page).count(), 0);
+  const body = await submitWithCode(page, calls);
+  assert.equal(body.projectType, "stands_exhibitions");
+  assert.equal("standRequirements" in body, false);
+  assert.equal(calls.some((call) => call.method === "POST" && call.path === "/api/project-requests"), false);
+  assert.ok(calls.some((call) => call.method === "PATCH" && call.path === `/api/project-requests/${REQUEST_ID}`));
+});
 
 /** Afirma que la solicitud no transporta datos del inmueble. */
 function assertNoPropertyData(body) {

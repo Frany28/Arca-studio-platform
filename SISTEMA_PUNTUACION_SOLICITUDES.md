@@ -37,7 +37,7 @@ Las etiquetas y opciones siguientes reproducen el formulario vigente. «Obligato
 | Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
 | Nombre del proyecto | Texto de 3 a 150 caracteres. | Obligatoria. Informativa; cuenta como respondida si es válida. |
-| Tipo de proyecto | Residencial; Comercial; Corporativo; Stands y exhibiciones; Stand publicitario. | Obligatoria. Sin puntos por tipo. Únicamente «Stand publicitario» activa «Requisitos del stand». |
+| Tipo de proyecto | Residencial; Comercial; Corporativo; Stand publicitario. | Obligatoria. Sin puntos por tipo. Únicamente «Stand publicitario» activa «Requisitos del stand». |
 | Ubicación del proyecto | Dirección válida de 5 a 255 caracteres. | Obligatoria. Informativa; sin puntos por ubicación. |
 | Descripción del proyecto | Texto de 30 a 100 caracteres, después de retirar espacios al inicio y al final. | Obligatoria. Una descripción válida cuenta como respondida. Su longitud no suma ni resta; no se evalúa claridad mediante IA. |
 | Tamaño aproximado del proyecto | Pequeño (menos de 80 m²); Mediano (80-200 m²); Grande (200-500 m²); Muy grande (más de 500 m²); No lo sé aún. | Opcional. «No lo sé aún» o sin responder genera la deducción de tamaño no definido. Los tamaños definidos no reciben puntos; solo se contrastan con la inversión. |
@@ -46,7 +46,7 @@ Las etiquetas y opciones siguientes reproducen el formulario vigente. «Obligato
 
 ### 3.2. Requisitos del stand
 
-Esta sección se muestra exclusivamente para **«Stand publicitario»**, según la condición del diseño. **«Stands y exhibiciones» es otra opción** y no activa esta sección. Los demás tipos son N/A.
+Esta sección se muestra exclusivamente para **«Stand publicitario»**, según la condición del diseño. **«Stands y exhibiciones» es un tipo retirado**, conservado únicamente en registros anteriores; no se ofrece como opción ni activa esta sección. Los demás tipos son N/A.
 
 | Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
@@ -145,7 +145,7 @@ Los cruces financieros indican aspectos que deben revisarse. No demuestran que e
 
 - Con «En proceso de adquirirlo» o «No todavía», la situación legal, documentos, propietarios y planos del inmueble son N/A. Se ocultan y limpian sus respuestas; no se acepta información de esos campos cuando no corresponde.
 - La lista de documentos legales solo aplica con inmueble disponible y «Sí, tengo la documentación disponible». Con documentación en trámite o no disponible, la lista es N/A.
-- Los requisitos del stand solo aplican a «Stand publicitario». Cambiar a otro tipo limpia el bloque; «Stands y exhibiciones» mantiene su significado independiente y sus solicitudes anteriores.
+- Los requisitos del stand solo aplican a «Stand publicitario». Cambiar a otro tipo limpia el bloque. «Stands y exhibiciones» se retira del catálogo vigente; las solicitudes anteriores mantienen su tipo, pueden conservarlo al editarse y no se convierten automáticamente a «Stand publicitario».
 - Los planos del espacio del evento no sustituyen ni modifican la respuesta sobre planos del inmueble.
 - Los plazos «3-6 meses» y «Más de 6 meses» no generan deducciones temporales con las reglas actuales.
 - Las solicitudes anteriores no reciben respuestas ficticias del stand ni se reclasifican. Su compatibilidad guardada conserva puntuación, nivel y observaciones originales. Las métricas de información completada y coherencia financiera mantienen su cálculo habitual desde las respuestas, sin modificar la compatibilidad histórica.
@@ -210,7 +210,7 @@ Perfil común: todas las preguntas aplicables respondidas; proyecto pequeño, mo
 | Opcionales sin respuesta | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace. | 78 (−15 −5 −2) | 76 % (13/17) | Información financiera insuficiente. |
 | Stand con requisitos | «Stand publicitario», sin inmueble disponible, requisitos disponibles y espacio asignado. | 100 | 100 % (13/13) | Sin cambios por el stand. |
 | Stand sin requisitos | Igual al anterior, «Aún no tengo los requisitos» y «Aún no está asignado». | 100 | 100 % (13/13) | Sin cambios por el stand; admite envío. |
-| Otro tipo de proyecto | «Stands y exhibiciones», sin inmueble disponible; requisitos del stand N/A. | 100 | 100 % (13/13) | Sin cambios por el tipo. |
+| Otro tipo de proyecto | «Comercial», sin inmueble disponible; requisitos del stand N/A. | 100 | 100 % (13/13) | Sin cambios por el tipo. |
 
 Estos ejemplos conservan los valores actuales; una clasificación favorable no sustituye el análisis de los hallazgos ni la revisión humana.
 

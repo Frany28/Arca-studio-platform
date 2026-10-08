@@ -1,5 +1,8 @@
 import { ADVERTISING_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
 
+// No son opciones seleccionables: únicamente identifican solicitudes anteriores.
+export const LEGACY_PROJECT_REQUEST_TYPES = Object.freeze(["stands_exhibitions"]);
+
 export const PROJECT_REQUEST_OPTIONS = {
   standRequirementsStatus: [
     { label: "Sí, tengo los requisitos", value: "available" },
@@ -77,7 +80,6 @@ export const PROJECT_REQUEST_OPTIONS = {
     { label: "Residencial", value: "residential" },
     { label: "Comercial", value: "commercial" },
     { label: "Corporativo", value: "corporate" },
-    { label: "Stands y exhibiciones", value: "stands_exhibitions" },
     { label: "Stand publicitario", value: ADVERTISING_STAND_PROJECT_TYPE },
   ],
   quality: [

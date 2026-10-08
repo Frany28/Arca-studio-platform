@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/http.js";
+import { LEGACY_PROJECT_REQUEST_TYPES } from "../../utils/projectRequestOptions.js";
 import ProjectRequestDetailsStep from "./ProjectRequestFlow/ProjectRequestDetailsStep.jsx";
 import ProjectRequestReferencesStep from "./ProjectRequestFlow/ProjectRequestReferencesStep.jsx";
 import ProjectRequestSuccessStep from "./ProjectRequestFlow/ProjectRequestSuccessStep.jsx";
@@ -8,7 +9,7 @@ const PROJECT_TYPE_IDS = {
   commercial: "comercial",
   corporate: "corporativo",
   residential: "residencial",
-  stands_exhibitions: "stands",
+  advertising_stand: "advertising_stand",
 };
 
 function createFormValues(projectRequest) {
@@ -23,7 +24,8 @@ function createFormValues(projectRequest) {
     projectLocationProviderPlaceId: projectRequest?.providerPlaceId || null,
     description: projectRequest?.description || "",
     hasBlueprints: projectRequest?.hasPlans ? "Yes" : "No",
-    selectedProjectTypeId: PROJECT_TYPE_IDS[projectRequest?.projectType] || "",
+    selectedProjectTypeId: PROJECT_TYPE_IDS[projectRequest?.projectType]
+      || (LEGACY_PROJECT_REQUEST_TYPES.includes(projectRequest?.projectType) ? projectRequest.projectType : ""),
     referenceLink: projectRequest?.referenceLink || "",
     code: "",
   };

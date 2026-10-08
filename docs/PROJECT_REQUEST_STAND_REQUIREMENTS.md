@@ -1,6 +1,6 @@
 # Requisitos del stand publicitario
 
-La sección de [Figma 4384:391847](https://www.figma.com/design/Vy3rWOkJ1WIiDLcPoHbHuQ/ARCA-WEBSITE?node-id=4384-391847) se muestra exclusivamente para `advertising_stand` (Stand publicitario). El diseño también muestra «Stand Publicitario» en el selector de tipo. El catálogo previo solo contenía `stands_exhibitions` (Stands y exhibiciones): se conserva como opción independiente y no se reclasifican solicitudes históricas.
+La sección de [Figma 4384:391847](https://www.figma.com/design/Vy3rWOkJ1WIiDLcPoHbHuQ/ARCA-WEBSITE?node-id=4384-391847) se muestra exclusivamente para `advertising_stand` (Stand publicitario). El diseño también muestra «Stand Publicitario» en el selector de tipo. El catálogo vigente contiene Residencial, Comercial, Corporativo y Stand publicitario. `stands_exhibitions` (Stands y exhibiciones) es un identificador retirado: se conserva para registros históricos, sin reclasificarlos ni ofrecerlo como opción nueva.
 
 ## Formulario y contrato
 
@@ -22,6 +22,8 @@ Crear y editar solicitudes admite el bloque `standRequirements` únicamente para
 
 Los textos presentes en Figma se conservan. Las alternativas de gestión y no disponibilidad se completaron con autorización expresa del desarrollador porque el nodo no mostraba esas listas abiertas.
 
+Crear solicitudes rechaza `stands_exhibitions`. Editar permite conservarlo únicamente si el registro accesible al usuario ya tiene ese tipo; no permite asignarlo a otro registro. El formulario muestra la etiqueta guardada sin añadirla al menú y permite mantenerla o elegir un tipo vigente. Lecturas, cola, detalle y reenvío conservan el valor histórico; nunca activan requisitos del stand para él.
+
 Al cambiar a otro tipo, el formulario limpia las cuatro respuestas y omite `standRequirements` del payload. Al volver al tipo, la sección comienza vacía. La restauración de solicitudes y la edición aplican la misma limpieza. La API admite omisión o null en los demás tipos y rechaza cualquier objeto, incluso vacío. La respuesta pública incluye `standRequirements: null` para solicitudes sin este bloque. Los contratos existentes, permisos, archivos y documentación legal del inmueble conservan sus reglas.
 
 ## Persistencia y administración
@@ -36,7 +38,7 @@ El bloque es únicamente informativo: no cambia puntos, pesos, penalizaciones, n
 
 ## Validación
 
-Las regresiones de contrato comprueban ambos endpoints, todos los tipos anteriores, opciones inválidas, el error HTTP estandarizado y la lectura/escritura con el transporte PostgreSQL simulado. La comparación de las tres métricas cubre los cinco tipos, tres estados de inmueble y cinco rangos de inversión, con y sin respuestas informativas.
+Las regresiones de contrato comprueban ambos endpoints, tipos vigentes e históricos, opciones inválidas, el error HTTP estandarizado y la lectura/escritura con el transporte PostgreSQL simulado. La comparación de las tres métricas cubre los tipos vigentes, tres estados de inmueble y cinco rangos de inversión, con y sin respuestas informativas. Las regresiones de tipos comprueban por separado que el identificador histórico conserva su lectura, edición y métricas.
 
 Las pruebas de navegador del formulario y workflow comprueban visibilidad exclusiva, limpieza y errores al cambiar de tipo, confirmación, restauración de solicitudes devueltas, envío sin inmueble, detalle administrativo y responsive a 375/768/1440 px en ambos temas. Las capturas se guardan en el directorio temporal del sistema (`arca-stand-requirements`).
 

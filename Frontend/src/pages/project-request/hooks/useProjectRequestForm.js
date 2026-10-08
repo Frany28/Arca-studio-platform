@@ -103,10 +103,12 @@ export default function useProjectRequestForm({
   const [fieldErrors, setFieldErrors] = useState({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [isLocationInputFocused, setIsLocationInputFocused] = useState(false);
+  // El contexto procede del registro restaurado; nunca se deduce del tipo que se selecciona.
+  const [existingProjectType] = useState(() => initialRequest?.id ? initialRequest.projectType : null);
 
   const currentFieldErrors = useMemo(
-    () => getProjectRequestFieldErrors(form),
-    [form],
+    () => getProjectRequestFieldErrors(form, { existingProjectType }),
+    [form, existingProjectType],
   );
 
   /**
@@ -120,7 +122,7 @@ export default function useProjectRequestForm({
   const updateErrorsAfterChange = (nextForm, fileErrors) => {
     if (!hasAttemptedSubmit) return;
 
-    const nextErrors = getProjectRequestFieldErrors(nextForm);
+    const nextErrors = getProjectRequestFieldErrors(nextForm, { existingProjectType });
     setFieldErrors(nextErrors);
 
     if (Object.keys(nextErrors).length === 0 && fileErrors.length === 0) {
@@ -233,7 +235,7 @@ export default function useProjectRequestForm({
    */
   const validateForSubmit = (fileErrors = []) => {
     setHasAttemptedSubmit(true);
-    const nextFieldErrors = getProjectRequestFieldErrors(form);
+    const nextFieldErrors = getProjectRequestFieldErrors(form, { existingProjectType });
     setFieldErrors(nextFieldErrors);
 
     const invalid = Object.keys(nextFieldErrors).length > 0 || fileErrors.length > 0;

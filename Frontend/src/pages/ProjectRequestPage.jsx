@@ -17,7 +17,8 @@ import ResponsiveSideNavigation from "../components/ui/SideNavigation/Responsive
 import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { getProjectRequestFileErrors, hasAvailableProperty } from "../utils/projectRequestValidation.js";
-import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
+import { LEGACY_PROJECT_REQUEST_TYPES, PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
+import { getProjectTypeLabel } from "../utils/projectTypeDisplay.js";
 import ProjectRequestAttachmentsField from "./project-request/components/ProjectRequestAttachmentsField.jsx";
 import ProjectRequestStandSection from "./project-request/components/ProjectRequestStandSection.jsx";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
@@ -252,7 +253,8 @@ export default function ProjectRequestPage() {
             <form ref={formRef} noValidate className="flex w-full flex-col items-center gap-[48px]" onSubmit={(event) => { event.preventDefault(); handleFrontendSubmit(); }}>
               <FormSection title="Detalles del proyecto" description="Cuéntanos qué deseas desarrollar. Esta información nos ayudará a comprender el alcance, los objetivos y las características generales de tu proyecto antes de la primera reunión.">
                 <TextField error={hasAttemptedSubmit ? fieldErrors.projectName : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectName)} label="Nombre del proyecto" icon={Edit2} placeholder='Ej. “Apto. Noventa y Uno”' value={form.projectName} onChange={update("projectName", fileErrors)} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectType : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectType)} label="Tipo de proyecto" value={form.projectType} onChange={update("projectType", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectType} />
+                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectType : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectType)} label="Tipo de proyecto" value={form.projectType} onChange={update("projectType", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectType} selectedLabel={LEGACY_PROJECT_REQUEST_TYPES.includes(form.projectType) ? getProjectTypeLabel(form.projectType) : ""} />
+                {LEGACY_PROJECT_REQUEST_TYPES.includes(form.projectType) ? <HintText hintText="Tipo histórico conservado. Puedes mantenerlo o elegir un tipo vigente." className="w-full" /> : null}
                 <TextField
                   error={hasAttemptedSubmit ? fieldErrors.location : ""}
                   invalid={hasAttemptedSubmit && Boolean(fieldErrors.location)}

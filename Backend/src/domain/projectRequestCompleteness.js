@@ -3,6 +3,7 @@ import {
   hasAvailableProperty,
   PROJECT_REQUEST_TEXT_LIMITS,
   PROJECT_REQUEST_VALUES,
+  READABLE_PROJECT_REQUEST_TYPES,
 } from "./projectRequest.js";
 
 /*
@@ -16,6 +17,7 @@ import {
  * del stand son informativos y no se añaden sin aprobación de sus reglas. No participan
  * los archivos ni el enlace de referencia (material complementario, no preguntas) ni los
  * metadatos de ubicación (coordenadas, place id), que dependen del proveedor y no del cliente.
+ * El tipo histórico retirado sigue contando como respuesta válida en registros anteriores.
  */
 
 /**
@@ -108,7 +110,7 @@ function appliesWithProperty(answers) {
 // Catálogo de preguntas: campo del registro, condición de aplicabilidad y validez de respuesta.
 export const COMPLETENESS_QUESTIONS = Object.freeze([
   { field: "projectName", isAnswered: isTextWithin(PROJECT_REQUEST_TEXT_LIMITS.projectName), isApplicable: alwaysApplicable },
-  { field: "projectType", isAnswered: isCatalogOption(PROJECT_REQUEST_VALUES.projectType), isApplicable: alwaysApplicable },
+  { field: "projectType", isAnswered: isCatalogOption(READABLE_PROJECT_REQUEST_TYPES), isApplicable: alwaysApplicable },
   { field: "location", isAnswered: isTextWithin(PROJECT_REQUEST_TEXT_LIMITS.projectLocation), isApplicable: alwaysApplicable },
   { field: "description", isAnswered: isTextWithin(PROJECT_REQUEST_TEXT_LIMITS.description), isApplicable: alwaysApplicable },
   { field: "projectSize", isAnswered: isCatalogOption(PROJECT_REQUEST_VALUES.projectSize), isApplicable: alwaysApplicable },

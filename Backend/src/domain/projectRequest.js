@@ -36,12 +36,31 @@ export const PROJECT_REQUEST_VALUES = {
     "residential",
     "commercial",
     "corporate",
-    "stands_exhibitions",
     ADVERTISING_STAND_PROJECT_TYPE,
   ],
   quality: ["functional_economic", "standard", "premium", "luxury"],
   startTime: ["immediate", "1_3_months", "3_6_months", "over_6_months"],
 };
+
+// Los tipos retirados solo se conservan para leer métricas y editar registros existentes.
+export const LEGACY_PROJECT_REQUEST_TYPES = Object.freeze(["stands_exhibitions"]);
+export const READABLE_PROJECT_REQUEST_TYPES = Object.freeze([
+  ...PROJECT_REQUEST_VALUES.projectType,
+  ...LEGACY_PROJECT_REQUEST_TYPES,
+]);
+
+/**
+ * Permite los tipos vigentes o conservar el tipo retirado de una solicitud existente.
+ * Evita crear solicitudes históricas o asignar ese tipo a otro registro; no convierte datos.
+ *
+ * @param {string} projectType - Tipo recibido para la solicitud.
+ * @param {string|null} [previousType=null] - Tipo guardado en el registro autorizado.
+ * @returns {boolean} true cuando puede guardarse sin reintroducir una opción retirada.
+ */
+export function isAllowedProjectRequestType(projectType, previousType = null) {
+  return PROJECT_REQUEST_VALUES.projectType.includes(projectType)
+    || (LEGACY_PROJECT_REQUEST_TYPES.includes(projectType) && projectType === previousType);
+}
 
 // Límites de texto compartidos por el contrato Zod y por la métrica de completitud.
 export const PROJECT_REQUEST_TEXT_LIMITS = Object.freeze({

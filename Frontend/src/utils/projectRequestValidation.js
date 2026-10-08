@@ -1,4 +1,4 @@
-import { optionValues } from "./projectRequestOptions.js";
+import { LEGACY_PROJECT_REQUEST_TYPES, optionValues } from "./projectRequestOptions.js";
 import { isAdvertisingStand } from "./projectRequestStand.js";
 
 export const PROJECT_REQUEST_REQUIRED_FIELDS = [
@@ -73,15 +73,18 @@ function isValidLocation(value) {
 
 /**
  * Valida campos de la solicitud y devuelve mensajes indexados por campo.
+ * Conserva un tipo retirado únicamente con el contexto original de un registro existente.
  * Comprueba longitudes, opciones del catálogo y enlace HTTP(S). La situación legal, los
  * documentos (sin duplicados y coherentes con su disponibilidad) y los propietarios solo
  * se validan cuando hay terreno o inmueble disponible. Exige coordenadas presentes
  * en pareja y compara sus rangos numéricos; no verifica explícitamente su finitud.
  *
  * @param {Object} [values={}] - Valores actuales del formulario.
+ * @param {Object} [context={}] - Contexto del registro que se edita, nunca de una nueva solicitud.
+ * @param {string|null} [context.existingProjectType=null] - Tipo original para conservar una opción histórica.
  * @returns {Object} Errores por campo; objeto vacío si no se detectan problemas.
  */
-export function getProjectRequestFieldErrors(values = {}) {
+export function getProjectRequestFieldErrors(values = {}, { existingProjectType = null } = {}) {
   const errors = {};
   const projectName = String(values.projectName || "").trim();
   const location = String(values.location || "").trim();
@@ -91,7 +94,11 @@ export function getProjectRequestFieldErrors(values = {}) {
   if (projectName.length < 3) errors.projectName = "Ingresa al menos 3 caracteres.";
   else if (projectName.length > 150) errors.projectName = "Máximo 150 caracteres.";
 
-  if (!optionValues("projectType").has(values.projectType)) errors.projectType = "Selecciona un tipo de proyecto.";
+  const preservesLegacyType = LEGACY_PROJECT_REQUEST_TYPES.includes(values.projectType)
+    && values.projectType === existingProjectType;
+  if (!optionValues("projectType").has(values.projectType) && !preservesLegacyType) {
+    errors.projectType = "Selecciona un tipo de proyecto.";
+  }
   if (!isValidLocation(location)) errors.location = "Ingresa una ubicación válida de al menos 5 caracteres.";
   else if (location.length > 255) errors.location = "Máximo 255 caracteres.";
 
@@ -170,10 +177,11 @@ export function getProjectRequestFieldErrors(values = {}) {
  * No añade nuevas reglas; omite errores de campos opcionales en esta vista.
  *
  * @param {Object} [values={}] - Valores del formulario.
+ * @param {Object} [context={}] - Tipo original de la solicitud existente cuando se edita.
  * @returns {Object} Errores de campos requeridos.
  */
-export function getProjectRequestRequiredFieldErrors(values = {}) {
-  const errors = getProjectRequestFieldErrors(values);
+export function getProjectRequestRequiredFieldErrors(values = {}, context = {}) {
+  const errors = getProjectRequestFieldErrors(values, context);
   return Object.fromEntries(
     PROJECT_REQUEST_REQUIRED_FIELDS.filter((field) => errors[field]).map((field) => [field, errors[field]]),
   );

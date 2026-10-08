@@ -88,7 +88,13 @@ function TextField({ children, containerClassName, error = "", icon: Icon, inval
   );
 }
 
-function SelectField({ error = "", invalid = false, label, value, onChange, options, optional = false, info = false, placeholder = "Selecciona una opción" }) {
+/**
+ * Presenta únicamente las opciones vigentes y permite una etiqueta para el valor guardado.
+ * La etiqueta histórica no se incorpora al menú ni permite seleccionarla en otro registro.
+ * @param {Object} props - Opciones, valor, errores y selectedLabel opcional de lectura.
+ * @returns {import("react").ReactElement} Selector accesible con el estilo del formulario.
+ */
+function SelectField({ error = "", invalid = false, label, value, onChange, options, optional = false, info = false, placeholder = "Selecciona una opción", selectedLabel = "" }) {
   const [isOpen, setIsOpen] = useState(false);
   const items = options.map((option) => ({
     id: option.value,
@@ -102,7 +108,7 @@ function SelectField({ error = "", invalid = false, label, value, onChange, opti
       <FieldLabel optional={optional} info={info}>{label}</FieldLabel>
       <DropdownMenu
         type="Text"
-        label={options.find((option) => option.value === value)?.label || placeholder}
+        label={options.find((option) => option.value === value)?.label || selectedLabel || placeholder}
         supportingText=""
         items={items}
         selectedItemId={value}

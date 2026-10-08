@@ -147,7 +147,7 @@ RequestPayload (JSON estricto, rechaza propiedades desconocidas):
 | Campo | Valores / restricción actual |
 | --- | --- |
 | projectName / description | Obligatorios, 3–150 / 30–100 caracteres recortados |
-| projectType | residential, commercial, corporate, stands_exhibitions |
+| projectType | Vigentes: residential, commercial, corporate, advertising_stand. stands_exhibitions solo puede conservarse al editar una solicitud que ya tenga ese tipo; no se admite al crear ni al asignarlo a otro registro |
 | projectLocation | Obligatorio, 5–255; validación manual de texto de dirección |
 | projectLocationFormattedAddress / projectLocationProviderPlaceId | Texto o null; máximo 500 / 255; ausentes normalizados a null |
 | projectLocationLatitude / projectLocationLongitude | number o null; juntos; −90..90 / −180..180 |
@@ -165,6 +165,10 @@ RequestPayload (JSON estricto, rechaza propiedades desconocidas):
 | projectSize | Opcional/null: small_lt_80, medium_80_200, large_200_500, very_large_gt_500, unknown |
 | quality | Opcional/null: functional_economic, standard, premium, luxury |
 | referenceLink | Texto http/https o null, máximo 500 |
+
+`advertising_stand` (Stand publicitario) es el único tipo vigente para la sección «Requisitos del stand». Su bloque `standRequirements` conserva las reglas y opciones descritas en [requisitos del stand](PROJECT_REQUEST_STAND_REQUIREMENTS.md); solo se acepta para ese tipo. Se devuelve como objeto o null en la solicitud y la cola administrativa.
+
+`stands_exhibitions` es un identificador histórico, con etiqueta de lectura «Stands y exhibiciones». Crear con ese valor responde 400 `VALIDATION_ERROR`. En edición el servicio compara el tipo recibido con el registro accesible al usuario: solo puede conservarse si ya estaba guardado; introducirlo en una solicitud de otro tipo responde 400 con `fields.body.projectType`. Se puede cambiar explícitamente a un tipo vigente. Lectura, edición y reenvío no convierten automáticamente registros antiguos ni exigen requisitos del stand para ellos. El enum PostgreSQL se conserva y las métricas admiten el tipo histórico como respuesta válida.
 
 `ProjectRequest`: campos anteriores con diferencias públicas `location` (projectLocation), `formattedAddress`, `providerPlaceId`, `locationCoordinates` y `hasPlans`; añade `id,clientId,requestedBy,status,createdAt,updatedAt,correctionReason,rejectionReason,reviewedAt,convertedProjectId,compatibility`. No devuelve submissionId. Compatibility es null o `{score:number,level,observations:string[],findings}`: `observations` conserva hasta 3 textos; `findings` es `[{code,category,severity,explanation,evidence:[{code,explanation}]}]` con **todas** las causas detectadas en la fórmula 3.0, o `null` en evaluaciones históricas (1.x/2.x), que no se recalculan. Añade `completeness:{score,answered,applicable,missingFields:string[]}` (preguntas aplicables respondidas; las N/A se excluyen) y `financialViability:{score:null,status,findings:[{code,category,severity,outcome,explanation,evidence:[{code,explanation}]}]}`: coherencia financiera orientativa, sin porcentaje. `status` es `NO_OBVIOUS_CONFLICT` (no es una aprobación), `REVIEW_REQUIRED`, `HIGH_RISK` (no demuestra inviabilidad) o `INSUFFICIENT_DATA`; `PENDING_RULES` queda reservado. `outcome` es el efecto del hallazgo (`HIGH_RISK`, `REVIEW_REQUIRED`, `INSUFFICIENT_DATA` o `INFORMATIVE`). Se calcula al vuelo, sin pesos ni deducciones. Las tres métricas son independientes y se describen en `PROJECT_REQUEST_EVALUATION.md`. Estados usados por flujo: draft, pending_verification, pending_review, changes_requested, approved, rejected. El frontend debe usar la evaluación devuelta; pesos y persistencia no son contrato HTTP.
 

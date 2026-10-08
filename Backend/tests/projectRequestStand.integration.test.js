@@ -5,7 +5,7 @@ import test from "node:test";
 import pg from "pg";
 
 // Opt-in: prueba los repositorios sobre staging/pruebas sin confirmar datos creados.
-test("PostgreSQL real: creación idempotente, edición, cola y limpieza conservan el contrato del stand", {
+test("PostgreSQL real: creación, edición vigente e histórica y cola conservan tipos y requisitos", {
   skip: process.env.ARCA_STAND_REPOSITORY_DB_TESTS !== "1",
 }, async (context) => {
   const dotenv = await import("dotenv");
@@ -48,6 +48,21 @@ test("PostgreSQL real: creación idempotente, edición, cola y limpieza conserva
     assert.equal(updated.projectType, "corporate");
     assert.equal(updated.standRequirements, null);
     assert.equal(updated.submissionId, payload.submissionId, "La edición no reemplaza el identificador de creación.");
+    // Simula un registro anterior dentro de la transacción; no convierte solicitudes reales.
+    await client.query("update public.project_requests set project_type='stands_exhibitions',compatibility_score=73,compatibility_level='high',compatibility_scoring_version='2.2' where id=$1", [draft.id]);
+    const { updateProjectRequest, toPublicProjectRequest } = await import("../src/services/projectRequestService.js");
+    const historical = toPublicProjectRequest(await findProjectRequestOwnedByUser(draft.id, user));
+    assert.equal(historical.projectType, "stands_exhibitions");
+    assert.equal(historical.compatibility.score, 73);
+    const editedHistorical = await updateProjectRequest({ projectRequestId: draft.id, user, payload: { ...changed, projectType: "stands_exhibitions" } });
+    assert.equal(editedHistorical.projectType, "stands_exhibitions");
+    assert.equal(editedHistorical.standRequirements, null);
+    assert.deepEqual(editedHistorical.compatibility, historical.compatibility);
+    assert.deepEqual(editedHistorical.completeness, historical.completeness);
+    assert.deepEqual(editedHistorical.financialViability, historical.financialViability);
+    await client.query("update public.project_requests set status='pending_review' where id=$1", [draft.id]);
+    const historicalQueue = await loadProjectRequestReviewQueue({ cursor: null, limit: 100, user });
+    assert.equal(historicalQueue.items.find((request) => request.id === draft.id).projectType, "stands_exhibitions");
     for (const type of ["residential", "commercial", "corporate", "stands_exhibitions"]) {
       await client.query("savepoint reject_stand");
       await assert.rejects(client.query("update public.project_requests set project_type=$1::public.project_type,stand_requirements=$2::jsonb where id=$3", [type, JSON.stringify(requirements), draft.id]), { code: "23514" });

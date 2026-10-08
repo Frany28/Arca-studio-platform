@@ -1,4 +1,4 @@
-// Tipo específico de Figma; la categoría histórica stands_exhibitions es independiente.
+// Tipo vigente de Figma; stands_exhibitions se conserva únicamente en registros históricos.
 export const ADVERTISING_STAND_PROJECT_TYPE = "advertising_stand";
 
 export const STAND_REQUIREMENTS_VALUES = Object.freeze({

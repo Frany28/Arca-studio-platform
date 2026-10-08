@@ -387,6 +387,17 @@ test("Drawer admin: conserva los requisitos declarados del stand y distingue otr
   assert.equal(mutations.length, 0);
 });
 
+test("Drawer admin: conserva el tipo histórico retirado sin convertirlo ni pedir requisitos", async (context) => {
+  const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [{
+    ...REQUEST, clientId: 2, requestedBy: 41, projectType: "stands_exhibitions", standRequirements: null,
+    compatibility: { score: 73, level: "high" },
+  }] });
+  const drawer = await openClientDetails(page);
+  await drawer.getByText("Stands y exhibiciones", { exact: true }).waitFor();
+  assert.equal(await drawer.getByRole("region", { name: "Requisitos del stand" }).count(), 0);
+  assert.equal(mutations.length, 0);
+});
+
 for (const requestedBy of [undefined, null, "undefined", "null", "NaN", -1, 0, 1.5, true]) {
   test(`Drawer cliente: ID ausente/inválido ${String(requestedBy)} omite HTTP`, async (context) => {
     const { page, calls } = await openPage(context, { role: "admin", realDashboard: true, queue: [{ ...REQUEST, clientId: 2, requestedBy }] });

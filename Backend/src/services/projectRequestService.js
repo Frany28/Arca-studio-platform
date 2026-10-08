@@ -1,4 +1,5 @@
-import { AppError, ConflictError, NotFoundError } from "../errors/appError.js";
+import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
+import { isAllowedProjectRequestType } from "../domain/projectRequest.js";
 import { evaluateProjectCompatibility, publicCompatibility } from "../domain/projectRequestCompatibility.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import {
@@ -47,6 +48,23 @@ export function toPublicProjectRequest(record) {
 }
 
 /**
+ * Rechaza tipos retirados salvo que se conserve el del registro previamente autorizado.
+ * Protege creación y edición sin reclasificar solicitudes históricas ni cambiar sus métricas.
+ *
+ * @param {string} projectType - Tipo recibido en el payload validado.
+ * @param {string|null} [previousType=null] - Tipo del registro accesible al usuario.
+ * @returns {void} Finaliza cuando el tipo está permitido.
+ * @throws {ValidationError} Cuando se intenta introducir un tipo retirado o desconocido.
+ */
+function assertAllowedProjectType(projectType, previousType = null) {
+  if (!isAllowedProjectRequestType(projectType, previousType)) {
+    throw new ValidationError("Selecciona un tipo de proyecto vigente.", {
+      "body.projectType": "Este tipo solo puede conservarse en la solicitud histórica que ya lo utiliza.",
+    });
+  }
+}
+
+/**
  * Comprueba el valor de available nombre y rechaza la operación cuando no se cumple.
  * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
  *
@@ -71,8 +89,8 @@ async function assertAvailableName(user, payload, excludeProjectRequestId = null
 }
 
 /**
- * Crea la solicitud de proyecto con los datos validados recibidos.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Crea una solicitud con tipo vigente y los datos validados recibidos.
+ * Conserva idempotencia y unicidad del nombre; rechaza tipos retirados antes de guardar.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.payload - Valor de `options.payload` requerido por esta operación.
@@ -82,6 +100,7 @@ async function assertAvailableName(user, payload, excludeProjectRequestId = null
  */
 export async function createProjectRequest({ payload, user }) {
   requireClient(user);
+  assertAllowedProjectType(payload.projectType);
   const idempotentDraft = await findProjectRequestBySubmissionId(payload.submissionId, user);
   if (idempotentDraft) return toPublicProjectRequest(idempotentDraft);
 
@@ -104,8 +123,8 @@ export async function createProjectRequest({ payload, user }) {
 }
 
 /**
- * Actualiza la solicitud de proyecto conservando las reglas de acceso e integridad.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Actualiza un borrador accesible conservando las reglas de acceso e integridad.
+ * Permite mantener su tipo histórico o elegir uno vigente, sin asignar tipos retirados nuevos.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.payload - Valor de `options.payload` requerido por esta operación.
@@ -123,6 +142,7 @@ export async function updateProjectRequest({ payload, projectRequestId, user }) 
       "No se encontró un borrador editable.",
     );
   }
+  assertAllowedProjectType(payload.projectType, current.projectType);
   await assertAvailableName(user, payload, projectRequestId);
   let updated;
   try {

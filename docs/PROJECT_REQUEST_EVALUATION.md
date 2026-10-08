@@ -463,7 +463,7 @@ Todo cambio de pesos o reglas debe publicarse como una nueva versión de la fór
 
 - Descripción: 30–100 caracteres recortados, sin puntos por longitud; una respuesta válida cuenta en completitud.
 - Inmueble: solo `landStatus === "available"` activa situación legal, propietarios y planos. Se conservan −3/−6 por documentación y −2 por planos; no se premian tipos, cantidad de documentos ni propietarios.
-- Stand: solo `advertising_stand`; `stands_exhibitions` permanece independiente. El bloque `standRequirements` está implementado y persistido, consultable por administración y excluido de las tres métricas. La respuesta de asignación del espacio conserva su validación obligatoria; las normativas pueden no estar disponibles. Los planos del espacio del evento son independientes de `hasPlans`.
+- Stand: solo `advertising_stand`; `stands_exhibitions` conserva su significado en registros históricos y se retira de nuevas solicitudes. El bloque `standRequirements` está implementado y persistido, consultable por administración y excluido de las tres métricas. La respuesta de asignación del espacio conserva su validación obligatoria; las normativas pueden no estar disponibles. Los planos del espacio del evento son independientes de `hasPlans`.
 - Completitud: catálogo sin cambios; 13 preguntas generales, +3 con inmueble disponible, +1 con documentación disponible. No se agregan las cuatro preguntas del stand.
 - No se cambian el catálogo de deducciones, sus categorías, severidades, umbrales ni versión 3.0. La compatibilidad histórica persistida conserva resultado y observaciones; las dos métricas derivadas mantienen su cálculo al vuelo. No hay nuevas migraciones ni recalificación masiva.
 - Implementado: secciones legal y stand, limpieza condicional, validación en crear/editar, persistencia nullable, presentación administrativa, tres métricas y trazabilidad. Pendiente de aprobación: pesos finales o reglas nuevas, incorporación del stand a completitud/puntuación y diferenciación económica por tipo.
@@ -474,8 +474,41 @@ Todo cambio de pesos o reglas debe publicarse como una nueva versión de la fór
 
 ### Validación de esta consolidación
 
-- 63 pruebas específicas de contratos, compatibilidad, completitud, coherencia financiera y stands: todas pasan. La prueba nueva recorre 120 combinaciones de tipo, inmueble, documentación y planos; también comprueba todas las longitudes válidas de descripción y los límites inválidos.
+- 63 pruebas específicas de contratos, compatibilidad, completitud, coherencia financiera y stands: todas pasan. La prueba nueva recorre combinaciones de tipo, inmueble, documentación y planos; también comprueba todas las longitudes válidas de descripción y los límites inválidos.
 - `pnpm verify`: pasa JSDoc, validación de Prisma, pruebas de backend/frontend y compilación del frontend.
 - 51 pruebas de navegador del formulario y workflow: todas pasan; incluyen 375/768/1440 px, ambos temas, visibilidad exclusiva, limpieza, restauración, confirmación y consulta administrativa.
 - Los ejemplos administrativos coinciden con el motor real en 19 variantes, incluidos los dos límites de descripción.
-- Cuatro integraciones PostgreSQL optativas quedan omitidas por su configuración: repositorios reales del stand, migración en base local aislada, recomendación de reunión y detalle de cliente. Las pruebas de repositorios, reunión y detalle requieren sus flags explícitos; la migración aislada requiere una URL de pruebas local que no está configurada. Esta consolidación no cambia estructura ni persistencia, y no ejecuta migraciones ni recalcula solicitudes guardadas. La aplicación previa de la migración del stand en staging está registrada en [requisitos del stand](PROJECT_REQUEST_STAND_REQUIREMENTS.md).
+- En esta validación inicial se omitieron cuatro integraciones PostgreSQL optativas por su configuración: repositorios reales del stand, migración en base local aislada, recomendación de reunión y detalle de cliente. Las pruebas de repositorios, reunión y detalle requieren sus flags explícitos; la migración aislada requiere una URL de pruebas local que no está configurada. Esta consolidación no cambia estructura ni persistencia, y no ejecuta migraciones ni recalcula solicitudes guardadas. La aplicación previa de la migración del stand en staging está registrada en [requisitos del stand](PROJECT_REQUEST_STAND_REQUIREMENTS.md).
+
+## 16. Unificación del catálogo vigente
+
+El catálogo seleccionable contiene `residential`, `commercial`, `corporate` y `advertising_stand`. `stands_exhibitions` era una opción persistible, no una agrupación visual; se retira de nuevas solicitudes y de ambos selectores existentes. Permanece en el catálogo de lectura y en el enum PostgreSQL para preservar registros anteriores, sin equipararlo a Stand publicitario.
+
+El esquema de creación admite únicamente tipos vigentes. El esquema de edición admite los identificadores legibles y el servicio comprueba el registro autorizado: un tipo retirado solo puede conservarse si ya es el de esa solicitud. El formulario muestra la etiqueta histórica guardada sin ofrecerla en el menú y permite elegir un tipo vigente. La cola y el detalle administrativo conservan su representación. Las respuestas del stand solo aplican a `advertising_stand`.
+
+Completitud utiliza el catálogo de tipos legibles para que retirar una opción no convierta solicitudes históricas en incompletas. No se modifican preguntas, fórmula, pesos, clasificaciones ni coherencia financiera. La compatibilidad persistida se conserva al leer y editar; un reenvío por correcciones mantiene su evaluación habitual 3.0 y no convierte el tipo.
+
+No se requiere una migración: ambos valores ya existen en el enum compartido por solicitudes y proyectos. Las consultas previas encontraron nueve solicitudes (cinco residenciales y cuatro comerciales) y seis proyectos residenciales; ninguna fila utiliza `stands_exhibitions`. Se conserva el valor igualmente para compatibilidad. La comparación de contenido completo antes y después confirmó que las nueve solicitudes originales permanecen idénticas.
+
+Validación de la unificación:
+
+- 69 pruebas específicas de contratos y métricas: pasan; incluyen conservación y rechazo condicional del tipo retirado, lectura administrativa y reenvío.
+- `pnpm verify` con `ARCA_STAND_REPOSITORY_DB_TESTS=1`: pasan 179 pruebas de backend y 272 de frontend, JSDoc, Prisma y compilación.
+- La integración real de PostgreSQL simula un tipo histórico dentro de una transacción, verifica lectura, edición y cola sin alterar la evaluación guardada y revierte todos los datos de prueba.
+- 53 pruebas de navegador del formulario y workflow: pasan; incluyen menú sin la opción retirada, edición histórica, presentación administrativa y responsive en ambos temas. `pnpm --dir Frontend lint` pasa.
+- Tres integraciones optativas quedan omitidas: migración aislada por ausencia de URL local; recomendación de reunión y detalle del cliente por flags desactivados, ajenas a este cambio.
+
+No se ejecutan migraciones, conversiones masivas ni commits. Deben desplegarse juntos frontend y backend para que los clientes utilicen el catálogo vigente de creación.
+
+### Archivos de la unificación
+
+| Área | Archivos modificados |
+| --- | --- |
+| Dominio backend | `Backend/src/domain/projectRequest.js`, `projectRequestCompleteness.js`, `projectRequestStand.js` |
+| Validación y servicio | `Backend/src/validation/projectRequestSchemas.js`, `Backend/src/services/projectRequestService.js` |
+| Catálogo y validación frontend | `Frontend/src/utils/projectRequestOptions.js`, `projectRequestValidation.js`, `projectTypeDisplay.js` |
+| Formulario | `Frontend/src/pages/ProjectRequestPage.jsx`, `Frontend/src/pages/project-request/hooks/useProjectRequestForm.js`, `Frontend/src/pages/project-request/components/ProjectRequestFormFields.jsx` |
+| Selector alternativo existente | `Frontend/src/components/ui/ProjectRequestModal.jsx`, `Frontend/src/components/ui/ProjectRequestFlow/ProjectRequestDetailsStep.jsx` |
+| Pruebas backend | `Backend/tests/projectRequestTypes.test.js` (nuevo), `Backend/tests/projectRequestStand.integration.test.js` |
+| Pruebas frontend | `Frontend/tests/projectRequestStand.test.js`, `Frontend/tests/browser/projectRequestForm.test.js`, `Frontend/tests/browser/projectRequestWorkflow.test.js` |
+| Documentación | `SISTEMA_PUNTUACION_SOLICITUDES.md`, `docs/API_CONTRACT.md`, `docs/PROJECT_REQUEST_STAND_REQUIREMENTS.md`, este documento |

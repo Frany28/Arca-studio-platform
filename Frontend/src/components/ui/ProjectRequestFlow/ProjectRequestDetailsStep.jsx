@@ -10,14 +10,16 @@ import TextArea from "../TextArea/TextArea.jsx";
 import ProjectLocationSuggestions from "./ProjectLocationSuggestions.jsx";
 import ProjectRequestModalShell from "./ProjectRequestModalShell.jsx";
 import useAddressSuggestions from "../../../hooks/useAddressSuggestions.js";
+import { LEGACY_PROJECT_REQUEST_TYPES } from "../../../utils/projectRequestOptions.js";
+import { getProjectTypeLabel } from "../../../utils/projectTypeDisplay.js";
 
 const PROJECT_TYPE_OPTIONS = [
   { id: "residencial", label: "Residencial", type: "Checkbox", checked: "Yes" },
   { id: "comercial", label: "Comercial", type: "Checkbox", checked: "No" },
   { id: "corporativo", label: "Corporativo", type: "Checkbox", checked: "No" },
   {
-    id: "stands",
-    label: "Stands y exhibiciones",
+    id: "advertising_stand",
+    label: "Stand publicitario",
     type: "Checkbox",
     checked: "No",
   },
@@ -435,7 +437,8 @@ function ProjectRequestDetailsStep({
               <DropdownMenu
                 type="Text"
                 label={
-                  selectedProjectType?.label ?? "Selecciona tipo de proyecto"
+                  selectedProjectType?.label ?? (LEGACY_PROJECT_REQUEST_TYPES.includes(values.selectedProjectTypeId)
+                    ? getProjectTypeLabel(values.selectedProjectTypeId) : "Selecciona tipo de proyecto")
                 }
                 supportingText=""
                 items={projectTypeItems}
