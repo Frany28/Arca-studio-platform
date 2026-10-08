@@ -1,4 +1,22 @@
+import { ADVERTISING_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
+
 export const PROJECT_REQUEST_OPTIONS = {
+  standRequirementsStatus: [
+    { label: "Sí, tengo los requisitos", value: "available" },
+    { label: "Estoy gestionando los requisitos", value: "in_process" },
+    { label: "Aún no tengo los requisitos", value: "unavailable" },
+  ],
+  standDocumentTypes: [
+    { label: "Manual del expositor", value: "exhibitor_manual" },
+    { label: "Reglamento del evento", value: "event_regulations" },
+    { label: "Especificaciones técnicas del stand", value: "stand_technical_specifications" },
+    { label: "Otro", value: "other" },
+  ],
+  standSpaceStatus: [
+    { label: "Sí, ya está asignado", value: "assigned" },
+    { label: "La asignación está en proceso", value: "in_process" },
+    { label: "Aún no está asignado", value: "unassigned" },
+  ],
   capitalAvailability: [
     { label: "Disponible ahora", value: "available_now" },
     { label: "En los próximos 3 meses", value: "within_3_months" },
@@ -60,6 +78,7 @@ export const PROJECT_REQUEST_OPTIONS = {
     { label: "Comercial", value: "commercial" },
     { label: "Corporativo", value: "corporate" },
     { label: "Stands y exhibiciones", value: "stands_exhibitions" },
+    { label: "Stand publicitario", value: ADVERTISING_STAND_PROJECT_TYPE },
   ],
   quality: [
     { label: "Funcional y económico", value: "functional_economic" },

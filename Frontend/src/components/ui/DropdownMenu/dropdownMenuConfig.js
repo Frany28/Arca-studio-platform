@@ -31,6 +31,8 @@ export const DROPDOWN_MENU_DEFAULT_PROPS = {
   interactive: true,
   // Bloquea apertura y selección (p. ej. campos dependientes de otra respuesta del formulario).
   disabled: false,
+  // Resume etiquetas largas dentro del espacio disponible sin invadir la flecha.
+  truncateTriggerLabel: false,
   preserveMenuSpace: false,
   items: DROPDOWN_MENU_DEFAULT_ITEMS,
   hoveredItemId: undefined,

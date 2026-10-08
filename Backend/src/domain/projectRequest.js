@@ -1,3 +1,5 @@
+import { ADVERTISING_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
+
 export const PROJECT_REQUEST_VALUES = {
   capitalAvailability: [
     "available_now",
@@ -35,6 +37,7 @@ export const PROJECT_REQUEST_VALUES = {
     "commercial",
     "corporate",
     "stands_exhibitions",
+    ADVERTISING_STAND_PROJECT_TYPE,
   ],
   quality: ["functional_economic", "standard", "premium", "luxury"],
   startTime: ["immediate", "1_3_months", "3_6_months", "over_6_months"],

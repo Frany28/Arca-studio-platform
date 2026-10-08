@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { EMPTY_STAND_FORM_FIELDS, normalizeStandFormFields } from "../../../utils/projectRequestStand.js";
 
 import {
   getProjectRequestFieldErrors,
@@ -6,6 +7,7 @@ import {
 } from "../../../utils/projectRequestValidation.js";
 
 const INITIAL_FORM = {
+  ...EMPTY_STAND_FORM_FIELDS,
   projectName: "",
   projectType: "",
   location: "",
@@ -34,15 +36,20 @@ const INITIAL_FORM = {
 const PROPERTY_DEPENDENT_FIELDS = ["legalDocumentationStatus", "legalDocumentTypes", "multipleOwners", "hasBlueprints"];
 
 /**
- * Adapta campos de la solicitud a los valores editables y sus defaults.
- * Traduce booleanos a opciones del formulario y conserva coordenadas nulas.
+ * Restaura la solicitud como valores editables y conserva coordenadas nulas.
+ * Traduce booleanos y descarta requisitos del evento cuando el tipo no es Stand publicitario.
  *
  * @param {Object|null} initialRequest - Solicitud usada para inicializar el formulario.
- * @returns {Object} Campos iniciales con ubicaci?n y documentaci?n legal.
+ * @returns {Object} Campos iniciales con ubicación, documentación legal y requisitos del evento.
  */
 function createInitialForm(initialRequest) {
-  return {
+  return normalizeStandFormFields({
     ...INITIAL_FORM,
+    standRequirementsStatus: initialRequest?.standRequirements?.requirementsStatus || "",
+    standDocumentTypes: initialRequest?.standRequirements?.documentTypes || [],
+    standSpaceStatus: initialRequest?.standRequirements?.spaceStatus || "",
+    hasStandSpacePlans: initialRequest?.standRequirements?.hasSpacePlans === true
+      ? "Yes" : initialRequest?.standRequirements?.hasSpacePlans === false ? "No" : "Indeterminate",
     projectName: initialRequest?.projectName || "",
     projectType: initialRequest?.projectType || INITIAL_FORM.projectType,
     location: initialRequest?.location || "",
@@ -75,7 +82,7 @@ function createInitialForm(initialRequest) {
           ? "No"
           : "Indeterminate",
     referenceLink: initialRequest?.referenceLink || "",
-  };
+  });
 }
 
 /**
@@ -121,9 +128,16 @@ export default function useProjectRequestForm({
     }
   };
 
+  /**
+   * Edita un campo y limpia las respuestas del stand que hayan dejado de aplicar.
+   * La limpieza ocurre en el mismo cambio de estado, sin efectos ni datos ocultos pendientes.
+   * @param {string} field - Campo editable.
+   * @param {Array} [fileErrors=[]] - Errores actuales de adjuntos.
+   * @returns {Function} Acción de edición del control.
+   */
   const update = (field, fileErrors = []) => (eventOrValue) => {
     const value = eventOrValue?.target ? eventOrValue.target.value : eventOrValue;
-    const nextForm = { ...form, [field]: value };
+    const nextForm = normalizeStandFormFields({ ...form, [field]: value });
 
     setForm(nextForm);
     updateErrorsAfterChange(nextForm, fileErrors);

@@ -50,9 +50,9 @@ function toWorkflowAnswers(row) {
 }
 
 /**
- * Mapea la cola técnica a su contrato público, separando workflow, reunión y justificación.
- * Conserva por separado el cliente comercial y el usuario solicitante para evitar confundir sus IDs.
- * Normaliza a null las decisiones de reunión ausentes; `answers` es interno para el servicio.
+ * Mapea la cola técnica, separando workflow, reunión y requisitos informativos del evento.
+ * Conserva las identidades de cliente y solicitante y normaliza bloques ausentes a null.
+ * `answers` permanece interno para el cálculo de métricas en el servicio.
  *
  * @param {unknown} row - Fila obtenida desde PostgreSQL.
  * @returns {object} Resultado producido por la operación.
@@ -85,6 +85,7 @@ function toWorkflowRequest(row) {
     projectName: row.project_name,
     projectType: row.project_type,
     requestedBy: row.requested_by == null ? null : Number(row.requested_by),
+    standRequirements: row.stand_requirements ?? null,
     rejectionReason: row.rejection_reason || null,
     reviews: Array.isArray(row.reviews)
       ? row.reviews.map((review) => ({
@@ -149,6 +150,7 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
         request.requested_by,
         request.project_name,
         request.project_type,
+        request.stand_requirements,
         request.location,
         request.description,
         request.status,

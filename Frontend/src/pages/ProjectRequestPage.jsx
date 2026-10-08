@@ -19,6 +19,7 @@ import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { getProjectRequestFileErrors, hasAvailableProperty } from "../utils/projectRequestValidation.js";
 import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
 import ProjectRequestAttachmentsField from "./project-request/components/ProjectRequestAttachmentsField.jsx";
+import ProjectRequestStandSection from "./project-request/components/ProjectRequestStandSection.jsx";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
@@ -307,6 +308,8 @@ export default function ProjectRequestPage() {
                 <SelectField error={hasAttemptedSubmit ? fieldErrors.developmentMode : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.developmentMode)} label="¿Cómo desea desarrollar el proyecto?" info value={form.developmentMode} onChange={update("developmentMode", fileErrors)} options={PROJECT_REQUEST_OPTIONS.developmentMode} />
                 <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.landStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.landStatus)} label="¿Tiene terreno o inmueble disponible?" value={form.landStatus} onChange={(status) => updateLandStatus(status, fileErrors)} options={PROJECT_REQUEST_OPTIONS.landStatus} />
               </FormSection>
+
+              <ProjectRequestStandSection form={form} fieldErrors={fieldErrors} hasAttemptedSubmit={hasAttemptedSubmit} update={update} fileErrors={fileErrors} />
 
               {/* Solo aplica con terreno o inmueble disponible: se desmonta (no se oculta con CSS)
               y useProjectRequestForm restablece sus valores al cambiar la respuesta. */}

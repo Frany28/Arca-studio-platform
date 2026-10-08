@@ -56,6 +56,8 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     justification: latestReview?.note?.trim() || null,
     location: queueRequest?.location?.trim() || null,
     projectName: source.projectName || "Solicitud de proyecto",
+    projectType: source.projectType || null,
+    standRequirements: queueRequest?.standRequirements ?? null,
     projectTypeLabel: getProjectTypeLabel(source.projectType, "Sin tipo registrado"),
     recommendation: getMeetingRecommendationPresentation(latestReview?.meetingRecommendation),
     reviewerName: latestReview?.reviewer?.name || null,

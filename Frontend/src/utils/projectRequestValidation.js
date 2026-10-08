@@ -1,4 +1,5 @@
 import { optionValues } from "./projectRequestOptions.js";
+import { isAdvertisingStand } from "./projectRequestStand.js";
 
 export const PROJECT_REQUEST_REQUIRED_FIELDS = [
   "projectName",
@@ -13,6 +14,7 @@ export const PROJECT_REQUEST_REQUIRED_FIELDS = [
   "investmentRange",
   "capitalAvailability",
   "startTime",
+  "standSpaceStatus",
 ];
 
 export const PROJECT_REQUEST_FILE_LIMITS = {
@@ -101,6 +103,25 @@ export function getProjectRequestFieldErrors(values = {}) {
   }
   for (const field of ["projectSize", "decisionMaker", "quality", "experience"]) {
     if (values[field] && !optionValues(field).has(values[field])) errors[field] = "Selecciona una opción válida.";
+  }
+
+  if (isAdvertisingStand(values.projectType)) {
+    if (!optionValues("standSpaceStatus").has(values.standSpaceStatus)) {
+      errors.standSpaceStatus = "Indica si ya tienes asignado el espacio dentro del evento.";
+    }
+    if (values.standRequirementsStatus && !optionValues("standRequirementsStatus").has(values.standRequirementsStatus)) {
+      errors.standRequirementsStatus = "Selecciona una opción válida.";
+    }
+    const documents = values.standDocumentTypes ?? [];
+    if (!Array.isArray(documents) || documents.some((type) => !optionValues("standDocumentTypes").has(type))
+      || new Set(documents).size !== documents.length) {
+      errors.standDocumentTypes = "Selecciona documentos válidos sin repetirlos.";
+    } else if (values.standRequirementsStatus !== "available" && documents.length > 0) {
+      errors.standDocumentTypes = "Solo indica documentación que ya tengas disponible.";
+    }
+    if (values.hasStandSpacePlans && !["Yes", "No", "Indeterminate"].includes(values.hasStandSpacePlans)) {
+      errors.hasStandSpacePlans = "Indica si tienes las medidas o el plano.";
+    }
   }
 
   // Los datos del inmueble solo se validan si aplican; ocultos no generan errores.
@@ -198,7 +219,8 @@ function nullableText(value) {
  * Transforma el formulario al payload de solicitud sin validarlo ni incluir adjuntos.
  * Recorta textos, convierte opciones vacías a null, traduce hasBlueprints Yes/No
  * a boolean o null y multipleOwners yes a boolean. Sin terreno disponible envía los datos
- * del inmueble como null y la documentación vacía, como exige el contrato del backend. Añade submissionId solo si es truthy.
+ * del inmueble como null y la documentación vacía. Los requisitos del evento se incluyen
+ * solo para advertising_stand, independientemente del inmueble. Añade submissionId si existe.
  *
  * @param {Object} form - Campos de formulario y metadatos de ubicación.
  * @param {string} [submissionId] - Referencia opcional del envío.
@@ -235,6 +257,14 @@ export function buildProjectRequestPayload(form, submissionId) {
     quality: form.quality || null,
     referenceLink: nullableText(form.referenceLink),
     startTime: form.startTime,
+    ...(isAdvertisingStand(form.projectType) ? {
+      standRequirements: {
+        requirementsStatus: form.standRequirementsStatus || null,
+        documentTypes: form.standRequirementsStatus === "available" ? form.standDocumentTypes || [] : [],
+        spaceStatus: form.standSpaceStatus,
+        hasSpacePlans: form.hasStandSpacePlans === "Yes" ? true : form.hasStandSpacePlans === "No" ? false : null,
+      },
+    } : {}),
     ...(submissionId ? { submissionId } : {}),
   };
 }

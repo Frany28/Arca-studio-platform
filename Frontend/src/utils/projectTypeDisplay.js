@@ -3,6 +3,7 @@ export const PROJECT_TYPE_LABELS = {
   corporate: "Corporativo",
   residential: "Residencial",
   stands_exhibitions: "Stands y exhibiciones",
+  advertising_stand: "Stand publicitario",
 };
 
 /**

@@ -339,6 +339,7 @@ model project_requests {
   legal_documentation_status                 project_legal_documentation_status?
   legal_document_types                       String[]                               @default([])
   has_multiple_owners                        Boolean?
+  stand_requirements                         Json?                  @db.JsonB
   project_size                               project_request_size?
   development_mode                           project_development_mode?
   land_status                                project_land_status?
@@ -771,6 +772,7 @@ enum project_type {
   commercial
   corporate
   stands_exhibitions
+  advertising_stand
 }
 
 enum user_status {

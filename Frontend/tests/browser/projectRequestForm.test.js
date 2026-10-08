@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
@@ -27,11 +30,16 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Abre la solicitud como cliente con la API simulada: registra cada llamada y responde
  * al borrador, la carga de archivos y el envío final como lo hace el backend real.
  */
-async function openRequestPage(context, { viewport = { width: 1440, height: 1000 } } = {}) {
+async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, initialRequest } = {}) {
   const session = await browser.newContext({ viewport });
   const page = await session.newPage();
   const calls = [];
   const errors = [];
+  if (initialRequest) {
+    await page.addInitScript((request) => {
+      window.history.replaceState({ usr: { initialRequest: request }, key: "stand-test", idx: 0 }, "");
+    }, initialRequest);
+  }
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
@@ -83,6 +91,119 @@ async function chooseLand(page, label) {
 }
 
 const legalSection = (page) => page.getByRole("heading", { name: LEGAL_HEADING });
+
+const STAND_STATUS_LABEL = "¿El evento cuenta con normas o requisitos para el montaje del stand?";
+const STAND_SPACE_LABEL = "¿Ya tienes asignado el espacio dentro del evento?";
+const STAND_PLANS_LABEL = "¿Tienes las medidas o plano del espacio asignado?";
+const standSection = (page) => page.locator("section").filter({ has: page.getByRole("heading", { name: "Requisitos del stand", exact: true }) });
+
+/** Completa las declaraciones del evento con los controles reales del formulario. */
+async function fillStandSection(page) {
+  await choose(page, STAND_STATUS_LABEL, "Sí, tengo los requisitos");
+  const documents = standSection(page).getByRole("button", { name: "Documentación disponible" });
+  await documents.click();
+  for (const name of ["Manual del expositor", "Reglamento del evento", "Otro"]) {
+    await page.getByRole("menuitemcheckbox", { name, exact: true }).click();
+  }
+  await documents.click();
+  await choose(page, STAND_SPACE_LABEL, "Sí, ya está asignado");
+  await page.getByRole("checkbox", { name: STAND_PLANS_LABEL, exact: true }).click();
+}
+
+test("Stand: únicamente Stand publicitario muestra la sección; excluye la categoría histórica", async (context) => {
+  const { page } = await openRequestPage(context);
+  for (const label of ["Residencial", "Comercial", "Corporativo", "Stands y exhibiciones"]) {
+    await choose(page, "Tipo de proyecto", label);
+    assert.equal(await standSection(page).count(), 0, label);
+  }
+  await choose(page, "Tipo de proyecto", "Stand publicitario");
+  await standSection(page).waitFor();
+  assert.equal(await legalSection(page).count(), 0);
+});
+
+test("Stand → otro → Stand: limpia respuestas y errores, conserva el resto y omite datos al enviar otro tipo", async (context) => {
+  const { page, calls } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await choose(page, "Tipo de proyecto", "Stand publicitario");
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.getByText("Indica si ya tienes asignado el espacio dentro del evento.", { exact: true }).waitFor();
+  await fillStandSection(page);
+  await choose(page, "Tipo de proyecto", "Stands y exhibiciones");
+  await standSection(page).waitFor({ state: "detached" });
+  await choose(page, "Tipo de proyecto", "Stand publicitario");
+  assert.equal((await page.getByRole("button", { name: STAND_STATUS_LABEL, exact: true }).textContent()).trim(), "Selecciona una opción");
+  assert.equal((await page.getByRole("button", { name: STAND_SPACE_LABEL, exact: true }).textContent()).trim(), "Selecciona una opción");
+  assert.match(await standSection(page).getByRole("button", { name: "Documentación disponible" }).textContent(), /Selecciona la documentación/);
+  assert.equal(await page.getByRole("checkbox", { name: STAND_PLANS_LABEL, exact: true }).getAttribute("aria-checked"), "mixed");
+  assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago");
+  await choose(page, "Tipo de proyecto", "Corporativo");
+  const body = await submitWithCode(page, calls);
+  assert.equal(body.projectType, "corporate");
+  assert.equal("standRequirements" in body, false);
+});
+
+test("Stand: volver de confirmación conserva respuestas y envía el bloque con inmueble N/A", async (context) => {
+  const { page, calls } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await choose(page, "Tipo de proyecto", "Stand publicitario");
+  await fillStandSection(page);
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.match(await page.getByRole("button", { name: STAND_SPACE_LABEL, exact: true }).textContent(), /Sí, ya está asignado/);
+  assert.match(await standSection(page).getByRole("button", { name: "Documentación disponible" }).textContent(), /Manual del expositor, Reglamento del evento, otros/);
+  const body = await submitWithCode(page, calls);
+  assert.deepEqual(body.standRequirements, { requirementsStatus: "available", documentTypes: ["exhibitor_manual", "event_regulations", "other"], spaceStatus: "assigned", hasSpacePlans: true });
+  assertNoPropertyData(body);
+});
+
+test("Stand: restaura solicitudes devueltas y descarta documentos al cambiar disponibilidad", async (context) => {
+  const { page } = await openRequestPage(context, { initialRequest: {
+    id: REQUEST_ID, status: "changes_requested", projectType: "advertising_stand", projectName: "Stand restaurado",
+    standRequirements: { requirementsStatus: "available", documentTypes: ["event_regulations"], spaceStatus: "in_process", hasSpacePlans: false },
+  } });
+  await standSection(page).waitFor();
+  assert.match(await page.getByRole("button", { name: STAND_SPACE_LABEL, exact: true }).textContent(), /La asignación está en proceso/);
+  assert.equal(await page.getByRole("checkbox", { name: STAND_PLANS_LABEL, exact: true }).getAttribute("aria-checked"), "false");
+  await choose(page, STAND_STATUS_LABEL, "Estoy gestionando los requisitos");
+  await choose(page, STAND_STATUS_LABEL, "Sí, tengo los requisitos");
+  assert.match(await standSection(page).getByRole("button", { name: "Documentación disponible" }).textContent(), /Selecciona la documentación/);
+});
+
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 768, height: 1000 }, { width: 375, height: 812 }]) {
+  test(`Stand ${viewport.width}px: responsive sin desbordamiento y con estilos claro/oscuro`, async (context) => {
+    const { page } = await openRequestPage(context, { viewport });
+    await choose(page, "Tipo de proyecto", "Stand publicitario");
+    await fillStandSection(page);
+    const section = standSection(page);
+    const artifacts = path.join(tmpdir(), "arca-stand-requirements");
+    await mkdir(artifacts, { recursive: true });
+    let lightBackground;
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => document.documentElement.classList.toggle("dark", value === "dark"), theme);
+      const background = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--color-neutral-bg"));
+      if (theme === "light") lightBackground = background;
+      else assert.notEqual(background, lightBackground);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 0);
+      const geometry = await section.evaluate((element) => ({ width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth }));
+      assert.ok(geometry.scrollWidth <= Math.ceil(geometry.width));
+      const documents = section.getByRole("button", { name: "Documentación disponible" });
+      const bounds = await documents.locator("p").first().boundingBox();
+      const arrow = await documents.locator(":scope > span").boundingBox();
+      assert.ok(bounds.x + bounds.width <= arrow.x, "El texto no debe invadir la flecha");
+      await documents.click();
+      const menuBounds = await section.getByRole("menu").boundingBox();
+      const spaceBounds = await section.getByRole("button", { name: STAND_SPACE_LABEL, exact: true }).boundingBox();
+      assert.ok(spaceBounds.y >= menuBounds.y + menuBounds.height, "El menú debe ocupar espacio sin tapar preguntas");
+      await section.screenshot({ path: path.join(artifacts, `stand-${viewport.width}-${theme}.png`) });
+      await documents.click();
+    }
+    assert.ok(await page.locator(".content-reveal").count());
+  });
+}
 
 /** Completa la sección legal con documentos y propietarios. */
 async function fillLegalSection(page) {

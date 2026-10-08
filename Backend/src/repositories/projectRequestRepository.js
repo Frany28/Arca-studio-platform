@@ -7,6 +7,7 @@ const SELECT_FIELDS = `
   requested_by,
   project_name,
   project_type,
+  stand_requirements,
   location,
   description,
   has_plans,
@@ -93,6 +94,7 @@ function toProjectRequestRecord(row) {
     projectName: row.project_name,
     projectSize: row.project_size,
     projectType: row.project_type,
+    standRequirements: row.stand_requirements ?? null,
     providerPlaceId: row.provider_place_id,
     quality: row.quality_expectation,
     referenceLink: row.reference_link,
@@ -246,8 +248,8 @@ export async function findProjectRequestOwnedByUser(projectRequestId, user) {
 }
 
 /**
- * Crea el borrador de solicitud de proyecto con los datos validados recibidos.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Crea en PostgreSQL un borrador con las respuestas validadas del proyecto y del evento.
+ * Guarda requisitos del stand como JSON opcional, sin completar solicitudes de otros tipos.
  *
  * @param {unknown} user - Usuario autenticado que ejecuta la operación.
  * @param {unknown} payload - Datos validados necesarios para completar la operación.
@@ -262,8 +264,9 @@ export async function createProjectRequestDraft(user, payload) {
         investment_range, capital_availability, expected_start_time,
         decision_maker, quality_expectation, prior_design_experience,
         reference_link, status, location_latitude, location_longitude,
-        provider_place_id, formatted_address, submission_id,
-        legal_documentation_status, legal_document_types, has_multiple_owners
+        provider_place_id, formatted_address,
+        legal_documentation_status, legal_document_types, has_multiple_owners,
+        stand_requirements, submission_id
       )
       values (
         $1, $2, $3, $4::project_type, $5,
@@ -271,15 +274,15 @@ export async function createProjectRequestDraft(user, payload) {
         $10::project_land_status, $11::project_investment_range,
         $12::project_capital_availability, $13::project_start_time,
         $14::project_decision_maker, $15::project_quality_expectation,
-        $16::project_design_experience, $17, 'draft', $18, $19, $20, $21, $22::uuid,
-        $23::project_legal_documentation_status, $24::text[], $25
+        $16::project_design_experience, $17, 'draft', $18, $19, $20, $21,
+        $22::project_legal_documentation_status, $23::text[], $24, $25::jsonb, $26::uuid
       )
       on conflict (client_id, requested_by, submission_id)
         where submission_id is not null and deleted_at is null
       do nothing
       returning ${SELECT_FIELDS}
     `,
-    projectRequestParams(user, payload),
+    [...projectRequestParams(user, payload), payload.submissionId],
   );
 
   if (result.rows[0]) return toProjectRequestRecord(result.rows[0]);
@@ -287,8 +290,8 @@ export async function createProjectRequestDraft(user, payload) {
 }
 
 /**
- * Actualiza el borrador de solicitud de proyecto conservando las reglas de acceso e integridad.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Actualiza en PostgreSQL un borrador o solicitud devuelta, conservando sus permisos.
+ * Reemplaza los requisitos del evento; al cambiar de tipo, el contrato los limpia a null.
  *
  * @param {string} projectRequestId - Valor de `projectRequestId` requerido por esta operación.
  * @param {unknown} user - Usuario autenticado que ejecuta la operación.
@@ -320,9 +323,10 @@ export async function updateProjectRequestDraft(projectRequestId, user, payload)
         location_longitude = $19,
         provider_place_id = $20,
         formatted_address = $21,
-        legal_documentation_status = $23::project_legal_documentation_status,
-        legal_document_types = $24::text[],
-        has_multiple_owners = $25,
+        legal_documentation_status = $22::project_legal_documentation_status,
+        legal_document_types = $23::text[],
+        has_multiple_owners = $24,
+        stand_requirements = $25::jsonb,
         updated_at = now()
       where id = $26
         and client_id = $1
@@ -331,7 +335,7 @@ export async function updateProjectRequestDraft(projectRequestId, user, payload)
         and status in ('draft', 'changes_requested')
       returning ${SELECT_FIELDS}
     `,
-    [...params.slice(0, 25), projectRequestId],
+    [...params, projectRequestId],
   );
   return result.rows[0] ? toProjectRequestRecord(result.rows[0]) : null;
 }
@@ -404,8 +408,8 @@ export async function submitProjectRequestForUser(projectRequestId, user, evalua
 }
 
 /**
- * Procesa el valor de proyecto solicitud params para completar la responsabilidad asignada al módulo.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Ordena los parámetros compartidos por la creación y actualización de solicitudes.
+ * Serializa el bloque informativo del stand; submissionId se añade solo al crear el borrador.
  *
  * @param {unknown} user - Usuario autenticado que ejecuta la operación.
  * @param {unknown} payload - Datos validados necesarios para completar la operación.
@@ -434,9 +438,9 @@ function projectRequestParams(user, payload) {
     payload.projectLocationLongitude,
     payload.projectLocationProviderPlaceId,
     payload.projectLocationFormattedAddress,
-    payload.submissionId,
     payload.legalDocumentationStatus,
     payload.legalDocumentTypes,
     payload.hasMultipleOwners,
+    payload.standRequirements == null ? null : JSON.stringify(payload.standRequirements),
   ];
 }

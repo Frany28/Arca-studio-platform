@@ -5,6 +5,7 @@ import Tag from "../../../../components/ui/Tag/Tag.jsx";
 import { formatCalendarDate } from "../../../../utils/relativeTime.js";
 import AdminRequestEvaluation from "./AdminRequestEvaluation.jsx";
 import RequestDetailField from "./RequestDetailField.jsx";
+import AdminRequestStandRequirements from "./AdminRequestStandRequirements.jsx";
 
 function Divider() {
   return <div className="h-px w-full shrink-0 bg-[var(--color-neutral-200)]" aria-hidden="true" />;
@@ -91,6 +92,10 @@ function AdminRequestDetailsContent({ client, details, onRetryQueue, queueError 
           {details.location || (details.isPartial ? unavailableText : "Sin ubicación registrada")}
         </RequestDetailField>
       </dl>
+
+      <Divider />
+
+      <AdminRequestStandRequirements projectType={details.projectType} standRequirements={details.standRequirements} isPartial={details.isPartial} />
 
       <Divider />
 

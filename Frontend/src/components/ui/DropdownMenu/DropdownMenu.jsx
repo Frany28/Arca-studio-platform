@@ -436,6 +436,7 @@ function DropdownMenu({
   hoveredItemId = DROPDOWN_MENU_DEFAULT_PROPS.hoveredItemId,
   selectedItemId = DROPDOWN_MENU_DEFAULT_PROPS.selectedItemId,
   multiple = false,
+  truncateTriggerLabel = DROPDOWN_MENU_DEFAULT_PROPS.truncateTriggerLabel,
   preserveMenuSpace = DROPDOWN_MENU_DEFAULT_PROPS.preserveMenuSpace,
   onOpenChange,
   onItemSelect,
@@ -746,7 +747,8 @@ function DropdownMenu({
             <div className="flex min-w-0 flex-1 items-center gap-[8px] tracking-[-0.5px]">
               <p
                 className={clsx(
-                  "shrink-0 text-[14px] font-medium leading-[17px] tracking-[-0.5px]",
+                  "text-[14px] font-medium leading-[17px] tracking-[-0.5px]",
+                  truncateTriggerLabel ? "min-w-0 flex-1 truncate" : "shrink-0",
                   triggerTextClasses.label,
                 )}
               >

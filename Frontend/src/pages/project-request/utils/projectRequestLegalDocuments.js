@@ -9,11 +9,12 @@ const MAX_SUMMARY_LABELS = 2;
  * Conserva el orden del catálogo, independiente del orden en que se marcaron.
  *
  * @param {Array<string>} selectedValues - Valores marcados.
+ * @param {Array<Object>} [options] - Catálogo de documentos del inmueble o del evento.
  * @returns {Array<{id: string, label: string, type: "Checkbox", checked: "Yes"|"No"}>} Ítems del menú.
  */
-export function toLegalDocumentItems(selectedValues) {
+export function toLegalDocumentItems(selectedValues, options = PROJECT_REQUEST_OPTIONS.legalDocumentTypes) {
   const selected = new Set(Array.isArray(selectedValues) ? selectedValues : []);
-  return PROJECT_REQUEST_OPTIONS.legalDocumentTypes.map((option) => ({
+  return options.map((option) => ({
     checked: selected.has(option.value) ? "Yes" : "No",
     id: option.value,
     label: option.label,
@@ -36,10 +37,11 @@ export function fromLegalDocumentItems(items) {
  * Resume la selección para el trigger: hasta dos etiquetas y ", otros" si hay más.
  *
  * @param {Array<string>} selectedValues - Valores marcados.
+ * @param {Array<Object>} [options] - Catálogo usado para traducir los valores.
  * @returns {string} Texto visible del trigger o el placeholder si no hay selección.
  */
-export function getLegalDocumentsSummary(selectedValues) {
-  const labels = toLegalDocumentItems(selectedValues)
+export function getLegalDocumentsSummary(selectedValues, options = PROJECT_REQUEST_OPTIONS.legalDocumentTypes) {
+  const labels = toLegalDocumentItems(selectedValues, options)
     .filter((item) => item.checked === "Yes")
     .map((item) => item.label);
 

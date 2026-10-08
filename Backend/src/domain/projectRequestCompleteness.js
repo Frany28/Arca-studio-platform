@@ -12,7 +12,8 @@ import {
  * "Busca financiamiento", "No lo sé aún" o "Por definir" cuentan como respondidas.
  * Las preguntas condicionales que no aplican salen del numerador y del denominador.
  *
- * Participan todas las preguntas del formulario, obligatorias y opcionales. No participan
+ * Participan las preguntas del catálogo vigente, obligatorias y opcionales. Los requisitos
+ * del stand son informativos y no se añaden sin aprobación de sus reglas. No participan
  * los archivos ni el enlace de referencia (material complementario, no preguntas) ni los
  * metadatos de ubicación (coordenadas, place id), que dependen del proveedor y no del cliente.
  */

@@ -61,7 +61,7 @@ test("composite checkbox options preserve selection while hovered", async () => 
   );
   // La documentación legal ya no duplica el menú: usa DropdownMenu con ítems Checkbox
   // múltiples, por lo que hereda la preservación de selección comprobada arriba.
-  assert.match(projectRequestFormFieldsSource, /items=\{toLegalDocumentItems\(value\)\}\s*multiple/);
+  assert.match(projectRequestFormFieldsSource, /items=\{toLegalDocumentItems\(value, options\)\}\s*multiple/);
   assert.doesNotMatch(projectRequestFormFieldsSource, /hoveredDocumentType/);
 });
 

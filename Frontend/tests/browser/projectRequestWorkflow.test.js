@@ -369,6 +369,24 @@ async function openClientDetails(page) {
   return drawer;
 }
 
+test("Drawer admin: conserva los requisitos declarados del stand y distingue otros tipos", async (context) => {
+  const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [{
+    ...REQUEST, clientId: 2, requestedBy: 41, projectType: "advertising_stand",
+    standRequirements: { requirementsStatus: "in_process", documentTypes: [], spaceStatus: "unassigned", hasSpacePlans: false },
+  }] });
+  const drawer = await openClientDetails(page);
+  await drawer.getByText("Stand publicitario", { exact: true }).waitFor();
+  const section = drawer.getByRole("region", { name: "Requisitos del stand" });
+  await section.getByText("Estoy gestionando los requisitos", { exact: true }).waitFor();
+  await section.getByText("Sin documentos declarados", { exact: true }).waitFor();
+  await section.getByText("Aún no está asignado", { exact: true }).waitFor();
+  await section.getByText("No", { exact: true }).waitFor();
+  await section.getByText("Información declarada por el cliente, pendiente de revisión durante la reunión.", { exact: true }).waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  assert.equal(await drawer.locator('[data-admin-request-details="true"]').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  assert.equal(mutations.length, 0);
+});
+
 for (const requestedBy of [undefined, null, "undefined", "null", "NaN", -1, 0, 1.5, true]) {
   test(`Drawer cliente: ID ausente/inválido ${String(requestedBy)} omite HTTP`, async (context) => {
     const { page, calls } = await openPage(context, { role: "admin", realDashboard: true, queue: [{ ...REQUEST, clientId: 2, requestedBy }] });

@@ -150,9 +150,9 @@ function ChoiceGroup({ error = "", invalid = false, label, value, options, onCha
   );
 }
 
-function CheckboxField({ label, value, onChange }) {
+function CheckboxField({ label, value, onChange, className }) {
   return (
-    <div className="flex h-[41px] w-full items-center justify-between gap-[16px]">
+    <div className={clsx("flex h-[41px] w-full items-center justify-between gap-[16px]", className)}>
       <FieldLabel optional>{label}</FieldLabel>
       <Checkbox
         checked={value}
@@ -166,28 +166,35 @@ function CheckboxField({ label, value, onChange }) {
 }
 
 /**
- * Selección múltiple de documentos legales con `DropdownMenu` (ítems Checkbox), el patrón
- * del sistema para opciones múltiples. Es obligatoria solo cuando el usuario declara tener
- * documentación disponible; en los demás estados se deshabilita y no muestra asterisco.
+ * Selección múltiple de documentos con el patrón Checkbox de `DropdownMenu`.
+ * Comparte la presentación entre documentos del inmueble y del evento; el consumidor
+ * proporciona el catálogo, la disponibilidad y si la selección es obligatoria.
  *
  * @param {Object} props - Valores, error y habilitación.
  * @param {Array<string>} props.value - Documentos marcados.
  * @param {(values: Array<string>) => void} props.onChange - Recibe la nueva selección.
  * @param {boolean} props.disabled - true si la documentación no está disponible.
+ * @param {Array<Object>} [props.options] - Catálogo de documentos; por defecto el legal.
+ * @param {boolean} [props.required] - Si exige seleccionar documentos disponibles.
+ * @param {boolean} [props.truncateLabel=false] - Evita que el resumen invada la flecha.
+ * @param {boolean} [props.inlineMenu=false] - Inserta el menú abierto en el flujo, como el stand en Figma.
  * @returns {import("react").ReactElement} Campo de documentos.
  */
-function LegalDocumentTypesField({ error = "", invalid = false, value, onChange, disabled }) {
+function DocumentTypesField({ error = "", invalid = false, value, onChange, disabled, options, required = !disabled, truncateLabel = false, inlineMenu = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const labelId = useId();
 
   return (
     <div className="flex w-full flex-col gap-[8px]">
-      <FieldLabel asSpan id={labelId} optional={disabled}>Documentación disponible</FieldLabel>
+      <FieldLabel asSpan id={labelId} optional={!required}>Documentación disponible</FieldLabel>
       <DropdownMenu
         type="Text"
-        label={getLegalDocumentsSummary(value)}
+        label={getLegalDocumentsSummary(value, options)}
+        truncateTriggerLabel={truncateLabel}
+        contentClassName={inlineMenu ? "!relative !inset-auto !w-full" : undefined}
+        contentPaddingClassName={inlineMenu ? "px-[8px] pt-[4px] pb-[4px]" : undefined}
         supportingText=""
-        items={toLegalDocumentItems(value)}
+        items={toLegalDocumentItems(value, options)}
         multiple
         disabled={disabled}
         open={isOpen}
@@ -201,11 +208,16 @@ function LegalDocumentTypesField({ error = "", invalid = false, value, onChange,
         aria-label="Documentación disponible"
         aria-invalid={invalid || undefined}
         aria-errormessage={invalid ? "project-request-required-alert" : undefined}
-        aria-required={!disabled}
+        aria-required={required}
       />
       {error ? <HintText state="Error" hintText={error} className="w-full" role="alert" /> : null}
     </div>
   );
+}
+
+/** Mantiene el contrato del campo legal, usando el selector compartido de documentos. */
+function LegalDocumentTypesField(props) {
+  return <DocumentTypesField {...props} />;
 }
 
 function FormDivider() {
@@ -239,6 +251,7 @@ function FormSection({ title, description, children }) {
 export {
   CheckboxField,
   ChoiceGroup,
+  DocumentTypesField,
   FieldLabel,
   FormDivider,
   FormSection,

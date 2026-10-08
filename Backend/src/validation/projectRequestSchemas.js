@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { hasAvailableProperty, PROJECT_REQUEST_TEXT_LIMITS, PROJECT_REQUEST_VALUES } from "../domain/projectRequest.js";
+import { isAdvertisingStand } from "../domain/projectRequestStand.js";
+import { projectRequestStandSchema } from "./projectRequestStandSchema.js";
 
 const positiveId = z.coerce.number().int().positive();
 /**
@@ -117,10 +119,16 @@ const projectRequestBody = z
       }
     }, "Ingresa un enlace http o https válido."),
     startTime: z.enum(PROJECT_REQUEST_VALUES.startTime),
+    standRequirements: projectRequestStandSchema.nullable().optional().default(null),
   })
   .strict()
   .superRefine((body, context) => {
     validatePropertyDependentFields(body, context);
+    if (isAdvertisingStand(body.projectType) && body.standRequirements === null) {
+      context.addIssue({ code: "custom", message: "Indica si ya tienes asignado el espacio dentro del evento.", path: ["standRequirements", "spaceStatus"] });
+    } else if (!isAdvertisingStand(body.projectType) && body.standRequirements !== null) {
+      context.addIssue({ code: "custom", message: "Los requisitos del stand solo aplican a Stand publicitario.", path: ["standRequirements"] });
+    }
     const uniqueLegalDocumentTypes = new Set(body.legalDocumentTypes);
     if (uniqueLegalDocumentTypes.size !== body.legalDocumentTypes.length) {
       context.addIssue({
