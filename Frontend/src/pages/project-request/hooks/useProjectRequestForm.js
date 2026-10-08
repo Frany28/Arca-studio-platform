@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
-import { EMPTY_STAND_FORM_FIELDS, normalizeStandFormFields } from "../../../utils/projectRequestStand.js";
+import { EMPTY_PROPERTY_DETAIL_FIELDS, normalizeConditionalFormFields } from "../../../utils/projectRequestApplicability.js";
+import { EMPTY_STAND_FORM_FIELDS } from "../../../utils/projectRequestStand.js";
 
-import {
-  getProjectRequestFieldErrors,
-  hasAvailableProperty,
-} from "../../../utils/projectRequestValidation.js";
+import { getProjectRequestFieldErrors } from "../../../utils/projectRequestValidation.js";
 
 const INITIAL_FORM = {
   ...EMPTY_STAND_FORM_FIELDS,
+  ...EMPTY_PROPERTY_DETAIL_FIELDS,
   projectName: "",
   projectType: "",
   location: "",
@@ -19,31 +18,26 @@ const INITIAL_FORM = {
   projectSize: "",
   developmentMode: "",
   landStatus: "",
-  legalDocumentationStatus: "",
-  legalDocumentTypes: [],
-  multipleOwners: "",
   investmentRange: "",
   capitalAvailability: "",
   startTime: "",
   decisionMaker: "",
   quality: "",
   experience: "",
-  hasBlueprints: "Indeterminate",
   referenceLink: "",
 };
 
-// Campos que solo existen con terreno o inmueble disponible (misma regla que el backend).
-const PROPERTY_DEPENDENT_FIELDS = ["legalDocumentationStatus", "legalDocumentTypes", "multipleOwners", "hasBlueprints"];
-
 /**
  * Restaura la solicitud como valores editables y conserva coordenadas nulas.
- * Traduce booleanos y descarta requisitos del evento cuando el tipo no es Stand publicitario.
+ * Traduce booleanos y descarta las respuestas condicionales que no aplican: requisitos del
+ * evento fuera de Stand publicitario, y pregunta y sección del inmueble en un stand o sin
+ * inmueble disponible (un borrador anterior pudo guardarlas).
  *
  * @param {Object|null} initialRequest - Solicitud usada para inicializar el formulario.
  * @returns {Object} Campos iniciales con ubicación, documentación legal y requisitos del evento.
  */
 function createInitialForm(initialRequest) {
-  return normalizeStandFormFields({
+  return normalizeConditionalFormFields({
     ...INITIAL_FORM,
     standRequirementsStatus: initialRequest?.standRequirements?.requirementsStatus || "",
     standDocumentTypes: initialRequest?.standRequirements?.documentTypes || [],
@@ -131,7 +125,8 @@ export default function useProjectRequestForm({
   };
 
   /**
-   * Edita un campo y limpia las respuestas del stand que hayan dejado de aplicar.
+   * Edita un campo y limpia las respuestas condicionales que hayan dejado de aplicar
+   * (stand, pregunta del inmueble y sección legal) con la regla compartida de aplicabilidad.
    * La limpieza ocurre en el mismo cambio de estado, sin efectos ni datos ocultos pendientes.
    * @param {string} field - Campo editable.
    * @param {Array} [fileErrors=[]] - Errores actuales de adjuntos.
@@ -139,28 +134,21 @@ export default function useProjectRequestForm({
    */
   const update = (field, fileErrors = []) => (eventOrValue) => {
     const value = eventOrValue?.target ? eventOrValue.target.value : eventOrValue;
-    const nextForm = normalizeStandFormFields({ ...form, [field]: value });
+    const nextForm = normalizeConditionalFormFields({ ...form, [field]: value });
 
     setForm(nextForm);
     updateErrorsAfterChange(nextForm, fileErrors);
   };
 
   /**
-   * Conserva los tipos legales solo para el estado available; en otros estados los vac?a.
+   * Cambia la situación legal; los tipos de documento solo se conservan si está disponible.
    *
-   * @param {string} status - Estado de documentaci?n seleccionado.
+   * @param {string} status - Estado de documentación seleccionado.
    * @param {Array} [fileErrors=[]] - Errores para coordinar el aviso.
-   * @returns {void} Actualiza documentaci?n y revalida cuando corresponde.
+   * @returns {void} Actualiza documentación y revalida cuando corresponde.
    */
   const updateLegalDocumentationStatus = (status, fileErrors = []) => {
-    const nextForm = {
-      ...form,
-      legalDocumentationStatus: status,
-      legalDocumentTypes: status === "available" ? form.legalDocumentTypes : [],
-    };
-
-    setForm(nextForm);
-    updateErrorsAfterChange(nextForm, fileErrors);
+    update("legalDocumentationStatus", fileErrors)(status);
   };
 
   /**
@@ -173,13 +161,7 @@ export default function useProjectRequestForm({
    * @returns {void} Actualiza el formulario y revalida cuando corresponde.
    */
   const updateLandStatus = (status, fileErrors = []) => {
-    const clearedPropertyFields = hasAvailableProperty(status)
-      ? {}
-      : Object.fromEntries(PROPERTY_DEPENDENT_FIELDS.map((field) => [field, INITIAL_FORM[field]]));
-    const nextForm = { ...form, ...clearedPropertyFields, landStatus: status };
-
-    setForm(nextForm);
-    updateErrorsAfterChange(nextForm, fileErrors);
+    update("landStatus", fileErrors)(status);
   };
 
   /**

@@ -10,7 +10,6 @@ import {
   submitProjectRequestForUser,
   updateProjectRequestDraft,
 } from "../repositories/projectRequestRepository.js";
-import { getProjectRequestFileUsage } from "../repositories/fileRepository.js";
 
 /**
  * Exige el valor de cliente y detiene el flujo cuando la condición no se cumple.
@@ -168,7 +167,8 @@ export async function updateProjectRequest({ payload, projectRequestId, user }) 
 
 /**
  * Envía la solicitud de proyecto después de validar el estado y las reglas aplicables.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Calcula la compatibilidad vigente desde las respuestas guardadas (los adjuntos no puntúan)
+ * y la persiste en PostgreSQL junto con el cambio de estado y su auditoría.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
@@ -200,11 +200,8 @@ export async function submitProjectRequest({ projectRequestId, user }) {
   }
 
   await assertAvailableName(user, current, projectRequestId);
-  const fileUsage = await getProjectRequestFileUsage(projectRequestId);
-  const evaluation = evaluateProjectCompatibility({
-    ...current,
-    hasFiles: fileUsage.count > 0,
-  });
+  // Desde 3.2 los adjuntos no puntúan: la evaluación usa solo las respuestas guardadas.
+  const evaluation = evaluateProjectCompatibility(current);
   let submitted;
   try {
     submitted = await submitProjectRequestForUser(projectRequestId, user, evaluation);

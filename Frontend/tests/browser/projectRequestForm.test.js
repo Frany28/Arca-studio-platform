@@ -91,6 +91,7 @@ async function chooseLand(page, label) {
 }
 
 const legalSection = (page) => page.getByRole("heading", { name: LEGAL_HEADING });
+const landQuestion = (page) => page.getByRole("group", { name: "¿Tiene terreno o inmueble disponible?" });
 
 const STAND_STATUS_LABEL = "¿El evento cuenta con normas o requisitos para el montaje del stand?";
 const STAND_SPACE_LABEL = "¿Ya tienes asignado el espacio dentro del evento?";
@@ -119,9 +120,27 @@ test("Stand: únicamente Stand publicitario muestra la sección; excluye la cate
   for (const label of ["Residencial", "Comercial", "Corporativo"]) {
     await choose(page, "Tipo de proyecto", label);
     assert.equal(await standSection(page).count(), 0, label);
+    assert.equal(await landQuestion(page).count(), 1, label);
   }
   await choose(page, "Tipo de proyecto", "Stand publicitario");
   await standSection(page).waitFor();
+  assert.equal(await legalSection(page).count(), 0);
+  // El inmueble no aplica a un stand: el espacio se declara en sus requisitos.
+  assert.equal(await landQuestion(page).count(), 0);
+});
+
+test("Stand: elegirlo con inmueble disponible descarta la pregunta y la sección legal; volver las muestra vacías", async (context) => {
+  const { page } = await openRequestPage(context);
+  await choose(page, "Tipo de proyecto", "Residencial");
+  await chooseLand(page, "Sí, disponible");
+  await legalSection(page).waitFor();
+  await choose(page, "Tipo de proyecto", "Stand publicitario");
+  await standSection(page).waitFor();
+  assert.equal(await landQuestion(page).count(), 0);
+  assert.equal(await legalSection(page).count(), 0);
+  await choose(page, "Tipo de proyecto", "Residencial");
+  await landQuestion(page).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Sí, disponible", exact: true }).getAttribute("aria-pressed"), "false");
   assert.equal(await legalSection(page).count(), 0);
 });
 
@@ -142,8 +161,11 @@ test("Stand → otro → Stand: limpia respuestas y errores, conserva el resto y
   assert.equal(await page.getByRole("checkbox", { name: STAND_PLANS_LABEL, exact: true }).getAttribute("aria-checked"), "mixed");
   assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago");
   await choose(page, "Tipo de proyecto", "Corporativo");
+  // El stand descartó la respuesta del terreno: el otro tipo vuelve a pedirla.
+  await chooseLand(page, "No todavía");
   const body = await submitWithCode(page, calls);
   assert.equal(body.projectType, "corporate");
+  assert.equal(body.landStatus, "unavailable");
   assert.equal("standRequirements" in body, false);
 });
 
@@ -161,7 +183,26 @@ test("Stand: volver de confirmación conserva respuestas y envía el bloque con 
   assert.match(await standSection(page).getByRole("button", { name: "Documentación disponible" }).textContent(), /Manual del expositor, Reglamento del evento, otros/);
   const body = await submitWithCode(page, calls);
   assert.deepEqual(body.standRequirements, { requirementsStatus: "available", documentTypes: ["exhibitor_manual", "event_regulations", "other"], spaceStatus: "assigned", hasSpacePlans: true });
+  assert.equal(body.landStatus, null);
   assertNoPropertyData(body);
+});
+
+test("Stand: un borrador devuelto con inmueble guardado lo descarta y lo envía como N/A", async (context) => {
+  const { page, calls } = await openRequestPage(context, { initialRequest: {
+    id: REQUEST_ID, status: "changes_requested", projectType: "advertising_stand", projectName: "Stand anterior",
+    location: "Maracaibo, Estado Zulia", description: "Stand modular para feria con zona de demostración.",
+    developmentMode: "full", investmentRange: "10k_50k", capitalAvailability: "available_now", startTime: "immediate",
+    landStatus: "available", legalDocumentationStatus: "available", legalDocumentTypes: ["property_deed"], hasMultipleOwners: true, hasPlans: false,
+    standRequirements: { requirementsStatus: "unavailable", documentTypes: [], spaceStatus: "assigned", hasSpacePlans: null },
+  } });
+  await standSection(page).waitFor();
+  assert.equal(await landQuestion(page).count(), 0);
+  assert.equal(await legalSection(page).count(), 0);
+  const body = await submitWithCode(page, calls);
+  assert.equal(body.projectType, "advertising_stand");
+  assert.equal(body.landStatus, null);
+  assertNoPropertyData(body);
+  assert.deepEqual(body.standRequirements, { requirementsStatus: "unavailable", documentTypes: [], spaceStatus: "assigned", hasSpacePlans: null });
 });
 
 test("Stand: restaura solicitudes devueltas y descarta documentos al cambiar disponibilidad", async (context) => {

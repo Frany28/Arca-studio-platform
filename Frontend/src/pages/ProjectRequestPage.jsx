@@ -16,7 +16,8 @@ import ProjectRequestValidationStep from "../components/ui/ProjectRequestFlow/Pr
 import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
 import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
-import { getProjectRequestFileErrors, hasAvailableProperty } from "../utils/projectRequestValidation.js";
+import { getProjectRequestFileErrors } from "../utils/projectRequestValidation.js";
+import { hasApplicableProperty, requiresPropertyAvailability } from "../utils/projectRequestApplicability.js";
 import { LEGACY_PROJECT_REQUEST_TYPES, PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
 import { getProjectTypeLabel } from "../utils/projectTypeDisplay.js";
 import ProjectRequestAttachmentsField from "./project-request/components/ProjectRequestAttachmentsField.jsx";
@@ -108,8 +109,10 @@ export default function ProjectRequestPage() {
     initialRequest,
     setShowRequiredAlert,
   });
-  // Estado derivado: la visibilidad depende solo de la respuesta sobre el terreno.
-  const showPropertyLegalSection = hasAvailableProperty(form.landStatus);
+  // Estado derivado: en Stand publicitario el inmueble no aplica; en otros tipos la sección
+  // legal depende de la respuesta sobre el terreno.
+  const showLandStatusQuestion = requiresPropertyAvailability(form.projectType);
+  const showPropertyLegalSection = hasApplicableProperty(form);
   const formRef = useRef(null);
   const {
     clear: clearLocationSuggestions,
@@ -308,13 +311,15 @@ export default function ProjectRequestPage() {
                 <TextField error={hasAttemptedSubmit ? fieldErrors.description : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.description)} label="Descripción del proyecto" multiline minLength={30} maxLength={100} placeholder="Describe brevemente qué quieres lograr, dónde está el inmueble, y cualquier detalle relevante." value={form.description} onChange={update("description", fileErrors)} />
                 <SelectField error={hasAttemptedSubmit ? fieldErrors.projectSize : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectSize)} label="Tamaño aproximado del proyecto" optional value={form.projectSize} onChange={update("projectSize", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectSize} />
                 <SelectField error={hasAttemptedSubmit ? fieldErrors.developmentMode : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.developmentMode)} label="¿Cómo desea desarrollar el proyecto?" info value={form.developmentMode} onChange={update("developmentMode", fileErrors)} options={PROJECT_REQUEST_OPTIONS.developmentMode} />
-                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.landStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.landStatus)} label="¿Tiene terreno o inmueble disponible?" value={form.landStatus} onChange={(status) => updateLandStatus(status, fileErrors)} options={PROJECT_REQUEST_OPTIONS.landStatus} />
+                {showLandStatusQuestion ? (
+                  <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.landStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.landStatus)} label="¿Tiene terreno o inmueble disponible?" value={form.landStatus} onChange={(status) => updateLandStatus(status, fileErrors)} options={PROJECT_REQUEST_OPTIONS.landStatus} />
+                ) : null}
               </FormSection>
 
               <ProjectRequestStandSection form={form} fieldErrors={fieldErrors} hasAttemptedSubmit={hasAttemptedSubmit} update={update} fileErrors={fileErrors} />
 
-              {/* Solo aplica con terreno o inmueble disponible: se desmonta (no se oculta con CSS)
-              y useProjectRequestForm restablece sus valores al cambiar la respuesta. */}
+              {/* Solo aplica con inmueble aplicable y disponible: se desmonta (no se oculta con CSS)
+              y useProjectRequestForm restablece sus valores al cambiar el tipo o la respuesta. */}
               {showPropertyLegalSection ? (
                 <>
                   <FormDivider />

@@ -21,8 +21,8 @@ function toPerson(value) {
 
 /**
  * Extrae las respuestas del formulario necesarias para las métricas derivadas de la solicitud.
- * Usa los mismos nombres de campo que el registro de solicitudes para reutilizar el dominio;
- * el servicio las transforma en métricas y no se exponen en bruto.
+ * Usa los nombres de campo del registro para reutilizar el dominio, incluido el bloque del stand
+ * (cuenta en completitud); el servicio las transforma en métricas y no se exponen en bruto.
  *
  * @param {object} row - Fila obtenida desde PostgreSQL.
  * @returns {object} Respuestas de la solicitud con nombres de dominio.
@@ -45,6 +45,7 @@ function toWorkflowAnswers(row) {
     projectSize: row.project_size,
     projectType: row.project_type,
     quality: row.quality_expectation,
+    standRequirements: row.stand_requirements ?? null,
     startTime: row.expected_start_time,
   };
 }

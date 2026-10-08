@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { hasAvailableProperty, PROJECT_REQUEST_TEXT_LIMITS, PROJECT_REQUEST_VALUES, READABLE_PROJECT_REQUEST_TYPES } from "../domain/projectRequest.js";
+import {
+  hasApplicableProperty,
+  PROJECT_REQUEST_TEXT_LIMITS,
+  PROJECT_REQUEST_VALUES,
+  READABLE_PROJECT_REQUEST_TYPES,
+  requiresPropertyAvailability,
+} from "../domain/projectRequest.js";
 import { isAdvertisingStand } from "../domain/projectRequestStand.js";
 import { projectRequestStandSchema } from "./projectRequestStandSchema.js";
 
@@ -61,16 +67,37 @@ function validManualAddress(value) {
 }
 
 /**
- * Aplica la regla de dominio del inmueble: con terreno disponible exige la situación legal
- * y los propietarios; sin él, rechaza cualquier dato legal, de propietarios o de planos
- * para no persistir información incompatible con la respuesta del cliente.
+ * Aplica la aplicabilidad de la pregunta del inmueble según el tipo de proyecto.
+ * Es obligatoria para los tipos que la conservan; en Stand publicitario es N/A y se rechaza,
+ * porque el espacio del evento se declara en `standRequirements.spaceStatus`.
+ *
+ * @param {object} body - Cuerpo normalizado por Zod.
+ * @param {import("zod").RefinementCtx} context - Contexto para registrar incidencias.
+ * @returns {void} Registra incidencias en el contexto cuando corresponde.
+ */
+function validateLandStatusApplicability(body, context) {
+  if (requiresPropertyAvailability(body.projectType)) {
+    if (body.landStatus === null) {
+      context.addIssue({ code: "custom", message: "Indica si tienes terreno o inmueble disponible.", path: ["landStatus"] });
+    }
+    return;
+  }
+  if (body.landStatus !== null) {
+    context.addIssue({ code: "custom", message: "No aplica a Stand publicitario; indica el espacio en los requisitos del stand.", path: ["landStatus"] });
+  }
+}
+
+/**
+ * Aplica la regla de dominio del inmueble: con inmueble aplicable y disponible exige la
+ * situación legal y los propietarios; en otro caso rechaza cualquier dato legal, de
+ * propietarios o de planos para no persistir información incompatible con la solicitud.
  *
  * @param {object} body - Cuerpo normalizado por Zod.
  * @param {import("zod").RefinementCtx} context - Contexto para registrar incidencias.
  * @returns {void} Registra incidencias en el contexto cuando corresponde.
  */
 function validatePropertyDependentFields(body, context) {
-  if (hasAvailableProperty(body.landStatus)) {
+  if (hasApplicableProperty(body)) {
     if (body.legalDocumentationStatus === null) {
       context.addIssue({ code: "custom", message: "Indica la situación legal del inmueble.", path: ["legalDocumentationStatus"] });
     }
@@ -96,8 +123,9 @@ const projectRequestBody = z
     experience: optionalChoice(PROJECT_REQUEST_VALUES.experience),
     hasBlueprints: z.boolean().nullable().optional().default(null),
     investmentRange: z.enum(PROJECT_REQUEST_VALUES.investmentRange),
-    // Obligatorio: determina si aplican los campos del inmueble (ver validatePropertyDependentFields).
-    landStatus: z.enum(PROJECT_REQUEST_VALUES.landStatus),
+    // Obligatorio salvo en Stand publicitario (ver validateLandStatusApplicability); determina
+    // si aplican los campos del inmueble (ver validatePropertyDependentFields).
+    landStatus: optionalChoice(PROJECT_REQUEST_VALUES.landStatus),
     legalDocumentationStatus: optionalChoice(PROJECT_REQUEST_VALUES.legalDocumentationStatus),
     legalDocumentTypes: z.array(z.enum(PROJECT_REQUEST_VALUES.legalDocumentTypes)).max(4).optional().default([]),
     hasMultipleOwners: z.boolean().nullable().optional().default(null),
@@ -124,6 +152,7 @@ const projectRequestBody = z
   })
   .strict()
   .superRefine((body, context) => {
+    validateLandStatusApplicability(body, context);
     validatePropertyDependentFields(body, context);
     if (isAdvertisingStand(body.projectType) && body.standRequirements === null) {
       context.addIssue({ code: "custom", message: "Indica si ya tienes asignado el espacio dentro del evento.", path: ["standRequirements", "spaceStatus"] });
@@ -138,14 +167,14 @@ const projectRequestBody = z
         path: ["legalDocumentTypes"],
       });
     }
-    if (hasAvailableProperty(body.landStatus) && body.legalDocumentationStatus === "available" && body.legalDocumentTypes.length === 0) {
+    if (hasApplicableProperty(body) && body.legalDocumentationStatus === "available" && body.legalDocumentTypes.length === 0) {
       context.addIssue({
         code: "custom",
         message: "Selecciona al menos un documento disponible.",
         path: ["legalDocumentTypes"],
       });
     }
-    if (hasAvailableProperty(body.landStatus) && body.legalDocumentationStatus !== "available" && body.legalDocumentTypes.length > 0) {
+    if (hasApplicableProperty(body) && body.legalDocumentationStatus !== "available" && body.legalDocumentTypes.length > 0) {
       context.addIssue({
         code: "custom",
         message: "Solo indica documentos que ya estén disponibles.",

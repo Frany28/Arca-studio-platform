@@ -48,7 +48,7 @@ test("V3: descripción recortada de 30–100 cuenta como respuesta sin modificar
   }
 });
 
-test("V3: el contrato guardado separa normativas y planos del evento de la evaluación legal", async (context) => {
+test("3.1: el contrato guardado separa el stand de la evaluación del inmueble y cuenta sus preguntas", async (context) => {
   let savedRow;
   context.mock.method(pool, "query", async () => ({ rows: [savedRow] }));
   const user = { id: 1, clientId: 2 };
@@ -83,14 +83,22 @@ test("V3: el contrato guardado separa normativas y planos del evento de la evalu
             const record = await findProjectRequestOwnedByUser(1, user);
             const evaluation = evaluateProjectCompatibility({ ...record, hasFiles: true });
             const publicRequest = toPublicProjectRequest({ ...record, compatibility: evaluation });
-            const hasProperty = landStatus === "available";
+            // En el stand el formulario descarta las respuestas del inmueble que quedaron en su estado.
+            const isStand = projectType === "advertising_stand";
+            assert.equal(body.landStatus, isStand ? null : landStatus);
+            const hasProperty = !isStand && landStatus === "available";
             const legalDeduction = hasProperty ? { available: 0, in_process: 3, unavailable: 6 }[legalDocumentationStatus] : 0;
             const plansDeduction = hasProperty && hasBlueprints !== "Yes" ? 2 : 0;
             assert.equal(publicRequest.compatibility.score, 100 - legalDeduction - plansDeduction);
-            assert.equal(publicRequest.completeness.applicable, hasProperty ? legalDocumentationStatus === "available" ? 17 : 16 : 13);
-            const missingPlans = hasProperty && hasBlueprints === "Indeterminate";
-            assert.deepEqual(publicRequest.completeness.missingFields, missingPlans ? ["hasPlans"] : []);
-            assert.equal(publicRequest.completeness.answered, publicRequest.completeness.applicable - Number(missingPlans));
+            const propertyApplicable = hasProperty ? legalDocumentationStatus === "available" ? 17 : 16 : 13;
+            const standApplicable = 12 + (requirementsStatus === "available" ? 4 : 3);
+            assert.equal(publicRequest.completeness.applicable, isStand ? standApplicable : propertyApplicable);
+            const expectedMissing = [
+              ...(isStand && requirementsStatus === null ? ["standRequirements.requirementsStatus"] : []),
+              ...(hasProperty && hasBlueprints === "Indeterminate" ? ["hasPlans"] : []),
+            ];
+            assert.deepEqual(publicRequest.completeness.missingFields, expectedMissing);
+            assert.equal(publicRequest.completeness.answered, publicRequest.completeness.applicable - expectedMissing.length);
             assert.equal(publicRequest.completeness.score, Math.round(publicRequest.completeness.answered / publicRequest.completeness.applicable * 100));
             assert.deepEqual(publicRequest.financialViability, { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" });
             assert.deepEqual(publicRequest.standRequirements, body.standRequirements);

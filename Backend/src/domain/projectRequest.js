@@ -1,4 +1,4 @@
-import { ADVERTISING_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
+import { ADVERTISING_STAND_PROJECT_TYPE, isAdvertisingStand } from "./projectRequestStand.js";
 
 export const PROJECT_REQUEST_VALUES = {
   capitalAvailability: [
@@ -70,9 +70,9 @@ export const PROJECT_REQUEST_TEXT_LIMITS = Object.freeze({
 });
 
 /**
- * Indica si la solicitud declara un terreno o inmueble disponible para el proyecto.
- * Solo en ese caso se preguntan, persisten y evalúan la situación legal, la documentación,
- * los propietarios y los planos del lugar; en otro caso esos campos son N/A.
+ * Indica si la respuesta de terreno o inmueble declara disponibilidad.
+ * Solo evalúa la respuesta; la aplicabilidad según el tipo de proyecto la decide
+ * `hasApplicableProperty`, que es la regla que deben usar contrato y métricas.
  *
  * @param {string|null|undefined} landStatus - Respuesta sobre disponibilidad del terreno.
  * @returns {boolean} true cuando la respuesta es "available".
@@ -82,14 +82,40 @@ export function hasAvailableProperty(landStatus) {
 }
 
 /**
- * Indica si la situación legal declarada habilita la lista de documentos disponibles.
- * La lista solo aplica cuando hay inmueble disponible y la documentación ya existe.
+ * Indica si la pregunta «¿Tiene terreno o inmueble disponible?» aplica al tipo de proyecto.
+ * Un Stand publicitario se monta en el espacio que asigna un evento, no en un inmueble del
+ * cliente: para él la pregunta y toda la sección legal son N/A y el espacio se declara en
+ * los requisitos del stand. Los tipos históricos conservan la pregunta.
  *
- * @param {{landStatus?: string|null, legalDocumentationStatus?: string|null}} answers - Respuestas del inmueble.
+ * @param {string|null|undefined} projectType - Identificador del tipo de proyecto.
+ * @returns {boolean} false exclusivamente para advertising_stand.
+ */
+export function requiresPropertyAvailability(projectType) {
+  return !isAdvertisingStand(projectType);
+}
+
+/**
+ * Indica si aplican las preguntas que dependen del inmueble: situación legal, propietarios
+ * y planos del lugar. Exige que el tipo admita la pregunta del inmueble y que la respuesta
+ * declare disponibilidad; en otro caso esos campos son N/A y no se aceptan ni se evalúan.
+ *
+ * @param {{landStatus?: string|null, projectType?: string|null}|null|undefined} answers - Respuestas de la solicitud.
+ * @returns {boolean} true cuando las preguntas del inmueble aplican.
+ */
+export function hasApplicableProperty(answers) {
+  return requiresPropertyAvailability(answers?.projectType)
+    && hasAvailableProperty(answers?.landStatus);
+}
+
+/**
+ * Indica si la situación legal declarada habilita la lista de documentos disponibles.
+ * La lista solo aplica cuando el inmueble aplica, está disponible y la documentación existe.
+ *
+ * @param {{landStatus?: string|null, legalDocumentationStatus?: string|null, projectType?: string|null}} answers - Respuestas del inmueble.
  * @returns {boolean} true cuando la lista de documentos es aplicable.
  */
 export function hasAvailableLegalDocumentation(answers) {
-  return hasAvailableProperty(answers?.landStatus)
+  return hasApplicableProperty(answers)
     && answers?.legalDocumentationStatus === "available";
 }
 

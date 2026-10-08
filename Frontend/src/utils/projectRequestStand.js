@@ -18,6 +18,16 @@ export function isAdvertisingStand(projectType) {
 }
 
 /**
+ * Indica si la respuesta sobre normas del evento habilita la documentación disponible.
+ * Replica `allowsStandDocumentSelection` del dominio del backend (prueba de paridad en Backend).
+ * @param {string|null|undefined} requirementsStatus - Respuesta sobre normas o requisitos del evento.
+ * @returns {boolean} true solo con «Sí, tengo los requisitos».
+ */
+export function allowsStandDocumentSelection(requirementsStatus) {
+  return requirementsStatus === "available";
+}
+
+/**
  * Limpia respuestas no aplicables al restaurar o editar el formulario.
  * Cambiar de tipo descarta todo el bloque; cambiar disponibilidad descarta los documentos.
  * @param {Object} form - Estado editable de la solicitud.
@@ -27,6 +37,6 @@ export function normalizeStandFormFields(form) {
   if (!isAdvertisingStand(form.projectType)) return { ...form, ...EMPTY_STAND_FORM_FIELDS };
   return {
     ...form,
-    standDocumentTypes: form.standRequirementsStatus === "available" ? form.standDocumentTypes : [],
+    standDocumentTypes: allowsStandDocumentSelection(form.standRequirementsStatus) ? form.standDocumentTypes : [],
   };
 }

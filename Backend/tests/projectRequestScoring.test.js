@@ -51,13 +51,13 @@ function scoreWith(values) {
   return evaluateProjectCompatibility({ ...COMPLETE_PROJECT, ...values }).score;
 }
 
-test("a complete, prepared and coherent request receives 100 points in version 3.0", () => {
+test("a complete, prepared and coherent request receives 100 points in version 3.2", () => {
   assert.deepEqual(evaluateProjectCompatibility(COMPLETE_PROJECT), {
     findings: [],
     level: "excellent",
     reasonCodes: [],
     score: 100,
-    version: "3.0",
+    version: "3.2",
   });
 });
 
@@ -226,11 +226,14 @@ test("undefined scope and budget lose only their definition weight once", () => 
   }
 });
 
-test("files and valid reference links keep their 5 and 2 point weights", () => {
-  assert.equal(scoreWith({ hasFiles: false }), 95);
-  assert.equal(scoreWith({ referenceLink: null }), 98);
-  assert.equal(scoreWith({ hasFiles: false, referenceLink: null }), 93);
-  assert.equal(scoreWith({ referenceLink: "javascript:alert(1)" }), 98);
+test("3.2: files and reference links are optional material and never change the score", () => {
+  for (const hasFiles of [true, false, undefined]) {
+    for (const referenceLink of ["https://example.com/referencia", null, "", "javascript:alert(1)"]) {
+      const evaluation = evaluateProjectCompatibility({ ...COMPLETE_PROJECT, hasFiles, referenceLink });
+      assert.equal(evaluation.score, 100, `${hasFiles}/${referenceLink}`);
+      assert.deepEqual(evaluation.reasonCodes, [], `${hasFiles}/${referenceLink}`);
+    }
+  }
 });
 
 // [evidencia, causa, score esperado, cambios]. Los valores de deducción son los aprobados en v2.2;
@@ -288,17 +291,18 @@ test("all evidence is kept even when more than three findings exist (D9)", () =>
     referenceLink: null,
     startTime: "immediate",
   });
-  assert.equal(result.score, 0);
+  // 3.2: sin archivos ni enlace ya no restan; 20 + 10 + 30 + 15 + 20 = 95.
+  assert.equal(result.score, 5);
   assert.equal(result.level, "poorly_defined");
-  assert.equal(result.findings.length, 7);
-  assert.equal(result.reasonCodes.length, 8);
+  assert.equal(result.findings.length, 5);
+  assert.equal(result.reasonCodes.length, 6);
   for (const finding of result.findings) {
     assert.ok(["LOW", "MEDIUM", "HIGH"].includes(finding.severity), finding.code);
     assert.ok(finding.explanation, finding.code);
   }
 
   const publicResult = publicCompatibility(result);
-  assert.equal(publicResult.findings.length, 7);
+  assert.equal(publicResult.findings.length, 5);
   assert.equal(publicResult.observations.length, 3);
   assert.deepEqual(
     publicResult.observations,

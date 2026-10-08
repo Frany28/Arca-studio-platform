@@ -32,9 +32,25 @@ La migración `20261008000000_advertising_stand_requirements` añade el valor de
 
 El repositorio guarda/reemplaza el bloque completo mediante parámetros. Cambiar de tipo en una edición lo sustituye por SQL NULL. La API de cliente y la cola técnica lo devuelven para consulta; el drawer administrativo diferencia información declarada, sin respuesta, no cargada y no aplicable. Los documentos son declaraciones del cliente, pendientes de revisión en la reunión; no se incorporan aprobaciones ni verificaciones automáticas.
 
-## Algoritmo 3.0
+## Algoritmo 3.1
 
-El bloque es únicamente informativo: no cambia puntos, pesos, penalizaciones, niveles ni viabilidad financiera. No se añade ninguna pregunta al numerador o denominador de información completada. El nuevo tipo es una respuesta válida del catálogo en la pregunta existente de tipo de proyecto. Las solicitudes anteriores conservan las tres evaluaciones.
+Un Stand publicitario se monta en el espacio asignado por el evento. Por eso, la pregunta «¿Tiene terreno o inmueble disponible?» y la sección legal del inmueble no aplican a este tipo:
+
+- el formulario no las muestra y las limpia al elegir el tipo;
+- la API rechaza `landStatus` y los datos del inmueble;
+- el motor no ejecuta para él las reglas legal, de planos ni de inmueble frente al inicio.
+
+El espacio asignado no hereda esas penalizaciones y no se crean deducciones nuevas. Las de capital y presupuesto siguen aplicando.
+
+Las cuatro preguntas cuentan en información completada:
+
+- la documentación del evento solo cuenta con «Sí, tengo los requisitos»;
+- una respuesta negativa válida cuenta como respondida;
+- una ausente cuenta como incompleta.
+
+No cambian puntos, pesos, niveles ni la coherencia financiera.
+
+Como el resultado de los stands nuevos cambia, esta corrección se publicó como fórmula `3.1` (vigente hoy en `3.2`, que además retira las deducciones por referencias). Las evaluaciones guardadas conservan puntuación, nivel, versión y motivos. Un stand sin bloque guardado no recibe respuestas ficticias: sus preguntas quedan N/A. Detalle y ejemplos en la [referencia de evaluación](PROJECT_REQUEST_EVALUATION.md), sección 17.
 
 ## Validación
 

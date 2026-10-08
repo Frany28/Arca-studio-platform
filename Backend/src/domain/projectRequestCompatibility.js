@@ -1,7 +1,7 @@
-import { hasAvailableProperty } from "./projectRequest.js";
+import { hasApplicableProperty, requiresPropertyAvailability } from "./projectRequest.js";
 
 /*
- * Motor de compatibilidad de Solicitud de Proyecto (fórmula 3.0).
+ * Motor de compatibilidad de Solicitud de Proyecto (fórmula 3.2).
  *
  * Compatibilidad = 100 − Σ deducción de cada hallazgo, limitada a 0–100.
  *
@@ -15,9 +15,23 @@ import { hasAvailableProperty } from "./projectRequest.js";
  *
  * Los valores de deducción son los pesos existentes en v2.2; esta versión no introduce
  * cantidades nuevas. La severidad es semántica y se declara por evidencia.
+ *
+ * 3.1 conserva catálogo, pesos y umbrales de 3.0 y solo corrige la aplicabilidad: en un
+ * Stand publicitario la pregunta del inmueble es N/A, por lo que las reglas legal, de planos
+ * y de inmueble frente al inicio no se ejecutan. El espacio del evento no hereda esas
+ * deducciones. Para los demás tipos ambas versiones producen el mismo resultado.
+ *
+ * 3.2 retira las deducciones por ausencia de archivos (−5) y de enlace de referencia (−2):
+ * son material complementario opcional y su ausencia no indica falta de preparación ni
+ * incoherencia. Sus códigos se conservan en `RETIRED_EVIDENCE_RULES` solo para leer las
+ * evaluaciones guardadas. Las demás reglas, pesos y umbrales no cambian.
  */
 
-export const COMPATIBILITY_SCORING_VERSION = "3.0";
+export const COMPATIBILITY_SCORING_VERSION = "3.2";
+
+// Versiones con el catálogo de evidencias 3.x: sus códigos (vigentes o retirados) permiten
+// reconstruir hallazgos. Las evaluaciones guardadas se muestran tal como se calcularon.
+const FINDINGS_SCORING_VERSIONS = Object.freeze(["3.0", "3.1", COMPATIBILITY_SCORING_VERSION]);
 
 export const FINDING_CATEGORIES = Object.freeze({
   CONSISTENCY: "CONSISTENCY",
@@ -46,13 +60,15 @@ const FINDING_CAUSE_CATEGORIES = Object.freeze({
   LEGAL_DOCUMENTATION_PENDING: FINDING_CATEGORIES.LEGAL,
   PROJECT_SIZE_UNDEFINED: FINDING_CATEGORIES.SCOPE,
   PROPERTY_TIMING_MISMATCH: FINDING_CATEGORIES.TEMPORAL,
+  // Retiradas en 3.2: solo aparecen al leer evaluaciones 3.0 y 3.1 guardadas.
   REFERENCE_FILES_MISSING: FINDING_CATEGORIES.INFORMATION,
   REFERENCE_LINK_MISSING: FINDING_CATEGORIES.INFORMATION,
 });
 
 // Textos legibles por código de evidencia. Incluye códigos de versiones históricas
 // (company*, extendedFamily*, descriptionWeak, largeBudget10k50k, referencesMissing*, sizeUnknown*) que
-// 3.0 ya no genera, para seguir mostrando las observaciones guardadas.
+// 3.0 ya no genera, y referenceFilesMissing/referenceLinkMissing, retirados en 3.2, para seguir
+// mostrando las observaciones guardadas.
 export const COMPATIBILITY_OBSERVATIONS = {
   blueprintsUnavailable:
     "Disponer de planos del lugar agilizará el análisis del inmueble.",
@@ -138,12 +154,10 @@ const { HIGH, LOW, MEDIUM } = FINDING_SEVERITIES;
  * la misma deducción dentro de una causa. `points` conserva el peso existente en v2.2.
  */
 const COMPATIBILITY_EVIDENCE_RULES = Object.freeze([
-  // SCOPE / INFORMATION: definición del alcance y material de referencia.
+  // SCOPE: definición del alcance. El material de referencia no puntúa desde 3.2.
   { cause: "PROJECT_SIZE_UNDEFINED", code: "projectSizeUndefined", points: 15, severity: MEDIUM, when: { projectSize: "unknown" } },
   { cause: "EXECUTION_MODE_UNDEFINED", code: "developmentModeUndefined", points: 10, severity: MEDIUM, when: { developmentMode: "undecided" } },
   { cause: "EXECUTION_MODE_UNDEFINED", code: "modeUndefinedImmediate", points: 10, severity: MEDIUM, when: { developmentMode: "undecided", startTime: "immediate" } },
-  { cause: "REFERENCE_FILES_MISSING", code: "referenceFilesMissing", points: 5, severity: LOW, when: { hasFiles: false } },
-  { cause: "REFERENCE_LINK_MISSING", code: "referenceLinkMissing", points: 2, severity: LOW, when: { hasReferenceLink: false } },
 
   // LEGAL / INFORMATION: solo con inmueble disponible; en otro caso son N/A.
   { cause: "LEGAL_DOCUMENTATION_PENDING", code: "legalDocumentationUnavailable", points: 6, severity: LOW, when: { hasProperty: true, legalDocumentationStatus: "unavailable" } },
@@ -179,7 +193,19 @@ const COMPATIBILITY_EVIDENCE_RULES = Object.freeze([
   { cause: "PROPERTY_TIMING_MISMATCH", code: "landUnavailableSoon", points: 10, severity: MEDIUM, when: { landStatus: "unavailable", startTime: "1_3_months" } },
 ].map((rule) => Object.freeze({ ...rule, when: Object.freeze(rule.when) })));
 
-const EVIDENCE_BY_CODE = new Map(COMPATIBILITY_EVIDENCE_RULES.map((rule) => [rule.code, rule]));
+/*
+ * Evidencias retiradas: el motor ya no las detecta, pero las evaluaciones 3.0 y 3.1 guardadas
+ * las contienen. Conservan su causa, severidad y peso histórico para reconstruir esos
+ * hallazgos tal como se calcularon. No tienen `when` porque nunca se evalúan.
+ */
+const RETIRED_EVIDENCE_RULES = Object.freeze([
+  { cause: "REFERENCE_FILES_MISSING", code: "referenceFilesMissing", points: 5, retiredIn: "3.2", severity: LOW },
+  { cause: "REFERENCE_LINK_MISSING", code: "referenceLinkMissing", points: 2, retiredIn: "3.2", severity: LOW },
+].map(Object.freeze));
+
+const EVIDENCE_BY_CODE = new Map(
+  [...COMPATIBILITY_EVIDENCE_RULES, ...RETIRED_EVIDENCE_RULES].map((rule) => [rule.code, rule]),
+);
 
 /**
  * Describe una evidencia del catálogo de compatibilidad sin exponer su peso interno.
@@ -202,11 +228,11 @@ export function describeCompatibilityEvidence(code) {
 }
 
 /**
- * Lista los códigos de evidencia que el motor 3.0 detecta para unas respuestas dadas.
+ * Lista los códigos de evidencia que el motor vigente detecta para unas respuestas dadas.
  * Es la misma detección que usa `evaluateProjectCompatibility`; se expone para verificar
  * que otras matrices que referencian estas evidencias no diverjan del motor.
  *
- * @param {object} input - Respuestas de la solicitud con `hasFiles` calculado por el servidor.
+ * @param {object} input - Respuestas guardadas de la solicitud.
  * @returns {Array<string>} Códigos de evidencia detectados, en el orden del catálogo.
  */
 export function detectCompatibilityEvidence(input) {
@@ -232,33 +258,15 @@ export function compatibilityLevel(score) {
 }
 
 /**
- * Determina si el enlace de referencia es una URL http(s) válida dentro del límite.
- * Replica la regla del contrato para que el motor no dependa de la validación previa.
+ * Normaliza las respuestas guardadas en hechos comparables; las opciones ausentes son "sin definir".
+ * Anula los datos del inmueble si no aplica o no está disponible, y `landStatus` en un Stand
+ * publicitario (un borrador anterior pudo guardarlo), para que sus reglas sean N/A.
  *
- * @param {unknown} value - Enlace declarado por el cliente.
- * @returns {boolean} true cuando el enlace es utilizable como referencia.
- */
-function isValidReferenceLink(value) {
-  const link = String(value || "").trim();
-  if (!link || link.length > 500) return false;
-  try {
-    const url = new URL(link);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Normaliza las respuestas guardadas en hechos comparables por el catálogo de evidencias.
- * Las opciones ausentes se tratan como "sin definir" y los datos del inmueble se anulan
- * cuando no hay inmueble disponible, de modo que sus reglas sean N/A aunque lleguen datos.
- *
- * @param {object} input - Registro de la solicitud con `hasFiles` calculado por el servidor.
+ * @param {object} input - Registro de la solicitud.
  * @returns {object} Hechos normalizados usados por las reglas.
  */
 function toCompatibilityFacts(input) {
-  const hasProperty = hasAvailableProperty(input.landStatus);
+  const hasProperty = hasApplicableProperty(input);
   const hasLegalDocumentTypes = Array.isArray(input.legalDocumentTypes)
     && input.legalDocumentTypes.length > 0;
   let legalDocumentationStatus = null;
@@ -271,12 +279,10 @@ function toCompatibilityFacts(input) {
   return {
     capitalAvailability: input.capitalAvailability ?? "undefined",
     developmentMode: input.developmentMode ?? "undecided",
-    hasFiles: input.hasFiles === true,
     hasPlans: hasProperty ? input.hasPlans === true : null,
     hasProperty,
-    hasReferenceLink: isValidReferenceLink(input.referenceLink),
     investmentRange: input.investmentRange ?? "undefined",
-    landStatus: input.landStatus ?? null,
+    landStatus: requiresPropertyAvailability(input.projectType) ? input.landStatus ?? null : null,
     legalDocumentationStatus,
     projectSize: input.projectSize ?? "unknown",
     quality: input.quality ?? null,
@@ -349,8 +355,8 @@ function toFinding(cause, rules) {
  * No suma por montos, capital, inmueble, descripción ni experiencia; las preguntas N/A no
  * cuentan. Devuelve todas las evidencias para persistirlas y los hallazgos consolidados.
  *
- * @param {object} input - Registro de la solicitud con `hasFiles` calculado por el servidor.
- * @returns {{findings: Array<object>, level: string, reasonCodes: Array<string>, score: number, version: string}} Evaluación 3.0.
+ * @param {object} input - Registro de la solicitud guardado.
+ * @returns {{findings: Array<object>, level: string, reasonCodes: Array<string>, score: number, version: string}} Evaluación con la versión vigente.
  */
 export function evaluateProjectCompatibility(input) {
   const findings = buildCompatibilityFindings(detectCompatibilityEvidence(input));
@@ -380,9 +386,10 @@ function toPublicFinding(finding) {
 }
 
 /**
- * Construye la compatibilidad pública a partir de la evaluación persistida.
- * En 3.0 reconstruye todos los hallazgos y muestra hasta tres observaciones (una por causa);
- * las versiones históricas conservan sus observaciones y no exponen hallazgos (`null`).
+ * Construye la compatibilidad pública a partir de la evaluación persistida, sin recalcularla.
+ * En 3.x (catálogo vigente más evidencias retiradas) reconstruye todos los hallazgos guardados y
+ * muestra hasta tres observaciones (una por causa); las versiones 1.x/2.x conservan sus
+ * observaciones y no exponen hallazgos (`null`).
  *
  * @param {{level?: string, reasonCodes?: Array<string>, score?: number|null, version?: string}|null} evaluation - Evaluación guardada.
  * @returns {{findings: Array<object>|null, level: string, observations: Array<string>, score: number}|null} Compatibilidad pública o null.
@@ -393,7 +400,7 @@ export function publicCompatibility(evaluation) {
   }
 
   const reasonCodes = evaluation.reasonCodes || [];
-  if (evaluation.version !== COMPATIBILITY_SCORING_VERSION) {
+  if (!FINDINGS_SCORING_VERSIONS.includes(evaluation.version)) {
     return {
       findings: null,
       level: evaluation.level,

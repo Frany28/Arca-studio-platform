@@ -1,5 +1,9 @@
+import { hasApplicableProperty, requiresPropertyAvailability } from "./projectRequestApplicability.js";
 import { LEGACY_PROJECT_REQUEST_TYPES, optionValues } from "./projectRequestOptions.js";
-import { isAdvertisingStand } from "./projectRequestStand.js";
+import { allowsStandDocumentSelection, isAdvertisingStand } from "./projectRequestStand.js";
+
+// Se conserva la exportación anterior para los consumidores existentes.
+export { hasAvailableProperty } from "./projectRequestApplicability.js";
 
 export const PROJECT_REQUEST_REQUIRED_FIELDS = [
   "projectName",
@@ -23,18 +27,6 @@ export const PROJECT_REQUEST_FILE_LIMITS = {
   maxNameLength: 150,
   maxTotalBytes: 200 * 1024 * 1024,
 };
-
-/**
- * Indica si el cliente declaró un terreno o inmueble disponible. Es la misma regla de
- * dominio que aplica el backend: solo entonces existen la situación legal, la documentación,
- * los propietarios y los planos del lugar; en otro caso esos campos no aplican.
- *
- * @param {string|null|undefined} landStatus - Respuesta sobre disponibilidad del terreno.
- * @returns {boolean} true cuando la respuesta es "available".
- */
-export function hasAvailableProperty(landStatus) {
-  return landStatus === "available";
-}
 
 const FILE_MIME_BY_EXTENSION = new Map([
   ["jpeg", "image/jpeg"],
@@ -74,9 +66,10 @@ function isValidLocation(value) {
 /**
  * Valida campos de la solicitud y devuelve mensajes indexados por campo.
  * Conserva un tipo retirado únicamente con el contexto original de un registro existente.
- * Comprueba longitudes, opciones del catálogo y enlace HTTP(S). La situación legal, los
+ * Comprueba longitudes, opciones del catálogo y enlace HTTP(S). La pregunta del inmueble
+ * solo se exige si aplica al tipo (no en Stand publicitario); la situación legal, los
  * documentos (sin duplicados y coherentes con su disponibilidad) y los propietarios solo
- * se validan cuando hay terreno o inmueble disponible. Exige coordenadas presentes
+ * se validan cuando el inmueble aplica y está disponible. Exige coordenadas presentes
  * en pareja y compara sus rangos numéricos; no verifica explícitamente su finitud.
  *
  * @param {Object} [values={}] - Valores actuales del formulario.
@@ -105,8 +98,11 @@ export function getProjectRequestFieldErrors(values = {}, { existingProjectType 
   if (description.length < 30) errors.description = "Ingresa una descripción de al menos 30 caracteres.";
   else if (description.length > 100) errors.description = "Máximo 100 caracteres.";
 
-  for (const field of ["developmentMode", "landStatus", "investmentRange", "capitalAvailability", "startTime"]) {
+  for (const field of ["developmentMode", "investmentRange", "capitalAvailability", "startTime"]) {
     if (!optionValues(field).has(values[field])) errors[field] = "Selecciona una opción válida.";
+  }
+  if (requiresPropertyAvailability(values.projectType) && !optionValues("landStatus").has(values.landStatus)) {
+    errors.landStatus = "Selecciona una opción válida.";
   }
   for (const field of ["projectSize", "decisionMaker", "quality", "experience"]) {
     if (values[field] && !optionValues(field).has(values[field])) errors[field] = "Selecciona una opción válida.";
@@ -123,7 +119,7 @@ export function getProjectRequestFieldErrors(values = {}, { existingProjectType 
     if (!Array.isArray(documents) || documents.some((type) => !optionValues("standDocumentTypes").has(type))
       || new Set(documents).size !== documents.length) {
       errors.standDocumentTypes = "Selecciona documentos válidos sin repetirlos.";
-    } else if (values.standRequirementsStatus !== "available" && documents.length > 0) {
+    } else if (!allowsStandDocumentSelection(values.standRequirementsStatus) && documents.length > 0) {
       errors.standDocumentTypes = "Solo indica documentación que ya tengas disponible.";
     }
     if (values.hasStandSpacePlans && !["Yes", "No", "Indeterminate"].includes(values.hasStandSpacePlans)) {
@@ -132,7 +128,7 @@ export function getProjectRequestFieldErrors(values = {}, { existingProjectType 
   }
 
   // Los datos del inmueble solo se validan si aplican; ocultos no generan errores.
-  if (hasAvailableProperty(values.landStatus)) {
+  if (hasApplicableProperty(values)) {
     if (!optionValues("legalDocumentationStatus").has(values.legalDocumentationStatus)) {
       errors.legalDocumentationStatus = "Selecciona el estado de la documentación.";
     }
@@ -226,17 +222,18 @@ function nullableText(value) {
 /**
  * Transforma el formulario al payload de solicitud sin validarlo ni incluir adjuntos.
  * Recorta textos, convierte opciones vacías a null, traduce hasBlueprints Yes/No
- * a boolean o null y multipleOwners yes a boolean. Sin terreno disponible envía los datos
- * del inmueble como null y la documentación vacía. Los requisitos del evento se incluyen
- * solo para advertising_stand, independientemente del inmueble. Añade submissionId si existe.
+ * a boolean o null y multipleOwners yes a boolean. En Stand publicitario envía landStatus
+ * null (N/A). Sin inmueble aplicable y disponible envía los datos del inmueble como null y
+ * la documentación vacía. Los requisitos del evento se incluyen solo para
+ * advertising_stand. Añade submissionId si existe.
  *
  * @param {Object} form - Campos de formulario y metadatos de ubicación.
  * @param {string} [submissionId] - Referencia opcional del envío.
  * @returns {Object} Payload con nombres de campos esperados por la API.
  */
 export function buildProjectRequestPayload(form, submissionId) {
-  // Sin inmueble disponible los datos legales se omiten aunque sigan en el estado local.
-  const hasProperty = hasAvailableProperty(form.landStatus);
+  // Sin inmueble aplicable y disponible los datos legales se omiten aunque sigan en el estado local.
+  const hasProperty = hasApplicableProperty(form);
 
   return {
     capitalAvailability: form.capitalAvailability,
@@ -248,7 +245,7 @@ export function buildProjectRequestPayload(form, submissionId) {
       ? form.hasBlueprints === "Yes" ? true : form.hasBlueprints === "No" ? false : null
       : null,
     investmentRange: form.investmentRange,
-    landStatus: form.landStatus || null,
+    landStatus: requiresPropertyAvailability(form.projectType) ? form.landStatus || null : null,
     legalDocumentationStatus: hasProperty ? form.legalDocumentationStatus : null,
     legalDocumentTypes: hasProperty && Array.isArray(form.legalDocumentTypes)
       ? form.legalDocumentTypes
@@ -268,7 +265,7 @@ export function buildProjectRequestPayload(form, submissionId) {
     ...(isAdvertisingStand(form.projectType) ? {
       standRequirements: {
         requirementsStatus: form.standRequirementsStatus || null,
-        documentTypes: form.standRequirementsStatus === "available" ? form.standDocumentTypes || [] : [],
+        documentTypes: allowsStandDocumentSelection(form.standRequirementsStatus) ? form.standDocumentTypes || [] : [],
         spaceStatus: form.standSpaceStatus,
         hasSpacePlans: form.hasStandSpacePlans === "Yes" ? true : form.hasStandSpacePlans === "No" ? false : null,
       },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { STAND_REQUIREMENTS_VALUES } from "../domain/projectRequestStand.js";
+import { allowsStandDocumentSelection, STAND_REQUIREMENTS_VALUES } from "../domain/projectRequestStand.js";
 
 /**
  * Comprueba que los documentos declarados sean únicos y estén disponibles para la reunión.
@@ -13,7 +13,7 @@ function validateStandDocuments(answers, context) {
   if (new Set(answers.documentTypes).size !== answers.documentTypes.length) {
     context.addIssue({ code: "custom", message: "Los documentos no pueden repetirse.", path: ["documentTypes"] });
   }
-  if (answers.requirementsStatus !== "available" && answers.documentTypes.length > 0) {
+  if (!allowsStandDocumentSelection(answers.requirementsStatus) && answers.documentTypes.length > 0) {
     context.addIssue({ code: "custom", message: "Solo indica documentación que ya tengas disponible.", path: ["documentTypes"] });
   }
 }

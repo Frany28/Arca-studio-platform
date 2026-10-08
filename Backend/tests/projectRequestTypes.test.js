@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isAllowedProjectRequestType, PROJECT_REQUEST_VALUES, READABLE_PROJECT_REQUEST_TYPES } from "../src/domain/projectRequest.js";
-import { evaluateProjectCompatibility } from "../src/domain/projectRequestCompatibility.js";
+import { COMPATIBILITY_SCORING_VERSION, evaluateProjectCompatibility } from "../src/domain/projectRequestCompatibility.js";
 import { buildProjectRequestMetrics } from "../src/domain/projectRequestEvaluation.js";
 import { createProjectRequestSchema, updateProjectRequestSchema } from "../src/validation/projectRequestSchemas.js";
 
@@ -93,7 +93,8 @@ test("edición histórica permite conservar el tipo o elegir cualquier tipo vige
     return { rows: [{ ...ROW }] };
   });
   for (const projectType of READABLE_PROJECT_REQUEST_TYPES) {
-    const payload = edit({ ...BODY, projectType, ...(projectType === "advertising_stand" ? { standRequirements: { spaceStatus: "unassigned" } } : {}) });
+    // Stand publicitario no admite la pregunta del inmueble (N/A en 3.1).
+    const payload = edit({ ...BODY, projectType, ...(projectType === "advertising_stand" ? { landStatus: null, standRequirements: { spaceStatus: "unassigned" } } : {}) });
     const result = await updateProjectRequest({ user: USER, projectRequestId: 7, payload });
     assert.equal(result.projectType, projectType);
     assert.equal(result.compatibility.score, 73);
@@ -101,7 +102,7 @@ test("edición histórica permite conservar el tipo o elegir cualquier tipo vige
   assert.equal(writes, READABLE_PROJECT_REQUEST_TYPES.length);
 });
 
-test("reenvío después de correcciones evalúa 3.0 sin convertir el tipo histórico", async (context) => {
+test("reenvío después de correcciones evalúa con la versión vigente sin convertir el tipo histórico", async (context) => {
   let evaluationValues;
   context.mock.method(pool, "query", async (sql, values) => {
     if (/existing_names/.test(sql)) return { rows: [] };
@@ -116,5 +117,5 @@ test("reenvío después de correcciones evalúa 3.0 sin convertir el tipo histó
   assert.equal(result.projectType, "stands_exhibitions");
   assert.equal(result.compatibility.score, 100);
   assert.equal(result.completeness.score, 100);
-  assert.equal(evaluationValues[6], "3.0");
+  assert.equal(evaluationValues[6], COMPATIBILITY_SCORING_VERSION);
 });

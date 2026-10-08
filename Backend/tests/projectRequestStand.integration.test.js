@@ -29,20 +29,22 @@ test("PostgreSQL real: creación, edición vigente e histórica y cola conservan
     const body = {
       projectName: `Prueba stand ${randomUUID().slice(0, 8)}`, projectType: "advertising_stand",
       projectLocation: "Maracaibo, Estado Zulia", description: "Stand de demostración para verificar los requisitos del evento.",
-      developmentMode: "full", landStatus: "unavailable", projectSize: "small_lt_80",
+      // Stand publicitario: la pregunta del inmueble no aplica y se guarda como NULL.
+      developmentMode: "full", projectSize: "small_lt_80",
       investmentRange: "undefined", capitalAvailability: "available_now", startTime: "1_3_months",
       standRequirements: requirements,
     };
     const payload = createProjectRequestSchema.parse({ body: { ...body, submissionId: randomUUID() } }).body;
     const draft = await createProjectRequestDraft(user, payload);
     assert.deepEqual(draft.standRequirements, requirements);
+    assert.equal(draft.landStatus, null);
     assert.equal((await createProjectRequestDraft(user, payload)).id, draft.id);
     assert.deepEqual((await findProjectRequestOwnedByUser(draft.id, user)).standRequirements, requirements);
     await client.query("update public.project_requests set status='pending_review' where id=$1", [draft.id]);
     const queue = await loadProjectRequestReviewQueue({ cursor: null, limit: 100, user });
     assert.deepEqual(queue.items.find((request) => request.id === draft.id).standRequirements, requirements);
     await client.query("update public.project_requests set status='changes_requested' where id=$1", [draft.id]);
-    const changed = updateProjectRequestSchema.parse({ body: { ...body, projectType: "corporate", standRequirements: null }, params: { projectRequestId: draft.id } }).body;
+    const changed = updateProjectRequestSchema.parse({ body: { ...body, projectType: "corporate", landStatus: "unavailable", standRequirements: null }, params: { projectRequestId: draft.id } }).body;
     // Detecta huecos en parámetros SQL como $22 sin uso, que los mocks no detectan.
     const updated = await updateProjectRequestDraft(draft.id, user, changed);
     assert.equal(updated.projectType, "corporate");

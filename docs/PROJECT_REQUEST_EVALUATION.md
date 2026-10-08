@@ -2,7 +2,7 @@
 
 La propuesta administrativa para aprobación está en [Propuesta V3](../SISTEMA_PUNTUACION_SOLICITUDES.md). Esta referencia documenta los contratos y el comportamiento implementado; los pesos se conservan y su validación final corresponde a la dirección.
 
-> **Cómo leer este documento.** Describe la **regla de negocio** y su **implementación vigente, la fórmula `3.0`**. La sección 13 registra el estado de cada discrepancia detectada en `v2.2` (D1–D9). Lo que todavía requiere una decisión humana figura en la sección 14 y no se completa con valores supuestos.
+> **Cómo leer este documento.** Describe la **regla de negocio** y su **implementación vigente, la fórmula `3.2`** (pesos de `3.0`, aplicabilidad del Stand publicitario corregida en `3.1` y referencias sin deducción desde `3.2`; ver secciones 17 y 18). La sección 13 registra el estado de cada discrepancia detectada en `v2.2` (D1–D9). Lo que todavía requiere una decisión humana figura en la sección 14 y no se completa con valores supuestos.
 
 ---
 
@@ -12,7 +12,7 @@ Una solicitud se evalúa con **tres métricas independientes**:
 
 | Métrica | Qué responde | Estado |
 | --- | --- | --- |
-| **Compatibilidad** | ¿Lo respondido es claro, está preparado donde corresponde y es coherente? | Implementada (`3.0`). Se calcula y persiste al enviar. |
+| **Compatibilidad** | ¿Lo respondido es claro, está preparado donde corresponde y es coherente? | Implementada (`3.2`). Se calcula y persiste al enviar. |
 | **Información completada** | ¿Qué porcentaje de las preguntas aplicables se respondió? | Implementada. Se calcula al vuelo. |
 | **Viabilidad financiera** | ¿Las condiciones financieras declaradas son coherentes con el proyecto solicitado? | Implementada como coherencia orientativa: un estado sin porcentaje (sección 9). |
 
@@ -71,7 +71,7 @@ Más presupuesto = más compatibilidad   ← NO existe
 | **Informativa** | No afecta la compatibilidad. Sirve para contexto, contacto, personalización o revisión humana. |
 | **Condicional** | Solo se evalúa si otra respuesta hace que aplique. Si no aplica es N/A (sección 5). |
 
-### Matriz de preguntas (fórmula 3.0)
+### Matriz de preguntas (fórmula 3.2)
 
 | # | Pregunta | ¿Aplica siempre? | Obligatoria | Tipo | Efecto en compatibilidad | En “Información completada” |
 | ---: | --- | --- | --- | --- | --- | --- |
@@ -92,8 +92,8 @@ Más presupuesto = más compatibilidad   ← NO existe
 | 15 | ¿Quién toma la decisión final? | Sí | No | Informativa | Ninguno | Sí |
 | 16 | Expectativa de calidad | Sí | No | Solo coherencia | Ninguno por sí sola. Se cruza con la inversión. | Sí |
 | 17 | ¿Ha trabajado con un arquitecto o diseñador? | Sí | No | Informativa | Ninguno: la experiencia no hace mejor ni peor al cliente | Sí |
-| 18 | Imágenes o archivos | Sí | No | Puntúa (claridad) | Sin archivos: `REFERENCE_FILES_MISSING` (−5). La cantidad no multiplica. | No (material complementario) |
-| 19 | Link de referencia | Sí | No | Puntúa (claridad) | Sin enlace válido: `REFERENCE_LINK_MISSING` (−2) | No (material complementario) |
+| 18 | Imágenes o archivos | Sí | No | Informativa | Ninguno desde 3.2 (antes `REFERENCE_FILES_MISSING`, −5) | No (material complementario) |
+| 19 | Link de referencia | Sí | No | Informativa | Ninguno desde 3.2 (antes `REFERENCE_LINK_MISSING`, −2) | No (material complementario) |
 
 ---
 
@@ -116,10 +116,13 @@ Más presupuesto = más compatibilidad   ← NO existe
 | Sí, disponible | Se muestra | Aplican |
 | En proceso de adquirirlo | No se muestra | **N/A** |
 | No todavía | No se muestra | **N/A** |
+| *(Stand publicitario: la pregunta no aplica)* | No se muestra | **N/A** |
 
-- **Frontend:** oculta la sección y limpia los valores al cambiar la respuesta.
-- **Backend:** rechaza datos legales, de propietarios o de planos cuando no hay inmueble disponible.
-- **Motor (D3 resuelto):** aplica la misma regla, `hasAvailableProperty`, aunque llegaran datos residuales: sin inmueble, esas reglas no se evalúan.
+- **Stand publicitario (3.1):** se monta en el espacio que asigna el evento, no en un inmueble del cliente. La pregunta del terreno o inmueble y toda la sección legal son N/A; el espacio se declara en «Requisitos del stand» y no hereda deducciones del inmueble.
+- **Frontend:** oculta la pregunta en un stand, oculta la sección y limpia los valores al cambiar el tipo o la respuesta.
+- **Backend:** exige `landStatus` salvo en Stand publicitario, donde lo rechaza; rechaza datos legales, de propietarios o de planos cuando el inmueble no aplica o no está disponible.
+- **Motor (D3 resuelto):** aplica la misma regla, `hasApplicableProperty`, aunque llegaran datos residuales: sin inmueble aplicable y disponible, esas reglas no se evalúan.
+- **Paridad:** el dominio (`Backend/src/domain/projectRequest.js`) y su réplica en el frontend (`Frontend/src/utils/projectRequestApplicability.js`) se comparan en todas las combinaciones en `Backend/tests/projectRequestApplicability.test.js`.
 
 La documentación disponible (#9) solo aplica si la situación legal es “disponible”. Si se declara disponible sin seleccionar ningún tipo, el contrato rechaza el envío; en registros incompletos el motor conserva el tratamiento defensivo de no disponible. Seleccionar un tipo es una declaración, no acredita ni verifica documentos.
 
@@ -184,8 +187,8 @@ La severidad se declara por evidencia en el catálogo. Hoy coincide con la magni
 | `EXECUTION_MODE_UNDEFINED` | SCOPE | `developmentModeUndefined` 10 M · `modeUndefinedImmediate` 10 M | 10 |
 | `LEGAL_DOCUMENTATION_PENDING` | LEGAL | `legalDocumentationUnavailable` 6 L · `legalDocumentationInProcess` 3 L | 3–6 (solo con inmueble) |
 | `BLUEPRINTS_UNAVAILABLE` | INFORMATION | `blueprintsUnavailable` 2 L | 2 (solo con inmueble) |
-| `REFERENCE_FILES_MISSING` | INFORMATION | `referenceFilesMissing` 5 L | 5 |
-| `REFERENCE_LINK_MISSING` | INFORMATION | `referenceLinkMissing` 2 L | 2 |
+| `REFERENCE_FILES_MISSING` | INFORMATION | `referenceFilesMissing` 5 L | **Retirada en 3.2**: solo se lee en evaluaciones 3.0/3.1 guardadas |
+| `REFERENCE_LINK_MISSING` | INFORMATION | `referenceLinkMissing` 2 L | **Retirada en 3.2**: solo se lee en evaluaciones 3.0/3.1 guardadas |
 
 Los plazos “3–6 meses” y “Más de 6 meses” no generan hallazgos temporales.
 
@@ -228,15 +231,19 @@ Información completada = round(preguntas aplicables respondidas / preguntas apl
 ```
 
 - **Respondida** significa con un valor válido del catálogo o dentro de los límites de texto, aunque la respuesta sea desfavorable: “No todavía”, “Busca financiamiento”, “No lo sé aún”, “Por definir” o “No” cuentan.
-- **Participan las 17 preguntas del formulario**, obligatorias y opcionales:
-  - siempre: nombre, tipo, ubicación, descripción, tamaño, modalidad, inmueble, inversión, capital, plazo, decisor, calidad y experiencia (13);
-  - con inmueble disponible: situación legal, propietarios y planos (+3);
-  - con documentación disponible: lista de documentos (+1).
+- **Participan las preguntas del formulario que aplican**, obligatorias y opcionales (21 posibles):
+  - siempre: nombre, tipo, ubicación, descripción, tamaño, modalidad, inversión, capital, plazo, decisor, calidad y experiencia (12);
+  - excepto en Stand publicitario: terreno o inmueble (+1);
+  - con inmueble aplicable y disponible: situación legal, propietarios y planos (+3);
+  - con documentación legal disponible: lista de documentos (+1);
+  - en Stand publicitario: normas del evento, espacio asignado y medidas o plano del espacio (+3);
+  - con normas del evento disponibles («Sí, tengo los requisitos»): documentación del evento (+1).
+- Las respuestas negativas válidas cuentan como respondidas; una respuesta ausente o una lista de documentos vacía cuando aplica cuenta como incompleta. Las preguntas del stand no puntúan en compatibilidad ni en coherencia financiera.
 - **No participan:** archivos y enlace (material complementario, no preguntas) ni coordenadas o identificadores del proveedor de ubicación.
-- La API devuelve `{score, answered, applicable, missingFields}`. `missingFields` explica qué falta.
-- Se calcula al vuelo desde las respuestas guardadas, también para solicitudes históricas, sin persistencia propia.
+- La API devuelve `{score, answered, applicable, missingFields}`. `missingFields` explica qué falta; las preguntas del stand usan la ruta del bloque (`standRequirements.requirementsStatus`, `standRequirements.documentTypes`, `standRequirements.spaceStatus`, `standRequirements.hasSpacePlans`).
+- Se calcula al vuelo desde las respuestas guardadas, también para solicitudes históricas, sin persistencia propia. Un Stand publicitario sin bloque guardado (registro que nunca recibió la sección) deja sus preguntas N/A: no recibe respuestas ficticias ni penalización.
 
-Ejemplos: con todo respondido y sin inmueble, 13/13 = 100 %. Con inmueble y sin responder decisor, calidad, experiencia ni tamaño, 13/17 = 76 %.
+Ejemplos: con todo respondido y sin inmueble, 13/13 = 100 %. Con inmueble y sin responder decisor, calidad, experiencia ni tamaño, 13/17 = 76 %. Stand con normas disponibles y documentación seleccionada, 16/16 = 100 %; sin normas, 15/15 = 100 %; con normas disponibles sin seleccionar documentación, 15/16 = 94 %.
 
 ---
 
@@ -359,9 +366,10 @@ financialViability: {
 
 | Aspecto | Comportamiento |
 | --- | --- |
-| Momento del cálculo de compatibilidad | Al enviar (`submitProjectRequest`), desde el registro guardado y los adjuntos reales (`hasFiles`). Se reevalúa en cada reenvío tras “Solicitar correcciones”. |
-| Persistencia | `compatibility_score`, `compatibility_level`, `compatibility_reason_codes` (todas las evidencias) y `compatibility_scoring_version = "3.0"`. **Sin migración**: las columnas existentes admiten el nuevo contenido. |
+| Momento del cálculo de compatibilidad | Al enviar (`submitProjectRequest`), desde las respuestas guardadas; desde 3.2 los adjuntos no participan. Se reevalúa en cada reenvío tras “Solicitar correcciones”. |
+| Persistencia | `compatibility_score`, `compatibility_level`, `compatibility_reason_codes` (todas las evidencias) y `compatibility_scoring_version = "3.2"` en los envíos nuevos. **Sin migración**: las columnas existentes admiten el nuevo contenido. |
 | Completitud y viabilidad | Calculadas al vuelo en `toPublicProjectRequest` y en la cola técnica. No se persisten. |
+| Evaluaciones `3.0` y `3.1` | Conservan score, nivel, versión y motivos guardados; `findings` se reconstruye con el catálogo vigente más las evidencias retiradas (`referenceFilesMissing`, `referenceLinkMissing`). No se recalculan, aunque incluyan deducciones que 3.2 ya no aplica. |
 | Evaluaciones históricas (`1.x`, `2.x`) | Conservan score, nivel y observaciones; `findings` es `null`. No se recalculan. |
 | `ProjectRequest.compatibility` | `{score, level, observations, findings}` |
 | `WorkflowRequest` | `compatibility: {score, level}`, más `completeness` y `financialViability` |
@@ -385,9 +393,9 @@ financialViability: {
 
 ---
 
-## 11. Casos de ejemplo (fórmula 3.0)
+## 11. Casos de ejemplo (fórmula 3.2)
 
-Valores calculados con el motor real.
+Valores calculados con el motor real. Con el perfil común (que incluye archivo y enlace) los resultados no cambian respecto de 3.0; solo cambia el caso I.
 
 **Perfil común:**
 
@@ -409,7 +417,7 @@ Valores calculados con el motor real.
 | **E** — Completo pero contradictorio | En proceso de adquisición, inicio inmediato, busca financiamiento, muy grande, lujo | 50 · Media | `FINANCIAL_SCOPE_MISMATCH` −25, `CAPITAL_TIMING_MISMATCH` −15, `PROPERTY_TIMING_MISMATCH` −10 | **100 %** (13/13) | `REVIEW_REQUIRED` |
 | **H** — Una causa financiera | Inversión no definida, muy grande, lujo, inicio inmediato | 80 · Excelente | `FINANCIAL_DEFINITION_INSUFFICIENT` (4 evidencias, −20) | 100 % | `INSUFFICIENT_DATA` |
 | **J** — Capital indefinido e inicio inmediato | Capital “Indefinido”, inicio inmediato | 80 · Excelente | `CAPITAL_TIMING_MISMATCH` −20 | 100 % | `HIGH_RISK` |
-| **I** — Opcionales sin responder | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace | 78 · Buena | `PROJECT_SIZE_UNDEFINED`, `REFERENCE_FILES_MISSING`, `REFERENCE_LINK_MISSING` | 76 % (13/17) | `INSUFFICIENT_DATA` (sin tamaño ni calidad) |
+| **I** — Opcionales sin responder | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace | 85 · Excelente (78 · Buena en 3.0/3.1) | `PROJECT_SIZE_UNDEFINED` | 76 % (13/17) | `INSUFFICIENT_DATA` (sin tamaño ni calidad) |
 
 ---
 
@@ -453,7 +461,7 @@ Los textos de códigos históricos (`companyImmediate`, `companyCapitalUndefined
 3. **Magnitud de las deducciones:** validar los valores heredados de `v2.2` (−2 a −35). Por ejemplo, el caso B (gran alcance con presupuesto insuficiente) conserva “Buena compatibilidad” con 75.
 4. **Severidades definitivas:** confirmar la clasificación LOW/MEDIUM/HIGH de cada evidencia, hoy alineada con la magnitud histórica.
 5. **Información completada:** confirmar que las preguntas opcionales (tamaño, decisor, calidad, experiencia y planos) deben contar, y que archivos y enlace quedan fuera.
-6. **Requisitos del stand:** una incorporación futura a completitud o puntuación requiere una regla condicional expresa, aprobación y pruebas. Actualmente todas sus respuestas son informativas.
+6. **Requisitos del stand:** desde `3.1` sus cuatro preguntas cuentan en información completada (sección 17). Cualquier incorporación a la puntuación de compatibilidad, incluida una regla de espacio del evento frente al inicio, requiere una regla expresa, aprobación, una nueva versión y pruebas.
 7. **Sugerencias automáticas:** cualquier sugerencia de reunión o de acción derivada de las métricas debe ser una regla nueva y separada.
 
 Todo cambio de pesos o reglas debe publicarse como una nueva versión de la fórmula, con pruebas de regresión, y conservar las evaluaciones históricas.
@@ -512,3 +520,132 @@ No se ejecutan migraciones, conversiones masivas ni commits. Deben desplegarse j
 | Pruebas backend | `Backend/tests/projectRequestTypes.test.js` (nuevo), `Backend/tests/projectRequestStand.integration.test.js` |
 | Pruebas frontend | `Frontend/tests/projectRequestStand.test.js`, `Frontend/tests/browser/projectRequestForm.test.js`, `Frontend/tests/browser/projectRequestWorkflow.test.js` |
 | Documentación | `SISTEMA_PUNTUACION_SOLICITUDES.md`, `docs/API_CONTRACT.md`, `docs/PROJECT_REQUEST_STAND_REQUIREMENTS.md`, este documento |
+
+## 17. Fase 1 — aplicabilidad del stand y completitud (fórmula 3.1)
+
+**Problema.** En `3.0` la aplicabilidad del inmueble dependía solo de `landStatus`. Un Stand publicitario respondía «¿Tiene terreno o inmueble disponible?» sobre un recinto que no le pertenece y podía recibir `PROPERTY_TIMING_MISMATCH` (−10/−20) y, con «Sí, disponible», las deducciones legal (−3/−6) y de planos (−2). Sus cuatro preguntas propias quedaban fuera de la información completada.
+
+**Cambio.** Sustituye las afirmaciones de la sección 15 sobre el stand.
+
+- `advertising_stand` sigue vigente; `stands_exhibitions` conserva su lectura y su catálogo anterior (inmueble aplicable y sin preguntas del stand).
+- En Stand publicitario, la pregunta del inmueble y la sección legal son N/A en formulario, contrato, completitud y motor. La API rechaza `landStatus` y los datos legales para ese tipo; en los demás tipos `landStatus` sigue siendo obligatorio.
+- El espacio asignado se conserva para la revisión administrativa, sin deducciones. No se crean reglas, pesos ni umbrales nuevos.
+- Completitud incorpora condicionalmente normas del evento, documentación del evento (solo con «Sí, tengo los requisitos»), espacio asignado y medidas o plano del espacio.
+- Coherencia financiera no cambia.
+
+**Versión.** Como el resultado numérico cambia para stands nuevos, la fórmula pasa a `3.1`. Para los demás tipos, `3.0` y `3.1` producen el mismo resultado. Ambas comparten el catálogo de evidencias y reconstruyen hallazgos.
+
+| Caso (resto del perfil preparado) | 3.0 | 3.1 |
+| --- | --- | --- |
+| Stand, «No todavía», inicio inmediato | 80 (−20), completitud 13/13 | 100, completitud 16/16 |
+| Stand, «En proceso de adquirirlo», inicio inmediato | 90 (−10) | 100 |
+| Stand, «Sí, disponible», sin documentación ni planos | 92 (−6 −2), 16/16 | 100, 16/16 |
+| Stand, normas disponibles sin documentación seleccionada | 100, 13/13 | 100, 15/16 (94 %) |
+| Stand, capital indefinido e inicio inmediato | 80 (−20) | 80 (−20), sin cambios |
+| Residencial, «No todavía», inicio inmediato | 80 (−20) | 80 (−20), sin cambios |
+
+**Históricos.** La compatibilidad guardada no se recalcula y conserva puntuación, nivel, versión y motivos. Un reenvío tras correcciones se evalúa con `3.1`. La completitud es dinámica:
+
+- El bloque `standRequirements` es obligatorio desde que existe el tipo y sus cuatro preguntas se formulaban desde entonces, por lo que contarlas no penaliza información no solicitada.
+- Un stand sin bloque guardado deja sus preguntas N/A.
+- El `landStatus` heredado de un borrador anterior se ignora en métricas y motor, y el formulario lo descarta al editar.
+- Al aplicar la migración del stand en staging no existían solicitudes de ese tipo (sección 16).
+
+**Pruebas.** `projectRequestStandEvaluation.test.js` cubre:
+
+- espacio asignado, en proceso o sin asignar;
+- normas disponibles o no y documentación del evento;
+- preguntas opcionales sin responder;
+- inicio inmediato;
+- capital y presupuesto;
+- residencial con y sin inmueble;
+- sección legal no aplicable;
+- históricos 3.0, bloque ausente y tipo retirado;
+- reenvío de un borrador con inmueble guardado;
+- cola administrativa;
+- datos inválidos enviados a la API.
+
+Además, `projectRequestApplicability.test.js` verifica la paridad frontend/backend y la aceptación por la API de lo que el formulario valida. `Frontend/tests/projectRequestApplicability.test.js` y la suite de navegador cubren el cambio de tipo, la limpieza condicional y la restauración de borradores.
+
+## 18. Fase 2 — revisión de penalizaciones (fórmula 3.2)
+
+### 18.1. Causas modificadas
+
+| Causa | 3.1 | 3.2 | Motivo |
+| --- | --- | --- | --- |
+| `REFERENCE_FILES_MISSING` (`referenceFilesMissing`) | −5 sin archivos | Retirada | Material opcional: su ausencia no indica falta de preparación ni incoherencia. |
+| `REFERENCE_LINK_MISSING` (`referenceLinkMissing`) | −2 sin enlace válido | Retirada | Igual que los archivos. |
+| `BLUEPRINTS_UNAVAILABLE` | −2 | Sin cambios | Propuesta en 18.4, pendiente de aprobación. |
+| `PROJECT_SIZE_UNDEFINED` | −15 | Sin cambios | Propuesta en 18.5, pendiente de aprobación. |
+
+Las demás causas, pesos, severidades, umbrales y la coherencia financiera no cambian. Los archivos y el enlace siguen siendo opcionales y conservan su validación, almacenamiento y presentación. Ya estaban fuera de la información completada.
+
+Las evidencias retiradas se conservan en `RETIRED_EVIDENCE_RULES` de `projectRequestCompatibility.js`. El motor ya no las detecta, pero se usan para reconstruir los hallazgos y observaciones de evaluaciones 3.0/3.1 guardadas. El envío deja de consultar el uso de archivos, que solo alimentaba la regla retirada. Los límites de carga siguen en `projectRequestFileService`.
+
+### 18.2. Resultados antes y después
+
+| Escenario (perfil del caso A, sección 11) | 3.0/3.1 | 3.2 |
+| --- | --- | --- |
+| Con archivos y enlace | 100 · Excelente | 100 · Excelente |
+| Sin archivos | 95 | 100 |
+| Sin enlace | 98 | 100 |
+| Sin archivos ni enlace | 93 | 100 |
+| Sin inmueble, sin referencias | 93 | 100 |
+| Stand publicitario, sin referencias | 93 | 100 |
+| Sin planos, sin referencias | 91 | 98 |
+| Tamaño sin definir, sin referencias | 78 · Buena | 85 · Excelente |
+| Caso I (opcionales sin responder) | 78 · Buena | 85 · Excelente |
+| Lujo con USD 10.000–50.000, sin referencias | 73 · Buena | 80 · Excelente |
+| Capital indefinido e inicio inmediato, sin referencias | 73 · Buena | 80 · Excelente |
+
+La subida máxima es de 7 puntos y solo afecta a solicitudes sin referencias. Algunas solicitudes cruzan el umbral de 80 y pasan de «Buena» a «Excelente» únicamente por no restar referencias. La información completada y la coherencia financiera no cambian.
+
+### 18.3. Versionado e históricos
+
+Las evaluaciones nuevas se guardan como `3.2`. Las 1.x/2.x conservan su comportamiento. Las 3.0, 3.1 y 3.2 reconstruyen hallazgos, incluidos los motivos retirados, sin recalcular puntuación ni nivel. Un reenvío tras correcciones se evalúa con 3.2.
+
+### 18.4. Propuesta: planos del inmueble (sin implementar)
+
+**Estado actual.** `BLUEPRINTS_UNAVAILABLE` resta 2 cuando el inmueble aplica y está disponible y los planos están en «No» o sin responder. No aplica sin inmueble ni en stands.
+
+**Cuándo condicionan la preparación.** Los planos condicionan la preparación sobre todo cuando se interviene un inmueble existente con un inicio cercano: el levantamiento del estado actual consume tiempo antes del diseño. En obra nueva, o con inicio a más de 3 meses, su ausencia solo amplía el alcance del servicio, porque ARCA Studio puede levantarlos o elaborarlos. El formulario no distingue entre obra nueva y remodelación ni pregunta si el cliente desea ese servicio.
+
+**Problemas de la regla actual.**
+
+- Trata igual «No» (respuesta válida) y «sin responder»; esta última ya cuenta como incompleta en información completada.
+- Presenta como déficit del cliente una necesidad que ARCA Studio puede cubrir.
+
+**Alternativas, sin nuevas opciones ni pesos.**
+
+1. **Recomendada:** retirar la deducción en una versión futura. «No» pasaría a un hallazgo informativo para administración, sin puntos, del tipo «Requiere levantamiento o elaboración de planos». Esto requiere aprobar ese tipo de hallazgo, que el modelo actual no tiene.
+2. Conservar −2 solo con «No» explícito e inicio «De inmediato» o «1–3 meses», como cruce temporal. Sería una condición nueva sobre un peso existente.
+3. A futuro, con aprobación: preguntar el tipo de intervención o si se desea el servicio de planos, y aplicar la regla solo a remodelaciones.
+
+### 18.5. Propuesta: tamaño del proyecto (sin implementar)
+
+**Aplicabilidad verificada.** `PROJECT_SIZE_UNDEFINED` (−15) aplica igual a todos los tipos, incluido Stand publicitario, tanto con «No lo sé aún» como sin respuesta. Hay pruebas en `projectRequestScoringV32.test.js`.
+
+**Situaciones en que el tamaño desconocido es información pendiente legítima.** En estos casos el tamaño no depende todavía del cliente:
+
+- Stand con espacio «La asignación está en proceso» o «Aún no está asignado»: las medidas las fija el evento.
+- Stand sin medidas o plano del espacio.
+- Inmueble «En proceso de adquirirlo» o «No todavía», cuando la superficie depende del inmueble que se elija.
+
+**Límite.** Los rangos de tamaño son superficies en m² pensadas para obras. No deben usarse para inferir equivalencias económicas entre stands y obras residenciales. Cualquier cruce de inversión con tamaño para stands requiere rangos propios aprobados.
+
+**Alternativa propuesta.** No restar el tamaño desconocido en las situaciones anteriores, que seguirían visibles como respuesta «No lo sé aún». Conservar −15 cuando el tamaño es conocible: inmueble disponible o espacio del stand asignado. La pregunta seguiría contando en información completada. Requiere aprobación y una nueva versión.
+
+### 18.6. Pruebas
+
+`Backend/tests/projectRequestScoringV32.test.js` cubre:
+
+- con y sin referencias, y que las evidencias retiradas no se detecten;
+- sin inmueble y stand sin inmueble;
+- stand con completitud pendiente;
+- tamaño sin definir por tipo y sin planos;
+- varias evidencias de una misma causa;
+- históricos 3.0/3.1 con motivos retirados;
+- coherencia financiera e información completada sin regresiones;
+- envío sin consultar adjuntos.
+
+`projectRequestScoring.test.js` se actualizó para la versión 3.2 y para la ausencia de deducción por referencias.

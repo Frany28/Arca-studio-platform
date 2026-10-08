@@ -2,7 +2,10 @@
 
 ## 1. Objetivo y versión
 
-Presentar a la dirección de ARCA Studio la evaluación inicial de solicitudes de proyectos, versión **3.0**, para su revisión y aprobación. La propuesta consolida el comportamiento implementado y conserva los valores de deducción existentes; esta actualización no incorpora pesos, bonificaciones ni porcentajes nuevos.
+Presentar a la dirección de ARCA Studio la evaluación inicial de solicitudes de proyectos, versión **3.2**, para su revisión y aprobación. La propuesta consolida el comportamiento implementado y conserva los valores de deducción existentes; esta actualización no incorpora pesos, bonificaciones ni porcentajes nuevos.
+
+- La versión 3.1 corrigió qué preguntas aplican a un «Stand publicitario».
+- La versión 3.2 retira las deducciones por no adjuntar archivos o enlace de referencia.
 
 La evaluación ofrece tres resultados independientes:
 
@@ -12,7 +15,7 @@ La evaluación ofrece tres resultados independientes:
 | Información completada | Mostrar qué porcentaje de las preguntas aplicables tiene una respuesta válida. |
 | Coherencia financiera orientativa | Señalar combinaciones económicas que requieren aclaración, mediante un estado y sus motivos, sin porcentaje de suficiencia. |
 
-Las secciones del inmueble y del stand publicitario, la limpieza de respuestas al dejar de aplicar, su almacenamiento y la consulta administrativa están implementados. Las respuestas de requisitos del stand permanecen informativas. Su incorporación a puntuación o información completada, una diferenciación económica por tipo de proyecto y cualquier cambio de pesos requieren aprobación posterior; no forman parte del cálculo actual.
+Las secciones del inmueble y del stand publicitario, la limpieza de respuestas al dejar de aplicar, su almacenamiento y la consulta administrativa están implementados. En un stand, la pregunta del terreno o inmueble y la sección legal no aplican, porque el stand se monta en el espacio que asigna el evento. Las cuatro preguntas del stand cuentan en información completada, pero no puntúan. Su incorporación a la puntuación, una diferenciación económica por tipo de proyecto y cualquier cambio de pesos requieren aprobación posterior; no forman parte del cálculo actual.
 
 Las métricas apoyan la revisión humana. No aprueban ni rechazan solicitudes, no deciden la reunión y una puntuación baja no impide el envío. La validación de campos obligatorios conserva sus reglas funcionales.
 
@@ -42,7 +45,7 @@ Las etiquetas y opciones siguientes reproducen el formulario vigente. «Obligato
 | Descripción del proyecto | Texto de 30 a 100 caracteres, después de retirar espacios al inicio y al final. | Obligatoria. Una descripción válida cuenta como respondida. Su longitud no suma ni resta; no se evalúa claridad mediante IA. |
 | Tamaño aproximado del proyecto | Pequeño (menos de 80 m²); Mediano (80-200 m²); Grande (200-500 m²); Muy grande (más de 500 m²); No lo sé aún. | Opcional. «No lo sé aún» o sin responder genera la deducción de tamaño no definido. Los tamaños definidos no reciben puntos; solo se contrastan con la inversión. |
 | ¿Cómo desea desarrollar el proyecto? | Por fases; En su totalidad; Por definir. | Obligatoria. «Por definir» genera una deducción única de 10; las modalidades definidas no reciben bonificaciones. |
-| ¿Tiene terreno o inmueble disponible? | Sí, disponible; En proceso de adquirirlo; No todavía. | Obligatoria. Controla la sección legal. No suma por disponer de inmueble; se contrasta con el inicio previsto. |
+| ¿Tiene terreno o inmueble disponible? | Sí, disponible; En proceso de adquirirlo; No todavía. | Obligatoria, salvo en «Stand publicitario», donde es N/A y no se muestra. Controla la sección legal. No suma por disponer de inmueble; se contrasta con el inicio previsto. |
 
 ### 3.2. Requisitos del stand
 
@@ -50,18 +53,18 @@ Esta sección se muestra exclusivamente para **«Stand publicitario»**, según 
 
 | Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
-| ¿El evento cuenta con normas o requisitos para el montaje del stand? | Sí, tengo los requisitos; Estoy gestionando los requisitos; Aún no tengo los requisitos. | Opcional e informativa. No disponer de requisitos no genera deducciones ni bloquea por sí solo el envío. |
-| Documentación disponible | Manual del expositor; Reglamento del evento; Especificaciones técnicas del stand; Otro. | Selección múltiple opcional, habilitada con «Sí, tengo los requisitos». No exige una cantidad mínima ni adjuntar documentos. |
-| ¿Ya tienes asignado el espacio dentro del evento? | Sí, ya está asignado; La asignación está en proceso; Aún no está asignado. | Obligatoria únicamente para «Stand publicitario». Las tres respuestas son válidas; ninguna puntúa. |
-| ¿Tienes las medidas o plano del espacio asignado? | Casilla de respuesta Sí/No, con estado sin responder. | Opcional e informativa. Independiente de los planos del inmueble. |
+| ¿El evento cuenta con normas o requisitos para el montaje del stand? | Sí, tengo los requisitos; Estoy gestionando los requisitos; Aún no tengo los requisitos. | Opcional. Cuenta en información completada. No disponer de requisitos no genera deducciones ni bloquea por sí solo el envío. |
+| Documentación disponible | Manual del expositor; Reglamento del evento; Especificaciones técnicas del stand; Otro. | Selección múltiple opcional, habilitada con «Sí, tengo los requisitos». Solo entonces cuenta en información completada; sin selección queda incompleta. No exige adjuntar documentos. |
+| ¿Ya tienes asignado el espacio dentro del evento? | Sí, ya está asignado; La asignación está en proceso; Aún no está asignado. | Obligatoria únicamente para «Stand publicitario». Las tres respuestas son válidas y cuentan como respondidas; ninguna puntúa. |
+| ¿Tienes las medidas o plano del espacio asignado? | Casilla de respuesta Sí/No, con estado sin responder. | Opcional. Cuenta en información completada. Independiente de los planos del inmueble. |
 
 Los administradores pueden consultar estas respuestas para preparar la reunión. Los documentos declarados disponibles no están automáticamente verificados. Al cambiar a otro tipo se oculta la sección y se borran sus respuestas; al volver a «Stand publicitario» se muestra vacía. No se acepta información de esta sección para otros tipos.
 
-**Ninguna de estas cuatro preguntas cambia la compatibilidad, la información completada, la coherencia financiera ni la evaluación legal del inmueble.**
+**Estas cuatro preguntas cuentan en información completada. No cambian la compatibilidad ni la coherencia financiera.** El espacio asignado no hereda las deducciones del inmueble.
 
 ### 3.3. Documentación legal del inmueble
 
-La sección aparece solo cuando «¿Tiene terreno o inmueble disponible?» tiene la respuesta **«Sí, disponible»**.
+La sección aparece solo cuando «¿Tiene terreno o inmueble disponible?» tiene la respuesta **«Sí, disponible»**, y nunca en «Stand publicitario».
 
 | Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
@@ -94,8 +97,8 @@ La selección de documentos expresa disponibilidad declarada; no acredita su aut
 
 | Campo | Respuesta | Tratamiento |
 | --- | --- | --- |
-| Subir imágenes / archivos (opcional) | JPEG/JPG, PNG, PDF o MP4; hasta 10 archivos de 50 MB cada uno, máximo total de 200 MB. | Sin archivos: −5. Tener más de uno no añade puntos. No participa en información completada. |
-| Link de referencia (Pinterest, web, etc.) | Enlace http o https válido de hasta 500 caracteres, opcional. | Sin enlace válido: −2. No participa en información completada. |
+| Subir imágenes / archivos (opcional) | JPEG/JPG, PNG, PDF o MP4; hasta 10 archivos de 50 MB cada uno, máximo total de 200 MB. | Opcional e informativo. Desde 3.2 no adjuntar archivos no resta; tener varios no añade puntos. No participa en información completada. |
+| Link de referencia (Pinterest, web, etc.) | Enlace http o https válido de hasta 500 caracteres, opcional. | Opcional e informativo. Desde 3.2 no incluirlo no resta. No participa en información completada. |
 
 ## 4. Fórmula de compatibilidad
 
@@ -113,8 +116,6 @@ Los valores de esta tabla son los existentes en la versión implementada. Se pre
 | --- | --- | ---: |
 | Tamaño sin definir | «No lo sé aún» o sin respuesta. | 15 |
 | Modalidad sin definir | «Por definir», también si el inicio es «De inmediato». | 10 |
-| Archivos de referencia ausentes | No hay imágenes o archivos adjuntos. | 5 |
-| Enlace de referencia ausente | No hay enlace válido. | 2 |
 | Documentación legal pendiente | Con inmueble disponible: «La documentación está en trámite». | 3 |
 | Documentación legal pendiente | Con inmueble disponible: «No dispongo de documentación». | 6 |
 | Planos del inmueble ausentes | Con inmueble disponible: «No» o sin respuesta. | 2 |
@@ -139,35 +140,40 @@ Los valores de esta tabla son los existentes en la versión implementada. Se pre
 
 Todas las filas de una misma causa se consolidan. Por ejemplo, muy grande y Premium con menos de $10,000 USD produce **una deducción de 35**, no 35 + 20. Documentación legal y planos son causas diferentes; sus deducciones pueden acumularse cuando ambas aplican.
 
+**Retiradas en 3.2:** «Archivos de referencia ausentes» (−5) y «Enlace de referencia ausente» (−2). Las evaluaciones anteriores las conservan en su resultado y sus observaciones; las solicitudes nuevas no las reciben.
+
 Los cruces financieros indican aspectos que deben revisarse. No demuestran que el presupuesto sea insuficiente para contratar diseño o ejecutar una obra.
 
 ## 6. Condiciones especiales y preguntas N/A
 
 - Con «En proceso de adquirirlo» o «No todavía», la situación legal, documentos, propietarios y planos del inmueble son N/A. Se ocultan y limpian sus respuestas; no se acepta información de esos campos cuando no corresponde.
+- En «Stand publicitario», la pregunta del terreno o inmueble y toda la sección legal son N/A. Por eso no se aplican las deducciones legal, de planos ni de inmueble frente al inicio. Las de capital y presupuesto siguen aplicando.
 - La lista de documentos legales solo aplica con inmueble disponible y «Sí, tengo la documentación disponible». Con documentación en trámite o no disponible, la lista es N/A.
 - Los requisitos del stand solo aplican a «Stand publicitario». Cambiar a otro tipo limpia el bloque. «Stands y exhibiciones» se retira del catálogo vigente; las solicitudes anteriores mantienen su tipo, pueden conservarlo al editarse y no se convierten automáticamente a «Stand publicitario».
 - Los planos del espacio del evento no sustituyen ni modifican la respuesta sobre planos del inmueble.
 - Los plazos «3-6 meses» y «Más de 6 meses» no generan deducciones temporales con las reglas actuales.
-- Las solicitudes anteriores no reciben respuestas ficticias del stand ni se reclasifican. Su compatibilidad guardada conserva puntuación, nivel y observaciones originales. Las métricas de información completada y coherencia financiera mantienen su cálculo habitual desde las respuestas, sin modificar la compatibilidad histórica.
+- Las solicitudes anteriores no reciben respuestas ficticias del stand ni se reclasifican. Su compatibilidad guardada conserva puntuación, nivel, versión y observaciones originales, incluso un stand evaluado con 3.0 que recibió una deducción de inmueble. Las métricas de información completada y coherencia financiera mantienen su cálculo habitual desde las respuestas. Un stand sin la sección guardada deja sus preguntas como N/A.
 - Una solicitud corregida y reenviada recibe una nueva evaluación de compatibilidad conforme a las reglas vigentes del envío.
 
 ## 7. Información completada
 
 **Información completada = preguntas aplicables respondidas ÷ preguntas aplicables × 100**, redondeada al entero más cercano.
 
-El catálogo vigente considera 17 preguntas posibles:
+El catálogo vigente considera 21 preguntas posibles:
 
 | Condición | Preguntas aplicables |
 | --- | ---: |
 | Sin inmueble disponible | 13 generales. |
 | Inmueble disponible, documentación en trámite o no disponible | 13 generales + situación legal + propietarios + planos = 16. |
 | Inmueble disponible y documentación disponible | Las anteriores + selección de documentos = 17. |
+| Stand publicitario, normas en gestión, no disponibles o sin responder | 12 generales (sin la pregunta del inmueble) + normas + espacio + medidas o plano = 15. |
+| Stand publicitario con «Sí, tengo los requisitos» | Las anteriores + documentación del evento = 16. |
 
 Participan preguntas obligatorias y opcionales. Una respuesta válida como «No», «No todavía», «No lo sé aún», «Por definir», «Indefinido» o «La documentación está en trámite» cuenta como respondida. Una casilla sin respuesta sigue incompleta; una respuesta explícita «No» está respondida aunque genere una observación de compatibilidad.
 
 Las preguntas N/A se excluyen tanto del numerador como del denominador. Los archivos, el enlace de referencia y los datos automáticos de ubicación no forman parte de este porcentaje.
 
-Las cuatro preguntas del stand **no se añaden al catálogo**. Su incorporación posterior requiere definir las preguntas definitivas, aprobar una regla condicional expresa y comprobar que otros tipos no se consideren incompletos por esa información.
+Las cuatro preguntas del stand **solo aplican a «Stand publicitario»**. Los demás tipos no se consideran incompletos por esa información.
 
 ## 8. Coherencia financiera orientativa
 
@@ -207,9 +213,13 @@ Perfil común: todas las preguntas aplicables respondidas; proyecto pequeño, mo
 | Inversión sin definir con alcance exigente | «No lo tengo definido aún», muy grande, lujo e inicio inmediato. | 80 (una deducción de 20) | 100 % (17/17) | Información financiera insuficiente. |
 | Capital indefinido e inicio inmediato | «Indefinido» y «De inmediato». | 80 (−20) | 100 % (17/17) | Riesgo financiero elevado. |
 | Completamente respondido con varias causas | Inmueble en adquisición, muy grande, lujo, inversión «$10,000 - $50,000 USD», busca financiamiento e inicio inmediato. | 50 (−25 −15 −10) | 100 % (13/13) | Requiere revisión financiera. |
-| Opcionales sin respuesta | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace. | 78 (−15 −5 −2) | 76 % (13/17) | Información financiera insuficiente. |
-| Stand con requisitos | «Stand publicitario», sin inmueble disponible, requisitos disponibles y espacio asignado. | 100 | 100 % (13/13) | Sin cambios por el stand. |
-| Stand sin requisitos | Igual al anterior, «Aún no tengo los requisitos» y «Aún no está asignado». | 100 | 100 % (13/13) | Sin cambios por el stand; admite envío. |
+| Sin archivos ni enlace | Sin imágenes, archivos ni enlace. | 100 (antes 93) | 100 % (17/17) | Sin cambios. |
+| Opcionales sin respuesta | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace. | 85 (−15; antes 78) | 76 % (13/17) | Información financiera insuficiente. |
+| Stand con requisitos | «Stand publicitario» (inmueble N/A), requisitos disponibles con documentación seleccionada, espacio asignado y medidas respondidas. | 100 | 100 % (16/16) | Sin cambios por el stand. |
+| Stand sin requisitos | Igual al anterior, «Aún no tengo los requisitos» y «Aún no está asignado». | 100 | 100 % (15/15) | Sin cambios por el stand; admite envío. |
+| Stand con requisitos sin documentación seleccionada | Requisitos disponibles, sin seleccionar documentación. | 100 | 94 % (15/16) | Sin cambios por el stand. |
+| Stand con inicio inmediato | Stand con requisitos, inicio «De inmediato». En 3.0 podía restar 20 por «No todavía». | 100 | 100 % (16/16) | Sin cambios por el stand. |
+| Stand con capital indefinido | Stand con requisitos, capital «Indefinido» e inicio «De inmediato». | 80 (−20) | 100 % (16/16) | Riesgo financiero elevado. |
 | Otro tipo de proyecto | «Comercial», sin inmueble disponible; requisitos del stand N/A. | 100 | 100 % (13/13) | Sin cambios por el tipo. |
 
 Estos ejemplos conservan los valores actuales; una clasificación favorable no sustituye el análisis de los hallazgos ni la revisión humana.
@@ -228,8 +238,35 @@ Los límites de clasificación se conservan. La compatibilidad no es un promedio
 
 ## 11. Conclusión y solicitud de aprobación
 
-Se solicita a la dirección revisar y aprobar esta propuesta V3: el cálculo por causas, los valores conservados, las clasificaciones, el catálogo de información completada y el alcance orientativo de la evaluación financiera.
+Se solicita a la dirección revisar y aprobar esta propuesta V3 (fórmula 3.2): el cálculo por causas, los valores conservados, las clasificaciones, el catálogo de información completada y el alcance orientativo de la evaluación financiera.
 
-La consolidación mantiene la descripción como información válida sin peso por longitud; las deducciones legales y de planos solo donde corresponden; y los requisitos del stand publicitario como apoyo administrativo, sin efecto en las tres métricas. Conserva la distinción entre documentación declarada y verificada, así como los resultados históricos.
+La consolidación mantiene:
 
-Esta propuesta **no constituye una aprobación de reglas nuevas**. Cualquier modificación posterior de pesos, incorporación de preguntas del stand al cálculo o evaluación económica por tipo deberá quedar expresamente aprobada, documentada, versionada y comprobada antes de aplicarse.
+- la descripción como información válida sin peso por longitud;
+- las deducciones legales y de planos solo donde corresponden, nunca en un stand publicitario;
+- los archivos y el enlace de referencia como material opcional que no resta;
+- los requisitos del stand como apoyo administrativo, que cuentan en información completada sin efecto en compatibilidad ni en coherencia financiera.
+
+También conserva la distinción entre documentación declarada y verificada, así como los resultados históricos.
+
+Esta propuesta **no constituye una aprobación de reglas nuevas**. Cualquier modificación posterior de pesos, incorporación de preguntas del stand a la puntuación o evaluación económica por tipo deberá quedar expresamente aprobada, documentada, versionada y comprobada antes de aplicarse.
+
+## 12. Propuestas pendientes de decisión
+
+Estas propuestas **no están implementadas**. Los valores actuales se mantienen hasta su aprobación.
+
+**Planos del inmueble (−2).** Hoy resta cuando hay inmueble disponible y no hay planos o no se respondió. ARCA Studio puede levantar o elaborar los planos, por lo que su ausencia suele ampliar el servicio más que indicar falta de preparación. Opciones:
+
+1. **Recomendada:** dejar de restar y mostrar a administración un aviso de que se requiere levantamiento o elaboración de planos.
+2. Restar solo cuando se responde «No» y el inicio es «De inmediato» o «1-3 meses».
+3. Más adelante, preguntar si se trata de obra nueva o remodelación, o si se desea el servicio de planos.
+
+**Tamaño del proyecto (−15).** Hoy resta igual en todos los tipos, incluido «Stand publicitario». Se propone no restar cuando el tamaño todavía no depende del cliente y conservar la deducción cuando el tamaño es conocible:
+
+- stand cuyo espacio no está asignado o está en proceso;
+- stand sin medidas del espacio;
+- inmueble en adquisición o aún no disponible.
+
+No se proponen equivalencias económicas entre las medidas de un stand y las de una obra.
+
+El detalle técnico está en `docs/PROJECT_REQUEST_EVALUATION.md`, sección 18.
