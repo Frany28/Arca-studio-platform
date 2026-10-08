@@ -13,7 +13,7 @@ import { hasAvailableProperty } from "./projectRequest.js";
  * - Disponibilidad de capital, terreno, descripción, tipo y experiencia no suman puntos por
  *   sí mismos (D1, D4, D6). Los montos de inversión nunca suman.
  *
- * Los valores de deducción son los pesos ya aprobados en v2.2; esta versión no introduce
+ * Los valores de deducción son los pesos existentes en v2.2; esta versión no introduce
  * cantidades nuevas. La severidad es semántica y se declara por evidencia.
  */
 
@@ -135,7 +135,7 @@ const { HIGH, LOW, MEDIUM } = FINDING_SEVERITIES;
 /*
  * Catálogo declarativo de evidencias. `when` compara cada hecho normalizado (ver
  * `toCompatibilityFacts`) con un valor exacto. El orden solo desempata evidencias con
- * la misma deducción dentro de una causa. `points` conserva el peso aprobado en v2.2.
+ * la misma deducción dentro de una causa. `points` conserva el peso existente en v2.2.
  */
 const COMPATIBILITY_EVIDENCE_RULES = Object.freeze([
   // SCOPE / INFORMATION: definición del alcance y material de referencia.
@@ -159,7 +159,7 @@ const COMPATIBILITY_EVIDENCE_RULES = Object.freeze([
   { cause: "FINANCIAL_DEFINITION_INSUFFICIENT", code: "budgetUndefinedImmediate", points: 10, severity: MEDIUM, when: { investmentRange: "undefined", startTime: "immediate" } },
   { cause: "FINANCIAL_DEFINITION_INSUFFICIENT", code: "budgetUndefinedSoon", points: 5, severity: LOW, when: { investmentRange: "undefined", startTime: "1_3_months" } },
 
-  // FINANCIAL: presupuesto definido pero insuficiente para el alcance o la calidad declarados.
+  // FINANCIAL: cruces de presupuesto y alcance que requieren revisión, sin probar insuficiencia.
   { cause: "FINANCIAL_SCOPE_MISMATCH", code: "veryLargeBudgetUnder10k", points: 35, severity: HIGH, when: { investmentRange: "under_10k", projectSize: "very_large_gt_500" } },
   { cause: "FINANCIAL_SCOPE_MISMATCH", code: "luxuryBudgetUnder10k", points: 30, severity: HIGH, when: { investmentRange: "under_10k", quality: "luxury" } },
   { cause: "FINANCIAL_SCOPE_MISMATCH", code: "largeBudgetUnder10k", points: 25, severity: HIGH, when: { investmentRange: "under_10k", projectSize: "large_200_500" } },
@@ -263,7 +263,7 @@ function toCompatibilityFacts(input) {
     && input.legalDocumentTypes.length > 0;
   let legalDocumentationStatus = null;
   if (hasProperty) {
-    // "Disponible" sin ningún tipo de documento no acredita la situación legal.
+    // Sin selección falta una declaración válida; seleccionar tipos no verifica documentos.
     legalDocumentationStatus = input.legalDocumentationStatus === "available" && !hasLegalDocumentTypes
       ? "unavailable"
       : input.legalDocumentationStatus ?? "unavailable";

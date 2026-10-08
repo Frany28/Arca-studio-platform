@@ -65,7 +65,7 @@ La conexión directa configurada no estuvo disponible; se usó temporalmente `DA
 
 ## Límites conservados
 
-“Información completada” y “Viabilidad financiera” ya no son prototipos: llegan calculadas por la API (`completeness` y `financialViability`). La viabilidad es un estado de coherencia financiera sin porcentaje (ver `SISTEMA_PUNTUACION_SOLICITUDES.md`, sección 9). Ninguna de las dos métricas genera ni modifica `meetingRecommendation`: la reunión y la justificación siguen siendo decisiones humanas persistidas en la revisión técnica.
+“Información completada” y “Viabilidad financiera” ya no son prototipos: llegan calculadas por la API (`completeness` y `financialViability`). La viabilidad es un estado de coherencia financiera sin porcentaje (ver `PROJECT_REQUEST_EVALUATION.md`, sección 9). Ninguna de las dos métricas genera ni modifica `meetingRecommendation`: la reunión y la justificación siguen siendo decisiones humanas persistidas en la revisión técnica.
 
 La cola compartida sigue leyendo la primera página. Una solicitud fuera de esa página conserva el estado parcial existente del drawer; agregar carga de detalle o paginación completa queda fuera de este cambio. Este trabajo no despliega nuevas versiones del backend ni del frontend.
 

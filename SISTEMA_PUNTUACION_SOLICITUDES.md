@@ -1,457 +1,235 @@
-# Sistema de evaluación de solicitudes de proyecto
+# Propuesta de Cálculo de Compatibilidad de Solicitudes de Proyecto V3 — ARCA Studio
 
-> **Cómo leer este documento.** Describe la **regla de negocio** y su **implementación vigente, la fórmula `3.0`**. La sección 13 registra el estado de cada discrepancia detectada en `v2.2` (D1–D9). Lo que todavía requiere una decisión humana figura en la sección 14 y no se completa con valores supuestos.
+## 1. Objetivo y versión
 
----
+Presentar a la dirección de ARCA Studio la evaluación inicial de solicitudes de proyectos, versión **3.0**, para su revisión y aprobación. La propuesta consolida el comportamiento implementado y conserva los valores de deducción existentes; esta actualización no incorpora pesos, bonificaciones ni porcentajes nuevos.
 
-## 1. Objetivo
+La evaluación ofrece tres resultados independientes:
 
-Una solicitud se evalúa con **tres métricas independientes**:
+| Resultado | Propósito |
+| --- | --- |
+| Compatibilidad | Identificar preparación, definición del alcance y coherencia entre las respuestas, en una escala de 0 a 100. |
+| Información completada | Mostrar qué porcentaje de las preguntas aplicables tiene una respuesta válida. |
+| Coherencia financiera orientativa | Señalar combinaciones económicas que requieren aclaración, mediante un estado y sus motivos, sin porcentaje de suficiencia. |
 
-| Métrica | Qué responde | Estado |
+Las secciones del inmueble y del stand publicitario, la limpieza de respuestas al dejar de aplicar, su almacenamiento y la consulta administrativa están implementados. Las respuestas de requisitos del stand permanecen informativas. Su incorporación a puntuación o información completada, una diferenciación económica por tipo de proyecto y cualquier cambio de pesos requieren aprobación posterior; no forman parte del cálculo actual.
+
+Las métricas apoyan la revisión humana. No aprueban ni rechazan solicitudes, no deciden la reunión y una puntuación baja no impide el envío. La validación de campos obligatorios conserva sus reglas funcionales.
+
+## 2. Principios del algoritmo
+
+1. Partir de 100 y descontar únicamente las causas previstas en las reglas vigentes.
+2. Aplicar una sola deducción por causa, utilizando el mayor valor de sus condiciones detectadas.
+3. Evaluar cada pregunta únicamente cuando corresponde. Una pregunta no aplicable se identifica como N/A.
+4. No otorgar puntos por mayor presupuesto o capital, propiedad del inmueble, experiencia, tamaño, calidad de lujo, cantidad de documentos o número de propietarios.
+5. Distinguir información respondida de respuestas favorables: «No», «No lo sé aún» o una opción de trámite admitida pueden estar completamente respondidas.
+6. Mantener independientes compatibilidad, información completada y coherencia financiera.
+7. Explicar cada hallazgo con su causa, categoría, gravedad y las respuestas que lo originaron.
+8. Conservar los resultados de compatibilidad de evaluaciones anteriores y la versión con la que fueron calculados.
+9. Tratar documentos y fondos declarados como información del cliente, pendiente de revisión; su declaración no constituye verificación.
+
+## 3. Preguntas y opciones del formulario
+
+Las etiquetas y opciones siguientes reproducen el formulario vigente. «Obligatoria» se refiere a la validación de envío; una pregunta opcional puede participar en información completada cuando corresponde.
+
+### 3.1. Detalles del proyecto
+
+| Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
-| **Compatibilidad** | ¿Lo respondido es claro, está preparado donde corresponde y es coherente? | Implementada (`3.0`). Se calcula y persiste al enviar. |
-| **Información completada** | ¿Qué porcentaje de las preguntas aplicables se respondió? | Implementada. Se calcula al vuelo. |
-| **Viabilidad financiera** | ¿Las condiciones financieras declaradas son coherentes con el proyecto solicitado? | Implementada como coherencia orientativa: un estado sin porcentaje (sección 9). |
+| Nombre del proyecto | Texto de 3 a 150 caracteres. | Obligatoria. Informativa; cuenta como respondida si es válida. |
+| Tipo de proyecto | Residencial; Comercial; Corporativo; Stands y exhibiciones; Stand publicitario. | Obligatoria. Sin puntos por tipo. Únicamente «Stand publicitario» activa «Requisitos del stand». |
+| Ubicación del proyecto | Dirección válida de 5 a 255 caracteres. | Obligatoria. Informativa; sin puntos por ubicación. |
+| Descripción del proyecto | Texto de 30 a 100 caracteres, después de retirar espacios al inicio y al final. | Obligatoria. Una descripción válida cuenta como respondida. Su longitud no suma ni resta; no se evalúa claridad mediante IA. |
+| Tamaño aproximado del proyecto | Pequeño (menos de 80 m²); Mediano (80-200 m²); Grande (200-500 m²); Muy grande (más de 500 m²); No lo sé aún. | Opcional. «No lo sé aún» o sin responder genera la deducción de tamaño no definido. Los tamaños definidos no reciben puntos; solo se contrastan con la inversión. |
+| ¿Cómo desea desarrollar el proyecto? | Por fases; En su totalidad; Por definir. | Obligatoria. «Por definir» genera una deducción única de 10; las modalidades definidas no reciben bonificaciones. |
+| ¿Tiene terreno o inmueble disponible? | Sí, disponible; En proceso de adquirirlo; No todavía. | Obligatoria. Controla la sección legal. No suma por disponer de inmueble; se contrasta con el inicio previsto. |
 
-Ninguna se deriva de otra:
+### 3.2. Requisitos del stand
 
-- 100 % de información completada no implica 100 % de compatibilidad (caso E).
-- La compatibilidad no es un promedio de completitud y viabilidad.
-- Ninguna mide cuánto dinero tiene el cliente, si es propietario ni su experiencia previa.
+Esta sección se muestra exclusivamente para **«Stand publicitario»**, según la condición del diseño. **«Stands y exhibiciones» es otra opción** y no activa esta sección. Los demás tipos son N/A.
 
-Las métricas **informan** la revisión. No aprueban, rechazan ni bloquean solicitudes, y una puntuación baja nunca impide enviarlas.
-
-| Responsabilidad | Archivo |
-| --- | --- |
-| Catálogo de opciones, límites de texto y reglas de aplicabilidad | `Backend/src/domain/projectRequest.js` |
-| Compatibilidad: evidencias, hallazgos, score y contrato público | `Backend/src/domain/projectRequestCompatibility.js` |
-| Información completada | `Backend/src/domain/projectRequestCompleteness.js` |
-| Viabilidad financiera: evaluador | `Backend/src/domain/projectRequestFinancialViability.js` |
-| Viabilidad financiera: matriz relativa | `Backend/src/domain/projectRequestFinancialMatrix.js` |
-| Composición de métricas derivadas | `Backend/src/domain/projectRequestEvaluation.js` |
-| Validación del contrato | `Backend/src/validation/projectRequestSchemas.js` |
-| Presentación de completitud y viabilidad | `Frontend/src/utils/projectRequestMetrics.js` |
-| Pruebas | `Backend/tests/projectRequestScoring.test.js`, `Backend/tests/projectRequestCompleteness.test.js`, `Backend/tests/projectRequestFinancialViability.test.js` |
-
----
-
-## 2. Principios
-
-1. **No dar puntos por responder por responder.**
-2. **No dar más puntos por mayor cantidad de dinero.** Ningún rango de inversión vale más que otro.
-3. **No penalizar condiciones válidas.** No tener inmueble, buscar financiamiento, iniciar en seis meses o ser un proyecto pequeño no restan por sí mismos.
-4. **No penalizar preguntas que no aplican.** No suman, no restan y no cuentan como incompletas.
-5. **Una causa, una deducción.** Varias evidencias de la misma causa se consolidan.
-6. **Mantener las métricas independientes.**
-7. **Toda reducción es explicable.** Cada hallazgo tiene código, categoría, severidad, explicación y evidencias.
-8. **La revisión humana conserva la autoridad** sobre la recomendación de reunión y el workflow.
-9. **No inventar pesos, porcentajes ni umbrales.** La fórmula `3.0` solo reutiliza pesos ya aprobados en `v2.2`.
-
-### Regla explícita sobre el dinero
-
-```text
-Más presupuesto = más compatibilidad   ← NO existe
-```
-
-- El monto nunca entrega puntos: los cuatro rangos definidos producen el mismo resultado (caso D).
-- Un presupuesto menor no resta automáticamente. Solo interviene cuando es incoherente con el tamaño o la calidad declarados.
-- “Busca financiamiento” no resta por sí solo. Solo genera un hallazgo temporal si se combina con un inicio inmediato o en 1–3 meses (caso D2).
-
----
-
-## 3. Clasificación de preguntas
-
-| Categoría | Significado |
-| --- | --- |
-| **Puntúa** | Su ausencia o indefinición genera un hallazgo de preparación con su peso aprobado. Todas las respuestas definidas valen lo mismo. |
-| **Solo coherencia** | Nunca suma. Solo participa cuando contradice otra respuesta. |
-| **Informativa** | No afecta la compatibilidad. Sirve para contexto, contacto, personalización o revisión humana. |
-| **Condicional** | Solo se evalúa si otra respuesta hace que aplique. Si no aplica es N/A (sección 5). |
-
-### Matriz de preguntas (fórmula 3.0)
-
-| # | Pregunta | ¿Aplica siempre? | Obligatoria | Tipo | Efecto en compatibilidad | En “Información completada” |
-| ---: | --- | --- | --- | --- | --- | --- |
-| 1 | Nombre del proyecto | Sí | Sí | Informativa | Ninguno | Sí |
-| 2 | Tipo de proyecto | Sí | Sí | Informativa | Ninguno (su uso en viabilidad está pendiente) | Sí |
-| 3 | Ubicación del proyecto | Sí | Sí | Informativa | Ninguno | Sí |
-| 4 | Descripción del proyecto | Sí | Sí (30–100 caracteres) | Informativa | Ninguno: la longitud ya no puntúa | Sí |
-| 5 | Tamaño aproximado | Sí | No | Puntúa + coherencia | “No lo sé aún” o sin responder: `PROJECT_SIZE_UNDEFINED` (−15). Se cruza con la inversión. | Sí |
-| 6 | ¿Cómo desea desarrollar el proyecto? | Sí | Sí | Puntúa + coherencia | “Por definir”: `EXECUTION_MODE_UNDEFINED` (−10, una vez aunque el inicio sea inmediato) | Sí |
-| 7 | ¿Tiene terreno o inmueble disponible? | Sí | Sí | Solo coherencia + controla aplicabilidad | Ninguno por sí solo. Se cruza con el plazo de inicio. | Sí |
-| 8 | Situación legal del inmueble | No | Sí, si #7 = “Sí, disponible” | Condicional (preparación) | En trámite −3 / no dispone −6 (`LEGAL_DOCUMENTATION_PENDING`) | Si aplica |
-| 9 | Documentación disponible | No | Sí, si #8 = disponible | Condicional · Informativa | Ninguno; la cantidad o el tipo no suman | Si aplica |
-| 10 | ¿Más de un propietario? | No | Sí, si #7 = “Sí, disponible” | Condicional · Informativa | Ninguno | Si aplica |
-| 11 | ¿Dispone de planos del lugar? | No | No | Condicional (preparación) | Sin planos: `BLUEPRINTS_UNAVAILABLE` (−2) | Si aplica |
-| 12 | Rango de inversión estimado | Sí | Sí | Puntúa + coherencia | No definido: `FINANCIAL_DEFINITION_INSUFFICIENT` (una sola deducción). Definido: solo coherencia. | Sí |
-| 13 | Disponibilidad del capital | Sí | Sí | Solo coherencia | Ninguno por sí solo. Se cruza con el plazo (`CAPITAL_TIMING_MISMATCH`). | Sí |
-| 14 | ¿Cuándo espera iniciar? | Sí | Sí | Solo coherencia | Ninguno por sí solo | Sí |
-| 15 | ¿Quién toma la decisión final? | Sí | No | Informativa | Ninguno | Sí |
-| 16 | Expectativa de calidad | Sí | No | Solo coherencia | Ninguno por sí sola. Se cruza con la inversión. | Sí |
-| 17 | ¿Ha trabajado con un arquitecto o diseñador? | Sí | No | Informativa | Ninguno: la experiencia no hace mejor ni peor al cliente | Sí |
-| 18 | Imágenes o archivos | Sí | No | Puntúa (claridad) | Sin archivos: `REFERENCE_FILES_MISSING` (−5). La cantidad no multiplica. | No (material complementario) |
-| 19 | Link de referencia | Sí | No | Puntúa (claridad) | Sin enlace válido: `REFERENCE_LINK_MISSING` (−2) | No (material complementario) |
-
----
-
-## 4. Variables retiradas de la puntuación
-
-| Variable | Peso en v2.2 | Fórmula 3.0 | Motivo |
-| --- | ---: | --- | --- |
-| Terreno o inmueble disponible | 10 / 5 / 0 | Solo coherencia y aplicabilidad | No premiar tener inmueble (D1). |
-| Disponibilidad del capital | 25 / 20 / 10 / 0 | Solo coherencia con el plazo | No premiar condiciones económicas (D4). |
-| Longitud de la descripción | 10 / 4 | Informativa | La longitud no demuestra claridad (D6). La calidad semántica está pendiente de definición y no se evalúa con IA. |
-
----
-
-## 5. Reglas condicionales y no aplicabilidad
-
-### 5.1. Terreno o inmueble disponible
-
-| Respuesta | Sección legal | Preguntas #8–#11 |
+| Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
-| Sí, disponible | Se muestra | Aplican |
-| En proceso de adquirirlo | No se muestra | **N/A** |
-| No todavía | No se muestra | **N/A** |
+| ¿El evento cuenta con normas o requisitos para el montaje del stand? | Sí, tengo los requisitos; Estoy gestionando los requisitos; Aún no tengo los requisitos. | Opcional e informativa. No disponer de requisitos no genera deducciones ni bloquea por sí solo el envío. |
+| Documentación disponible | Manual del expositor; Reglamento del evento; Especificaciones técnicas del stand; Otro. | Selección múltiple opcional, habilitada con «Sí, tengo los requisitos». No exige una cantidad mínima ni adjuntar documentos. |
+| ¿Ya tienes asignado el espacio dentro del evento? | Sí, ya está asignado; La asignación está en proceso; Aún no está asignado. | Obligatoria únicamente para «Stand publicitario». Las tres respuestas son válidas; ninguna puntúa. |
+| ¿Tienes las medidas o plano del espacio asignado? | Casilla de respuesta Sí/No, con estado sin responder. | Opcional e informativa. Independiente de los planos del inmueble. |
 
-- **Frontend:** oculta la sección y limpia los valores al cambiar la respuesta.
-- **Backend:** rechaza datos legales, de propietarios o de planos cuando no hay inmueble disponible.
-- **Motor (D3 resuelto):** aplica la misma regla, `hasAvailableProperty`, aunque llegaran datos residuales: sin inmueble, esas reglas no se evalúan.
+Los administradores pueden consultar estas respuestas para preparar la reunión. Los documentos declarados disponibles no están automáticamente verificados. Al cambiar a otro tipo se oculta la sección y se borran sus respuestas; al volver a «Stand publicitario» se muestra vacía. No se acepta información de esta sección para otros tipos.
 
-La documentación disponible (#9) solo aplica si la situación legal es “disponible”. Si se declara disponible sin ningún documento, el motor lo trata como no acreditado.
+**Ninguna de estas cuatro preguntas cambia la compatibilidad, la información completada, la coherencia financiera ni la evaluación legal del inmueble.**
 
-### 5.2. Regla de no aplicabilidad
+### 3.3. Documentación legal del inmueble
 
-Una pregunta que no aplica:
+La sección aparece solo cuando «¿Tiene terreno o inmueble disponible?» tiene la respuesta **«Sí, disponible»**.
 
-- **no suma** y **no resta** en la compatibilidad;
-- **sale del numerador y del denominador** de la información completada;
-- **no cuenta como incompleta**.
-
-Con esto, una solicitud coherente sin inmueble puede alcanzar **100** de compatibilidad y **100 %** de información completada (caso C). En `v2.2` su máximo era 82.
-
----
-
-## 6. Compatibilidad: hallazgos y evidencias
-
-### 6.1. Modelo
-
-```text
-Compatibilidad = max(0, min(100, 100 − Σ deducción de cada hallazgo))
-```
-
-- **Evidencia:** una condición observable de las respuestas. Por ejemplo, `veryLargeBudgetUnder10k` (tamaño muy grande con presupuesto menor a USD 10.000).
-- **Hallazgo:** agrupa todas las evidencias de una misma **causa** y descuenta **una sola vez**: la deducción mayor entre sus evidencias. Su severidad es la mayor de sus evidencias, y su explicación es la de la evidencia de mayor peso.
-- **Pesos:** los valores de deducción son los aprobados en `v2.2`; `3.0` no introduce cantidades nuevas. Lo que cambia es que cada causa resta una vez y que la base retirada (sección 4) ya no resta.
-
-#### Por qué una escala de 100 con deducciones y no un cociente
-
-Se evaluó normalizar como `puntos obtenidos aplicables / máximo aplicable`. Tras retirar 45 puntos de base (D1, D4, D6), el cociente multiplicaba por ~2,1 el peso efectivo de cada criterio restante. Por ejemplo, “tamaño no definido” pasaría de restar 15 a restar 32. Eso equivale a introducir pesos nuevos.
-
-La escala con deducciones conserva el impacto aprobado de cada criterio y cumple la regla de no aplicabilidad, porque un criterio N/A nunca genera evidencia. Es un denominador dinámico en la práctica: solo las preguntas aplicables pueden reducir el resultado.
-
-### 6.2. Categorías y severidad
-
-| Categoría | Uso actual |
-| --- | --- |
-| `FINANCIAL` | Inversión no definida, o insuficiente frente al tamaño o la calidad. |
-| `TEMPORAL` | Plazo de inicio frente a capital o inmueble. |
-| `SCOPE` | Tamaño o modalidad sin definir. |
-| `LEGAL` | Situación legal pendiente (solo con inmueble). |
-| `INFORMATION` | Material de referencia o planos ausentes. |
-| `CONSISTENCY` | Reservada. Las contradicciones de datos (p. ej. documentos sin inmueble) se rechazan en la validación y no llegan al motor. |
-
-| Severidad | Significado |
-| --- | --- |
-| `LOW` | Observación menor; no compromete la evaluación. |
-| `MEDIUM` | Incoherencia o falta de definición relevante. |
-| `HIGH` | Incoherencia crítica para el alcance o el plazo. |
-
-La severidad se declara por evidencia en el catálogo. Hoy coincide con la magnitud histórica: `LOW` < 10 puntos, `MEDIUM` 10–15 y `HIGH` ≥ 20. Es un dato semántico independiente, que podrá ajustarse cuando se aprueben pesos finales.
-
-### 6.3. Catálogo de causas
-
-| Causa | Categoría | Evidencias (deducción · severidad) | Deducción del hallazgo |
-| --- | --- | --- | --- |
-| `FINANCIAL_DEFINITION_INSUFFICIENT` | FINANCIAL | `investmentRangeUndefined` 15 M · `veryLargeBudgetUndefined` 20 H · `luxuryBudgetUndefined` 20 H · `largeBudgetUndefined` 15 M · `premiumBudgetUndefined` 15 M · `budgetUndefinedImmediate` 10 M · `budgetUndefinedSoon` 5 L | Máximo: 15 o 20 |
-| `FINANCIAL_SCOPE_MISMATCH` | FINANCIAL | `veryLargeBudgetUnder10k` 35 H · `luxuryBudgetUnder10k` 30 H · `largeBudgetUnder10k` 25 H · `veryLargeBudget10k50k` 25 H · `premiumBudgetUnder10k` 20 H · `luxuryBudget10k50k` 20 H · `mediumBudgetUnder10k` 10 M | Máximo: 10–35 |
-| `CAPITAL_TIMING_MISMATCH` | TEMPORAL | `capitalUndefinedImmediate` 20 H · `financingImmediate` 15 M · `capitalWithin3MonthsImmediate` 10 M · `capitalUndefinedSoon` 10 M · `financingSoon` 8 L | 8–20 |
-| `PROPERTY_TIMING_MISMATCH` | TEMPORAL | `landUnavailableImmediate` 20 H · `landAcquiringImmediate` 10 M · `landUnavailableSoon` 10 M | 10–20 |
-| `PROJECT_SIZE_UNDEFINED` | SCOPE | `projectSizeUndefined` 15 M | 15 |
-| `EXECUTION_MODE_UNDEFINED` | SCOPE | `developmentModeUndefined` 10 M · `modeUndefinedImmediate` 10 M | 10 |
-| `LEGAL_DOCUMENTATION_PENDING` | LEGAL | `legalDocumentationUnavailable` 6 L · `legalDocumentationInProcess` 3 L | 3–6 (solo con inmueble) |
-| `BLUEPRINTS_UNAVAILABLE` | INFORMATION | `blueprintsUnavailable` 2 L | 2 (solo con inmueble) |
-| `REFERENCE_FILES_MISSING` | INFORMATION | `referenceFilesMissing` 5 L | 5 |
-| `REFERENCE_LINK_MISSING` | INFORMATION | `referenceLinkMissing` 2 L | 2 |
-
-Los plazos “3–6 meses” y “Más de 6 meses” no generan hallazgos temporales.
-
-### 6.4. Doble penalización (D5 resuelto)
-
-| Situación | v2.2 | 3.0 |
+| Pregunta | Opciones o respuesta | Tratamiento |
 | --- | --- | --- |
-| Inversión no definida + muy grande + lujo + inicio inmediato | −15 base −20 −20 −10 = **−65** | Un hallazgo `FINANCIAL_DEFINITION_INSUFFICIENT`: **−20** |
-| Presupuesto < USD 10.000 + muy grande + premium | −35 −20 = **−55** | Un hallazgo `FINANCIAL_SCOPE_MISMATCH`: **−35** |
-| Modalidad por definir + inicio inmediato | −10 base −10 = **−20** | Un hallazgo `EXECUTION_MODE_UNDEFINED`: **−10** |
-| Capital indefinido + inicio inmediato | −25 base −20 = **−45** | Un hallazgo `CAPITAL_TIMING_MISMATCH`: **−20** |
-| Sin inmueble + inicio inmediato | −10 base −20 = **−30** | Un hallazgo `PROPERTY_TIMING_MISMATCH`: **−20** |
+| ¿Cuenta con documentación que acredite la situación legal del inmueble? | Sí, tengo la documentación disponible; La documentación está en trámite; No dispongo de documentación. | Obligatoria cuando aplica. En trámite: −3. No disponible: −6. Una sola deducción legal. |
+| Documentación disponible | Documento de propiedad; Contrato de compra; Contrato de arrendamiento; Otro documento. | Selección múltiple obligatoria únicamente con «Sí, tengo la documentación disponible»; al menos un tipo. No suma por tipo o cantidad. |
+| ¿El inmueble tiene más de un propietario? | Sí; No. | Obligatoria cuando hay inmueble disponible. Apoyo administrativo, sin puntos ni deducciones por propietarios. |
+| ¿Dispone de planos del lugar? | Casilla de respuesta Sí/No, con estado sin responder. | Opcional cuando hay inmueble disponible. «No» o sin responder conserva la deducción de 2. |
 
-Causas distintas sí se acumulan. Por ejemplo, un presupuesto insuficiente y un plazo incompatible con el capital son problemas diferentes.
+La selección de documentos expresa disponibilidad declarada; no acredita su autenticidad, suficiencia ni una revisión legal concluida. Declarar disponibilidad sin seleccionar un tipo no supera la validación de envío. En un registro incompleto con esa combinación, el evaluador conserva el tratamiento defensivo de documentación no disponible; no verifica documentos.
 
-### 6.5. Trazabilidad (D9 resuelto)
+### 3.4. Viabilidad financiera
 
-- El motor devuelve **todos** los hallazgos, con sus evidencias.
-- Al enviar, se persisten en `compatibility_reason_codes` **todos** los códigos de evidencia, ordenados por impacto.
-- La API reconstruye los hallazgos desde esos códigos (`findings`) sin exponer los pesos.
-- `observations` conserva hasta tres explicaciones, una por causa, para la pantalla de solicitud recibida.
-
----
-
-## 7. Coherencia por tipo
-
-| Tipo | Qué compara | Dónde se resuelve |
+| Pregunta | Opciones exactas | Tratamiento |
 | --- | --- | --- |
-| Financiera | Inversión frente a tamaño y calidad | Hallazgos `FINANCIAL` |
-| Temporal | Plazo frente a capital e inmueble | Hallazgos `TEMPORAL` |
-| Legal | Inmueble frente a datos legales | Validación: el envío se rechaza |
-| Datos | Respuestas mutuamente incompatibles (p. ej. documentos marcados con estado “en trámite”) | Validación: el envío se rechaza |
+| Rango de inversión estimado | No lo tengo definido aún; Menos de $10,000 USD; $10,000 - $50,000 USD; $50,000 - $150,000 USD; Más de $150,000 USD. | Obligatoria. Un rango definido nunca suma puntos por su monto. La indefinición y los cruces previstos con tamaño o calidad pueden generar deducciones. |
+| Disponibilidad del capital | Disponible ahora; En los próximos 3 meses; Busca financiamiento; Indefinido. | Obligatoria. No suma por tener capital. Solo se contrasta con el plazo de inicio. |
 
----
+«Disponible ahora» es una declaración del cliente, no una verificación de fondos. «Busca financiamiento» no resta por sí sola.
 
-## 8. Información completada
+### 3.5. Compatibilidad
 
-```text
-Información completada = round(preguntas aplicables respondidas / preguntas aplicables × 100)
-```
-
-- **Respondida** significa con un valor válido del catálogo o dentro de los límites de texto, aunque la respuesta sea desfavorable: “No todavía”, “Busca financiamiento”, “No lo sé aún”, “Por definir” o “No” cuentan.
-- **Participan las 17 preguntas del formulario**, obligatorias y opcionales:
-  - siempre: nombre, tipo, ubicación, descripción, tamaño, modalidad, inmueble, inversión, capital, plazo, decisor, calidad y experiencia (13);
-  - con inmueble disponible: situación legal, propietarios y planos (+3);
-  - con documentación disponible: lista de documentos (+1).
-- **No participan:** archivos y enlace (material complementario, no preguntas) ni coordenadas o identificadores del proveedor de ubicación.
-- La API devuelve `{score, answered, applicable, missingFields}`. `missingFields` explica qué falta.
-- Se calcula al vuelo desde las respuestas guardadas, también para solicitudes históricas, sin persistencia propia.
-
-Ejemplos: con todo respondido y sin inmueble, 13/13 = 100 %. Con inmueble y sin responder decisor, calidad, experiencia ni tamaño, 13/17 = 76 %.
-
----
-
-## 9. Viabilidad financiera (coherencia financiera orientativa)
-
-### 9.1. Qué evalúa y qué no
-
-Evalúa la **coherencia económica observable** entre las respuestas del cliente:
-
-> ¿El presupuesto y la disponibilidad declarados son razonablemente coherentes con el alcance, las expectativas y el plazo del proyecto?
-
-**No** evalúa si el dinero alcanza para ejecutar la obra. Sin precios de referencia, y sin saber si el presupuesto cubre solo el diseño o también la ejecución, el sistema no puede afirmar que un presupuesto sea suficiente o insuficiente. Solo puede señalar combinaciones que conviene aclarar.
-
-| Usa | No usa |
-| --- | --- |
-| `investmentRange` (rango de inversión) | Tipo de proyecto: no hay diferenciación económica aprobada (D8) |
-| `projectSize` (tamaño) | Ubicación, descripción, inmueble, sección legal, decisor y experiencia |
-| `quality` (calidad esperada) | Precios de mercado, servicios externos o IA |
-| `developmentMode` (solo para contextualizar qué cubre el presupuesto) | Operaciones aritméticas entre niveles de rango o tamaño |
-| `capitalAvailability` y `startTime` | |
-
-El formulario **no tiene** una modalidad “diseño / ejecución / diseño y ejecución”. `developmentMode` solo indica si el proyecto se desarrollará por fases, en su totalidad o por definir. Por eso, qué cubre el presupuesto se trata como una **incertidumbre explícita** (hallazgo `BUDGET_COVERAGE_UNSPECIFIED`), y ninguna combinación presupuesto–alcance se clasifica como riesgo elevado.
-
-### 9.2. Matriz relativa
-
-Los rangos y tamaños se usan como **niveles relativos**, con sus límites y orden originales. Cada celda declara su resultado explícitamente; no se suman ni restan niveles. Las celdas con evidencia reutilizan combinaciones que la compatibilidad 3.0 ya aprobó como incoherentes. Fuente: `Backend/src/domain/projectRequestFinancialMatrix.js`.
-
-**Tamaño × inversión**
-
-| Tamaño \ Inversión | < USD 10.000 | USD 10.000–50.000 | USD 50.000–150.000 | > USD 150.000 |
-| --- | --- | --- | --- | --- |
-| Pequeño (< 80 m²) | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
-| Mediano (80–200 m²) | Revisión (`mediumBudgetUnder10k`) | Sin conflicto | Sin conflicto | Sin conflicto |
-| Grande (200–500 m²) | Revisión (`largeBudgetUnder10k`) | Sin conflicto | Sin conflicto | Sin conflicto |
-| Muy grande (> 500 m²) | Revisión (`veryLargeBudgetUnder10k`) | Revisión (`veryLargeBudget10k50k`) | Sin conflicto | Sin conflicto |
-| No lo sé aún | No comparable | No comparable | No comparable | No comparable |
-
-**Calidad × inversión**
-
-| Calidad \ Inversión | < USD 10.000 | USD 10.000–50.000 | USD 50.000–150.000 | > USD 150.000 |
-| --- | --- | --- | --- | --- |
-| Funcional y económico | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
-| Calidad estándar | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
-| Premium | Revisión (`premiumBudgetUnder10k`) | Sin conflicto | Sin conflicto | Sin conflicto |
-| Exclusivo/lujo | Revisión (`luxuryBudgetUnder10k`) | Revisión (`luxuryBudget10k50k`) | Sin conflicto | Sin conflicto |
-| Sin responder | No comparable | No comparable | No comparable | No comparable |
-
-**Disponibilidad del capital × plazo de inicio**
-
-| Capital \ Inicio | De inmediato | 1–3 meses | 3–6 meses | Más de 6 meses |
-| --- | --- | --- | --- | --- |
-| Disponible ahora | Sin conflicto | Sin conflicto | Sin conflicto | Sin conflicto |
-| En los próximos 3 meses | Revisión (`capitalWithin3MonthsImmediate`) | Sin conflicto | Sin conflicto | Sin conflicto |
-| Busca financiamiento | Revisión (`financingImmediate`) | Revisión (`financingSoon`) | Sin conflicto | Sin conflicto |
-| Indefinido | **Riesgo elevado** (`capitalUndefinedImmediate`) | Revisión (`capitalUndefinedSoon`) | Informativo (`capitalAvailabilityUncertain`) | Informativo (`capitalAvailabilityUncertain`) |
-
-**Entradas de contexto**
-
-| Condición | Resultado |
-| --- | --- |
-| Inversión “No lo tengo definido aún” | Datos insuficientes (`investmentRangeUndefined`) |
-| Inversión definida, pero sin tamaño comparable ni calidad | Datos insuficientes (`financialScopeUndefined`) |
-| Alguna celda de revisión presupuesto–alcance o presupuesto–calidad | Informativo: `budgetMayCoverPhase` si el proyecto es por fases; `budgetCoverageUnspecified` en otro caso |
-
-### 9.3. Justificación de las clasificaciones
-
-- **Sin conflicto:** ninguna regla aprobada observa la combinación. Un presupuesto mayor nunca mejora una celda, y un proyecto pequeño nunca se observa por tener un presupuesto bajo.
-- **Revisión:** las 12 combinaciones que la compatibilidad ya aprobó como incoherentes. Las de presupuesto–alcance y presupuesto–calidad no suben a riesgo elevado porque se desconoce qué cubre el presupuesto. Una preferencia de lujo no basta como prueba de inviabilidad.
-- **Riesgo elevado:** solo “capital indefinido + inicio inmediato”. Es una dependencia económica fuerte (severidad `HIGH` ya aprobada) que no depende de qué cubra el presupuesto: el cliente no sabe cuándo dispondrá del capital y quiere empezar ya.
-- **Buscar financiamiento** no se penaliza por sí solo: con un plazo de 3–6 meses o más no genera hallazgos. **“Disponible ahora”** es una declaración del cliente: no es una verificación ni equivale a un financiamiento aprobado.
-- **Capital indefinido con plazo flexible:** no se asume solvencia ni insolvencia; solo se informa la incertidumbre.
-- Una prueba exhaustiva verifica que la matriz y el motor de compatibilidad 3.0 detecten exactamente las mismas evidencias en todas las combinaciones reales.
-
-### 9.4. Estados
-
-| Estado | Significado | Etiqueta en el drawer |
+| Pregunta | Opciones exactas | Tratamiento |
 | --- | --- | --- |
-| `NO_OBVIOUS_CONFLICT` | No se detectan contradicciones con las reglas disponibles. **No es una aprobación financiera.** | Sin incoherencias financieras detectadas (tono neutral, con aclaración) |
-| `REVIEW_REQUIRED` | Una combinación debe aclararla un administrador. | Requiere revisión financiera (tono `warning`) |
-| `HIGH_RISK` | Señal fuerte de dependencia económica. **No demuestra inviabilidad.** | Riesgo financiero elevado (tono `danger`, con aclaración) |
-| `INSUFFICIENT_DATA` | Faltan respuestas para contrastar el presupuesto con el alcance. | Información financiera insuficiente |
-| `PENDING_RULES` | Reservado para reglas sin configurar; las reglas actuales no lo producen. | Pendiente de reglas de evaluación |
+| ¿Cuándo espera iniciar el proyecto? | De inmediato; 1-3 meses; 3-6 meses; Más de 6 meses. | Obligatoria. Sin puntos por plazo; se contrasta con capital, inmueble e inversión definida. |
+| ¿Quién toma la decisión final del proyecto? | Yo solo/a; Con mi pareja/socio; Familia extendida; Empresa/junta. | Opcional e informativa. Sin deducciones por decisor. |
+| Expectativa de estilo / nivel de calidad | Funcional y económico; Calidad estándar; Premium; Exclusivo/lujo. | Opcional. No suma por calidad; solo se contrasta con la inversión en los casos previstos. |
+| ¿Ha trabajado con un arquitecto o diseñador antes? | Sí, buena experiencia; Sí, mala experiencia; No, primera vez. | Opcional e informativa. La experiencia no suma ni resta. |
 
-El estado global es el efecto más fuerte entre sus hallazgos: `HIGH_RISK` > `REVIEW_REQUIRED` > `INSUFFICIENT_DATA` > sin conflicto. Los hallazgos `INFORMATIVE` explican el contexto sin cambiar el estado.
+### 3.6. Referencias
 
-### 9.5. Contrato
+| Campo | Respuesta | Tratamiento |
+| --- | --- | --- |
+| Subir imágenes / archivos (opcional) | JPEG/JPG, PNG, PDF o MP4; hasta 10 archivos de 50 MB cada uno, máximo total de 200 MB. | Sin archivos: −5. Tener más de uno no añade puntos. No participa en información completada. |
+| Link de referencia (Pinterest, web, etc.) | Enlace http o https válido de hasta 500 caracteres, opcional. | Sin enlace válido: −2. No participa en información completada. |
 
-```js
-financialViability: {
-  score: null,
-  status: "REVIEW_REQUIRED",
-  findings: [
-    {
-      code: "FINANCIAL_SCOPE_MISMATCH",   // causa (mismo código que en compatibilidad)
-      category: "FINANCIAL",              // o "TEMPORAL" para capital × plazo
-      severity: "HIGH",                   // LOW | MEDIUM | HIGH
-      outcome: "REVIEW_REQUIRED",         // HIGH_RISK | REVIEW_REQUIRED | INSUFFICIENT_DATA | INFORMATIVE
-      explanation: "El rango de inversión requiere revisión para el tamaño grande indicado.",
-      evidence: [{ code: "largeBudgetUnder10k", explanation: "..." }]
-    }
-  ]
-}
-```
+## 4. Fórmula de compatibilidad
 
-- **Por qué `score` es `null`:** no existe una escala porcentual validada. Un porcentaje afirmaría una precisión que el sistema no tiene.
-- **Sin doble penalización:** la métrica financiera no aplica deducciones. Reutiliza las causas y evidencias de la compatibilidad 3.0, que ya descuenta cada causa una sola vez. Calcularla no modifica el score de compatibilidad ni la completitud.
-- **Agrupación:** varias evidencias de una misma causa forman un único hallazgo con el efecto y la severidad más fuertes.
-- **Sin persistencia:** se recalcula al vuelo con las reglas vigentes, tanto para solicitudes nuevas como antiguas, porque solo depende de las respuestas guardadas. No se modifica ningún dato.
+**Compatibilidad = 100 − suma de las deducciones únicas por causa**, con el resultado limitado entre 0 y 100.
 
-### 9.6. Incorporar rangos económicos reales en el futuro
+Cuando varias condiciones corresponden a una misma causa, se utiliza **la mayor deducción**, no la suma. Causas diferentes sí pueden acumularse. Una pregunta N/A no genera ninguna deducción.
 
-1. Si el negocio lo aprueba, añadir al formulario lo que hoy falta: qué cubre el presupuesto (diseño, ejecución o ambos).
-2. Aprobar rangos por tipo de proyecto y tamaño (D8) y expresarlos como nuevas matrices o filas en `projectRequestFinancialMatrix.js`.
-3. Solo entonces, evaluar `HIGH_RISK` en las celdas presupuesto–alcance y definir una escala para `score`.
-4. Si el resultado llegara a persistirse, guardar la versión de las reglas junto al estado para no alterar evaluaciones anteriores.
+El resultado se acompaña de todos los hallazgos detectados. Sus categorías se conservan: financiera, temporal, alcance, legal e información; consistencia queda reservada para usos definidos posteriormente. La gravedad se comunica como baja, media o alta, sin crear otro porcentaje ni aplicar una segunda deducción.
 
----
+## 5. Deducciones por causa
 
-## 10. Cálculo, persistencia y contrato
+Los valores de esta tabla son los existentes en la versión implementada. Se presentan para validación de la dirección y se conservan sin modificaciones en esta actualización.
 
-| Aspecto | Comportamiento |
+| Causa | Condición | Deducción única |
+| --- | --- | ---: |
+| Tamaño sin definir | «No lo sé aún» o sin respuesta. | 15 |
+| Modalidad sin definir | «Por definir», también si el inicio es «De inmediato». | 10 |
+| Archivos de referencia ausentes | No hay imágenes o archivos adjuntos. | 5 |
+| Enlace de referencia ausente | No hay enlace válido. | 2 |
+| Documentación legal pendiente | Con inmueble disponible: «La documentación está en trámite». | 3 |
+| Documentación legal pendiente | Con inmueble disponible: «No dispongo de documentación». | 6 |
+| Planos del inmueble ausentes | Con inmueble disponible: «No» o sin respuesta. | 2 |
+| Inversión sin definir | «No lo tengo definido aún». | 15 |
+| Inversión sin definir | Además, tamaño «Muy grande (más de 500 m²)» o calidad «Exclusivo/lujo». | 20 |
+| Inversión sin definir | Además, tamaño grande o calidad Premium: 15; inicio «De inmediato»: 10; inicio «1-3 meses»: 5. | Se mantiene el máximo de la causa: 15 o 20; estos valores no se suman. |
+| Desajuste entre inversión y alcance | «Menos de $10,000 USD» con «Mediano (80-200 m²)». | 10 |
+| Desajuste entre inversión y alcance | «Menos de $10,000 USD» con «Grande (200-500 m²)». | 25 |
+| Desajuste entre inversión y alcance | «Menos de $10,000 USD» con «Muy grande (más de 500 m²)». | 35 |
+| Desajuste entre inversión y alcance | «$10,000 - $50,000 USD» con «Muy grande (más de 500 m²)». | 25 |
+| Desajuste entre inversión y alcance | «Menos de $10,000 USD» con «Premium». | 20 |
+| Desajuste entre inversión y alcance | «Menos de $10,000 USD» con «Exclusivo/lujo». | 30 |
+| Desajuste entre inversión y alcance | «$10,000 - $50,000 USD» con «Exclusivo/lujo». | 20 |
+| Capital frente al inicio | «Indefinido» y «De inmediato». | 20 |
+| Capital frente al inicio | «Busca financiamiento» y «De inmediato». | 15 |
+| Capital frente al inicio | «En los próximos 3 meses» y «De inmediato». | 10 |
+| Capital frente al inicio | «Indefinido» y «1-3 meses». | 10 |
+| Capital frente al inicio | «Busca financiamiento» y «1-3 meses». | 8 |
+| Inmueble frente al inicio | «No todavía» y «De inmediato». | 20 |
+| Inmueble frente al inicio | «En proceso de adquirirlo» y «De inmediato». | 10 |
+| Inmueble frente al inicio | «No todavía» y «1-3 meses». | 10 |
+
+Todas las filas de una misma causa se consolidan. Por ejemplo, muy grande y Premium con menos de $10,000 USD produce **una deducción de 35**, no 35 + 20. Documentación legal y planos son causas diferentes; sus deducciones pueden acumularse cuando ambas aplican.
+
+Los cruces financieros indican aspectos que deben revisarse. No demuestran que el presupuesto sea insuficiente para contratar diseño o ejecutar una obra.
+
+## 6. Condiciones especiales y preguntas N/A
+
+- Con «En proceso de adquirirlo» o «No todavía», la situación legal, documentos, propietarios y planos del inmueble son N/A. Se ocultan y limpian sus respuestas; no se acepta información de esos campos cuando no corresponde.
+- La lista de documentos legales solo aplica con inmueble disponible y «Sí, tengo la documentación disponible». Con documentación en trámite o no disponible, la lista es N/A.
+- Los requisitos del stand solo aplican a «Stand publicitario». Cambiar a otro tipo limpia el bloque; «Stands y exhibiciones» mantiene su significado independiente y sus solicitudes anteriores.
+- Los planos del espacio del evento no sustituyen ni modifican la respuesta sobre planos del inmueble.
+- Los plazos «3-6 meses» y «Más de 6 meses» no generan deducciones temporales con las reglas actuales.
+- Las solicitudes anteriores no reciben respuestas ficticias del stand ni se reclasifican. Su compatibilidad guardada conserva puntuación, nivel y observaciones originales. Las métricas de información completada y coherencia financiera mantienen su cálculo habitual desde las respuestas, sin modificar la compatibilidad histórica.
+- Una solicitud corregida y reenviada recibe una nueva evaluación de compatibilidad conforme a las reglas vigentes del envío.
+
+## 7. Información completada
+
+**Información completada = preguntas aplicables respondidas ÷ preguntas aplicables × 100**, redondeada al entero más cercano.
+
+El catálogo vigente considera 17 preguntas posibles:
+
+| Condición | Preguntas aplicables |
+| --- | ---: |
+| Sin inmueble disponible | 13 generales. |
+| Inmueble disponible, documentación en trámite o no disponible | 13 generales + situación legal + propietarios + planos = 16. |
+| Inmueble disponible y documentación disponible | Las anteriores + selección de documentos = 17. |
+
+Participan preguntas obligatorias y opcionales. Una respuesta válida como «No», «No todavía», «No lo sé aún», «Por definir», «Indefinido» o «La documentación está en trámite» cuenta como respondida. Una casilla sin respuesta sigue incompleta; una respuesta explícita «No» está respondida aunque genere una observación de compatibilidad.
+
+Las preguntas N/A se excluyen tanto del numerador como del denominador. Los archivos, el enlace de referencia y los datos automáticos de ubicación no forman parte de este porcentaje.
+
+Las cuatro preguntas del stand **no se añaden al catálogo**. Su incorporación posterior requiere definir las preguntas definitivas, aprobar una regla condicional expresa y comprobar que otros tipos no se consideren incompletos por esa información.
+
+## 8. Coherencia financiera orientativa
+
+Se contrastan rango de inversión, tamaño, calidad, modalidad de desarrollo, disponibilidad del capital y plazo. No se utilizan requisitos del stand, documentación legal, propietarios, experiencia, tipo de proyecto ni ubicación.
+
+El formulario no especifica si el presupuesto incluye diseño, ejecución o ambos. «Por fases» o «En su totalidad» no aclara esa cobertura. Ante una combinación que requiere revisión se explica esta incertidumbre; con desarrollo por fases también se aclara que el presupuesto podría corresponder a una sola etapa.
+
+| Estado visible | Significado |
 | --- | --- |
-| Momento del cálculo de compatibilidad | Al enviar (`submitProjectRequest`), desde el registro guardado y los adjuntos reales (`hasFiles`). Se reevalúa en cada reenvío tras “Solicitar correcciones”. |
-| Persistencia | `compatibility_score`, `compatibility_level`, `compatibility_reason_codes` (todas las evidencias) y `compatibility_scoring_version = "3.0"`. **Sin migración**: las columnas existentes admiten el nuevo contenido. |
-| Completitud y viabilidad | Calculadas al vuelo en `toPublicProjectRequest` y en la cola técnica. No se persisten. |
-| Evaluaciones históricas (`1.x`, `2.x`) | Conservan score, nivel y observaciones; `findings` es `null`. No se recalculan. |
-| `ProjectRequest.compatibility` | `{score, level, observations, findings}` |
-| `WorkflowRequest` | `compatibility: {score, level}`, más `completeness` y `financialViability` |
-| `financialViability` | `{score: null, status, findings}` (sección 9.5), en `ProjectRequest` y en `WorkflowRequest` |
-| Seguridad | El esquema es `strict`: el frontend no puede enviar puntaje, nivel, versión, hallazgos ni presencia de archivos. |
+| Sin incoherencias financieras detectadas | No hay contradicciones según las reglas disponibles. No equivale a una aprobación financiera. |
+| Requiere revisión financiera | Hay una combinación que debe aclarar un administrador. Los cruces observados de presupuesto con tamaño o calidad quedan en este estado. |
+| Riesgo financiero elevado | Actualmente corresponde a «Indefinido» en capital con inicio «De inmediato». No demuestra que el proyecto sea inviable. |
+| Información financiera insuficiente | No se ha definido el rango de inversión o faltan tamaño comparable y calidad para contrastarlo. |
+| Pendiente de reglas de evaluación | Estado reservado; las reglas configuradas actualmente no lo producen. |
 
-### Niveles (sin cambios)
+Si concurren varios estados, prevalece riesgo elevado, después revisión y después información insuficiente. Las aclaraciones informativas no elevan por sí solas el estado.
 
-| Resultado | Código | Etiqueta |
-| ---: | --- | --- |
-| 80–100 | `excellent` | Excelente compatibilidad |
-| 60–79 | `high` | Buena compatibilidad |
-| 40–59 | `medium` | Compatibilidad media |
-| 20–39 | `low` | Baja compatibilidad |
-| 0–19 | `poorly_defined` | Solicitud poco definida |
+Esta evaluación **no aplica puntos ni deducciones**, no produce porcentajes de suficiencia y no vuelve a descontar causas ya consideradas en compatibilidad. «Busca financiamiento» con inicio en «3-6 meses» o «Más de 6 meses» no genera una observación temporal. Capital «Indefinido» con esos plazos solo informa incertidumbre, sin asumir solvencia ni insolvencia.
 
-### Recomendación de reunión y workflow
+## 9. Ejemplos de evaluación
 
-- `SCHEDULE_MEETING` / `DO_NOT_SCHEDULE_MEETING` siguen siendo una decisión de revisión técnica: no se derivan de ninguna métrica ni las modifican.
-- Aprobar, solicitar correcciones o rechazar siguen siendo decisiones administrativas: las métricas las informan, no las disparan.
+Perfil común: todas las preguntas aplicables respondidas; proyecto pequeño, modalidad «En su totalidad», inmueble disponible, documentación declarada disponible con un tipo seleccionado, planos disponibles, inversión «$10,000 - $50,000 USD», capital «Disponible ahora», inicio «Más de 6 meses», calidad estándar, un archivo y un enlace válido. Cada fila cambia únicamente lo indicado.
 
----
+| Caso | Cambio respecto al perfil común | Compatibilidad | Información completada | Coherencia financiera |
+| --- | --- | ---: | --- | --- |
+| Preparado y coherente | Ninguno. | 100 | 100 % (17/17) | Sin incoherencias financieras detectadas. |
+| Descripción en los límites | 30 o 100 caracteres válidos. | 100 en ambos | 100 % (17/17) | Sin cambios. |
+| Documentación en trámite | «La documentación está en trámite»; selección de documentos N/A. | 97 (−3) | 100 % (16/16) | Sin cambios. |
+| Sin documentación legal | «No dispongo de documentación»; selección de documentos N/A. | 94 (−6) | 100 % (16/16) | Sin cambios. |
+| Sin planos del inmueble | Respuesta explícita «No». | 98 (−2) | 100 % (17/17) | Sin cambios. |
+| Documentación y planos pendientes | «No dispongo de documentación» y planos «No». | 92 (−6 −2) | 100 % (16/16) | Sin cambios. |
+| Sin inmueble disponible | «No todavía»; sección legal N/A. | 100 | 100 % (13/13) | Sin incoherencias financieras detectadas. |
+| Mayor inversión y lujo | «Más de $150,000 USD» y «Exclusivo/lujo». | 100, sin bonificación | 100 % (17/17) | Sin incoherencias financieras detectadas. |
+| Financiamiento con plazo flexible | «Busca financiamiento»; inicio «3-6 meses». | 100 | 100 % (17/17) | Sin incoherencias financieras detectadas. |
+| Gran alcance con inversión reducida | «Grande (200-500 m²)» y «Menos de $10,000 USD». | 75 (−25) | 100 % (17/17) | Requiere revisión financiera. |
+| Dos condiciones de la misma causa | Muy grande, Premium y «Menos de $10,000 USD». | 65 (una deducción de 35) | 100 % (17/17) | Requiere revisión financiera. |
+| Inversión sin definir con alcance exigente | «No lo tengo definido aún», muy grande, lujo e inicio inmediato. | 80 (una deducción de 20) | 100 % (17/17) | Información financiera insuficiente. |
+| Capital indefinido e inicio inmediato | «Indefinido» y «De inmediato». | 80 (−20) | 100 % (17/17) | Riesgo financiero elevado. |
+| Completamente respondido con varias causas | Inmueble en adquisición, muy grande, lujo, inversión «$10,000 - $50,000 USD», busca financiamiento e inicio inmediato. | 50 (−25 −15 −10) | 100 % (13/13) | Requiere revisión financiera. |
+| Opcionales sin respuesta | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace. | 78 (−15 −5 −2) | 76 % (13/17) | Información financiera insuficiente. |
+| Stand con requisitos | «Stand publicitario», sin inmueble disponible, requisitos disponibles y espacio asignado. | 100 | 100 % (13/13) | Sin cambios por el stand. |
+| Stand sin requisitos | Igual al anterior, «Aún no tengo los requisitos» y «Aún no está asignado». | 100 | 100 % (13/13) | Sin cambios por el stand; admite envío. |
+| Otro tipo de proyecto | «Stands y exhibiciones», sin inmueble disponible; requisitos del stand N/A. | 100 | 100 % (13/13) | Sin cambios por el tipo. |
 
-## 11. Casos de ejemplo (fórmula 3.0)
+Estos ejemplos conservan los valores actuales; una clasificación favorable no sustituye el análisis de los hallazgos ni la revisión humana.
 
-Valores calculados con el motor real.
+## 10. Clasificación final de compatibilidad
 
-**Perfil común:**
+| Resultado | Clasificación |
+| ---: | --- |
+| 80–100 | Excelente compatibilidad |
+| 60–79 | Buena compatibilidad |
+| 40–59 | Compatibilidad media |
+| 20–39 | Baja compatibilidad |
+| 0–19 | Solicitud poco definida |
 
-- descripción válida;
-- tamaño pequeño y modalidad “En su totalidad”;
-- inmueble disponible, con documentación y planos;
-- inversión de USD 10.000–50.000 y capital disponible ahora;
-- inicio en 1–3 meses y calidad estándar;
-- decisor, experiencia, un archivo y un enlace.
+Los límites de clasificación se conservan. La compatibilidad no es un promedio de los otros resultados: una solicitud puede estar 100 % respondida y presentar contradicciones que reduzcan su compatibilidad.
 
-| Caso | Cambios sobre el perfil | Compatibilidad | Hallazgos | Información completada | Viabilidad financiera |
-| --- | --- | ---: | --- | ---: | --- |
-| **A** — Proyecto pequeño coherente | Ninguno | 100 · Excelente | — | 100 % (17/17) | `NO_OBVIOUS_CONFLICT` |
-| **B** — Proyecto grande incoherente | Grande, < USD 10.000, capital en 3 meses, inicio en 3–6 meses | 75 · Buena | `FINANCIAL_SCOPE_MISMATCH` (HIGH) | 100 % | `REVIEW_REQUIRED` |
-| **B2** — Misma brecha desde dos cruces | Muy grande, < USD 10.000, premium | 65 · Buena | `FINANCIAL_SCOPE_MISMATCH` (una sola, −35) | 100 % | `REVIEW_REQUIRED` (un hallazgo, 2 evidencias) |
-| **C** — Cliente sin inmueble | “No todavía” o “En proceso”, inicio en > 6 meses | 100 · Excelente | — (sección legal N/A) | 100 % (13/13) | `NO_OBVIOUS_CONFLICT` |
-| **D** — Mucho presupuesto | > USD 150.000 y calidad de lujo | 100 · Excelente (igual que A) | — | 100 % | `NO_OBVIOUS_CONFLICT` (igual que A) |
-| **D2** — Busca financiamiento | Busca financiamiento, inicio en 3–6 meses | 100 · Excelente | — | 100 % | `NO_OBVIOUS_CONFLICT` |
-| **E** — Completo pero contradictorio | En proceso de adquisición, inicio inmediato, busca financiamiento, muy grande, lujo | 50 · Media | `FINANCIAL_SCOPE_MISMATCH` −25, `CAPITAL_TIMING_MISMATCH` −15, `PROPERTY_TIMING_MISMATCH` −10 | **100 %** (13/13) | `REVIEW_REQUIRED` |
-| **H** — Una causa financiera | Inversión no definida, muy grande, lujo, inicio inmediato | 80 · Excelente | `FINANCIAL_DEFINITION_INSUFFICIENT` (4 evidencias, −20) | 100 % | `INSUFFICIENT_DATA` |
-| **J** — Capital indefinido e inicio inmediato | Capital “Indefinido”, inicio inmediato | 80 · Excelente | `CAPITAL_TIMING_MISMATCH` −20 | 100 % | `HIGH_RISK` |
-| **I** — Opcionales sin responder | Sin tamaño, decisor, calidad, experiencia, archivos ni enlace | 78 · Buena | `PROJECT_SIZE_UNDEFINED`, `REFERENCE_FILES_MISSING`, `REFERENCE_LINK_MISSING` | 76 % (13/17) | `INSUFFICIENT_DATA` (sin tamaño ni calidad) |
+## 11. Conclusión y solicitud de aprobación
 
----
+Se solicita a la dirección revisar y aprobar esta propuesta V3: el cálculo por causas, los valores conservados, las clasificaciones, el catálogo de información completada y el alcance orientativo de la evaluación financiera.
 
-## 12. Datos que no puntúan
+La consolidación mantiene la descripción como información válida sin peso por longitud; las deducciones legales y de planos solo donde corresponden; y los requisitos del stand publicitario como apoyo administrativo, sin efecto en las tres métricas. Conserva la distinción entre documentación declarada y verificada, así como los resultados históricos.
 
-**Nunca afectan la compatibilidad:**
-
-- nombre, tipo, ubicación y descripción;
-- decisor y experiencia previa;
-- disponibilidad del inmueble y del capital por sí solas;
-- cantidad o tipo de documentos y número de propietarios;
-- monto concreto de inversión;
-- cantidad de archivos por encima de uno.
-
-**Solo por coherencia:** plazo de inicio, calidad esperada, disponibilidad del capital y disponibilidad del inmueble.
-
-Los textos de códigos históricos (`companyImmediate`, `companyCapitalUndefined`, `extendedFamilyImmediate`, `descriptionWeak`, `largeBudget10k50k`, `referencesMissingDescriptionWeak`, `sizeUnknownBudgetUndefined`) se conservan solo para mostrar evaluaciones antiguas.
-
----
-
-## 13. Estado de las discrepancias de v2.2
-
-| # | Discrepancia | Estado | Resolución |
-| ---: | --- | --- | --- |
-| D1 | El inmueble sumaba 10 / 5 / 0. | **RESUELTA** | Solo coherencia y aplicabilidad. |
-| D2 | La sección legal N/A contaba como 0 sobre 100. | **RESUELTA** | Las reglas N/A no generan evidencia; la completitud excluye las preguntas N/A. Sin inmueble se alcanza 100. |
-| D3 | El motor no aplicaba `hasAvailableProperty`. | **RESUELTA** | El motor aplica la regla de dominio y las pruebas usan datos realistas. |
-| D4 | El capital valía 25 / 20 / 10 / 0. | **RESUELTA** | Solo coherencia con el plazo. |
-| D5 | Una misma causa se penalizaba varias veces. | **RESUELTA** | Hallazgos consolidados por causa (sección 6.4). Los valores siguen pendientes de validación de negocio. |
-| D6 | La descripción puntuaba por longitud. | **RESUELTA** | Informativa. La calidad semántica queda pendiente de definición. |
-| D7 | Completitud y viabilidad eran prototipos fijos. | **PARCIAL** | Completitud real. La viabilidad se implementó como coherencia orientativa, con estados y motivos (sección 9); la viabilidad basada en rangos económicos reales sigue pendiente. |
-| D8 | El tipo de proyecto no participa en la coherencia financiera. | **PENDIENTE** | No hay diferenciación económica aprobada por tipo; la matriz relativa no lo usa (sección 9.6). |
-| D9 | Solo se persistían tres códigos. | **RESUELTA** | Se persisten y exponen todas las evidencias y hallazgos. |
-
----
-
-## 14. Pendientes de negocio
-
-1. **Viabilidad financiera con rangos reales:** rangos por tipo y tamaño (D8), qué cubre el presupuesto (diseño, ejecución o ambos) y, solo después, una escala porcentual (D7).
-2. **Clasificaciones de la matriz relativa:** confirmar que las 12 combinaciones observadas son `REVIEW_REQUIRED`; que solo “capital indefinido + inicio inmediato” es `HIGH_RISK`; y que mediano o grande con USD 10.000–50.000, y premium con USD 10.000–50.000, se consideran sin conflicto.
-3. **Magnitud de las deducciones:** validar los valores heredados de `v2.2` (−2 a −35). Por ejemplo, el caso B (gran alcance con presupuesto insuficiente) conserva “Buena compatibilidad” con 75.
-4. **Severidades definitivas:** confirmar la clasificación LOW/MEDIUM/HIGH de cada evidencia, hoy alineada con la magnitud histórica.
-5. **Información completada:** confirmar que las preguntas opcionales (tamaño, decisor, calidad, experiencia y planos) deben contar, y que archivos y enlace quedan fuera.
-6. **Claridad de la descripción:** definir, si se desea, una regla objetiva. No se usará longitud ni IA.
-7. **Sugerencias automáticas:** cualquier sugerencia de reunión o de acción derivada de las métricas debe ser una regla nueva y separada.
-
-Todo cambio de pesos o reglas debe publicarse como una nueva versión de la fórmula, con pruebas de regresión, y conservar las evaluaciones históricas.
+Esta propuesta **no constituye una aprobación de reglas nuevas**. Cualquier modificación posterior de pesos, incorporación de preguntas del stand al cálculo o evaluación económica por tipo deberá quedar expresamente aprobada, documentada, versionada y comprobada antes de aplicarse.

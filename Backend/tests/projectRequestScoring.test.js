@@ -75,7 +75,7 @@ test("caso B: with property the legal section participates without favoring docu
   assert.equal(scoreWith({ legalDocumentTypes: ["property_deed", "purchase_contract", "other"] }), 100);
   assert.equal(scoreWith({ legalDocumentationStatus: "in_process", legalDocumentTypes: [] }), 97);
   assert.equal(scoreWith({ legalDocumentationStatus: "unavailable", legalDocumentTypes: [] }), 94);
-  // "Disponible" sin documentos no acredita la situación legal (el motor no depende de Zod, D3).
+  // Sin selección falta una declaración válida (el motor no depende de Zod, D3).
   assert.equal(scoreWith({ legalDocumentTypes: [] }), 94);
   assert.equal(scoreWith({ hasPlans: false }), 98);
   assert.equal(scoreWith({ hasPlans: null }), 98);
