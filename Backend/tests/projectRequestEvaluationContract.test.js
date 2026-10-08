@@ -88,8 +88,8 @@ test("3.1: el contrato guardado separa el stand de la evaluación del inmueble y
             assert.equal(body.landStatus, isStand ? null : landStatus);
             const hasProperty = !isStand && landStatus === "available";
             const legalDeduction = hasProperty ? { available: 0, in_process: 3, unavailable: 6 }[legalDocumentationStatus] : 0;
-            const plansDeduction = hasProperty && hasBlueprints !== "Yes" ? 2 : 0;
-            assert.equal(publicRequest.compatibility.score, 100 - legalDeduction - plansDeduction);
+            // Desde 3.3 los planos del inmueble no restan; solo la documentación legal.
+            assert.equal(publicRequest.compatibility.score, 100 - legalDeduction);
             const propertyApplicable = hasProperty ? legalDocumentationStatus === "available" ? 17 : 16 : 13;
             const standApplicable = 12 + (requirementsStatus === "available" ? 4 : 3);
             assert.equal(publicRequest.completeness.applicable, isStand ? standApplicable : propertyApplicable);

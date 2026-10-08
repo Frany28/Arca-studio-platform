@@ -2,10 +2,13 @@
 
 ## 1. Objetivo y versión
 
-Presentar a la dirección de ARCA Studio la evaluación inicial de solicitudes de proyectos, versión **3.2**, para su revisión y aprobación. La propuesta consolida el comportamiento implementado y conserva los valores de deducción existentes; esta actualización no incorpora pesos, bonificaciones ni porcentajes nuevos.
+Presentar a la dirección de ARCA Studio la evaluación inicial de solicitudes de proyectos, versión **3.3**, para su revisión y aprobación. La propuesta consolida el comportamiento implementado y conserva los valores de deducción existentes; esta actualización no incorpora pesos, bonificaciones ni porcentajes nuevos.
 
 - La versión 3.1 corrigió qué preguntas aplican a un «Stand publicitario».
 - La versión 3.2 retira las deducciones por no adjuntar archivos o enlace de referencia.
+- La versión 3.3 retira la deducción por planos del inmueble y solo resta por tamaño desconocido cuando el cliente puede estimarlo.
+
+La compatibilidad mide la preparación y coherencia de una solicitud preliminar. No constituye una evaluación técnica definitiva ni determina la aceptación del proyecto. La información será revisada por el administrador y el arquitecto antes de crear un proyecto. La información pendiente no indica falta de seriedad ni de compromiso del cliente.
 
 La evaluación ofrece tres resultados independientes:
 
@@ -43,7 +46,7 @@ Las etiquetas y opciones siguientes reproducen el formulario vigente. «Obligato
 | Tipo de proyecto | Residencial; Comercial; Corporativo; Stand publicitario. | Obligatoria. Sin puntos por tipo. Únicamente «Stand publicitario» activa «Requisitos del stand». |
 | Ubicación del proyecto | Dirección válida de 5 a 255 caracteres. | Obligatoria. Informativa; sin puntos por ubicación. |
 | Descripción del proyecto | Texto de 30 a 100 caracteres, después de retirar espacios al inicio y al final. | Obligatoria. Una descripción válida cuenta como respondida. Su longitud no suma ni resta; no se evalúa claridad mediante IA. |
-| Tamaño aproximado del proyecto | Pequeño (menos de 80 m²); Mediano (80-200 m²); Grande (200-500 m²); Muy grande (más de 500 m²); No lo sé aún. | Opcional. «No lo sé aún» o sin responder genera la deducción de tamaño no definido. Los tamaños definidos no reciben puntos; solo se contrastan con la inversión. |
+| Tamaño aproximado del proyecto | Pequeño (menos de 80 m²); Mediano (80-200 m²); Grande (200-500 m²); Muy grande (más de 500 m²); No lo sé aún. | Opcional. «No lo sé aún» cuenta como respondida. «No lo sé aún» o sin responder resta solo si el tamaño es estimable (sección 5). Los tamaños definidos no reciben puntos; solo se contrastan con la inversión. |
 | ¿Cómo desea desarrollar el proyecto? | Por fases; En su totalidad; Por definir. | Obligatoria. «Por definir» genera una deducción única de 10; las modalidades definidas no reciben bonificaciones. |
 | ¿Tiene terreno o inmueble disponible? | Sí, disponible; En proceso de adquirirlo; No todavía. | Obligatoria, salvo en «Stand publicitario», donde es N/A y no se muestra. Controla la sección legal. No suma por disponer de inmueble; se contrasta con el inicio previsto. |
 
@@ -71,7 +74,7 @@ La sección aparece solo cuando «¿Tiene terreno o inmueble disponible?» tiene
 | ¿Cuenta con documentación que acredite la situación legal del inmueble? | Sí, tengo la documentación disponible; La documentación está en trámite; No dispongo de documentación. | Obligatoria cuando aplica. En trámite: −3. No disponible: −6. Una sola deducción legal. |
 | Documentación disponible | Documento de propiedad; Contrato de compra; Contrato de arrendamiento; Otro documento. | Selección múltiple obligatoria únicamente con «Sí, tengo la documentación disponible»; al menos un tipo. No suma por tipo o cantidad. |
 | ¿El inmueble tiene más de un propietario? | Sí; No. | Obligatoria cuando hay inmueble disponible. Apoyo administrativo, sin puntos ni deducciones por propietarios. |
-| ¿Dispone de planos del lugar? | Casilla de respuesta Sí/No, con estado sin responder. | Opcional cuando hay inmueble disponible. «No» o sin responder conserva la deducción de 2. |
+| ¿Dispone de planos del lugar? | Casilla de respuesta Sí/No, con estado sin responder. | Opcional cuando hay inmueble disponible. Desde 3.3 no resta. «No» o sin responder generan una observación para administración, sin puntos. |
 
 La selección de documentos expresa disponibilidad declarada; no acredita su autenticidad, suficiencia ni una revisión legal concluida. Declarar disponibilidad sin seleccionar un tipo no supera la validación de envío. En un registro incompleto con esa combinación, el evaluador conserva el tratamiento defensivo de documentación no disponible; no verifica documentos.
 
@@ -114,11 +117,10 @@ Los valores de esta tabla son los existentes en la versión implementada. Se pre
 
 | Causa | Condición | Deducción única |
 | --- | --- | ---: |
-| Tamaño sin definir | «No lo sé aún» o sin respuesta. | 15 |
+| Tamaño sin definir | «No lo sé aún» o sin respuesta, solo si el tamaño es estimable: residencial, comercial o corporativo con inmueble «Sí, disponible»; stand con espacio «Sí, ya está asignado» y medidas o plano disponibles. En los demás casos no resta. | 15 |
 | Modalidad sin definir | «Por definir», también si el inicio es «De inmediato». | 10 |
 | Documentación legal pendiente | Con inmueble disponible: «La documentación está en trámite». | 3 |
 | Documentación legal pendiente | Con inmueble disponible: «No dispongo de documentación». | 6 |
-| Planos del inmueble ausentes | Con inmueble disponible: «No» o sin respuesta. | 2 |
 | Inversión sin definir | «No lo tengo definido aún». | 15 |
 | Inversión sin definir | Además, tamaño «Muy grande (más de 500 m²)» o calidad «Exclusivo/lujo». | 20 |
 | Inversión sin definir | Además, tamaño grande o calidad Premium: 15; inicio «De inmediato»: 10; inicio «1-3 meses»: 5. | Se mantiene el máximo de la causa: 15 o 20; estos valores no se suman. |
@@ -140,7 +142,7 @@ Los valores de esta tabla son los existentes en la versión implementada. Se pre
 
 Todas las filas de una misma causa se consolidan. Por ejemplo, muy grande y Premium con menos de $10,000 USD produce **una deducción de 35**, no 35 + 20. Documentación legal y planos son causas diferentes; sus deducciones pueden acumularse cuando ambas aplican.
 
-**Retiradas en 3.2:** «Archivos de referencia ausentes» (−5) y «Enlace de referencia ausente» (−2). Las evaluaciones anteriores las conservan en su resultado y sus observaciones; las solicitudes nuevas no las reciben.
+**Retiradas:** «Archivos de referencia ausentes» (−5) y «Enlace de referencia ausente» (−2) en 3.2; «Planos del inmueble ausentes» (−2) en 3.3. Las evaluaciones anteriores las conservan en su resultado y sus observaciones; las solicitudes nuevas no las reciben.
 
 Los cruces financieros indican aspectos que deben revisarse. No demuestran que el presupuesto sea insuficiente para contratar diseño o ejecutar una obra.
 
@@ -203,8 +205,8 @@ Perfil común: todas las preguntas aplicables respondidas; proyecto pequeño, mo
 | Descripción en los límites | 30 o 100 caracteres válidos. | 100 en ambos | 100 % (17/17) | Sin cambios. |
 | Documentación en trámite | «La documentación está en trámite»; selección de documentos N/A. | 97 (−3) | 100 % (16/16) | Sin cambios. |
 | Sin documentación legal | «No dispongo de documentación»; selección de documentos N/A. | 94 (−6) | 100 % (16/16) | Sin cambios. |
-| Sin planos del inmueble | Respuesta explícita «No». | 98 (−2) | 100 % (17/17) | Sin cambios. |
-| Documentación y planos pendientes | «No dispongo de documentación» y planos «No». | 92 (−6 −2) | 100 % (16/16) | Sin cambios. |
+| Sin planos del inmueble | Respuesta explícita «No». | 100 (antes 98); observación para administración | 100 % (17/17) | Sin cambios. |
+| Documentación y planos pendientes | «No dispongo de documentación» y planos «No». | 94 (−6; antes 92); observación para administración | 100 % (16/16) | Sin cambios. |
 | Sin inmueble disponible | «No todavía»; sección legal N/A. | 100 | 100 % (13/13) | Sin incoherencias financieras detectadas. |
 | Mayor inversión y lujo | «Más de $150,000 USD» y «Exclusivo/lujo». | 100, sin bonificación | 100 % (17/17) | Sin incoherencias financieras detectadas. |
 | Financiamiento con plazo flexible | «Busca financiamiento»; inicio «3-6 meses». | 100 | 100 % (17/17) | Sin incoherencias financieras detectadas. |
@@ -238,12 +240,13 @@ Los límites de clasificación se conservan. La compatibilidad no es un promedio
 
 ## 11. Conclusión y solicitud de aprobación
 
-Se solicita a la dirección revisar y aprobar esta propuesta V3 (fórmula 3.2): el cálculo por causas, los valores conservados, las clasificaciones, el catálogo de información completada y el alcance orientativo de la evaluación financiera.
+Se solicita a la dirección revisar y aprobar esta propuesta V3 (fórmula 3.3): el cálculo por causas, los valores conservados, las clasificaciones, el catálogo de información completada y el alcance orientativo de la evaluación financiera.
 
 La consolidación mantiene:
 
 - la descripción como información válida sin peso por longitud;
-- las deducciones legales y de planos solo donde corresponden, nunca en un stand publicitario;
+- las deducciones legales solo donde corresponden, nunca en un stand publicitario, y los planos como observación sin puntos;
+- el tamaño desconocido como deducción solo cuando el cliente puede estimarlo;
 - los archivos y el enlace de referencia como material opcional que no resta;
 - los requisitos del stand como apoyo administrativo, que cuentan en información completada sin efecto en compatibilidad ni en coherencia financiera.
 
@@ -251,22 +254,27 @@ También conserva la distinción entre documentación declarada y verificada, as
 
 Esta propuesta **no constituye una aprobación de reglas nuevas**. Cualquier modificación posterior de pesos, incorporación de preguntas del stand a la puntuación o evaluación económica por tipo deberá quedar expresamente aprobada, documentada, versionada y comprobada antes de aplicarse.
 
-## 12. Propuestas pendientes de decisión
+## 12. Cambios de la versión 3.3
 
-Estas propuestas **no están implementadas**. Los valores actuales se mantienen hasta su aprobación.
+**Planos del inmueble.** Ya no restan. ARCA Studio puede realizar levantamientos o elaborar los planos, por lo que su ausencia no indica falta de preparación. Con inmueble disponible, administración ve una observación sin puntos:
 
-**Planos del inmueble (−2).** Hoy resta cuando hay inmueble disponible y no hay planos o no se respondió. ARCA Studio puede levantar o elaborar los planos, por lo que su ausencia suele ampliar el servicio más que indicar falta de preparación. Opciones:
+- con «No»: «El cliente no dispone de planos del inmueble. Durante la revisión inicial se deberá determinar si se requiere un levantamiento arquitectónico o la elaboración de planos»;
+- sin respuesta: «No se ha confirmado la disponibilidad de planos del inmueble. Se recomienda aclararlo durante la revisión inicial».
 
-1. **Recomendada:** dejar de restar y mostrar a administración un aviso de que se requiere levantamiento o elaboración de planos.
-2. Restar solo cuando se responde «No» y el inicio es «De inmediato» o «1-3 meses».
-3. Más adelante, preguntar si se trata de obra nueva o remodelación, o si se desea el servicio de planos.
+El cliente no ve estas observaciones. No afectan la información completada ni la coherencia financiera.
 
-**Tamaño del proyecto (−15).** Hoy resta igual en todos los tipos, incluido «Stand publicitario». Se propone no restar cuando el tamaño todavía no depende del cliente y conservar la deducción cuando el tamaño es conocible:
+**Tamaño del proyecto.** Conserva −15 solo cuando hay información suficiente para una estimación inicial razonable. Para un stand no basta con tener el espacio asignado: también deben estar disponibles sus medidas o plano.
 
-- stand cuyo espacio no está asignado o está en proceso;
-- stand sin medidas del espacio;
-- inmueble en adquisición o aún no disponible.
+| Caso con tamaño desconocido | 3.2 | 3.3 |
+| --- | ---: | ---: |
+| Residencial, comercial o corporativo con inmueble disponible | −15 | −15 |
+| Inmueble en adquisición o «No todavía» | −15 | 0 |
+| Stand con espacio asignado y medidas | −15 | −15 |
+| Stand con espacio asignado sin medidas o sin responder | −15 | 0 |
+| Stand con asignación en proceso o sin asignar | −15 | 0 |
 
-No se proponen equivalencias económicas entre las medidas de un stand y las de una obra.
+**Históricos.** Las evaluaciones 3.0, 3.1 y 3.2 conservan puntuación, nivel, motivos y versión; no se recalculan.
 
-El detalle técnico está en `docs/PROJECT_REQUEST_EVALUATION.md`, sección 18.
+**Pendiente para una fase posterior.** En los stands, los cruces de inversión con tamaño utilizan rangos en m² calibrados para obras; por ejemplo, un stand «Grande» con menos de USD 10.000 resta 25. No se modifica sin aprobación. Se propone definir rangos propios para stands, sin equivalencias entre m² de stands y de construcción.
+
+El detalle técnico está en `docs/PROJECT_REQUEST_EVALUATION.md`, sección 19.

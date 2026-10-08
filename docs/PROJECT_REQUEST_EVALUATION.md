@@ -2,7 +2,9 @@
 
 La propuesta administrativa para aprobación está en [Propuesta V3](../SISTEMA_PUNTUACION_SOLICITUDES.md). Esta referencia documenta los contratos y el comportamiento implementado; los pesos se conservan y su validación final corresponde a la dirección.
 
-> **Cómo leer este documento.** Describe la **regla de negocio** y su **implementación vigente, la fórmula `3.2`** (pesos de `3.0`, aplicabilidad del Stand publicitario corregida en `3.1` y referencias sin deducción desde `3.2`; ver secciones 17 y 18). La sección 13 registra el estado de cada discrepancia detectada en `v2.2` (D1–D9). Lo que todavía requiere una decisión humana figura en la sección 14 y no se completa con valores supuestos.
+> **Cómo leer este documento.** Describe la **regla de negocio** y su **implementación vigente, la fórmula `3.3`** (pesos de `3.0`; aplicabilidad del Stand publicitario corregida en `3.1`; referencias sin deducción desde `3.2`; planos sin deducción y tamaño condicionado a su estimabilidad desde `3.3`; ver secciones 17 a 19). La sección 13 registra el estado de cada discrepancia detectada en `v2.2` (D1–D9). Lo que todavía requiere una decisión humana figura en la sección 14 y no se completa con valores supuestos.
+
+> **Alcance de la compatibilidad.** La compatibilidad mide la preparación y coherencia de una solicitud preliminar. No constituye una evaluación técnica definitiva ni determina la aceptación del proyecto. La información será revisada por el administrador y el arquitecto antes de crear un proyecto. La información pendiente no indica falta de seriedad ni de compromiso del cliente.
 
 ---
 
@@ -12,7 +14,7 @@ Una solicitud se evalúa con **tres métricas independientes**:
 
 | Métrica | Qué responde | Estado |
 | --- | --- | --- |
-| **Compatibilidad** | ¿Lo respondido es claro, está preparado donde corresponde y es coherente? | Implementada (`3.2`). Se calcula y persiste al enviar. |
+| **Compatibilidad** | ¿Lo respondido es claro, está preparado donde corresponde y es coherente? | Implementada (`3.3`). Se calcula y persiste al enviar. |
 | **Información completada** | ¿Qué porcentaje de las preguntas aplicables se respondió? | Implementada. Se calcula al vuelo. |
 | **Viabilidad financiera** | ¿Las condiciones financieras declaradas son coherentes con el proyecto solicitado? | Implementada como coherencia orientativa: un estado sin porcentaje (sección 9). |
 
@@ -71,7 +73,7 @@ Más presupuesto = más compatibilidad   ← NO existe
 | **Informativa** | No afecta la compatibilidad. Sirve para contexto, contacto, personalización o revisión humana. |
 | **Condicional** | Solo se evalúa si otra respuesta hace que aplique. Si no aplica es N/A (sección 5). |
 
-### Matriz de preguntas (fórmula 3.2)
+### Matriz de preguntas (fórmula 3.3)
 
 | # | Pregunta | ¿Aplica siempre? | Obligatoria | Tipo | Efecto en compatibilidad | En “Información completada” |
 | ---: | --- | --- | --- | --- | --- | --- |
@@ -79,13 +81,13 @@ Más presupuesto = más compatibilidad   ← NO existe
 | 2 | Tipo de proyecto | Sí | Sí | Informativa | Ninguno (sin diferenciación económica aprobada) | Sí |
 | 3 | Ubicación del proyecto | Sí | Sí | Informativa | Ninguno | Sí |
 | 4 | Descripción del proyecto | Sí | Sí (30–100 caracteres) | Informativa | Ninguno: la longitud ya no puntúa | Sí |
-| 5 | Tamaño aproximado | Sí | No | Puntúa + coherencia | “No lo sé aún” o sin responder: `PROJECT_SIZE_UNDEFINED` (−15). Se cruza con la inversión. | Sí |
+| 5 | Tamaño aproximado | Sí | No | Puntúa + coherencia | “No lo sé aún” o sin responder: `PROJECT_SIZE_UNDEFINED` (−15) solo si el tamaño es estimable (inmueble disponible; en stands, espacio asignado con medidas). Se cruza con la inversión. | Sí |
 | 6 | ¿Cómo desea desarrollar el proyecto? | Sí | Sí | Puntúa + coherencia | “Por definir”: `EXECUTION_MODE_UNDEFINED` (−10, una vez aunque el inicio sea inmediato) | Sí |
 | 7 | ¿Tiene terreno o inmueble disponible? | Sí | Sí | Solo coherencia + controla aplicabilidad | Ninguno por sí solo. Se cruza con el plazo de inicio. | Sí |
 | 8 | Situación legal del inmueble | No | Sí, si #7 = “Sí, disponible” | Condicional (preparación) | En trámite −3 / no dispone −6 (`LEGAL_DOCUMENTATION_PENDING`) | Si aplica |
 | 9 | Documentación disponible | No | Sí, si #8 = disponible | Condicional · Informativa | Ninguno; la cantidad o el tipo no suman | Si aplica |
 | 10 | ¿Más de un propietario? | No | Sí, si #7 = “Sí, disponible” | Condicional · Informativa | Ninguno | Si aplica |
-| 11 | ¿Dispone de planos del lugar? | No | No | Condicional (preparación) | Sin planos: `BLUEPRINTS_UNAVAILABLE` (−2) | Si aplica |
+| 11 | ¿Dispone de planos del lugar? | No | No | Condicional · Informativa | Ninguno desde 3.3 (antes `BLUEPRINTS_UNAVAILABLE`, −2). «No» o sin respuesta generan una observación para administración sin puntos. | Si aplica |
 | 12 | Rango de inversión estimado | Sí | Sí | Puntúa + coherencia | No definido: `FINANCIAL_DEFINITION_INSUFFICIENT` (una sola deducción). Definido: solo coherencia. | Sí |
 | 13 | Disponibilidad del capital | Sí | Sí | Solo coherencia | Ninguno por sí solo. Se cruza con el plazo (`CAPITAL_TIMING_MISMATCH`). | Sí |
 | 14 | ¿Cuándo espera iniciar? | Sí | Sí | Solo coherencia | Ninguno por sí solo | Sí |
@@ -183,10 +185,10 @@ La severidad se declara por evidencia en el catálogo. Hoy coincide con la magni
 | `FINANCIAL_SCOPE_MISMATCH` | FINANCIAL | `veryLargeBudgetUnder10k` 35 H · `luxuryBudgetUnder10k` 30 H · `largeBudgetUnder10k` 25 H · `veryLargeBudget10k50k` 25 H · `premiumBudgetUnder10k` 20 H · `luxuryBudget10k50k` 20 H · `mediumBudgetUnder10k` 10 M | Máximo: 10–35 |
 | `CAPITAL_TIMING_MISMATCH` | TEMPORAL | `capitalUndefinedImmediate` 20 H · `financingImmediate` 15 M · `capitalWithin3MonthsImmediate` 10 M · `capitalUndefinedSoon` 10 M · `financingSoon` 8 L | 8–20 |
 | `PROPERTY_TIMING_MISMATCH` | TEMPORAL | `landUnavailableImmediate` 20 H · `landAcquiringImmediate` 10 M · `landUnavailableSoon` 10 M | 10–20 |
-| `PROJECT_SIZE_UNDEFINED` | SCOPE | `projectSizeUndefined` 15 M | 15 |
+| `PROJECT_SIZE_UNDEFINED` | SCOPE | `projectSizeUndefined` 15 M | 15, solo con tamaño estimable (3.3) |
 | `EXECUTION_MODE_UNDEFINED` | SCOPE | `developmentModeUndefined` 10 M · `modeUndefinedImmediate` 10 M | 10 |
 | `LEGAL_DOCUMENTATION_PENDING` | LEGAL | `legalDocumentationUnavailable` 6 L · `legalDocumentationInProcess` 3 L | 3–6 (solo con inmueble) |
-| `BLUEPRINTS_UNAVAILABLE` | INFORMATION | `blueprintsUnavailable` 2 L | 2 (solo con inmueble) |
+| `BLUEPRINTS_UNAVAILABLE` | INFORMATION | `blueprintsUnavailable` 2 L | **Retirada en 3.3**: solo se lee en evaluaciones 3.0–3.2 guardadas |
 | `REFERENCE_FILES_MISSING` | INFORMATION | `referenceFilesMissing` 5 L | **Retirada en 3.2**: solo se lee en evaluaciones 3.0/3.1 guardadas |
 | `REFERENCE_LINK_MISSING` | INFORMATION | `referenceLinkMissing` 2 L | **Retirada en 3.2**: solo se lee en evaluaciones 3.0/3.1 guardadas |
 
@@ -367,12 +369,12 @@ financialViability: {
 | Aspecto | Comportamiento |
 | --- | --- |
 | Momento del cálculo de compatibilidad | Al enviar (`submitProjectRequest`), desde las respuestas guardadas; desde 3.2 los adjuntos no participan. Se reevalúa en cada reenvío tras “Solicitar correcciones”. |
-| Persistencia | `compatibility_score`, `compatibility_level`, `compatibility_reason_codes` (todas las evidencias) y `compatibility_scoring_version = "3.2"` en los envíos nuevos. **Sin migración**: las columnas existentes admiten el nuevo contenido. |
+| Persistencia | `compatibility_score`, `compatibility_level`, `compatibility_reason_codes` (todas las evidencias) y `compatibility_scoring_version = "3.3"` en los envíos nuevos. **Sin migración**: las columnas existentes admiten el nuevo contenido. |
 | Completitud y viabilidad | Calculadas al vuelo en `toPublicProjectRequest` y en la cola técnica. No se persisten. |
-| Evaluaciones `3.0` y `3.1` | Conservan score, nivel, versión y motivos guardados; `findings` se reconstruye con el catálogo vigente más las evidencias retiradas (`referenceFilesMissing`, `referenceLinkMissing`). No se recalculan, aunque incluyan deducciones que 3.2 ya no aplica. |
+| Evaluaciones `3.0`, `3.1` y `3.2` | Conservan score, nivel, versión y motivos guardados; `findings` se reconstruye con el catálogo vigente más las evidencias retiradas (`referenceFilesMissing`, `referenceLinkMissing`, `blueprintsUnavailable`). No se recalculan, aunque incluyan deducciones que la versión vigente ya no aplica. |
 | Evaluaciones históricas (`1.x`, `2.x`) | Conservan score, nivel y observaciones; `findings` es `null`. No se recalculan. |
 | `ProjectRequest.compatibility` | `{score, level, observations, findings}` |
-| `WorkflowRequest` | `compatibility: {score, level}`, más `completeness` y `financialViability` |
+| `WorkflowRequest` | `compatibility: {score, level}`, más `completeness`, `financialViability` y `reviewObservations` (observaciones sin puntos, sección 19) |
 | `financialViability` | `{score: null, status, findings}` (sección 9.5), en `ProjectRequest` y en `WorkflowRequest` |
 | Seguridad | El esquema es `strict`: el frontend no puede enviar puntaje, nivel, versión, hallazgos ni presencia de archivos. |
 
@@ -393,9 +395,9 @@ financialViability: {
 
 ---
 
-## 11. Casos de ejemplo (fórmula 3.2)
+## 11. Casos de ejemplo (fórmula 3.3)
 
-Valores calculados con el motor real. Con el perfil común (que incluye archivo y enlace) los resultados no cambian respecto de 3.0; solo cambia el caso I.
+Valores calculados con el motor real. Con el perfil común (que incluye archivo, enlace, inmueble disponible y planos) los resultados no cambian respecto de 3.0; solo cambia el caso I. Los cambios de 3.3 se muestran en la sección 19.
 
 **Perfil común:**
 
@@ -604,7 +606,7 @@ La subida máxima es de 7 puntos y solo afecta a solicitudes sin referencias. Al
 
 Las evaluaciones nuevas se guardan como `3.2`. Las 1.x/2.x conservan su comportamiento. Las 3.0, 3.1 y 3.2 reconstruyen hallazgos, incluidos los motivos retirados, sin recalcular puntuación ni nivel. Un reenvío tras correcciones se evalúa con 3.2.
 
-### 18.4. Propuesta: planos del inmueble (sin implementar)
+### 18.4. Propuesta: planos del inmueble (implementada en 3.3, sección 19)
 
 **Estado actual.** `BLUEPRINTS_UNAVAILABLE` resta 2 cuando el inmueble aplica y está disponible y los planos están en «No» o sin responder. No aplica sin inmueble ni en stands.
 
@@ -621,7 +623,7 @@ Las evaluaciones nuevas se guardan como `3.2`. Las 1.x/2.x conservan su comporta
 2. Conservar −2 solo con «No» explícito e inicio «De inmediato» o «1–3 meses», como cruce temporal. Sería una condición nueva sobre un peso existente.
 3. A futuro, con aprobación: preguntar el tipo de intervención o si se desea el servicio de planos, y aplicar la regla solo a remodelaciones.
 
-### 18.5. Propuesta: tamaño del proyecto (sin implementar)
+### 18.5. Propuesta: tamaño del proyecto (implementada con ajustes en 3.3, sección 19)
 
 **Aplicabilidad verificada.** `PROJECT_SIZE_UNDEFINED` (−15) aplica igual a todos los tipos, incluido Stand publicitario, tanto con «No lo sé aún» como sin respuesta. Hay pruebas en `projectRequestScoringV32.test.js`.
 
@@ -649,3 +651,93 @@ Las evaluaciones nuevas se guardan como `3.2`. Las 1.x/2.x conservan su comporta
 - envío sin consultar adjuntos.
 
 `projectRequestScoring.test.js` se actualizó para la versión 3.2 y para la ausencia de deducción por referencias.
+
+## 19. Fase 3 — planos y tamaño del proyecto (fórmula 3.3)
+
+**Principio.** El formulario registra una solicitud preliminar, no un proyecto técnico definitivo. Administración y arquitectura aclaran la información pendiente después del envío. La puntuación no mide la seriedad del cliente, no aprueba ni rechaza y no bloquea el envío.
+
+### 19.1. Catálogo actualizado
+
+| Causa | 3.2 | 3.3 |
+| --- | --- | --- |
+| `BLUEPRINTS_UNAVAILABLE` (`blueprintsUnavailable`) | −2 con inmueble disponible y planos «No» o sin responder | **Retirada.** Se conserva en `RETIRED_EVIDENCE_RULES` para leer evaluaciones 3.0–3.2. Su función pasa a observaciones sin puntos (19.2). |
+| `PROJECT_SIZE_UNDEFINED` (`projectSizeUndefined`) | −15 con tamaño «No lo sé aún» o sin responder, en todos los tipos | −15 solo si el tamaño es **estimable** (`canEstimateProjectSize`); en otro caso, 0. Mismo identificador, una sola regla y una sola deducción. |
+| `REFERENCE_FILES_MISSING`, `REFERENCE_LINK_MISSING` | Retiradas en 3.2 | Siguen retiradas. |
+| Inversión sin definir, desajuste inversión–alcance, capital frente al inicio, modalidad sin definir, documentación legal, inmueble frente al inicio | Sin cambios | Sin cambios. |
+
+**Tamaño estimable.**
+
+| Tipo | Condición para restar −15 con tamaño desconocido |
+| --- | --- |
+| Residencial, Comercial, Corporativo y el tipo histórico «Stands y exhibiciones» | Inmueble disponible («Sí, disponible»). En adquisición o «No todavía»: 0. |
+| Stand publicitario | Espacio asignado **y** medidas o plano del espacio disponibles. Sin medidas, sin respuesta sobre medidas, asignación en proceso, sin asignar o sin bloque guardado: 0. |
+
+Decisiones documentadas:
+
+- **Tipo histórico.** `stands_exhibitions` sigue la regla del inmueble porque su contrato conserva la pregunta del terreno. No se reclasifica como Stand publicitario.
+- **Tamaño sin responder.** Un tamaño sin responder se trata igual que «No lo sé aún» para la compatibilidad, como en versiones anteriores. En información completada, «No lo sé aún» cuenta como respondida y la ausencia como incompleta, sin cambios.
+- **Mayor tamaño.** Un tamaño mayor nunca suma puntos ni se interpreta como falta de preparación.
+
+### 19.2. Observaciones para la revisión (sin puntos)
+
+El modelo de hallazgos de compatibilidad no admite hallazgos sin deducción sin efectos secundarios: cada hallazgo se persiste en `compatibility_reason_codes` y sus tres primeras explicaciones se muestran al cliente. Por eso se creó una representación explícita en `Backend/src/domain/projectRequestReviewObservations.js`.
+
+| Código | Cuándo aparece | Texto |
+| --- | --- | --- |
+| `propertyBlueprintsUnavailable` | Inmueble aplicable y disponible, planos «No» | «El cliente no dispone de planos del inmueble. Durante la revisión inicial se deberá determinar si se requiere un levantamiento arquitectónico o la elaboración de planos». |
+| `propertyBlueprintsUnconfirmed` | Inmueble aplicable y disponible, planos sin responder | «No se ha confirmado la disponibilidad de planos del inmueble. Se recomienda aclararlo durante la revisión inicial». |
+
+Características de las observaciones:
+
+- No restan puntos ni modifican la coherencia financiera.
+- No alteran la información completada: la pregunta de planos sigue su regla de completitud.
+- No son riesgos financieros y no bloquean el envío.
+- No aparecen sin inmueble ni en stands.
+- Se calculan al vuelo, no se persisten y se exponen solo en la cola técnica (`WorkflowRequest.reviewObservations: [{code, explanation}]`).
+- El drawer administrativo las muestra en «Observaciones para la revisión», solo cuando hay alguna. El cliente no las recibe.
+- Al derivarse de las respuestas, también aparecen en solicitudes evaluadas con versiones anteriores, sin modificar su compatibilidad guardada.
+
+### 19.3. Escenarios antes y después (motor real)
+
+Perfil: residencial pequeño, coherente, inversión USD 10.000–50.000, capital disponible, inicio a más de 6 meses. En los stands, espacio asignado con medidas salvo que se indique otra cosa.
+
+| Escenario | 3.2 | 3.3 |
+| --- | --- | --- |
+| Inmueble disponible, planos «No» | 98 | 100 + observación |
+| Inmueble disponible, planos sin responder | 98 | 100 + observación |
+| Residencial con inmueble disponible, tamaño desconocido | 85 | 85 |
+| Ídem, sin planos | 83 | 85 + observación |
+| Residencial en adquisición, tamaño desconocido | 85 | 100 |
+| Residencial sin inmueble, tamaño desconocido | 85 | 100 |
+| Stand con espacio asignado y medidas, tamaño desconocido | 85 | 85 |
+| Stand con espacio asignado sin medidas, tamaño desconocido | 85 | 100 |
+| Stand con asignación en proceso o sin asignar, tamaño desconocido | 85 | 100 |
+| Sin inmueble, tamaño desconocido, capital indefinido e inicio inmediato | 45 · Media | 60 · Buena |
+
+### 19.4. Integridad histórica
+
+- Las evaluaciones nuevas se guardan como `3.3`.
+- Las 3.0, 3.1 y 3.2 conservan puntuación, nivel, evidencias, observaciones y versión.
+- `publicCompatibility` reconstruye sus hallazgos, incluidos los retirados, sin recalcular.
+- No hay migraciones ni transformación de datos. Un reenvío tras correcciones se evalúa con 3.3.
+
+### 19.5. Revisión de reglas económicas en stands (propuesta para una fase posterior)
+
+En stands no se aplican reglas del inmueble: la sección legal y el inmueble frente al inicio son N/A desde 3.1. Sin embargo, `FINANCIAL_SCOPE_MISMATCH` y los agravantes de `FINANCIAL_DEFINITION_INSUFFICIENT` cruzan los rangos de tamaño en m² con rangos de inversión calibrados para obras. Por ejemplo, un stand «Grande (200-500 m²)» con menos de USD 10.000 resta 25. La coherencia financiera usa la misma matriz.
+
+No se modifica en esta fase. Se propone revisarlo con rangos propios de stands aprobados por la dirección, sin equivalencias entre m² de stands y de construcción.
+
+### 19.6. Pruebas
+
+`Backend/tests/projectRequestScoringV33.test.js` cubre:
+
+- planos en todos sus estados y aplicabilidades;
+- observaciones sin puntos y lectura histórica de `blueprintsUnavailable`;
+- tamaño por tipo y por estado del inmueble o del espacio, y la estimabilidad en todas las combinaciones;
+- causas simultáneas;
+- históricos 3.0–3.2;
+- completitud de stands;
+- coherencia financiera;
+- cola administrativa y envío con versión 3.3.
+
+En el frontend, `adminRequestDetails.test.js` y `tests/browser/projectRequestWorkflow.test.js` verifican la presentación y la ausencia de la sección cuando no aplica. Las validaciones, el cambio de tipo y la limpieza condicional siguen cubiertos por las suites de la fase 1.

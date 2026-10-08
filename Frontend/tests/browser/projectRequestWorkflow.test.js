@@ -387,6 +387,32 @@ test("Drawer admin: conserva los requisitos declarados del stand y distingue otr
   assert.equal(mutations.length, 0);
 });
 
+test("Drawer admin: muestra las observaciones sin puntos para la revisión inicial solo si aplican", async (context) => {
+  const explanation = "El cliente no dispone de planos del inmueble. Durante la revisión inicial se deberá determinar si se requiere un levantamiento arquitectónico o la elaboración de planos.";
+  const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [{
+    ...REQUEST, clientId: 2, requestedBy: 41, projectType: "residential", compatibility: { score: 100, level: "excellent" },
+    reviewObservations: [{ code: "propertyBlueprintsUnavailable", explanation }],
+  }] });
+  const drawer = await openClientDetails(page);
+  const list = drawer.getByRole("list", { name: "Observaciones para la revisión inicial" });
+  await list.getByText(explanation, { exact: true }).waitFor();
+  // La observación no altera la compatibilidad mostrada.
+  await drawer.getByText("Score general: 100/100", { exact: true }).waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  assert.equal(await drawer.locator('[data-admin-request-details="true"]').evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+  assert.equal(mutations.length, 0);
+});
+
+test("Drawer admin: sin observaciones aplicables no muestra la sección", async (context) => {
+  const { page } = await openPage(context, { role: "admin", realDashboard: true, queue: [{
+    ...REQUEST, clientId: 2, requestedBy: 41, projectType: "advertising_stand", reviewObservations: [],
+    standRequirements: { requirementsStatus: null, documentTypes: [], spaceStatus: "assigned", hasSpacePlans: null },
+  }] });
+  const drawer = await openClientDetails(page);
+  await drawer.getByText("Stand publicitario", { exact: true }).waitFor();
+  assert.equal(await drawer.getByRole("list", { name: "Observaciones para la revisión inicial" }).count(), 0);
+});
+
 test("Drawer admin: conserva el tipo histórico retirado sin convertirlo ni pedir requisitos", async (context) => {
   const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [{
     ...REQUEST, clientId: 2, requestedBy: 41, projectType: "stands_exhibitions", standRequirements: null,

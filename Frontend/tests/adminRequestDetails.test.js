@@ -232,3 +232,17 @@ test("la navegación por teclado del menú es circular y admite Home/End", () =>
   assert.equal(getNextActionMenuIndex("Enter", 0, 3), -1);
   assert.equal(getNextActionMenuIndex("ArrowDown", -1, 0), -1);
 });
+
+test("observaciones para la revisión: sin puntos, normalizadas y nulas sin cola técnica", () => {
+  const observations = [
+    { code: "propertyBlueprintsUnavailable", explanation: "El cliente no dispone de planos del inmueble." },
+    { code: "", explanation: "sin código" },
+    null,
+  ];
+  const details = buildAdminRequestDetails({ summary: { id: 1 }, queueRequest: { id: 1, reviewObservations: observations } });
+  assert.deepEqual(details.reviewObservations, [{ code: "propertyBlueprintsUnavailable", explanation: "El cliente no dispone de planos del inmueble." }]);
+  assert.deepEqual(buildAdminRequestDetails({ summary: { id: 1 }, queueRequest: { id: 1, reviewObservations: [] } }).reviewObservations, []);
+  // Respuestas anteriores de la API (sin el campo) o sin cola técnica no inventan observaciones.
+  assert.equal(buildAdminRequestDetails({ summary: { id: 1 }, queueRequest: { id: 1 } }).reviewObservations, null);
+  assert.equal(buildAdminRequestDetails({ summary: { id: 1 } }).reviewObservations, null);
+});

@@ -51,13 +51,13 @@ function scoreWith(values) {
   return evaluateProjectCompatibility({ ...COMPLETE_PROJECT, ...values }).score;
 }
 
-test("a complete, prepared and coherent request receives 100 points in version 3.2", () => {
+test("a complete, prepared and coherent request receives 100 points in version 3.3", () => {
   assert.deepEqual(evaluateProjectCompatibility(COMPLETE_PROJECT), {
     findings: [],
     level: "excellent",
     reasonCodes: [],
     score: 100,
-    version: "3.2",
+    version: "3.3",
   });
 });
 
@@ -77,8 +77,9 @@ test("caso B: with property the legal section participates without favoring docu
   assert.equal(scoreWith({ legalDocumentationStatus: "unavailable", legalDocumentTypes: [] }), 94);
   // Sin selección falta una declaración válida (el motor no depende de Zod, D3).
   assert.equal(scoreWith({ legalDocumentTypes: [] }), 94);
-  assert.equal(scoreWith({ hasPlans: false }), 98);
-  assert.equal(scoreWith({ hasPlans: null }), 98);
+  // 3.3: los planos del inmueble ya no restan (se informan a administración sin puntos).
+  assert.equal(scoreWith({ hasPlans: false }), 100);
+  assert.equal(scoreWith({ hasPlans: null }), 100);
 
   const result = evaluateProjectCompatibility({
     ...COMPLETE_PROJECT,
@@ -90,7 +91,6 @@ test("caso B: with property the legal section participates without favoring docu
     result.findings.map(({ category, code, severity }) => ({ category, code, severity })),
     [
       { category: "LEGAL", code: "LEGAL_DOCUMENTATION_PENDING", severity: "LOW" },
-      { category: "INFORMATION", code: "BLUEPRINTS_UNAVAILABLE", severity: "LOW" },
     ],
   );
 });
@@ -291,18 +291,19 @@ test("all evidence is kept even when more than three findings exist (D9)", () =>
     referenceLink: null,
     startTime: "immediate",
   });
-  // 3.2: sin archivos ni enlace ya no restan; 20 + 10 + 30 + 15 + 20 = 95.
-  assert.equal(result.score, 5);
-  assert.equal(result.level, "poorly_defined");
-  assert.equal(result.findings.length, 5);
-  assert.equal(result.reasonCodes.length, 6);
+  // 3.2: sin archivos ni enlace no restan; 3.3: sin inmueble el tamaño no es estimable.
+  // 20 (capital) + 10 (modalidad) + 30 (lujo) + 20 (inmueble frente al inicio) = 80.
+  assert.equal(result.score, 20);
+  assert.equal(result.level, "low");
+  assert.equal(result.findings.length, 4);
+  assert.equal(result.reasonCodes.length, 5);
   for (const finding of result.findings) {
     assert.ok(["LOW", "MEDIUM", "HIGH"].includes(finding.severity), finding.code);
     assert.ok(finding.explanation, finding.code);
   }
 
   const publicResult = publicCompatibility(result);
-  assert.equal(publicResult.findings.length, 5);
+  assert.equal(publicResult.findings.length, 4);
   assert.equal(publicResult.observations.length, 3);
   assert.deepEqual(
     publicResult.observations,

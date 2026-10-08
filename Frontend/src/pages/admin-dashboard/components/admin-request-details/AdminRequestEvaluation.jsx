@@ -18,6 +18,7 @@ const RECOMMENDATION_ICONS = {
  * justificación de la última revisión técnica, sin derivarlas del workflow.
  * Sin score, la viabilidad muestra su estado de coherencia, una aclaración y los motivos,
  * nunca una barra ni un porcentaje; "sin incoherencias" no se presenta como aprobación.
+ * Las observaciones para la revisión son avisos sin puntos y solo aparecen cuando aplican.
  * `unavailableText` se usa cuando la solicitud no llegó en la cola técnica.
  *
  * @param {Object} props - Modelo de `buildAdminRequestDetails`.
@@ -25,7 +26,7 @@ const RECOMMENDATION_ICONS = {
  * @returns {import("react").ReactElement} Sección de evaluación.
  */
 function AdminRequestEvaluation({ details }) {
-  const { compatibility, completeness, financialViability, isPartial, justification, recommendation } = details;
+  const { compatibility, completeness, financialViability, isPartial, justification, recommendation, reviewObservations } = details;
   const unavailableText = "Información no disponible";
   const recommendationIcon = RECOMMENDATION_ICONS[recommendation?.value];
 
@@ -106,6 +107,19 @@ function AdminRequestEvaluation({ details }) {
           <RequestDetailField label="Información completada">{unavailableText}</RequestDetailField>
         </dl>
       )}
+
+      {/* Avisos sin puntos para aclarar en la revisión inicial; solo se muestran si aplican. */}
+      {reviewObservations?.length ? (
+        <dl className="m-0" data-metric="review-observations">
+          <RequestDetailField label="Observaciones para la revisión">
+            <ul className="text-body-3 m-0 flex list-disc flex-col gap-[4px] pl-[20px]" aria-label="Observaciones para la revisión inicial">
+              {reviewObservations.map((observation) => (
+                <li key={observation.code} data-code={observation.code}>{observation.explanation}</li>
+              ))}
+            </ul>
+          </RequestDetailField>
+        </dl>
+      ) : null}
 
       <dl className="m-0 flex flex-col gap-[24px]">
         <RequestDetailField label="Recomendación">

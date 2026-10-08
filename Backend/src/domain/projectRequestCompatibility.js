@@ -1,7 +1,11 @@
-import { hasApplicableProperty, requiresPropertyAvailability } from "./projectRequest.js";
+import { canEstimateProjectSize, hasApplicableProperty, requiresPropertyAvailability } from "./projectRequest.js";
 
 /*
- * Motor de compatibilidad de Solicitud de Proyecto (fórmula 3.2).
+ * Motor de compatibilidad de Solicitud de Proyecto (fórmula 3.3).
+ *
+ * Mide la preparación y coherencia de una solicitud preliminar. No es una evaluación técnica
+ * definitiva ni decide la aceptación: administración y arquitectura revisan la información
+ * antes de crear un proyecto.
  *
  * Compatibilidad = 100 − Σ deducción de cada hallazgo, limitada a 0–100.
  *
@@ -25,13 +29,18 @@ import { hasApplicableProperty, requiresPropertyAvailability } from "./projectRe
  * son material complementario opcional y su ausencia no indica falta de preparación ni
  * incoherencia. Sus códigos se conservan en `RETIRED_EVIDENCE_RULES` solo para leer las
  * evaluaciones guardadas. Las demás reglas, pesos y umbrales no cambian.
+ *
+ * 3.3 retira la deducción por planos del inmueble (−2): ARCA Studio puede levantarlos o
+ * elaborarlos, por lo que su ausencia se informa a administración sin puntos (ver
+ * `projectRequestReviewObservations.js`). El tamaño desconocido conserva −15 solo cuando el
+ * cliente puede estimarlo (`canEstimateProjectSize`); en otro caso es información pendiente.
  */
 
-export const COMPATIBILITY_SCORING_VERSION = "3.2";
+export const COMPATIBILITY_SCORING_VERSION = "3.3";
 
 // Versiones con el catálogo de evidencias 3.x: sus códigos (vigentes o retirados) permiten
 // reconstruir hallazgos. Las evaluaciones guardadas se muestran tal como se calcularon.
-const FINDINGS_SCORING_VERSIONS = Object.freeze(["3.0", "3.1", COMPATIBILITY_SCORING_VERSION]);
+const FINDINGS_SCORING_VERSIONS = Object.freeze(["3.0", "3.1", "3.2", COMPATIBILITY_SCORING_VERSION]);
 
 export const FINDING_CATEGORIES = Object.freeze({
   CONSISTENCY: "CONSISTENCY",
@@ -52,6 +61,7 @@ const SEVERITY_RANK = { HIGH: 3, LOW: 1, MEDIUM: 2 };
 
 // Causa → categoría. Cada causa produce como máximo un hallazgo y una deducción.
 const FINDING_CAUSE_CATEGORIES = Object.freeze({
+  // Retirada en 3.3: solo aparece al leer evaluaciones 3.0–3.2 guardadas.
   BLUEPRINTS_UNAVAILABLE: FINDING_CATEGORIES.INFORMATION,
   CAPITAL_TIMING_MISMATCH: FINDING_CATEGORIES.TEMPORAL,
   EXECUTION_MODE_UNDEFINED: FINDING_CATEGORIES.SCOPE,
@@ -154,15 +164,15 @@ const { HIGH, LOW, MEDIUM } = FINDING_SEVERITIES;
  * la misma deducción dentro de una causa. `points` conserva el peso existente en v2.2.
  */
 const COMPATIBILITY_EVIDENCE_RULES = Object.freeze([
-  // SCOPE: definición del alcance. El material de referencia no puntúa desde 3.2.
-  { cause: "PROJECT_SIZE_UNDEFINED", code: "projectSizeUndefined", points: 15, severity: MEDIUM, when: { projectSize: "unknown" } },
+  // SCOPE: definición del alcance. El material de referencia no puntúa desde 3.2. El tamaño
+  // desconocido solo resta si el cliente puede estimarlo (3.3); una sola regla, una deducción.
+  { cause: "PROJECT_SIZE_UNDEFINED", code: "projectSizeUndefined", points: 15, severity: MEDIUM, when: { canEstimateSize: true, projectSize: "unknown" } },
   { cause: "EXECUTION_MODE_UNDEFINED", code: "developmentModeUndefined", points: 10, severity: MEDIUM, when: { developmentMode: "undecided" } },
   { cause: "EXECUTION_MODE_UNDEFINED", code: "modeUndefinedImmediate", points: 10, severity: MEDIUM, when: { developmentMode: "undecided", startTime: "immediate" } },
 
-  // LEGAL / INFORMATION: solo con inmueble disponible; en otro caso son N/A.
+  // LEGAL: solo con inmueble disponible; en otro caso es N/A. Los planos no puntúan desde 3.3.
   { cause: "LEGAL_DOCUMENTATION_PENDING", code: "legalDocumentationUnavailable", points: 6, severity: LOW, when: { hasProperty: true, legalDocumentationStatus: "unavailable" } },
   { cause: "LEGAL_DOCUMENTATION_PENDING", code: "legalDocumentationInProcess", points: 3, severity: LOW, when: { hasProperty: true, legalDocumentationStatus: "in_process" } },
-  { cause: "BLUEPRINTS_UNAVAILABLE", code: "blueprintsUnavailable", points: 2, severity: LOW, when: { hasPlans: false, hasProperty: true } },
 
   // FINANCIAL: inversión no definida. El faltante y sus agravantes son una sola causa.
   { cause: "FINANCIAL_DEFINITION_INSUFFICIENT", code: "investmentRangeUndefined", points: 15, severity: MEDIUM, when: { investmentRange: "undefined" } },
@@ -194,13 +204,14 @@ const COMPATIBILITY_EVIDENCE_RULES = Object.freeze([
 ].map((rule) => Object.freeze({ ...rule, when: Object.freeze(rule.when) })));
 
 /*
- * Evidencias retiradas: el motor ya no las detecta, pero las evaluaciones 3.0 y 3.1 guardadas
- * las contienen. Conservan su causa, severidad y peso histórico para reconstruir esos
- * hallazgos tal como se calcularon. No tienen `when` porque nunca se evalúan.
+ * Evidencias retiradas: el motor ya no las detecta, pero las evaluaciones anteriores a
+ * `retiredIn` las contienen. Conservan su causa, severidad y peso histórico para reconstruir
+ * esos hallazgos tal como se calcularon. No tienen `when` porque nunca se evalúan.
  */
 const RETIRED_EVIDENCE_RULES = Object.freeze([
   { cause: "REFERENCE_FILES_MISSING", code: "referenceFilesMissing", points: 5, retiredIn: "3.2", severity: LOW },
   { cause: "REFERENCE_LINK_MISSING", code: "referenceLinkMissing", points: 2, retiredIn: "3.2", severity: LOW },
+  { cause: "BLUEPRINTS_UNAVAILABLE", code: "blueprintsUnavailable", points: 2, retiredIn: "3.3", severity: LOW },
 ].map(Object.freeze));
 
 const EVIDENCE_BY_CODE = new Map(
@@ -258,9 +269,9 @@ export function compatibilityLevel(score) {
 }
 
 /**
- * Normaliza las respuestas guardadas en hechos comparables; las opciones ausentes son "sin definir".
- * Anula los datos del inmueble si no aplica o no está disponible, y `landStatus` en un Stand
- * publicitario (un borrador anterior pudo guardarlo), para que sus reglas sean N/A.
+ * Normaliza las respuestas guardadas en hechos comparables (ausentes = "sin definir") e indica si
+ * el tamaño es estimable. Anula los datos del inmueble si no aplica o no está disponible, y
+ * `landStatus` en un Stand publicitario (un borrador anterior pudo guardarlo): sus reglas son N/A.
  *
  * @param {object} input - Registro de la solicitud.
  * @returns {object} Hechos normalizados usados por las reglas.
@@ -277,9 +288,9 @@ function toCompatibilityFacts(input) {
       : input.legalDocumentationStatus ?? "unavailable";
   }
   return {
+    canEstimateSize: canEstimateProjectSize(input),
     capitalAvailability: input.capitalAvailability ?? "undefined",
     developmentMode: input.developmentMode ?? "undecided",
-    hasPlans: hasProperty ? input.hasPlans === true : null,
     hasProperty,
     investmentRange: input.investmentRange ?? "undefined",
     landStatus: requiresPropertyAvailability(input.projectType) ? input.landStatus ?? null : null,

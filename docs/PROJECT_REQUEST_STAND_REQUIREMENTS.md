@@ -50,7 +50,7 @@ Las cuatro preguntas cuentan en información completada:
 
 No cambian puntos, pesos, niveles ni la coherencia financiera.
 
-Como el resultado de los stands nuevos cambia, esta corrección se publicó como fórmula `3.1` (vigente hoy en `3.2`, que además retira las deducciones por referencias). Las evaluaciones guardadas conservan puntuación, nivel, versión y motivos. Un stand sin bloque guardado no recibe respuestas ficticias: sus preguntas quedan N/A. Detalle y ejemplos en la [referencia de evaluación](PROJECT_REQUEST_EVALUATION.md), sección 17.
+Como el resultado de los stands nuevos cambia, esta corrección se publicó como fórmula `3.1` (vigente hoy en `3.3`; `3.2` retiró las deducciones por referencias y `3.3` la de planos). Las evaluaciones guardadas conservan puntuación, nivel, versión y motivos. Un stand sin bloque guardado no recibe respuestas ficticias: sus preguntas quedan N/A. Detalle y ejemplos en la [referencia de evaluación](PROJECT_REQUEST_EVALUATION.md), sección 17.
 
 ## Validación
 

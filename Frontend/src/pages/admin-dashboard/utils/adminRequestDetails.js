@@ -25,6 +25,22 @@ export function getLatestRequestReview(reviews) {
 }
 
 /**
+ * Normaliza las observaciones sin puntos que la API calcula para la revisión inicial.
+ * Descarta entradas incompletas; sin cola técnica devuelve null para no mostrar una lista vacía
+ * como si se hubiera confirmado que no hay observaciones.
+ *
+ * @param {Array<{code?: string, explanation?: string}>|undefined} observations - Observaciones de la cola.
+ * @param {boolean} isPartial - Si la solicitud no llegó en la cola técnica.
+ * @returns {Array<{code: string, explanation: string}>|null} Observaciones para la vista.
+ */
+export function getReviewObservationsPresentation(observations, isPartial) {
+  if (isPartial || !Array.isArray(observations)) return null;
+  return observations
+    .filter((observation) => observation?.code && observation?.explanation)
+    .map(({ code, explanation }) => ({ code, explanation }));
+}
+
+/**
  * Construye el modelo del drawer "Detalles de Solicitud" combinando el resumen del overview
  * administrativo con la entrada de la cola técnica (ubicación, compatibilidad, revisiones).
  * Si la solicitud no está en la primera página de la cola, `isPartial` indica que faltan
@@ -60,6 +76,7 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     standRequirements: queueRequest?.standRequirements ?? null,
     projectTypeLabel: getProjectTypeLabel(source.projectType, "Sin tipo registrado"),
     recommendation: getMeetingRecommendationPresentation(latestReview?.meetingRecommendation),
+    reviewObservations: getReviewObservationsPresentation(queueRequest?.reviewObservations, !queueRequest),
     reviewerName: latestReview?.reviewer?.name || null,
     status: { label: status.label, theme: status.badgeTheme },
   };

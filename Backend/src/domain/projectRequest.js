@@ -108,6 +108,22 @@ export function hasApplicableProperty(answers) {
 }
 
 /**
+ * Indica si el cliente puede estimar el tamaño: solo entonces el tamaño desconocido puede restar.
+ * Stand publicitario: espacio asignado y medidas o plano disponibles (tener espacio no garantiza
+ * conocer sus dimensiones). Demás tipos, incluidos los históricos: inmueble aplicable y disponible.
+ *
+ * @param {{landStatus?: string|null, projectType?: string|null, standRequirements?: object|null}|null|undefined} answers - Respuestas de la solicitud.
+ * @returns {boolean} true cuando una estimación inicial razonable es exigible.
+ */
+export function canEstimateProjectSize(answers) {
+  if (isAdvertisingStand(answers?.projectType)) {
+    const requirements = answers?.standRequirements;
+    return requirements?.spaceStatus === "assigned" && requirements?.hasSpacePlans === true;
+  }
+  return hasApplicableProperty(answers);
+}
+
+/**
  * Indica si la situación legal declarada habilita la lista de documentos disponibles.
  * La lista solo aplica cuando el inmueble aplica, está disponible y la documentación existe.
  *

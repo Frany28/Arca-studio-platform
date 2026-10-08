@@ -35,9 +35,9 @@ const STAND = Object.freeze({
 const REFERENCES = Object.freeze({ hasFiles: true, referenceLink: "https://example.test/referencia" });
 const RETIRED_CODES = ["referenceFilesMissing", "referenceLinkMissing"];
 
-test("versión: las evaluaciones nuevas se identifican como 3.2", () => {
-  assert.equal(COMPATIBILITY_SCORING_VERSION, "3.2");
-  assert.equal(evaluateProjectCompatibility(RESIDENTIAL).version, "3.2");
+// El retiro de referencias de 3.2 se mantiene en las versiones posteriores.
+test("versión: las evaluaciones nuevas usan la versión vigente", () => {
+  assert.equal(evaluateProjectCompatibility(RESIDENTIAL).version, COMPATIBILITY_SCORING_VERSION);
 });
 
 test("1–2. con o sin archivos y enlace la compatibilidad es la misma y no aparecen sus causas", () => {
@@ -85,28 +85,8 @@ test("5. stand con preguntas pendientes: baja la información completada, no la 
   assert.equal(evaluateProjectCompatibility(pending).score, 100);
 });
 
-test("6. tamaño sin definir conserva −15 en todos los tipos, sin respuesta o con «No lo sé aún»", () => {
-  for (const base of [RESIDENTIAL, WITH_PROPERTY, STAND, { ...RESIDENTIAL, projectType: "commercial" }, { ...RESIDENTIAL, projectType: "corporate" }]) {
-    for (const projectSize of ["unknown", null]) {
-      const evaluation = evaluateProjectCompatibility({ ...base, projectSize });
-      assert.equal(evaluation.score, 85, `${base.projectType}/${projectSize}`);
-      assert.deepEqual(evaluation.findings.map(({ code }) => code), ["PROJECT_SIZE_UNDEFINED"]);
-    }
-  }
-  // «No lo sé aún» cuenta como respondida; sin respuesta queda incompleta.
-  assert.equal(evaluateProjectRequestCompleteness({ ...RESIDENTIAL, projectSize: "unknown" }).score, 100);
-  assert.deepEqual(evaluateProjectRequestCompleteness({ ...RESIDENTIAL, projectSize: null }).missingFields, ["projectSize"]);
-});
-
-test("7. sin planos conserva −2 solo con inmueble aplicable y disponible", () => {
-  for (const hasPlans of [false, null]) {
-    const evaluation = evaluateProjectCompatibility({ ...WITH_PROPERTY, hasPlans });
-    assert.equal(evaluation.score, 98, String(hasPlans));
-    assert.deepEqual(evaluation.findings.map(({ code }) => code), ["BLUEPRINTS_UNAVAILABLE"]);
-  }
-  assert.equal(evaluateProjectCompatibility({ ...RESIDENTIAL, hasPlans: false }).score, 100);
-  assert.equal(evaluateProjectCompatibility({ ...STAND, hasPlans: false }).score, 100);
-});
+// 6–7. Tamaño sin definir y planos: sus reglas cambiaron en 3.3 y se prueban en
+// projectRequestScoringV33.test.js.
 
 test("8. varias evidencias de una misma causa descuentan una sola vez", () => {
   const scope = evaluateProjectCompatibility({ ...RESIDENTIAL, investmentRange: "under_10k", projectSize: "very_large_gt_500", quality: "luxury" });
@@ -175,7 +155,7 @@ test("11. información completada sin regresiones: referencias excluidas y conte
   for (const [answers, applicable] of counts) assert.equal(evaluateProjectRequestCompleteness(answers).applicable, applicable);
 });
 
-test("envío: evalúa 3.2 sin consultar el uso de archivos ni restar por su ausencia", async (context) => {
+test("envío: evalúa con la versión vigente sin consultar el uso de archivos ni restar por su ausencia", async (context) => {
   const statements = [];
   let evaluationValues;
   const row = {
@@ -199,6 +179,6 @@ test("envío: evalúa 3.2 sin consultar el uso de archivos ni restar por su ause
   assert.ok(!statements.some((sql) => /as file_count/.test(sql)));
   assert.equal(evaluationValues[3], 100);
   assert.equal(evaluationValues[5], "[]");
-  assert.equal(evaluationValues[6], "3.2");
+  assert.equal(evaluationValues[6], COMPATIBILITY_SCORING_VERSION);
   assert.deepEqual(result.compatibility, { findings: [], level: "excellent", observations: [], score: 100 });
 });

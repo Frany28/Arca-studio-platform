@@ -130,10 +130,10 @@ test("stand con preguntas opcionales sin responder: quedan incompletas sin deduc
     ],
     score: 60,
   });
-  // Solo descuenta la causa vigente de tamaño sin definir (−15); el stand no añade causas.
+  // Sin medidas confirmadas el tamaño no es estimable (3.3): ninguna causa resta.
   const compatibility = evaluateProjectCompatibility(answers);
-  assert.equal(compatibility.score, 85);
-  assert.deepEqual(compatibility.findings.map(({ code }) => code), ["PROJECT_SIZE_UNDEFINED"]);
+  assert.equal(compatibility.score, 100);
+  assert.deepEqual(compatibility.findings, []);
   // Un bloque sin respuestas también cuenta cada pregunta aplicable como incompleta.
   assert.deepEqual(buildProjectRequestMetrics({ ...STAND, standRequirements: {} }).completeness.missingFields, [
     "standRequirements.requirementsStatus", "standRequirements.spaceStatus", "standRequirements.hasSpacePlans",
@@ -192,7 +192,8 @@ test("residencial con inmueble: la sección legal participa con sus deducciones 
     ...RESIDENTIAL, hasMultipleOwners: false, hasPlans: false, landStatus: "available",
     legalDocumentationStatus: "in_process", legalDocumentTypes: [],
   };
-  assert.equal(evaluateProjectCompatibility(withProperty).score, 95);
+  // Documentación en trámite −3; desde 3.3 los planos no restan.
+  assert.equal(evaluateProjectCompatibility(withProperty).score, 97);
   assert.deepEqual(buildProjectRequestMetrics(withProperty).completeness, { answered: 16, applicable: 16, missingFields: [], score: 100 });
   const unavailable = { ...withProperty, legalDocumentationStatus: "unavailable", hasPlans: true };
   assert.equal(evaluateProjectCompatibility(unavailable).score, 94);

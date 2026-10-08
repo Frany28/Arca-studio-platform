@@ -1,5 +1,6 @@
 import { AppError, ConflictError, NotFoundError } from "../errors/appError.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
+import { buildProjectRequestReviewObservations } from "../domain/projectRequestReviewObservations.js";
 import {
   decideProjectRequest as decideProjectRequestRecord,
   listProjectRequestReviewQueue,
@@ -8,14 +9,18 @@ import {
 
 /**
  * Sustituye las respuestas internas de una solicitud de la cola por sus métricas públicas.
- * Completitud y viabilidad financiera se calculan al vuelo con el mismo dominio que la
- * solicitud pública, sin exponer las respuestas completas en la proyección de workflow.
+ * Calcula al vuelo completitud, viabilidad financiera y las observaciones sin puntos para la
+ * revisión inicial (solo para administración), sin exponer las respuestas completas.
  *
  * @param {{answers: object}} request - Solicitud mapeada por el repositorio.
- * @returns {object} Solicitud de la cola con `completeness` y `financialViability`.
+ * @returns {object} Solicitud de la cola con `completeness`, `financialViability` y `reviewObservations`.
  */
 function toPublicWorkflowRequest({ answers, ...request }) {
-  return { ...request, ...buildProjectRequestMetrics(answers) };
+  return {
+    ...request,
+    ...buildProjectRequestMetrics(answers),
+    reviewObservations: buildProjectRequestReviewObservations(answers),
+  };
 }
 
 /**
