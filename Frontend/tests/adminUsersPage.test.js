@@ -55,7 +55,10 @@ test("selected admin users expose centered bulk status actions", async () => {
     "utf8",
   );
 
-  assert.match(source, /grid-cols-\[1fr_auto_1fr\]/);
+  const footerStyles = await readFile(
+    new URL("../src/pages/admin-users/AdminUsersPage.css", import.meta.url), "utf8",
+  );
+  assert.match(footerStyles, /grid-template-columns: 1fr auto 1fr/);
   assert.match(source, /selectedCount \? \([\s\S]*?BULK_STATUS_ACTIONS\.map/);
   assert.match(source, /label: "Suspender", status: "blocked"/);
   assert.match(source, /label: "Deshabilitar", status: "inactive"/);

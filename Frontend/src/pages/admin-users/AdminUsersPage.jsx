@@ -31,6 +31,7 @@ import EmptyState from "../../components/ui/EmptyState/EmptyState.jsx";
 import Input from "../../components/ui/Input/Input.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import Modal from "../../components/ui/Modal/Modal.jsx";
+import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
 import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import InternalDashboardLayout from "../../layouts/InternalDashboardLayout.jsx";
@@ -44,6 +45,7 @@ import AdminUserStatusModal from "./AdminUserStatusModal.jsx";
 import { getBulkStatusTargets } from "./adminUserStatusPolicy.js";
 import { useAdminUsersData } from "./hooks/useAdminUsersData.js";
 import { useAdminUsersActions } from "./hooks/useAdminUsersActions.js";
+import "./AdminUsersPage.css";
 
 // La gestión de usuarios no ofrece accesos a proyectos recientes en la navegación.
 const NO_PROJECT_SHORTCUTS = [];
@@ -322,40 +324,43 @@ function AdminUsersPage({ empty = false }) {
                   </table>
                 </div>
               </div>
-              {/* Por debajo de 900 px el contador y la paginación comparten fila, como Figma
-                  3727:681942 y 3727:681941, y las acciones masivas ocupan una fila propia solo
-                  cuando hay selección. Desde 900 px las acciones se centran entre ambos. */}
-              <div className="flex w-full flex-wrap items-center justify-between gap-[12px] min-[900px]:grid min-[900px]:grid-cols-[1fr_auto_1fr]">
-                <span className="text-heading-8 text-[var(--color-text-300)]">{selectedCount} de {users.length} seleccionados</span>
-                {selectedCount ? (
-                  <div role="group" className="order-last flex min-h-[44px] basis-full flex-wrap items-center justify-center gap-[8px] min-[900px]:order-none min-[900px]:basis-auto" aria-label="Acciones para usuarios seleccionados">
-                    {BULK_STATUS_ACTIONS.map((action) => {
-                      const ActionIcon = action.icon;
-                      const targets = bulkTargetsByStatus[action.status] || [];
-                      return (
-                        <Button
-                          key={action.status}
-                          theme="Primary"
-                          type="Ghost"
-                          size="M"
-                          fitContent
-                          showLeftIcon
-                          iconLeft={<ActionIcon size="20" color="currentColor" />}
-                          showRightIcon={false}
-                          disabled={isBulkUpdating || updatingUserId !== null || targets.length === 0}
-                          onClick={() => requestBulkStatusChange(action.status)}
-                        >
-                          {action.label}
-                        </Button>
-                      );
-                    })}
+              {/* Figma 4270:675497: contador, acciones y paginación mantienen ese orden
+                  al envolver. El CSS responde al ancho disponible después del sidebar. */}
+              <footer className="admin-users-table-footer w-full" aria-label="Selección y paginación de usuarios">
+                <div className="admin-users-table-footer__layout">
+                  <span className="text-heading-8 text-[var(--color-text-300)]">{selectedCount} de {users.length} seleccionados</span>
+                  {selectedCount ? (
+                    <div role="group" className="admin-users-table-footer__bulk flex items-center gap-[8px]" aria-label="Acciones para usuarios seleccionados">
+                      {BULK_STATUS_ACTIONS.map((action) => {
+                        const ActionIcon = action.icon;
+                        const targets = bulkTargetsByStatus[action.status] || [];
+                        return (
+                          <Tooltip key={action.status} asChild portal showTip text={action.label} tipPosition="Top center">
+                            <Button
+                              theme="Primary"
+                              type="Ghost"
+                              size="M"
+                              fitContent
+                              showLeftIcon
+                              iconLeft={<ActionIcon size="20" color="currentColor" />}
+                              showRightIcon={false}
+                              aria-label={action.label}
+                              disabled={isBulkUpdating || updatingUserId !== null || targets.length === 0}
+                              onClick={() => requestBulkStatusChange(action.status)}
+                            >
+                              {action.label}
+                            </Button>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  <div className="admin-users-table-footer__pagination flex items-center gap-[8px]">
+                    <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={pageIndex === 0} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
+                    <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!nextCursor} onClick={goNext}>Siguiente pág.</Button>
                   </div>
-                ) : null}
-                <div className="ml-auto flex items-center gap-[8px] min-[900px]:col-start-3 min-[900px]:justify-self-end">
-                  <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={pageIndex === 0} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
-                  <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!nextCursor} onClick={goNext}>Siguiente pág.</Button>
                 </div>
-              </div>
+              </footer>
             </>
           ) : hasFilters ? (
             <EmptyState

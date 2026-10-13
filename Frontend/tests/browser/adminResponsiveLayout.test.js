@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 
 const ADMIN_PAGES = ["/dashboard-arquitecto", "/usuarios", "/archivos"];
 const CHECKPOINT_WIDTHS = [320, 375, 430, 768, 1023, 1024, 1279, 1280, 1440, 1920];
@@ -88,11 +91,13 @@ after(async () => {
  * @param {import("node:test").TestContext} context Prueba propietaria del navegador.
  * @param {string} path Ruta administrativa.
  * @param {number} width Ancho inicial del viewport.
+ * @param {Object} [options] Tema inicial del escenario.
  * @returns {Promise<import("playwright").Page>} Página lista para medir.
  */
-async function openAdminPage(context, path, width) {
+async function openAdminPage(context, path, width, { theme = "light" } = {}) {
   const browserContext = await browser.newContext({ viewport: { width, height: 900 } });
-  const page = await browserContext.newPage();
+  const page = applyBrowserTimeouts(await browserContext.newPage());
+  await page.addInitScript((theme) => localStorage.setItem("arca-theme", theme), theme);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
@@ -117,7 +122,7 @@ async function openAdminPage(context, path, width) {
     "/usuarios": USERS[9].name,
     "/archivos": "Última carga",
   }[path];
-  await page.getByText(readyText, { exact: true }).first().waitFor();
+  await page.getByText(readyText, { exact: true }).first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   // Las medidas dependen de las métricas reales de Inter, no de la fuente de respaldo.
   await page.evaluate(() => document.fonts.ready);
   return page;
@@ -209,21 +214,179 @@ test("/usuarios móvil: filtros en una fila y pie de selección y paginación (F
   let next = await box(nextLocator);
   assert.ok(Math.abs(counter.y + counter.height / 2 - (next.y + next.height / 2)) < 2, "Contador y paginación comparten fila");
 
-  // A 375 px el contador renderizado es unos px más ancho que en Figma: si no cabe, la
-  // paginación pasa a la fila siguiente alineada a la derecha, sin desbordar.
+  // Si no cabe, la paginación envuelve a la izquierda después del contador (4270:675497).
   await page.setViewportSize({ width: 375, height: 900 });
   next = await box(nextLocator);
-  const contentRight = await counterLocator.evaluate((element) => {
+  const contentLeft = await counterLocator.evaluate((element) => {
     const row = element.parentElement;
-    return row.getBoundingClientRect().right;
+    return row.getBoundingClientRect().left;
   });
-  assert.ok(Math.abs(next.x + next.width - contentRight) < 1, "La paginación se alinea a la derecha del contenido");
+  const previous = await box(page.getByRole("button", { name: "Anterior", exact: true }));
+  assert.ok(Math.abs(previous.x - contentLeft) < 1, "La paginación envuelve a la izquierda");
   assert.equal(await measureContentOverflow(page), 0);
   assert.equal(await page.getByRole("group", { name: "Acciones para usuarios seleccionados" }).count(), 0, "Sin selección no se renderizan acciones masivas");
 
   await page.getByRole("checkbox", { name: `Seleccionar ${USERS[0].name}` }).click();
   const actions = await box(page.getByRole("group", { name: "Acciones para usuarios seleccionados" }));
-  assert.ok(actions.y > next.y, "Las acciones masivas usan su propia fila en móvil");
+  next = await box(nextLocator);
+  assert.ok(actions.y + actions.height <= next.y, "Las acciones masivas preceden a la paginación");
+  assert.equal(await measureContentOverflow(page), 0);
+});
+
+/**
+ * Mide el footer renderizado, incluidos sus controles y grupos, sin confundir el scroll
+ * horizontal intencional de la tabla con el desbordamiento del shell o del documento.
+ * @param {import("playwright").Page} page Página con usuarios cargados.
+ * @returns {Promise<Object>} Geometría, etiquetas y estados de los controles.
+ */
+function measureUsersFooter(page) {
+  return page.locator('footer[aria-label="Selección y paginación de usuarios"]').evaluate((footer) => {
+    const box = (element) => {
+      if (!element) return null;
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    const layout = footer.firstElementChild;
+    const bulk = footer.querySelector('[role="group"]');
+    return {
+      footer: box(footer),
+      counter: box(layout.firstElementChild),
+      bulk: box(bulk),
+      pagination: box(layout.lastElementChild),
+      controls: [...footer.querySelectorAll("button")].map((button) => ({
+        ...box(button),
+        name: button.getAttribute("aria-label") || button.textContent.trim(),
+        disabled: button.disabled,
+      })),
+      actionLabelsVisible: bulk ? [...bulk.querySelectorAll('button > span:not([aria-hidden])')]
+        .every((label) => getComputedStyle(label).display !== "none") : null,
+      columns: [...document.querySelectorAll("thead th")].map((cell) => cell.getBoundingClientRect().width),
+    };
+  });
+}
+
+/**
+ * Comprueba límites y colisiones reales de los botones, además del orden de sus grupos.
+ * @param {Object} geometry Resultado de medir el footer.
+ * @param {string} scenario Ancho, tema y estado del sidebar para diagnosticar errores.
+ * @returns {void} Falla si un control desborda, se solapa o altera el orden responsive.
+ */
+function assertUsersFooterGeometry(geometry, scenario) {
+  const { footer, counter, bulk, pagination } = geometry;
+  const controls = [{ ...counter, name: "Contador" }, ...geometry.controls];
+  for (const control of controls) {
+    assert.ok(control.x >= footer.x - 0.5 && control.x + control.width <= footer.x + footer.width + 0.5,
+      `${scenario}: ${control.name} dentro del footer`);
+  }
+  for (let index = 0; index < controls.length; index += 1) {
+    for (const other of controls.slice(index + 1)) {
+      const control = controls[index];
+      const overlaps = control.x < other.x + other.width - 0.5
+        && other.x < control.x + control.width - 0.5
+        && control.y < other.y + other.height - 0.5
+        && other.y < control.y + control.height - 0.5;
+      assert.equal(overlaps, false, `${scenario}: ${control.name} y ${other.name} no se solapan`);
+    }
+  }
+  const centerY = (box) => box.y + box.height / 2;
+  assert.ok(centerY(counter) <= centerY(pagination) + 0.5, `${scenario}: contador antes de paginación`);
+  if (bulk) {
+    assert.ok(centerY(counter) <= centerY(bulk) + 0.5 && centerY(bulk) <= centerY(pagination) + 0.5,
+      `${scenario}: contador → acciones → paginación`);
+  }
+  if (pagination.y > counter.y + counter.height) {
+    assert.ok(Math.abs(pagination.x - footer.x) < 0.5, `${scenario}: paginación envuelta a la izquierda`);
+  }
+  // La tabla w-full reparte el espacio sobrante proporcionalmente cuando supera su mínimo.
+  const scale = geometry.columns.reduce((sum, width) => sum + width, 0) / 1092;
+  for (const [index, minimum] of [48, 130, 190, 250, 160, 140, 174].entries()) {
+    assert.ok(Math.abs(geometry.columns[index] - minimum * scale) < 0.05, `${scenario}: columna ${index} preservada`);
+  }
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`/usuarios: footer de Figma sin solapamientos, tema ${theme} y ambos estados del sidebar`, async (context) => {
+    const page = await openAdminPage(context, "/usuarios", 320, { theme });
+    assert.equal(await page.evaluate(() => document.documentElement.classList.contains("dark")), theme === "dark");
+    const measurements = [];
+    for (const width of [320, 375, 430, 768, 1024, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const expanded of width < 768 ? [false] : [false, true]) {
+        if (width >= 768) {
+          const toggle = page.locator('aside[aria-label="Navegación lateral"]:visible')
+            .getByRole("button", { name: /^(Contraer|Expandir) navegación lateral$/ });
+          if (await toggle.getAttribute("aria-expanded") !== String(expanded)) await toggle.click();
+          await page.waitForFunction((expected) => {
+            const rail = [...document.querySelectorAll('aside[aria-label="Navegación lateral"]')]
+              .find((element) => element.getClientRects().length);
+            return Math.abs(rail.getBoundingClientRect().width - expected) < 0.5;
+          }, expanded ? (width >= 1024 ? 312 : 234) : 76);
+        }
+        const selectAll = page.getByRole("checkbox", { name: "Seleccionar todos los usuarios visibles" });
+        if (await selectAll.isChecked()) await selectAll.click();
+        let geometry = await measureUsersFooter(page);
+        const scenario = `${width} px, ${theme}, sidebar ${expanded ? "expandido" : "contraído"}`;
+        assert.equal(geometry.bulk, null, "Sin selección no hay acciones masivas");
+        assertUsersFooterGeometry(geometry, `${scenario}, sin selección`);
+        await selectAll.click();
+        await page.getByText("10 de 10 seleccionados", { exact: true }).waitFor();
+        geometry = await measureUsersFooter(page);
+        assertUsersFooterGeometry(geometry, `${scenario}, selección completa`);
+        assert.equal(geometry.actionLabelsVisible, geometry.footer.width > 767);
+        assert.deepEqual(geometry.controls.slice(0, 3).map(({ name }) => name), ["Suspender", "Deshabilitar", "Activar"]);
+        assert.ok(geometry.controls.slice(0, 3).every(({ disabled }) => disabled), "La selección de estados mixtos conserva restricciones");
+        if (geometry.footer.width <= 767) {
+          assert.ok(geometry.controls.slice(0, 3).every(({ width, height }) => width === 44 && height === 44));
+        }
+        if (width === 375 || width === 430) {
+          assert.ok(Math.abs(geometry.counter.y + geometry.counter.height / 2 - geometry.bulk.y - geometry.bulk.height / 2) < 0.5,
+            "Contador y acciones comparten fila móvil en Figma");
+          assert.ok(geometry.pagination.y >= geometry.bulk.y + geometry.bulk.height + 11.5);
+        }
+        assert.equal(await measureContentOverflow(page), 0, `${scenario}: sin desbordamiento del shell`);
+        measurements.push({ scenario, ...geometry });
+        if (process.env.ARCA_FOOTER_CAPTURE_DIR) {
+          await mkdir(process.env.ARCA_FOOTER_CAPTURE_DIR, { recursive: true });
+          await page.locator('footer[aria-label="Selección y paginación de usuarios"]')
+            .screenshot({ path: join(process.env.ARCA_FOOTER_CAPTURE_DIR, `users-footer-${width}-${theme}-${expanded ? "expanded" : "collapsed"}.png`) });
+        }
+      }
+    }
+    if (process.env.ARCA_FOOTER_CAPTURE_DIR) {
+      await writeFile(join(process.env.ARCA_FOOTER_CAPTURE_DIR, `measurements-${theme}.json`), JSON.stringify(measurements, null, 2));
+    }
+  });
+}
+
+test("/usuarios: acciones compactas conservan tooltip, confirmación y paginación por cursor", async (context) => {
+  const page = await openAdminPage(context, "/usuarios", 375);
+  await page.getByRole("checkbox", { name: `Seleccionar ${USERS[0].name}`, exact: true }).click();
+  const bulk = page.getByRole("group", { name: "Acciones para usuarios seleccionados" });
+  const suspend = bulk.getByRole("button", { name: "Suspender", exact: true });
+  assert.equal(await suspend.isEnabled(), true);
+  assert.equal(await bulk.getByRole("button", { name: "Activar", exact: true }).isDisabled(), true);
+  await suspend.scrollIntoViewIfNeeded();
+  await suspend.focus();
+  // Tab y Shift+Tab producen :focus-visible, que el Tooltip compartido exige por teclado.
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await page.getByRole("tooltip").filter({ hasText: "Suspender" }).waitFor();
+  await page.keyboard.press("Enter");
+  const modal = page.getByRole("dialog", { name: "Confirmar suspensión del usuario" });
+  await modal.waitFor();
+  await modal.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await modal.waitFor({ state: "detached" });
+  assert.equal(await page.getByText("1 de 10 seleccionados", { exact: true }).count(), 1);
+  const nextRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/admin/users" && url.searchParams.get("cursor") === "next-page";
+  });
+  await page.getByRole("button", { name: "Siguiente pág.", exact: true }).click();
+  await nextRequest;
+  await page.getByText("0 de 10 seleccionados", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Anterior", exact: true }).isEnabled(), true);
+  await page.getByRole("button", { name: "Anterior", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll("button")].find((button) => button.textContent === "Anterior")?.disabled);
   assert.equal(await measureContentOverflow(page), 0);
 });
 

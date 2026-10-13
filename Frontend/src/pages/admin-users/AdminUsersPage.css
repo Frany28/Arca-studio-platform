@@ -1,0 +1,49 @@
+/*
+ * Footer de usuarios (Figma 4270:675497): contador, acciones, paginación.
+ * El ancho del contenedor incluye el efecto del sidebar; usar el viewport para
+ * activar el grid podía forzar tres grupos anchos dentro de una tablet estrecha.
+ */
+.admin-users-table-footer {
+  container-type: inline-size;
+}
+
+.admin-users-table-footer__layout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-users-table-footer__layout > * {
+  flex-shrink: 0;
+}
+
+/*
+ * Button M conserva sus iconos de 20 px, padding de 12 px y zona de 44 px.
+ * Solo se oculta su texto visual: aria-label y Tooltip conservan la descripción.
+ * El span aria-hidden identifica el icono del Button compartido, no su etiqueta.
+ */
+@container (max-width: 767px) {
+  .admin-users-table-footer__bulk button {
+    width: 44px;
+    gap: 0;
+  }
+
+  .admin-users-table-footer__bulk button > span:not([aria-hidden]) {
+    display: none;
+  }
+}
+
+/* En escritorio amplio las acciones conservan el centro y la paginación la derecha. */
+@container (min-width: 900px) {
+  .admin-users-table-footer__layout {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+  }
+
+  .admin-users-table-footer__pagination {
+    grid-column: 3;
+    justify-self: end;
+  }
+}
