@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
@@ -14,37 +14,19 @@ import {
 } from "./architectDashboardData.js";
 import ArchitectProjectInformationForm from "./components/ArchitectProjectInformationForm.jsx";
 import ProjectCreationTabs from "./components/ProjectCreationTabs.jsx";
-
-const TABLET_BREAKPOINT_PX = 768;
+import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
 
 function NewArchitectProjectPage() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
   const mobileNavigation = useMobileNavigationDrawer();
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
   const imageCommentNotifications = useImageCommentNotifications({
     projectIds: ["quinta-bella-vista"],
   });
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
-    );
-
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
 
   const handleSideNavigationSelect = (item) => {
     if (item?.to) {

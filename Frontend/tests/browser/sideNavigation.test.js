@@ -178,13 +178,15 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
 }
 
 for (const desktopExpanded of [true, false]) {
-  test(`Solicitud móvil: cerrar y reabrir restaura foco y conserva escritorio ${desktopExpanded}`, async (context) => {
-    const page = await openPage(context, "client", { hasTouch: true });
+  test(`Solicitud móvil: cerrar y reabrir restaura foco y conserva el riel ${desktopExpanded}`, async (context) => {
+    // Se trabaja en tablet (1024 px) para no cruzar 1280 px: ese cruce restablece el riel
+    // por la política compartida, mientras que el drawer móvil nunca debe alterarlo.
+    const page = await openPage(context, "client", { hasTouch: true, viewport: { width: 1024, height: 1000 } });
     await page.goto(`${origin}/solicitudes/nueva`);
-    await expectSidebar(page, true, 312);
-    if (!desktopExpanded) {
-      await page.getByRole("button", { name: "Contraer navegación lateral", exact: true }).click();
-      await expectSidebar(page, false, 76);
+    await expectSidebar(page, false, 76);
+    if (desktopExpanded) {
+      await page.getByRole("button", { name: "Expandir navegación lateral", exact: true }).click();
+      await expectSidebar(page, true, 312);
     }
     await page.setViewportSize({ width: 375, height: 812 });
     const menu = page.getByRole("button", { name: "Abrir menú", exact: true });
@@ -207,7 +209,7 @@ for (const desktopExpanded of [true, false]) {
     await page.keyboard.press("Escape");
     await drawer.waitFor({ state: "detached" });
     assert.equal(await menu.evaluate((element) => element === document.activeElement), true);
-    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.setViewportSize({ width: 1024, height: 1000 });
     await expectSidebar(page, desktopExpanded, desktopExpanded ? 312 : 76);
   });
 }
@@ -216,13 +218,16 @@ test("Sidebar: teclado, tema oscuro y movimiento reducido conservan expansión y
   const page = await openPage(context, "client", { reducedMotion: "reduce", colorScheme: "dark", viewport: { width: 900, height: 1000 } });
   await page.goto(`${origin}/dashboard-clientes`);
   await page.evaluate(() => document.documentElement.classList.add("dark"));
-  await expectSidebar(page, true, 234);
+  // Política compartida: en tablet el riel inicia contraído y el cliente lo expande a 234 px.
+  await expectSidebar(page, false, 76);
   const sidebar = page.locator(`${SIDEBAR_SELECTOR}:visible`);
   const toggle = sidebar.getByRole("button", { name: TOGGLE_NAME });
   await toggle.focus();
   await toggle.press("Enter");
-  await expectSidebar(page, false, 76);
+  await expectSidebar(page, true, 234);
   await toggle.press("Space");
+  await expectSidebar(page, false, 76);
+  await toggle.press("Enter");
   await expectSidebar(page, true, 234);
   await sidebar.getByRole("button", { name: "Ver más proyectos", exact: true }).press("Enter");
   await page.waitForURL(`${origin}/proyectos`);

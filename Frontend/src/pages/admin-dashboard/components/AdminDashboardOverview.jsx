@@ -126,7 +126,10 @@ function RequestRow({
           {getProjectTypeDisplay(request.projectType)}
         </span>
       </span>
-      <div className="flex basis-full items-center gap-[8px] min-[768px]:contents">
+      {/* min-w-0: sin él, el contenedor no puede ser más estrecho que los tags del selector
+          en una sola línea y empuja la acción fuera de la tarjeta; así los tags se desplazan
+          dentro del campo, como en tablet y escritorio, donde max-w-[252px] lo limita. */}
+      <div className="flex min-w-0 basis-full items-center gap-[8px] min-[768px]:contents">
         <AssigneeMultiSelect
           value={request.assignees || []}
           options={assignees}

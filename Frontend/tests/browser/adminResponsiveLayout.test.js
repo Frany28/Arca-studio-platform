@@ -27,11 +27,16 @@ const USERS = Array.from({ length: 10 }, (_, index) => ({
   role: { code: "architect", name: "Arquitecto" },
   lastLoginAt: "2026-03-23T13:00:00Z",
 }));
+// Dos responsables con nombres largos: sus tags en una línea superan el ancho móvil.
+const REQUEST_ASSIGNEES = [
+  { id: 3, name: "Administrador Sistema" },
+  { id: 4, name: "Laura Rivas Hernández" },
+];
 const PAYLOADS = {
   "/api/projects": { projects: [PROJECT], nextCursor: null },
   "/api/project-requests/review-queue": { projectRequests: [], nextCursor: null },
   "/api/environment-comments": { comments: [], nextCursor: null },
-  "/api/admin/assignees": { assignees: [{ id: 2, name: "Diego Jiménez" }] },
+  "/api/admin/assignees": { assignees: [{ id: 2, name: "Diego Jiménez" }, ...REQUEST_ASSIGNEES] },
   "/api/admin/roles": { roles: [{ id: 1, code: "architect", name: "Arquitecto" }] },
   "/api/admin/users": { users: USERS, nextCursor: "next-page", metrics: { total: 1200, active: 1000, suspended: 150, disabled: 50 } },
   // Valores de cuatro dígitos y la fecha con hora son los contenidos más anchos de las métricas.
@@ -44,7 +49,10 @@ const PAYLOADS = {
   } },
   "/api/admin/dashboard-overview": { overview: {
     recentActivity: [{ id: 1, title: "Entrega finalizada", userName: "Arq. Sofía Tapia", projectName: PROJECT.name, projectId: 30, createdAt: "2026-03-23T13:00:00" }],
-    newRequests: [{ id: 7, projectName: "Apto. Noventa y Uno", projectType: "residential", status: "pending_review", assignees: [] }],
+    newRequests: [
+      { id: 7, projectName: "Apto. Noventa y Uno", projectType: "residential", status: "pending_review", assignees: [] },
+      { id: 8, projectName: "Solicitud con responsables", projectType: "commercial", status: "pending_review", assignees: REQUEST_ASSIGNEES },
+    ],
   } },
 };
 
@@ -255,4 +263,22 @@ test("Drawers abiertos en móvil no generan desborde horizontal ni estados contr
   await page.setViewportSize({ width: 1440, height: 900 });
   assert.equal(await navigationDrawer.count(), 0, "El drawer móvil no reaparece en escritorio");
   assert.equal(await measureContentOverflow(page), 0);
+});
+
+test("Dashboard móvil: el selector con responsables no empuja la acción fuera de la tarjeta", async (context) => {
+  const page = await openAdminPage(context, "/dashboard-arquitecto", 320);
+  for (const width of [320, 375, 430]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await page.getByRole("button", { name: "Ver solicitud Solicitud con responsables", exact: true }).evaluate((eye) => {
+      const card = eye.closest("[data-admin-new-requests]").getBoundingClientRect();
+      const field = eye.previousElementSibling.getBoundingClientRect();
+      const action = eye.getBoundingClientRect();
+      return {
+        actionInside: action.left >= card.left - 0.5 && action.right <= card.right + 0.5,
+        fieldBeforeAction: field.right <= action.left,
+      };
+    });
+    assert.deepEqual(layout, { actionInside: true, fieldBeforeAction: true }, `Fila de solicitud rota a ${width} px`);
+    assert.equal(await measureContentOverflow(page), 0, `Desborde horizontal a ${width} px`);
+  }
 });

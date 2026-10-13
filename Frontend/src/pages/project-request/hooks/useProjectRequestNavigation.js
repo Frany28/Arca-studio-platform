@@ -1,9 +1,11 @@
 import { useState } from "react";
 
 import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
+import useResponsiveSidebarExpansion from "../../../hooks/useResponsiveSidebarExpansion.js";
 
 /**
- * Coordina la expansión de escritorio; el drawer móvil pertenece a useMobileNavigationDrawer.
+ * Expone la expansión compartida del riel (useResponsiveSidebarExpansion); el drawer móvil
+ * pertenece a useMobileNavigationDrawer.
  * Difiere navegación, logout o reset hasta confirmarlos; cancelar no ejecuta la acción.
  *
  * @param {Object} params - Dependencias del flujo de navegaci?n.
@@ -23,7 +25,7 @@ export default function useProjectRequestNavigation({
   setShowRequiredAlert,
   setNotificationsOpen,
 }) {
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
   const [pendingRequestAction, setPendingRequestAction] = useState(null);
   const [isRequestActionModalOpen, setIsRequestActionModalOpen] = useState(false);
 

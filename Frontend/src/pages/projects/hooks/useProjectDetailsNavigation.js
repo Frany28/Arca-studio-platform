@@ -1,15 +1,12 @@
-import { useEffect, useState } from "react";
-
 import { getProjectPath } from "../../../utils/projectRoutes.js";
 import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
-
-const TABLET_BREAKPOINT_PX = 768;
+import useResponsiveSidebarExpansion from "../../../hooks/useResponsiveSidebarExpansion.js";
 
 /**
  * Coordina destinos y expansión del sidebar persistente desde el detalle del proyecto;
  * el drawer móvil pertenece a useMobileNavigationDrawer.
- * El estado inicial usa 1024 px; el efecto lo sincroniza despu?s con matchMedia a 768 px
- * y retira su listener al desmontar. Logout navega sin esperar la promesa de cierre.
+ * La expansión del riel sigue la política compartida de useResponsiveSidebarExpansion
+ * (expandido desde 1280 px). Logout navega sin esperar la promesa de cierre.
  *
  * @param {Object} params - Identidad presentada y acciones externas.
  * @param {Object} params.currentUser - Usuario de presentaci?n con roleCode para destinos por rol.
@@ -24,26 +21,7 @@ export default function useProjectDetailsNavigation({
   navigate,
   project,
 }) {
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(
-    () => typeof window === "undefined" || window.innerWidth >= 1024,
-  );
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
-    );
-
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
 
   /**
    * Prioriza to y resuelve los ids del men?; dashboard depende del rol presentado.

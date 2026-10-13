@@ -32,8 +32,7 @@ import {
   createUserSideNavigationItems,
   getDashboardPath,
 } from "../../utils/sideNavigationItems.js";
-
-const TABLET_BREAKPOINT_PX = 768;
+import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
 
 function getCardHeight(index, columns, projectCount) {
   if (projectCount === 1) return 560;
@@ -186,7 +185,7 @@ export default function PublicProjectsGallery() {
   const [query, setQuery] = useState("");
   const [sortDirection, setSortDirection] = useState("desc");
   const [galleryColumns, setGalleryColumns] = useState(getGalleryColumnCount);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
   const mobileNavigation = useMobileNavigationDrawer();
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
@@ -216,16 +215,6 @@ export default function PublicProjectsGallery() {
     const frameId = window.requestAnimationFrame(loadProjects);
     return () => window.cancelAnimationFrame(frameId);
   }, [loadProjects]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
-    );
-    const syncSidebar = (event) => setIsSidebarExpanded(!event.matches);
-    syncSidebar(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebar);
-    return () => mediaQuery.removeEventListener("change", syncSidebar);
-  }, []);
 
   useEffect(() => {
     const syncColumns = () => setGalleryColumns(getGalleryColumnCount());

@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { getProjectPath } from "../../../utils/projectRoutes.js";
 import { createUserSideNavigationItems } from "../../../utils/sideNavigationItems.js";
-
-const TABLET_BREAKPOINT_PX = 768;
+import useResponsiveSidebarExpansion from "../../../hooks/useResponsiveSidebarExpansion.js";
 
 /**
  * Construye los destinos del cliente y coordina la navegación lateral persistente.
- * Sincroniza la expansión con matchMedia bajo 768 px y retira el listener al desmontar;
+ * La expansión del riel sigue la política compartida de useResponsiveSidebarExpansion;
  * la apertura del drawer móvil pertenece a useMobileNavigationDrawer.
  *
  * @param {Object} params - Dependencias de navegación.
@@ -21,29 +20,12 @@ export default function useHomeNavigation({
   navigate,
   ownedProjectRows,
 }) {
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
 
   const navigationItems = useMemo(
     () => createUserSideNavigationItems(ownedProjectRows, "client"),
     [ownedProjectRows],
   );
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${TABLET_BREAKPOINT_PX - 1}px)`,
-    );
-
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
 
   /**
    * Prioriza el destino to del item y resuelve los identificadores de navegaci?n restantes.
