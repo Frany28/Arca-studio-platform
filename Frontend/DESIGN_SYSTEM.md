@@ -467,11 +467,31 @@ a una intervención independiente de la validación del contrato del riel.
   Los errores muestran ayudas y valores no disponibles, nunca estadísticas demo.
   `useAdminDashboardData` permite omitir overview y catálogo de responsables mediante
   opciones compatibles, activadas por defecto para sus consumidores actuales.
-- En esta fase Nuevo y Ver reutilizan navegación existente. Edición, asignación,
-  Más opciones y acciones masivas están deshabilitadas en esta página porque no se
-  conecta ninguna nueva mutación. `showDisabledTags` conserva los nombres del selector
-  bloqueado sin habilitar eliminación; su valor por defecto es false en Input y
-  AssigneeMultiSelect. El dashboard operativo conserva sus callbacks y comportamiento.
+- Nuevo y Ver reutilizan navegación existente. Edición y acciones masivas siguen
+  deshabilitadas en esta página. `showDisabledTags` conserva los nombres del selector
+  bloqueado (proyectos finalizados o archivados) sin habilitar eliminación; su valor por
+  defecto es false en Input y AssigneeMultiSelect.
+- Fase 2 (Figma `3727:686867` menú y `3727:686869` modal). Responsables usa el mismo
+  `AssigneeMultiSelect`, confirmación de baja, avisos y Deshacer del dashboard. Las
+  mutaciones viven en `useAdminProjectMutations`, compartido con el dashboard: la fila
+  solo cambia tras la respuesta del servidor y no se crean contratos HTTP nuevos.
+- "Más opciones" usa `ActionMenu` (no `DropdownMenu`, que es un selector inline y quedaría
+  recortado por el overflow de la tabla) con ancho de 183 px: Cambiar visibilidad y
+  Archivar; un proyecto archivado ofrece Desarchivar. `AdminActiveProjects` lo activa
+  solo si recibe `getProjectActions` y `onProjectAction`; el dashboard conserva su botón.
+- "Configuración del proyecto" reutiliza `Modal` (fade-scale con salida animada),
+  `IconContainer`, `Label`, `HintText`, `Toggle` M y `Button`, con scroll interno y footer
+  fijo en alturas reducidas. El borrador se reinicia en cada apertura; los cambios
+  pendientes se señalan con HintText Success y Confirmar se habilita solo con cambios.
+  Reglas del contrato `bulk-action`: la visibilidad pública exige un proyecto finalizado y
+  no archivado; archivar fuerza `is_public=false`; desarchivar restaura el estado previo
+  con visibilidad desactivada. Archivar desde el menú confirma con el diálogo estándar de
+  `Modal` y comparte la operación del modal; nunca elimina datos.
+- Integración pendiente: "Destacar en la página principal" (no existe campo en el backend)
+  y "Permitir acceso al cliente" (el cliente accede siempre por `client_id`) se muestran
+  bloqueados con su valor efectivo y un HintText; requieren contrato y migración autorizados.
+- `useDialogKeyboard` centraliza foco inicial, Tab cíclico, Escape y devolución del foco
+  de los diálogos; `ActionMenu` devuelve el foco al disparador al elegir una acción.
 - Las etiquetas En espera y Drafts son presentación local de los estados existentes
   pending y draft. Los aliases de finalización y solicitud se conservan; no se cambian
   estados HTTP ni reglas de negocio. Archivado mantiene el tema Archived del sistema.

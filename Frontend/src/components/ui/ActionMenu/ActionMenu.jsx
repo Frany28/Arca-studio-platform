@@ -39,6 +39,7 @@ function MenuDivider() {
  * @param {string} [props.size="S"] - Tamaño del botón disparador.
  * @param {string} [props.type="Ghost"] - Tipo del botón disparador.
  * @param {string} [props.className] - Clases del contenedor del disparador.
+ * @param {string} [props.menuWidthClassName="w-[230px]"] - Ancho del menú según su referencia de Figma.
  * @returns {import("react").ReactElement} Disparador y, al abrirse, el menú en portal.
  */
 function ActionMenu({
@@ -46,6 +47,7 @@ function ActionMenu({
   disabled = false,
   items,
   menuLabel,
+  menuWidthClassName = "w-[230px]",
   onSelect,
   size = "S",
   title,
@@ -122,8 +124,11 @@ function ActionMenu({
     setOpen((current) => !current);
   };
 
+  // Devuelve el foco al disparador antes de notificar, como el patrón WAI-ARIA de menu button;
+  // así un diálogo abierto por la acción lo captura y lo restaura al cerrarse.
   const selectItem = (item) => {
     setOpen(false);
+    triggerRef.current?.querySelector("button")?.focus();
     onSelect(item);
   };
 
@@ -171,7 +176,7 @@ function ActionMenu({
             ref={menuRef}
             role="menu"
             aria-label={menuLabel || title || triggerLabel}
-            className="fixed z-[var(--z-tooltip)] flex w-[230px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-bg)] shadow-[inset_0_0_0_var(--stroke-0)_var(--color-neutral-200)]"
+            className={clsx("fixed z-[var(--z-tooltip)] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-bg)] shadow-[inset_0_0_0_var(--stroke-0)_var(--color-neutral-200)]", menuWidthClassName)}
             style={position || { left: 0, top: 0, visibility: "hidden" }}
             onKeyDown={handleMenuKeyDown}
           >

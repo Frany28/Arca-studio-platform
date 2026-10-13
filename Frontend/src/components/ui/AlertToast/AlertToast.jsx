@@ -49,7 +49,13 @@ function AlertToast({
     }, EXIT_DURATION_MS);
   }, [clearTimers, onDismiss]);
 
-  useEffect(() => clearTimers, [clearTimers]);
+  // Al desmontar se cancelan timers y se olvida el trigger: StrictMode simula un desmontaje
+  // y vuelve a ejecutar los efectos, y sin este reset el trigger ya registrado impedía
+  // reprogramar el toast, que nunca llegaba a mostrarse en desarrollo.
+  useEffect(() => () => {
+    clearTimers();
+    lastTriggerRef.current = null;
+  }, [clearTimers]);
 
   useEffect(() => {
     if (trigger == null || trigger === lastTriggerRef.current) return;

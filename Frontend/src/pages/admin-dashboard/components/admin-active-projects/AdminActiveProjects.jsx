@@ -12,6 +12,7 @@ import {
   SearchNormal1,
 } from "iconsax-react";
 
+import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Avatar from "../../../../components/ui/Avatar/Avatar.jsx";
 import AlertToast from "../../../../components/ui/AlertToast/AlertToast.jsx";
 import AssigneeMultiSelect from "../../../../components/ui/AssigneeMultiSelect/AssigneeMultiSelect.jsx";
@@ -72,6 +73,9 @@ function TableHeaderLabel({ children, filter = false, fixedIcon = false }) {
  * @param {Object} props Proyectos, catálogo de responsables, carga y callbacks existentes.
  * @param {"dashboard"|"management"} [props.variant="dashboard"] Presentación de la sección;
  * management omite el subtítulo, adapta encabezados y bloquea operaciones sin integración.
+ * @param {(project: Object) => Object[]} [props.getProjectActions] - Acciones del menú de fila
+ * (ActionMenu). Sin este callback se conserva el botón Más opciones informativo.
+ * @param {(project: Object, item: Object) => void} [props.onProjectAction] - Acción elegida en la fila.
  * @returns {import("react").ReactElement} Tabla y controles con su presentación actual.
  */
 function AdminActiveProjects({
@@ -82,6 +86,8 @@ function AdminActiveProjects({
   onOpenProject,
   onEditProject,
   onBulkAction,
+  getProjectActions,
+  onProjectAction,
   onProjectAssigneesChange,
   onRetry,
   projects,
@@ -498,7 +504,19 @@ function AdminActiveProjects({
                       <div className="flex items-center gap-[8px]">
                         <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} tooltip="Ver proyecto" aria-label={`Ver ${projectName}`} onClick={() => onOpenProject(project)} />
                         <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Edit2 size="20" color="currentColor" />} showRightIcon={false} tooltip="Editar proyecto" aria-label={`Editar ${projectName}`} disabled={!project.editable || (isManagement && !onEditProject)} onClick={() => (onEditProject || onOpenProject)(project)} />
-                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<More size="20" color="currentColor" />} showRightIcon={false} tooltip="Más opciones" aria-label={`Más opciones de ${projectName}`} aria-disabled="true" disabled={isManagement} />
+                        {getProjectActions && onProjectAction ? (
+                          // Figma 3727:686867: el "Dropdown button" de la fila mide 183 px.
+                          <ActionMenu
+                            items={getProjectActions(project)}
+                            tooltip="Más opciones"
+                            triggerLabel={`Más opciones de ${projectName}`}
+                            menuLabel={`Acciones de ${projectName}`}
+                            menuWidthClassName="w-[183px]"
+                            onSelect={(item) => onProjectAction(project, item)}
+                          />
+                        ) : (
+                          <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<More size="20" color="currentColor" />} showRightIcon={false} tooltip="Más opciones" aria-label={`Más opciones de ${projectName}`} aria-disabled="true" disabled={isManagement} />
+                        )}
                       </div>
                     </td>
                   </tr>

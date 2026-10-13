@@ -5,6 +5,7 @@ import { getUserDisplay } from "../../auth/userDisplay.js";
 import AdminPageTitle from "../../components/AdminPageTitle.jsx";
 import AdminKpiMetric from "../../components/AdminKpiMetric.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
+import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import Button from "../../components/ui/Button/Button.jsx";
 import HintText from "../../components/ui/HintText/HintText.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
@@ -12,34 +13,46 @@ import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import { useDashboardProjects } from "../../hooks/useDashboardProjects.js";
 import InternalDashboardLayout from "../../layouts/InternalDashboardLayout.jsx";
 import AdminActiveProjects from "../admin-dashboard/components/admin-active-projects/index.js";
+import { isArchivedProject } from "../admin-dashboard/components/admin-active-projects/utils/adminProjectBulkActions.js";
 import { useAdminDashboardData } from "../admin-dashboard/hooks/useAdminDashboardData.js";
+import { useAdminProjectMutations } from "../admin-dashboard/hooks/useAdminProjectMutations.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
+import ProjectArchiveModal from "./components/ProjectArchiveModal.jsx";
+import ProjectSettingsModal from "./components/ProjectSettingsModal.jsx";
+import { useProjectRowActions } from "./hooks/useProjectRowActions.js";
 import { getAdminProjectMetrics } from "./utils/adminProjectMetrics.js";
+import { getProjectRowActions } from "./utils/projectRowActions.js";
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
 
 /**
- * Compone Gestión de Proyectos con lecturas y tabla existentes, sin nuevas operaciones HTTP.
- * La fase inicial habilita filtros locales, selección, paginación y navegación; conserva
- * deshabilitadas las mutaciones en esta vista y deja intacto el dashboard operativo.
+ * Compone Gestión de Proyectos con las lecturas, la tabla y las mutaciones del dashboard.
+ * Asignación de responsables y acciones de fila (visibilidad, archivo) reutilizan los
+ * contratos HTTP existentes mediante `useAdminProjectMutations`; la tabla solo cambia
+ * tras la respuesta del servidor. Edición y acciones masivas permanecen fuera de esta fase.
  * @returns {import("react").ReactElement} Página administrativa responsive con datos reales.
  */
 export default function AdminProjectsPage() {
   const { user } = useAuth();
   const currentUser = getUserDisplay(user);
   const [requestKey, setRequestKey] = useState(0);
-  const { projects, projectRows, projectsLoading, projectsError } = useDashboardProjects({
+  const { projects, projectRows, projectsLoading, projectsError, setProjects } = useDashboardProjects({
     empty: false, user, projectsRequestKey: requestKey,
   });
   const navigation = useDashboardNavigation({ projectRows, roleCode: currentUser.roleCode });
   const { navigate, isNotificationsDrawerOpen, setIsNotificationsDrawerOpen } = navigation;
-  const { adminMetrics, adminMetricsLoading, adminMetricsError } = useAdminDashboardData({
+  const { adminMetrics, adminMetricsLoading, adminMetricsError, adminAssignees, adminAssigneesLoading } = useAdminDashboardData({
     empty: false, user, roleCode: currentUser.roleCode,
     adminMetricsRequestKey: requestKey, adminOverviewRequestKey: 0,
-    loadOverview: false, loadAssignees: false,
+    loadOverview: false,
   });
+  // Los indicadores de proyecto se derivan de la colección local reconciliada; Solicitudes
+  // no depende de estas acciones, por eso no se refrescan métricas tras cada operación.
+  const { updateProjectAssignees, runProjectAction } = useAdminProjectMutations({ setProjects });
+  const rowActions = useProjectRowActions({ runProjectAction });
   const metrics = useMemo(() => getAdminProjectMetrics(projects), [projects]);
   const display = (value) => value === null || value === undefined ? "—" : NUMBER_FORMATTER.format(value);
+  const { dialog } = rowActions;
   return (
     <InternalDashboardLayout
       currentUser={currentUser} navigation={navigation} activeItemId="projects" showGreeting={false}
@@ -64,9 +77,33 @@ export default function AdminProjectsPage() {
       </section>
       <AdminActiveProjects
         variant="management" projects={projectRows} loading={projectsLoading} error={projectsError}
+        assignees={adminAssignees} assigneesLoading={adminAssigneesLoading}
+        onProjectAssigneesChange={updateProjectAssignees}
+        getProjectActions={getProjectRowActions} onProjectAction={rowActions.handleRowAction}
         onOpenProject={(project) => navigate(getProjectPath(project))}
         onRetry={() => setRequestKey((key) => key + 1)}
       />
+      <ProjectSettingsModal
+        open={dialog?.type === "settings" && dialog.open}
+        project={dialog?.type === "settings" ? dialog.project : null}
+        draft={rowActions.draft} error={rowActions.error} submitting={rowActions.submitting}
+        hasPendingChanges={rowActions.hasPendingChanges}
+        onSettingChange={rowActions.changeSetting} onCancel={rowActions.close} onConfirm={rowActions.confirm}
+      />
+      <ProjectArchiveModal
+        open={dialog?.type === "archive" && dialog.open}
+        project={dialog?.type === "archive" ? dialog.project : null}
+        archived={dialog?.type === "archive" && isArchivedProject(dialog.project)}
+        submitting={rowActions.submitting}
+        onCancel={rowActions.close} onConfirm={rowActions.confirm}
+      />
+      {rowActions.feedback ? (
+        <AlertToast
+          trigger={rowActions.feedback.id} theme={rowActions.feedback.theme}
+          title={rowActions.feedback.title} description={rowActions.feedback.description}
+          onDismiss={rowActions.dismissFeedback} aria-label={rowActions.feedback.title}
+        />
+      ) : null}
       <NotificationsDrawer open={isNotificationsDrawerOpen} onClose={() => setIsNotificationsDrawerOpen(false)} />
     </InternalDashboardLayout>
   );

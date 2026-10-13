@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 
-import { api } from "../../api/http.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
@@ -18,6 +17,7 @@ import AdminRequestDetailsDrawer from "./components/admin-request-details/index.
 import AdminRequestLoginAlert from "./components/AdminRequestLoginAlert.jsx";
 import AdminRequestAssignmentModal from "./components/AdminRequestAssignmentModal.jsx";
 import { useAdminDashboardData } from "./hooks/useAdminDashboardData.js";
+import { useAdminProjectMutations } from "./hooks/useAdminProjectMutations.js";
 import { useAdminRequestAssignments } from "./hooks/useAdminRequestAssignments.js";
 import { useAdminRequestDetails } from "./hooks/useAdminRequestDetails.js";
 import { submitAdminRequestDecision } from "./utils/adminRequestDecision.js";
@@ -140,65 +140,14 @@ function AdminDashboard({ empty = false }) {
     }
   };
 
-  /**
-   * Guarda responsables del proyecto y reconcilia todos los campos de asignación.
-   * Los errores se propagan a los controles existentes para publicar su feedback.
-   * @param {Object} project - Proyecto que se actualiza.
-   * @param {Array} assignees - Responsables seleccionados.
-   * @returns {Promise<void>} Completa el guardado y su actualización local.
-   * @throws {Error} Propaga fallos de la API administrativa.
-   */
-  const handleProjectAssigneesChange = async (project, assignees) => {
-    const data = await api.admin.updateProjectAssignees({
-      assigneeIds: assignees.map((assignee) => Number(assignee.id)),
-      projectId: project.id,
-    });
-
-    setProjects((currentProjects) =>
-      currentProjects.map((currentProject) =>
-        currentProject.id === project.id
-          ? {
-              ...currentProject,
-              assignees: data.assignees || [],
-              assignedArchitect: data.assignees?.[0] || null,
-              assignedArchitects: data.assignees || [],
-            }
-          : currentProject,
-      ),
-    );
-  };
-
-  /**
-   * Aplica una acción masiva sobre los IDs del snapshot de proyectos seleccionados.
-   * Reconcilia los resultados locales y conserva el refresco de métricas y overview.
-   * @param {Object} params - Acción y proyectos originales seleccionados por la tabla.
-   * @returns {Promise<Object>} Resultado devuelto por la API administrativa.
-   * @throws {Error} Propaga fallos al feedback de la tabla.
-   */
-  const handleProjectBulkAction = async ({ action, projects: selectedProjects }) => {
-    const isPublic = action === "change_visibility"
-      ? !selectedProjects.every((project) => project.isPublic)
-      : undefined;
-    const data = await api.admin.updateProjects({
-      action,
-      isPublic,
-      projectIds: selectedProjects.map((project) => Number(project.id)),
-    });
-    const updatedProjects = new Map(
-      (data.projects || []).map((project) => [Number(project.id), project]),
-    );
-
-    setProjects((currentProjects) =>
-      currentProjects.map((project) => {
-        const updatedProject = updatedProjects.get(Number(project.id));
-        return updatedProject ? { ...project, ...updatedProject } : project;
-      }),
-    );
-    setAdminMetricsRequestKey((current) => current + 1);
-    setAdminOverviewRequestKey((current) => current + 1);
-
-    return data;
-  };
+  const { updateProjectAssignees, applyProjectBulkAction } = useAdminProjectMutations({
+    setProjects,
+    // Una acción confirmada cambia contadores y actividad derivados de los proyectos.
+    onProjectsChanged: () => {
+      setAdminMetricsRequestKey((current) => current + 1);
+      setAdminOverviewRequestKey((current) => current + 1);
+    },
+  });
 
   return (
     <InternalDashboardLayout
@@ -252,9 +201,9 @@ function AdminDashboard({ empty = false }) {
         error={projectsError}
         loading={projectsLoading}
         projects={projectRows}
-        onBulkAction={handleProjectBulkAction}
+        onBulkAction={applyProjectBulkAction}
         onOpenProject={(project) => navigate(getProjectPath(project))}
-        onProjectAssigneesChange={handleProjectAssigneesChange}
+        onProjectAssigneesChange={updateProjectAssignees}
         onRetry={() => setProjectsRequestKey((current) => current + 1)}
       />
       <NotificationsDrawer

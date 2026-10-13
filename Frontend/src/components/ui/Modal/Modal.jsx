@@ -80,6 +80,9 @@ function Modal({
   secondaryActionLabel = MODAL_DEFAULT_PROPS.secondaryActionLabel,
   primaryActionTheme = "Primary",
   secondaryActionTheme = "Primary",
+  // Bloquea las acciones del diálogo estándar mientras una confirmación está en curso.
+  actionsDisabled = false,
+  primaryActionBusy = false,
   checkboxLabel = MODAL_DEFAULT_PROPS.checkboxLabel,
   icon = null,
   showCloseButton = MODAL_DEFAULT_PROPS.showCloseButton,
@@ -278,6 +281,7 @@ function Modal({
                     showLeftIcon={false}
                     showRightIcon={false}
                     className={buttonClassName}
+                    disabled={actionsDisabled}
                     onClick={onSecondaryAction}
                   >
                     {secondaryActionLabel}
@@ -290,6 +294,8 @@ function Modal({
                     showLeftIcon={false}
                     showRightIcon={false}
                     className={buttonClassName}
+                    disabled={actionsDisabled}
+                    aria-busy={primaryActionBusy || undefined}
                     onClick={onPrimaryAction}
                   >
                     {primaryActionLabel}
