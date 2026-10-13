@@ -6,6 +6,20 @@ import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+// Anchos de referencia del riel (tokens --app-side-navigation-* de global.css): 76 px
+// contraído; expandido 234 px en tablet (768–1279 px) y 312 px en web (≥1280 px).
+const RAIL_WIDTH = { collapsed: 76, tabletExpanded: 234, webExpanded: 312 };
+
+/**
+ * Devuelve el ancho esperado del riel expandido para un viewport de tablet o web.
+ *
+ * @param {number} viewportWidth Ancho del viewport en píxeles.
+ * @returns {number} Ancho expandido del riel.
+ */
+function expandedRailWidth(viewportWidth) {
+  return viewportWidth >= 1280 ? RAIL_WIDTH.webExpanded : RAIL_WIDTH.tabletExpanded;
+}
+
 const SIDEBAR_SELECTOR = 'aside[aria-label="Navegación lateral"]';
 const TOGGLE_NAME = /^(Contraer|Expandir) navegación lateral$/;
 const EMPTY_COLLECTION = { nextCursor: null };
@@ -27,8 +41,8 @@ const API_FIXTURES = {
   },
 };
 const PAGE_CASES = [
-  { path: "/dashboard-clientes", role: "client", destination: "/proyectos", item: "Ver más proyectos", tabletWidth: 234 },
-  { path: "/proyectos", role: "client", destination: "/dashboard-clientes", item: "Dashboard", tabletWidth: 234 },
+  { path: "/dashboard-clientes", role: "client", destination: "/proyectos", item: "Ver más proyectos" },
+  { path: "/proyectos", role: "client", destination: "/dashboard-clientes", item: "Dashboard" },
   { path: "/dashboard-arquitecto", role: "architect", destination: "/proyectos", item: "Ver más proyectos" },
   { path: "/dashboard-arquitecto", role: "admin", destination: "/archivos", item: "Archivos" },
   { path: "/usuarios", role: "admin", destination: "/archivos", item: "Archivos" },
@@ -129,7 +143,7 @@ for (const pageCase of PAGE_CASES) {
       if (await toggle.getAttribute("aria-expanded") === "false") {
         await toggle.click();
       }
-      const expandedWidth = pageCase.tabletWidth && width < 1023 ? pageCase.tabletWidth : 312;
+      const expandedWidth = expandedRailWidth(width);
       await expectSidebar(page, true, expandedWidth);
       await toggle.click();
       await expectSidebar(page, false, 76);
@@ -161,9 +175,9 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
     await page.setViewportSize({ width: 1279, height: 1000 });
     await expectSidebar(page, false, 76);
     await toggle.click();
-    await expectSidebar(page, true, 312);
+    await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
     await page.setViewportSize({ width: 900, height: 1000 });
-    await expectSidebar(page, true, 312);
+    await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
     await toggle.click();
     await expectSidebar(page, false, 76);
     // Las tres vistas comparten useResponsiveSidebarExpansion: cruzar 1280 px restablece
@@ -173,7 +187,52 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
     await page.setViewportSize({ width: 1279, height: 1000 });
     await expectSidebar(page, false, 76);
     await toggle.click();
-    await expectSidebar(page, true, 312);
+    await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+  });
+}
+
+/**
+ * Mide el riel visible y el contenedor de contenido que lo sigue en la fila del layout.
+ * Algunas páginas envuelven el riel en un contenedor propio; se toma el hermano de ese nivel.
+ *
+ * @param {import("playwright").Page} page Página en prueba.
+ * @returns {Promise<{rail: number, content: number, viewport: number}>} Anchos renderizados.
+ */
+function measureRailAndContent(page) {
+  return page.evaluate((selector) => {
+    const rail = [...document.querySelectorAll(selector)].find((element) => element.getClientRects().length);
+    const railLevel = rail.nextElementSibling ? rail : rail.parentElement;
+    return {
+      rail: rail.getBoundingClientRect().width,
+      content: railLevel.nextElementSibling.getBoundingClientRect().width,
+      viewport: document.documentElement.clientWidth,
+    };
+  }, SIDEBAR_SELECTOR);
+}
+
+for (const [role, path] of [
+  ["client", "/dashboard-clientes"],
+  ["client", "/proyectos"],
+  ["client", "/solicitudes/nueva"],
+  ["architect", "/dashboard-arquitecto"],
+  ["admin", "/usuarios"],
+]) {
+  test(`${role} ${path}: anchos unificados del riel y contenido que ocupa el resto`, async (context) => {
+    const page = await openPage(context, role);
+    for (const width of [768, 1024, 1279, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${origin}${path}`);
+      const initiallyExpanded = width >= 1280;
+      const toggle = page.locator(`${SIDEBAR_SELECTOR}:visible`).first().getByRole("button", { name: TOGGLE_NAME });
+
+      for (const expanded of [initiallyExpanded, !initiallyExpanded]) {
+        if (expanded !== initiallyExpanded) await toggle.click();
+        const railWidth = expanded ? expandedRailWidth(width) : RAIL_WIDTH.collapsed;
+        await expectSidebar(page, expanded, railWidth);
+        const { rail, content, viewport } = await measureRailAndContent(page);
+        assert.ok(Math.abs(rail + content - viewport) < 1, `${path} a ${width} px: el contenido (${content}) no ocupa el resto del riel (${rail})`);
+      }
+    }
   });
 }
 
@@ -186,7 +245,7 @@ for (const desktopExpanded of [true, false]) {
     await expectSidebar(page, false, 76);
     if (desktopExpanded) {
       await page.getByRole("button", { name: "Expandir navegación lateral", exact: true }).click();
-      await expectSidebar(page, true, 312);
+      await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
     }
     await page.setViewportSize({ width: 375, height: 812 });
     const menu = page.getByRole("button", { name: "Abrir menú", exact: true });
@@ -210,7 +269,7 @@ for (const desktopExpanded of [true, false]) {
     await drawer.waitFor({ state: "detached" });
     assert.equal(await menu.evaluate((element) => element === document.activeElement), true);
     await page.setViewportSize({ width: 1024, height: 1000 });
-    await expectSidebar(page, desktopExpanded, desktopExpanded ? 312 : 76);
+    await expectSidebar(page, desktopExpanded, desktopExpanded ? RAIL_WIDTH.tabletExpanded : RAIL_WIDTH.collapsed);
   });
 }
 
@@ -559,14 +618,14 @@ test("Drawer móvil: crecer a tablet o escritorio lo cierra sin alterar el riel 
   // Bajo 1280 px el riel inicia contraído; se expande manualmente para detectar cualquier reinicio.
   await expectSidebar(page, false, 76);
   await page.locator(`${SIDEBAR_SELECTOR}:visible`).getByRole("button", { name: TOGGLE_NAME }).click();
-  await expectSidebar(page, true, 312);
+  await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
   await page.setViewportSize({ width: 375, height: 812 });
   await expectMobileLayout(page);
   await openMobileDrawer(page, 312);
 
   await page.setViewportSize({ width: 900, height: 1000 });
   await expectMobileDrawerClosed(page);
-  await expectSidebar(page, true, 312);
+  await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
   assert.equal(await page.locator(`${SIDEBAR_SELECTOR}:visible`).count(), 1, "En tablet solo existe un menú");
   assert.equal(await page.getByRole("button", { name: "Abrir menú", exact: true }).isVisible(), false);
 

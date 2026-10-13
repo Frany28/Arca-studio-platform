@@ -49,16 +49,18 @@ const SIDE_NAVIGATION_NODE_IDS = {
 
 /**
  * Clases del contenedor por presentación. El riel persistente conserva sticky, altura de
- * viewport y la transición de ancho; el drawer ocupa el panel que lo aloja y respeta las
+ * viewport y la transición de ancho; sus anchos provienen de los tokens
+ * --app-side-navigation-* de global.css (234 px expandido en tablet y 312 px en web), de modo
+ * que ninguna página los redefine. El drawer ocupa el panel que lo aloja y respeta las
  * áreas seguras superior e inferior del dispositivo con el mínimo de 16 px de Figma.
  */
 const SIDE_NAVIGATION_CONTAINER_CLASSES = {
   base: "flex flex-col overflow-hidden border-r border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]",
   persistent:
     "sticky top-0 h-screen min-h-screen self-start transition-[width,padding] will-change-[width,padding]",
-  expanded: "w-[312px] px-[16px] pb-[16px] pt-[16px] duration-200 ease-out",
+  expanded: "w-[var(--app-side-navigation-expanded-width)] px-[16px] pb-[16px] pt-[16px] duration-200 ease-out",
   collapsed:
-    "w-[76px] px-[16px] py-[16px] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]",
+    "w-[var(--app-side-navigation-collapsed-width)] px-[16px] py-[16px] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]",
   drawer:
     "h-full w-full px-[16px] pt-[max(16px,env(safe-area-inset-top))] pb-[max(16px,env(safe-area-inset-bottom))]",
 };

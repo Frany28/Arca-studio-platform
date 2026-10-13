@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Edit2, Link21, Location } from "iconsax-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import clsx from "clsx";
 
 import { useAuth } from "../auth/AuthContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
@@ -214,13 +213,7 @@ export default function ProjectRequestPage() {
   return (
     <main className="min-h-screen bg-[var(--color-neutral-bg)]">
       <div className="flex min-h-screen items-stretch">
-        <div
-          className={clsx(
-            "hidden shrink-0 min-[768px]:block",
-            isSidebarExpanded &&
-              "min-[768px]:[&>aside]:!w-[234px] min-[1024px]:[&>aside]:!w-[312px]",
-          )}
-        >
+        <div className="hidden shrink-0 min-[768px]:block">
           {sidebar}
         </div>
         <div className="min-w-0 flex-1">

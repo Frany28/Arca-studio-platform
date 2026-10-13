@@ -37,8 +37,6 @@ import {
 } from "../../utils/sideNavigationItems.js";
 import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
 
-const EXPANDED_SIDEBAR_WIDTH = 312;
-const COLLAPSED_SIDEBAR_WIDTH = 76;
 const AVATAR_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const AVATAR_MAX_SIZE_BYTES = 50 * 1024 * 1024;
 const AVATAR_UPLOAD_MAX_BYTES = 3.5 * 1024 * 1024;

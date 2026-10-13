@@ -11,8 +11,6 @@ import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/
 import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
 import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
 
-const EXPANDED_SIDEBAR_WIDTH = 312;
-const COLLAPSED_SIDEBAR_WIDTH = 76;
 function ChevronLeftIcon({ className }) {
   return (
     <svg
@@ -153,17 +151,8 @@ function EmptyProjectsExample() {
           className="h-screen min-h-screen max-h-screen"
         />
 
-        <div
-          className="relative min-w-0 self-stretch overflow-y-auto transition-[width] duration-300 ease-out"
-          style={{
-            height: "100vh",
-            width: `calc(100% - ${
-              isSidebarExpanded
-                ? EXPANDED_SIDEBAR_WIDTH
-                : COLLAPSED_SIDEBAR_WIDTH
-            }px)`,
-          }}
-        >
+        {/* El contenido ocupa el resto del ancho: el riel define el suyo con sus tokens. */}
+        <div className="relative h-screen min-w-0 flex-1 self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
           <div className="mx-auto flex w-full max-w-[1200px] items-center justify-between self-stretch border-b border-[var(--color-neutral-200)]">
             <NavigationBar
               onMenuClick={mobileNavigation.open}

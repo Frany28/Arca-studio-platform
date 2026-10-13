@@ -1,7 +1,6 @@
 import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import clsx from "clsx";
 
 import { useAuth } from "../auth/AuthContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
@@ -22,8 +21,6 @@ import {
   HomeRequestsSection,
 } from "./home/components/HomeContentSections.jsx";
 
-const EXPANDED_SIDEBAR_WIDTH = 312;
-const COLLAPSED_SIDEBAR_WIDTH = 76;
 
 function Home({ view = "dashboard" }) {
   const isRequestsView = view === "requests";
@@ -151,10 +148,7 @@ function Home({ view = "dashboard" }) {
           onItemSelect={handleSideNavigationSelect}
           onNewOpportunityClick={handleNewOpportunity}
           onLogoutClick={handleLogout}
-          className={clsx(
-            "min-h-screen shrink-0 self-stretch min-[768px]:max-[1023px]:!px-[12px]",
-            isSidebarExpanded && "min-[768px]:max-[1023px]:!w-[234px]",
-          )}
+          className="min-h-screen shrink-0 self-stretch"
         />
 
         <div className="relative flex min-h-screen min-w-0 flex-1 flex-col self-stretch overflow-y-auto transition-[width] duration-300 ease-out">
