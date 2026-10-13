@@ -33,6 +33,7 @@ import { getAdminDashboardPresentation } from "../../utils/adminDashboardMobileP
 import { useAdminProjectFilters } from "./hooks/useAdminProjectFilters.js";
 import { useAdminProjectSelection } from "./hooks/useAdminProjectSelection.js";
 import { useAdminProjectsTableScroll } from "./hooks/useAdminProjectsTableScroll.js";
+import AdminTableToolbar from "../../../../components/admin-table/AdminTableToolbar.jsx";
 import "./AdminActiveProjects.css";
 
 const BULK_ACTION_FEEDBACK = {
@@ -303,51 +304,25 @@ function AdminActiveProjects({
         {isMobileLayout ? "Proyectos activos" : "Proyectos"}
       </h2>
 
-      <div className="admin-active-projects__toolbar">
-        <Input
-          type="Default input"
-          size="M"
-          value={query}
-          placeholder="Buscar..."
-          showLabel={false}
-          showHint={false}
-          showLeftIcon
-          showRightIcon={false}
-          leftIcon={<SearchNormal1 size="20" color="currentColor" />}
-          className="w-full max-[767px]:max-w-none"
-          aria-label="Buscar proyectos"
-          required={false}
-          onChange={handleQueryChange}
-        />
-        <div className="admin-active-projects__filters w-full">
-          <DropdownMenu
-            type="Text"
-            label={personnelFilterLabel}
-            items={personnelFilterItems}
-            multiple
-            onItemsChange={handlePersonFilterItemsChange}
-            className="w-full"
-            contentClassName="admin-active-projects__filter-menu"
-            rowHeightClassName="h-[35px]"
-            triggerWrapperClassName="h-[39px]"
-            triggerHeightClassName="h-[37px]"
-            triggerPaddingXClassName="px-[16px]"
-            aria-label="Filtrar proyectos por personal"
+      <AdminTableToolbar
+        search={(
+          <Input
+            type="Default input"
+            size="M"
+            value={query}
+            placeholder="Buscar..."
+            showLabel={false}
+            showHint={false}
+            showLeftIcon
+            showRightIcon={false}
+            leftIcon={<SearchNormal1 size="20" color="currentColor" />}
+            className="w-full max-[767px]:max-w-none"
+            aria-label="Buscar proyectos"
+            required={false}
+            onChange={handleQueryChange}
           />
-          <DropdownMenu
-            type="Text"
-            label="Filtrar por status"
-            items={statusFilterItems}
-            multiple
-            onItemsChange={handleStatusFilterItemsChange}
-            className="w-full"
-            contentClassName="admin-active-projects__filter-menu"
-            rowHeightClassName="h-[35px]"
-            triggerWrapperClassName="h-[39px]"
-            triggerHeightClassName="h-[37px]"
-            triggerPaddingXClassName="px-[16px]"
-            aria-label="Filtrar proyectos por status"
-          />
+        )}
+        clearFiltersAction={(
           <Button
             theme="Primary"
             type="Solid"
@@ -357,13 +332,42 @@ function AdminActiveProjects({
             iconLeft={<FilterRemove size="20" color="currentColor" />}
             showRightIcon={false}
             disabled={!hasFilters}
-            className="admin-active-projects__clear-filters w-full"
+            className="w-full"
             onClick={clearFilters}
           >
             Quitar filtros
           </Button>
-        </div>
-      </div>
+        )}
+      >
+        <DropdownMenu
+          type="Text"
+          label={personnelFilterLabel}
+          items={personnelFilterItems}
+          multiple
+          onItemsChange={handlePersonFilterItemsChange}
+          className="w-full"
+          contentClassName="admin-active-projects__filter-menu"
+          rowHeightClassName="h-[35px]"
+          triggerWrapperClassName="h-[39px]"
+          triggerHeightClassName="h-[37px]"
+          triggerPaddingXClassName="px-[16px]"
+          aria-label="Filtrar proyectos por personal"
+        />
+        <DropdownMenu
+          type="Text"
+          label="Filtrar por status"
+          items={statusFilterItems}
+          multiple
+          onItemsChange={handleStatusFilterItemsChange}
+          className="w-full"
+          contentClassName="admin-active-projects__filter-menu"
+          rowHeightClassName="h-[35px]"
+          triggerWrapperClassName="h-[39px]"
+          triggerHeightClassName="h-[37px]"
+          triggerPaddingXClassName="px-[16px]"
+          aria-label="Filtrar proyectos por status"
+        />
+      </AdminTableToolbar>
 
       {loading ? (
         <Loader preset="adminProjectTable" label="Cargando proyectos" />

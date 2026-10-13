@@ -54,7 +54,7 @@ function MetricItem({ badge, badgeTheme = "Success", className = "", isMobileLay
           {numberFormatter.format(value || 0)}
         </strong>
       </div>
-      <div className="flex min-h-[21px] items-center gap-[8px]">
+      <div className="flex min-h-[21px] min-w-0 max-w-full items-center gap-[8px]">
         {badge ? (
           <Badge
             label={badge}
@@ -65,7 +65,7 @@ function MetricItem({ badge, badgeTheme = "Success", className = "", isMobileLay
             className="max-[767px]:py-px"
           />
         ) : null}
-        <span className="text-body-1 whitespace-nowrap text-[var(--color-text-100)]">
+        <span className="text-body-1 min-w-0 text-[var(--color-text-100)]">
           {supportingText}
         </span>
       </div>
@@ -110,7 +110,11 @@ function AdminDashboardMetrics({ error, loading, metrics, onRetry }) {
       className="mx-auto w-full max-w-[1200px] px-[16px] sm:px-[24px] lg:px-[48px]"
       aria-label="Resumen de métricas administrativas"
     >
-      <div className="grid w-full grid-cols-1 gap-x-[24px] max-[767px]:grid-cols-2 max-[767px]:gap-x-[16px] gap-y-[24px] border-y border-[var(--color-neutral-200)] py-[24px] min-[640px]:max-[900px]:grid-cols-2 min-[900px]:grid-cols-5 min-[900px]:gap-x-[16px]">
+      {/* Móvil: dos columnas (Figma 3727:678728). Desde tablet las columnas se derivan del
+          ancho real del contenido, que depende del riel lateral y no del viewport: cada
+          métrica conserva al menos 176 px para que etiqueta y valor no se
+          superpongan (3 + 2 en tablet como Figma 3727:678727, 5 en una fila en escritorio). */}
+      <div className="grid w-full grid-cols-2 gap-x-[16px] gap-y-[24px] border-y border-[var(--color-neutral-200)] py-[24px] min-[768px]:grid-cols-[repeat(auto-fill,minmax(176px,1fr))]">
         <MetricItem
           label="Usuarios activos"
           value={metrics?.activeUsers?.total}

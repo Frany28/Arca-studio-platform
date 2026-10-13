@@ -1,15 +1,17 @@
-import clsx from "clsx";
 import { Clock, ExportCurve } from "iconsax-react";
 
 import Button from "../../../components/ui/Button/Button.jsx";
-import useMobileLayout from "../../../hooks/useMobileLayout.js";
+import AdminPageTitle from "../../../components/AdminPageTitle.jsx";
 
 // Figma MOBILE (3727:678728): título h4 y acciones de igual ancho en una fila completa.
+// flex-1 parte de base 0, así que las acciones solo se apilan cuando su contenido mínimo
+// no cabe en una fila (por ejemplo a 320 px), en lugar de desbordar el contenedor.
 const MOBILE_HEADER_ACTION_CLASS_NAME = "max-[767px]:flex-1";
 
 /**
  * Encabezado del dashboard administrativo con título, descripción y acciones globales.
- * En móvil reduce el título a 24 px y distribuye ambas acciones a todo el ancho.
+ * En móvil reduce el título a 24 px y distribuye ambas acciones a todo el ancho;
+ * si no caben en una fila se apilan sin desbordar.
  *
  * @param {Object} props Acciones del encabezado.
  * @param {Function} [props.onExportReport] Exporta el reporte administrativo.
@@ -17,8 +19,6 @@ const MOBILE_HEADER_ACTION_CLASS_NAME = "max-[767px]:flex-1";
  * @returns {import("react").ReactElement} Sección de encabezado.
  */
 function AdminDashboardHeader({ onExportReport, onViewHistory }) {
-  const isMobileLayout = useMobileLayout();
-
   return (
     <section
       className="mx-auto flex w-full max-w-[1200px] flex-col px-[16px] pb-[16px] sm:px-[24px] lg:px-[48px]"
@@ -26,21 +26,13 @@ function AdminDashboardHeader({ onExportReport, onViewHistory }) {
     >
       <div className="flex w-full flex-wrap items-start justify-between gap-y-[16px]">
         <div className="flex min-w-[250px] flex-1 flex-col justify-center gap-[4px]">
-          <h1
-            id="admin-dashboard-title"
-            className={clsx(
-              isMobileLayout ? "text-heading-4" : "text-heading-3",
-              "m-0 text-[var(--color-text-50)]",
-            )}
-          >
-            Dashboard
-          </h1>
+          <AdminPageTitle id="admin-dashboard-title">Dashboard</AdminPageTitle>
           <p className="text-body-1 m-0 text-[var(--color-text-200)]">
             Resumen general de la actividad y operaci&oacute;n de ARCAstudio.
           </p>
         </div>
 
-        <div className="flex min-w-[294px] flex-1 flex-wrap items-center justify-end gap-[12px] max-[767px]:min-w-0 max-[767px]:basis-full max-[767px]:flex-nowrap">
+        <div className="flex min-w-[294px] flex-1 flex-wrap items-center justify-end gap-[12px] max-[767px]:min-w-0 max-[767px]:basis-full">
           <Button
             theme="Primary"
             type="Outline"

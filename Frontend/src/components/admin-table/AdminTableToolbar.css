@@ -1,0 +1,51 @@
+/*
+ * Toolbar de búsqueda y filtros de las tablas administrativas (proyectos activos y usuarios).
+ * Se adapta al ancho real de su contenedor y no al viewport, porque ese ancho depende del
+ * riel lateral (76 px contraído, 312 px expandido u oculto en móvil).
+ */
+.admin-table-toolbar {
+  container-type: inline-size;
+}
+
+.admin-table-toolbar__layout,
+.admin-table-toolbar__filters {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+/*
+ * Figma MOBILE (3727:678728, 3727:681942) coloca ambos filtros en una fila: el primero mide
+ * 180 px y el segundo ocupa el espacio visible restante. "Quitar filtros", que Figma deja
+ * recortado fuera del ancho, pasa a la fila siguiente para seguir siendo accesible.
+ */
+.admin-table-toolbar__filters {
+  grid-template-columns: minmax(0, 180px) minmax(120px, 1fr);
+}
+
+.admin-table-toolbar__clear-filters {
+  grid-column: 1 / -1;
+}
+
+@container (min-width: 520px) {
+  .admin-table-toolbar__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 845px) {
+  .admin-table-toolbar__layout {
+    grid-template-columns: 320px 513px;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .admin-table-toolbar__filters {
+    grid-template-columns: 180px 180px 129px;
+  }
+
+  .admin-table-toolbar__clear-filters {
+    grid-column: auto;
+  }
+}

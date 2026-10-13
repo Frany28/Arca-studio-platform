@@ -10,6 +10,7 @@ import ProgressBarLabel from "../../../components/ui/ProgressBarLabel/ProgressBa
 import Tag from "../../../components/ui/Tag/Tag.jsx";
 import useMobileLayout from "../../../hooks/useMobileLayout.js";
 import { formatProjectDeliveryDate } from "../../../utils/projectDeliveryDate.js";
+import { ADMIN_DASHBOARD_PAIRED_SECTION_GRID_CLASS_NAME } from "../utils/adminDashboardLayout.js";
 import { getAdminDashboardPresentation } from "../utils/adminDashboardMobilePresentation.js";
 
 // Presentación temporal: estos eventos no están conectados a una fuente real todavía.
@@ -114,7 +115,7 @@ function AdminDashboardOperations({ deliveries, deliveriesError, deliveriesLoadi
   const presentation = getAdminDashboardPresentation(useMobileLayout());
 
   return (
-    <section className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-[24px] px-[16px] pb-[24px] pt-[48px] sm:px-[24px] lg:grid-cols-2 lg:px-[48px]">
+    <section className={clsx(ADMIN_DASHBOARD_PAIRED_SECTION_GRID_CLASS_NAME, "mx-auto w-full max-w-[1200px] gap-[24px] px-[16px] pb-[24px] pt-[48px] sm:px-[24px] lg:px-[48px]")}>
       <div className="flex min-w-[300px] flex-col gap-[16px] overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-10)] p-[16px] max-sm:min-w-0">
         <Label label="Eventos críticos" required={false} information={false} />
         {events.length ? (

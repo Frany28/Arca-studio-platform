@@ -9,6 +9,7 @@ import Loader from "../../../components/ui/Loader/Loader.jsx";
 import Tag from "../../../components/ui/Tag/Tag.jsx";
 import useMobileLayout from "../../../hooks/useMobileLayout.js";
 import { getProjectTypeDisplay } from "../../../utils/projectTypeDisplay.js";
+import { ADMIN_DASHBOARD_PAIRED_SECTION_GRID_CLASS_NAME } from "../utils/adminDashboardLayout.js";
 import { getAdminDashboardPresentation } from "../utils/adminDashboardMobilePresentation.js";
 
 const activityTimeFormatter = new Intl.DateTimeFormat("es-VE", {
@@ -174,7 +175,7 @@ function AdminDashboardOverview({
   }
 
   return (
-    <section className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-[24px] px-[16px] pb-[24px] sm:px-[24px] lg:grid-cols-2 lg:px-[48px]">
+    <section className={clsx(ADMIN_DASHBOARD_PAIRED_SECTION_GRID_CLASS_NAME, "mx-auto w-full max-w-[1200px] gap-[24px] px-[16px] pb-[24px] sm:px-[24px] lg:px-[48px]")}>
       <div className="flex min-w-0 flex-col gap-[16px] overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-10)] p-[16px]">
         <Label label="Actividad reciente" required={false} information={false} />
         {error ? (

@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getProjectPath } from "../utils/projectRoutes.js";
 import { createUserSideNavigationItems } from "../utils/sideNavigationItems.js";
-
-const WEB_BREAKPOINT_PX = 1280;
+import useResponsiveSidebarExpansion from "./useResponsiveSidebarExpansion.js";
 
 /**
- * Conserva la navegación, expansión responsive y estado del drawer de los dashboards.
- * Comparte los callbacks existentes sin cargar datos ni conocer acciones de cada rol.
+ * Conserva la navegación, expansión responsive y estado del drawer de las vistas internas.
+ * Comparte los callbacks existentes sin cargar datos ni conocer acciones de cada rol;
+ * la expansión del riel se delega en useResponsiveSidebarExpansion.
  *
  * @param {Object} params - Proyectos disponibles y rol de la sesión.
  * @param {Array} params.projectRows - Filas usadas para items y destinos de proyectos.
@@ -17,38 +17,13 @@ const WEB_BREAKPOINT_PX = 1280;
  */
 export function useDashboardNavigation({ projectRows, roleCode }) {
   const navigate = useNavigate();
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(() =>
-    typeof window === "undefined" ? true : window.innerWidth >= WEB_BREAKPOINT_PX,
-  );
+  const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
   const navigationItems = useMemo(
     () => createUserSideNavigationItems(projectRows, roleCode),
     [roleCode, projectRows],
   );
-  useEffect(() => {
-    const mediaQuery = window.matchMedia(
-      `(max-width: ${WEB_BREAKPOINT_PX - 1}px)`,
-    );
-
-    /**
-     * Restablece la expansión al entrar o salir del rango web, además del montaje.
-     * Dentro del mismo rango conserva los cambios manuales solicitados por el usuario.
-     *
-     * @param {MediaQueryList|MediaQueryListEvent} event Coincidencia del rango menor a 1280 px.
-     * @returns {void} Actualiza la expansión controlada por la página.
-     */
-    function syncSidebarForViewport(event) {
-      setIsSidebarExpanded(!event.matches);
-    }
-
-    syncSidebarForViewport(mediaQuery);
-    mediaQuery.addEventListener("change", syncSidebarForViewport);
-
-    return () => {
-      mediaQuery.removeEventListener("change", syncSidebarForViewport);
-    };
-  }, []);
 
   /**
    * Resuelve los destinos existentes del sidebar respetando to e IDs de proyectos.

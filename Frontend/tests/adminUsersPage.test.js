@@ -9,8 +9,9 @@ test("admin user management keeps the shared navigation and users tab active", a
     readFile(new URL("../src/pages/admin-users/hooks/useAdminUsersData.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(source, /components\/EnvironmentNavigationBar\.jsx/);
-  assert.match(source, /activeItemId="users"/);
+  assert.match(source, /layouts\/InternalDashboardLayout\.jsx/);
+  assert.match(source, /<InternalDashboardLayout[\s\S]*activeItemId="users"/);
+  assert.doesNotMatch(source, /matchMedia|innerWidth/, "La expansión del riel pertenece al hook compartido");
   assert.match(source, /Gestión de usuarios/);
   assert.match(kpiSource, /w-\[235px\]/);
   assert.match(kpiSource, /text-heading-4/);
@@ -55,7 +56,7 @@ test("selected admin users expose centered bulk status actions", async () => {
   );
 
   assert.match(source, /grid-cols-\[1fr_auto_1fr\]/);
-  assert.match(source, /selectedCount \? BULK_STATUS_ACTIONS\.map/);
+  assert.match(source, /selectedCount \? \([\s\S]*?BULK_STATUS_ACTIONS\.map/);
   assert.match(source, /label: "Suspender", status: "blocked"/);
   assert.match(source, /label: "Deshabilitar", status: "inactive"/);
   assert.match(source, /label: "Activar", status: "active"/);
@@ -129,8 +130,15 @@ test("admin user filters match the Figma control dimensions", async () => {
     "utf8",
   );
 
-  assert.match(source, /items-center gap-\[12px\][^\n]*min-\[900px\]:grid-cols-\[180px_180px_129px\]/);
-  assert.equal((source.match(/min-\[900px\]:w-\[180px\]/g) || []).length, 2);
+  // Las dimensiones de Figma (180, 180 y 129 px) pertenecen al toolbar compartido con la
+  // tabla de proyectos; la página solo aporta los controles.
+  const toolbarStyles = await readFile(
+    new URL("../src/components/admin-table/AdminTableToolbar.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /<AdminTableToolbar/);
+  assert.match(toolbarStyles, /grid-template-columns: 180px 180px 129px/);
+  assert.match(toolbarStyles, /grid-template-columns: minmax\(0, 180px\) minmax\(120px, 1fr\)/);
   assert.match(source, /type="Solid" size="M" fitContent[^\n]*Quitar filtros/);
 });
 

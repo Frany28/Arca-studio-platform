@@ -36,8 +36,8 @@ test("admin files route and navigation are enabled only for administrators", asy
 
   assert.match(main, /allowedRoles=\{\["admin"\]\}[\s\S]*path="\/archivos" element=\{<AdminFilesPage \/>\}/);
   assert.match(navigation, /id: "files"[\s\S]*to: "\/archivos"/);
-  assert.match(page, /activeItemId="files"/);
-  assert.match(page, /<NavigationBar[\s\S]*<section/);
+  assert.match(page, /<InternalDashboardLayout[\s\S]*activeItemId="files"[\s\S]*<section/);
+  assert.doesNotMatch(page, /matchMedia|innerWidth/, "La expansión del riel pertenece al hook compartido");
   assert.match(page, /<Loader/);
   assert.match(page, /<EmptyState/);
 });

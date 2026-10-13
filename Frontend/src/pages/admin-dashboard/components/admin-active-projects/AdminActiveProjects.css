@@ -1,28 +1,7 @@
-.admin-active-projects {
-  container-type: inline-size;
-}
-
-.admin-active-projects__toolbar,
-.admin-active-projects__filters {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-}
-
 /*
- * Figma MOBILE (3727:678728) coloca ambos filtros en una fila: el primero mide 180 px y el
- * segundo ocupa el espacio visible restante. "Quitar filtros", que Figma deja recortado
- * fuera del ancho, pasa a la fila siguiente para seguir siendo accesible.
+ * La composición de búsqueda y filtros vive en components/admin-table/AdminTableToolbar.css,
+ * compartida con la tabla de usuarios; aquí solo queda el panel propio de los filtros.
  */
-.admin-active-projects__filters {
-  grid-template-columns: minmax(0, 180px) minmax(120px, 1fr);
-}
-
-.admin-active-projects__clear-filters {
-  grid-column: 1 / -1;
-}
-
 .admin-active-projects__filter-menu {
   top: calc(100% - 1px);
   width: 100%;
@@ -84,31 +63,5 @@
   .admin-active-projects__filter-menu {
     scrollbar-color: var(--color-neutral-400) transparent;
     scrollbar-width: thin;
-  }
-}
-
-@container (min-width: 520px) {
-  .admin-active-projects__filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .admin-active-projects__clear-filters {
-    grid-column: 1 / -1;
-  }
-}
-
-@container (min-width: 845px) {
-  .admin-active-projects__toolbar {
-    grid-template-columns: 320px 513px;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .admin-active-projects__filters {
-    grid-template-columns: 180px 180px 129px;
-  }
-
-  .admin-active-projects__clear-filters {
-    grid-column: auto;
   }
 }

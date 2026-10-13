@@ -21,7 +21,10 @@ test("admin dashboard metrics preserve their approved visual order", async () =>
 
   assert.equal(positions.every((position) => position >= 0), true);
   assert.deepEqual(positions, [...positions].sort((first, second) => first - second));
-  assert.match(source, /min-\[640px\]:max-\[900px\]:grid-cols-2/);
-  assert.match(source, /min-\[900px\]:grid-cols-5/);
+  // Dos columnas en móvil; desde tablet las columnas dependen del ancho real del contenido
+  // (riel lateral incluido) para que las métricas no se superpongan.
+  assert.match(source, /grid w-full grid-cols-2 /);
+  assert.match(source, /min-\[768px\]:grid-cols-\[repeat\(auto-fill,minmax\(176px,1fr\)\)\]/);
+  assert.doesNotMatch(source, /min-\[900px\]:grid-cols-5/, "Una rejilla fija de 5 columnas superpone las métricas a 1024 px");
   assert.doesNotMatch(source, /sm:grid-cols-2/);
 });

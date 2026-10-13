@@ -9,17 +9,25 @@ const AUTHENTICATED_PAGE_FILES = [
   "src/pages/examples/EmptyProjectsExample.jsx",
   "src/pages/examples/EmptyProjectRendersExample.jsx",
   "src/layouts/InternalDashboardLayout.jsx",
-  "src/pages/admin-users/AdminUsersPage.jsx",
   "src/pages/architect-dashboard/NewArchitectProjectPage.jsx",
   "src/pages/projects/ProjectDetailsPage.jsx",
   "src/pages/settings/SettingsPage.jsx",
 ];
 
+// Vistas internas que obtienen riel, drawer móvil y navbar exclusivamente del layout compartido.
+const INTERNAL_LAYOUT_PAGE_FILES = [
+  "src/pages/admin-dashboard/AdminDashboard.jsx",
+  "src/pages/architect-dashboard/ArchitectDashboard.jsx",
+  "src/pages/admin-users/AdminUsersPage.jsx",
+  "src/pages/admin-files/AdminFilesPage.jsx",
+];
+
 test("authenticated pages use the shared environment navbar without local overrides", async () => {
-  for (const role of ["admin", "architect"]) {
-    const source = await readFile(new URL(`../src/pages/${role}-dashboard/${role === "admin" ? "Admin" : "Architect"}Dashboard.jsx`, import.meta.url), "utf8");
-    assert.match(source, /layouts\/InternalDashboardLayout\.jsx/);
-    assert.match(source, /<InternalDashboardLayout/);
+  for (const filePath of INTERNAL_LAYOUT_PAGE_FILES) {
+    const source = await readFile(new URL(`../${filePath}`, import.meta.url), "utf8");
+    assert.match(source, /layouts\/InternalDashboardLayout\.jsx/, filePath);
+    assert.match(source, /<InternalDashboardLayout/, filePath);
+    assert.doesNotMatch(source, /<ResponsiveSideNavigation|<NavigationBar/, `${filePath} no debe recrear el shell`);
   }
   for (const filePath of AUTHENTICATED_PAGE_FILES) {
     const source = await readFile(new URL(`../${filePath}`, import.meta.url), "utf8");

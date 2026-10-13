@@ -166,14 +166,14 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
     await expectSidebar(page, true, 312);
     await toggle.click();
     await expectSidebar(page, false, 76);
+    // Las tres vistas comparten useResponsiveSidebarExpansion: cruzar 1280 px restablece
+    // la expansión del rango y dentro del mismo rango se conserva la elección manual.
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await expectSidebar(page, path !== "/archivos", path === "/archivos" ? 76 : 312);
-    if (path === "/archivos") await toggle.click();
     await expectSidebar(page, true, 312);
     await page.setViewportSize({ width: 1279, height: 1000 });
-    await expectSidebar(page, path === "/archivos", path === "/archivos" ? 312 : 76);
+    await expectSidebar(page, false, 76);
     await toggle.click();
-    await expectSidebar(page, path !== "/archivos", path === "/archivos" ? 76 : 312);
+    await expectSidebar(page, true, 312);
   });
 }
 

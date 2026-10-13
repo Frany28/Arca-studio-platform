@@ -6,6 +6,8 @@ import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+import { formatEnvironmentDate } from "../../src/utils/environmentDate.js";
+
 const ARCHITECT = { id: 2, name: "Diego Jiménez" };
 const PROJECT = { id: 30, name: "Stand Aurea", status: "in_process", progress: 90, endDate: "2026-03-24T00:00:00.000Z", client: { id: 50, name: "Diego Jiménez" }, assignees: [], assignedArchitect: null };
 const PAYLOADS = {
@@ -100,7 +102,9 @@ test("Dashboard admin 375 px reproduce las medidas de Figma 3727:678728", async 
   assert.equal(navbar.height, 68);
   const menu = await measure(page.getByRole("button", { name: "Abrir menú", exact: true }));
   assert.deepEqual([menu.width, menu.height, menu.x], [44, 44, 16]);
-  assert.equal((await measure(page.getByText("Jueves", { exact: false }).first())).fontWeight, "500");
+  // La fecha depende del día de ejecución: se localiza por su texto formateado actual.
+  const today = formatEnvironmentDate();
+  assert.equal((await measure(page.getByText(today, { exact: true }).first())).fontWeight, "500");
 
   assert.equal((await measure(page.getByRole("heading", { name: "Dashboard", level: 1 }))).fontSize, "24px");
   const exportButton = await measure(page.getByRole("button", { name: "Exportar reporte" }));
