@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("phone country options reuse the attached four-row dropdown pattern", async () => {
+test("phone country options reuse the attached three-row dropdown pattern", async () => {
   const source = await readFile(
     new URL("../src/components/ui/Input/phone/PhoneCountrySelector.jsx", import.meta.url),
     "utf8",
@@ -14,7 +14,8 @@ test("phone country options reuse the attached four-row dropdown pattern", async
   );
 
   assert.match(source, /left-\[-1px\] top-full/);
-  assert.match(source, /max-h-\[152px\]/);
+  assert.match(source, /style=\{\{ maxHeight: optionsViewportHeight \}\}/);
+  assert.match(source, /height=\{optionsViewportHeight\}/);
   assert.match(source, /overflow-y-auto/);
   assert.match(source, /\[scrollbar-width:none\]/);
   assert.match(source, /border-t-0/);

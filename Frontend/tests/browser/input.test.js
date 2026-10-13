@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
@@ -501,6 +503,128 @@ test("Teléfono: menú y scrollbar conservan dimensiones y cierre fuera del sele
   await page.mouse.click(700, 500);
   assert.equal(await prefix.getAttribute("aria-expanded"), "false");
   assert.equal(await list.count(), 0);
+});
+
+test("Teléfono: tres opciones visibles, scroll interno y banderas en móvil, tablet y ambos temas", async (context) => {
+  const options = [...PHONE_OPTIONS, ...["FR", "DE", "CO", "BR", "AR"].map((countryCode, index) => ({
+    ...PHONE_OPTIONS[0], countryCode, dialCode: `+8${index}`, abbreviation: countryCode, label: countryCode,
+  }))];
+  const page = await openInput(context, {
+    type: "Phone number", phoneOptions: options, className: "w-full max-w-[320px]",
+  }, { viewport: { width: 320, height: 800 } });
+  page.setDefaultTimeout(5000);
+  await page.evaluate(() => document.fonts.ready);
+  const prefix = page.getByRole("combobox");
+  for (const dark of [false, true]) {
+    await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), dark);
+    for (const width of [320, 375, 430, 768, 1024, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.locator("#contract-input").focus();
+      await prefix.focus();
+      await prefix.fill("");
+      const list = page.getByRole("listbox");
+      await page.getByRole("scrollbar", { name: "Desplazar países" }).waitFor();
+      const geometry = await list.evaluate((list) => {
+        const rows = [...list.querySelectorAll('[role="option"]')];
+        const viewport = rows[0].parentElement;
+        const bounds = viewport.getBoundingClientRect();
+        const menu = list.getBoundingClientRect();
+        return {
+          height: viewport.clientHeight,
+          total: rows.length,
+          intersecting: rows.filter((row) => {
+            const box = row.getBoundingClientRect();
+            return box.bottom > bounds.top && box.top < bounds.bottom;
+          }).length,
+          rowHeights: rows.map((row) => row.getBoundingClientRect().height),
+          flagSizes: [...list.querySelectorAll('[role="img"], img')].map((flag) => {
+            const { width, height } = flag.getBoundingClientRect();
+            return { width, height };
+          }),
+          trackHeight: list.querySelector('[role="scrollbar"]').parentElement.getBoundingClientRect().height,
+          canScroll: viewport.scrollHeight > viewport.clientHeight,
+          horizontalOverflow: viewport.scrollWidth - viewport.clientWidth,
+          pageOverflow: document.documentElement.scrollWidth - innerWidth,
+          menuInsideViewport: menu.left >= 0 && menu.right <= innerWidth,
+          background: getComputedStyle(list).backgroundColor,
+        };
+      });
+      assert.equal(geometry.height, 113, `${width}px: tres filas y dos gaps`);
+      assert.equal(geometry.intersecting, 3, "Sin una cuarta opción parcialmente visible");
+      assert.equal(geometry.total, options.length, "Se conserva todo el catálogo");
+      assert.ok(geometry.rowHeights.every((height) => height === 35));
+      assert.equal(geometry.flagSizes.length, options.length);
+      assert.ok(geometry.flagSizes.every(({ width, height }) => width === 20 && height === 20));
+      assert.equal(geometry.trackHeight, 113, "Scrollbar alineado con el área desplazable");
+      assert.equal(geometry.canScroll, true);
+      assert.equal(geometry.horizontalOverflow, 0);
+      assert.equal(geometry.pageOverflow, 0);
+      assert.equal(geometry.menuInsideViewport, true);
+      assert.equal(geometry.background, await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.style.backgroundColor = "var(--color-neutral-100)";
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+      }), "Superficie del tema vigente");
+      if (process.env.ARCA_PHONE_CAPTURE_DIR && width === 375) {
+        await mkdir(process.env.ARCA_PHONE_CAPTURE_DIR, { recursive: true });
+        await list.screenshot({ path: join(process.env.ARCA_PHONE_CAPTURE_DIR, `phone-options-${dark ? "dark" : "light"}.png`) });
+      }
+      const pageScrollBefore = await page.evaluate(() => scrollY);
+      await list.hover();
+      await page.mouse.wheel(0, 120);
+      await page.waitForFunction(() => document.querySelector('[role="option"]').parentElement.scrollTop > 0);
+      assert.equal(await page.evaluate(() => scrollY), pageScrollBefore, "La rueda desplaza el listado internamente");
+      const scrollbar = page.getByRole("scrollbar", { name: "Desplazar países" });
+      const bounds = await scrollbar.boundingBox();
+      const thumb = await scrollbar.locator("> div").boundingBox();
+      await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height + 20);
+      await page.mouse.up();
+      await page.waitForFunction(() => {
+        const viewport = document.querySelector('[role="option"]').parentElement;
+        return viewport.scrollTop >= viewport.scrollHeight - viewport.clientHeight - 1;
+      }, undefined, { timeout: 5000 });
+      await prefix.press("Escape");
+      assert.equal(await list.count(), 0);
+    }
+  }
+  // El tabulador alcanza una opción fuera de las tres iniciales y la desplaza a la vista.
+  await page.locator("#contract-input").focus();
+  await prefix.focus();
+  await prefix.fill("");
+  await page.keyboard.press("Tab");
+  for (let index = 0; index < 3; index += 1) await page.keyboard.press("Tab");
+  const fourth = page.getByRole("option").nth(3);
+  assert.equal(await fourth.evaluate((option) => option === document.activeElement), true);
+  assert.equal(await fourth.evaluate((option) => {
+    const row = option.getBoundingClientRect();
+    const viewport = option.parentElement.getBoundingClientRect();
+    return row.top >= viewport.top && row.bottom <= viewport.bottom;
+  }), true, "La opción enfocada entra en el viewport interno");
+  await page.keyboard.press("Enter");
+  assert.equal(await prefix.inputValue(), "80");
+  assert.equal((await values(page, "country")).at(-1).countryCode, "FR");
+  assert.equal(await page.getByRole("listbox").count(), 0);
+  assert.equal(await page.getByRole("img", { name: "FR", exact: true }).count(), 1, "Bandera del país seleccionado");
+  assert.deepEqual(await values(page, "submit"), []);
+});
+
+test("Teléfono: uno, tres y cero resultados ajustan el menú sin scrollbar innecesario", async (context) => {
+  const page = await openInput(context, { type: "Phone number", phoneOptions: PHONE_OPTIONS });
+  const prefix = page.getByRole("combobox");
+  for (const [query, count, height] of [["", 3, 113], ["58", 1, 35], ["9999", 0, 35]]) {
+    await prefix.fill(query);
+    const list = page.getByRole("listbox");
+    assert.equal(await list.getByRole("option").count(), count);
+    assert.equal(await list.evaluate((element) => element.firstElementChild.clientHeight), height);
+    assert.equal(await page.getByRole("scrollbar").count(), 0);
+  }
+  await prefix.press("Escape");
+  assert.equal(await page.getByRole("listbox").count(), 0);
 });
 
 test("Tags: estado Focused explícito conserva seleccionados debajo, avatares y foco al quitar", async (context) => {

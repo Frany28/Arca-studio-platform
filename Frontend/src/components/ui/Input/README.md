@@ -16,6 +16,9 @@ La API pública continúa en `Input.jsx`. El valor está controlado cuando
 
 ## Contratos sensibles
 
+- El selector telefónico muestra como máximo tres opciones de 35 px con gaps de
+  4 px (113 px de área desplazable). El viewport y `ScrollBar` comparten la altura
+  calculada; con menos resultados el menú se ajusta a su contenido.
 - El teléfono modifica `event.target.value` antes de llamar a `onChange`.
   Solo reformatea el estado interno cuando el valor no está controlado.
 - Seleccionar un país actualiza país/prefijo, llama a `onPhoneCountryChange`,
@@ -91,3 +94,32 @@ Las pruebas de comportamiento están en `tests/browser/input.test.js`; los
 helpers puros se verifican en `tests/inputDomainUtils.test.js`. Las pruebas
 estructurales previas siguen verificando layout y consumidores en sus módulos
 correspondientes.
+
+## Validación del menú de tres opciones
+
+Se verificaron 320, 375, 430, 768, 1024, 1280 y 1440 px en claro y oscuro: tres
+filas completas sin una cuarta fila parcial, catálogo completo, rueda y arrastre
+internos, ausencia de overflow horizontal, banderas de 20 px, Tab hacia una opción
+fuera del área inicial, Enter para seleccionarla y Escape para cerrar. También se
+comprobaron cero/uno/tres resultados, callbacks, valores controlados/no controlados
+y los teléfonos deshabilitados de Perfil. El fixture de Input bloquea las imágenes
+externas y comprueba el fallback existente de las banderas; su componente no cambia.
+
+Resultados: lint correcto; `Backend/pnpm verify` correcto (239 tests backend,
+282 tests frontend y build); las suites completas de Input y formularios aprueban
+34/34 pruebas. Las cuatro integraciones PostgreSQL opcionales se omiten por no
+habilitar `ARCA_REQUEST_CLIENT_DB_TESTS`, `ARCA_WORKFLOW_DB_TESTS`,
+`ARCA_STAND_REPOSITORY_DB_TESTS` ni configurar `ARCA_STAND_TEST_DATABASE_URL`.
+No son necesarias para la geometría de este selector.
+
+Desde `Frontend`, la regresión se reproduce con:
+
+```powershell
+node --test tests/browser/input.test.js tests/browser/formResponsiveLayout.test.js
+```
+
+Logs locales en `$env:TEMP`: `arca-phone-dropdown-lint.log`,
+`arca-phone-dropdown-verify.log` y `arca-phone-dropdown-related-browser.log`.
+Las capturas claro/oscuro se regeneran definiendo `ARCA_PHONE_CAPTURE_DIR` antes
+de ejecutar la suite de Input; las de esta revisión están en
+`$env:TEMP/arca-phone-dropdown-validation`.

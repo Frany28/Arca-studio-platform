@@ -169,7 +169,14 @@ for (const theme of ["light", "dark"]) {
       if (tab === "Perfil") await page.getByRole("textbox", { name: "Nombre", exact: true }).fill("Nombre conservado al redimensionar");
       if (tab === "Seguridad") await page.getByLabel("Nueva contraseña", { exact: true }).fill("Borrador2026*");
       await checkResponsiveMatrix(page, `${tab} ${theme}`);
-      if (tab === "Perfil") assert.equal(await page.getByRole("textbox", { name: "Nombre", exact: true }).inputValue(), "Nombre conservado al redimensionar");
+      if (tab === "Perfil") {
+        assert.equal(await page.getByRole("textbox", { name: "Nombre", exact: true }).inputValue(), "Nombre conservado al redimensionar");
+        // Perfil conserva sus dos teléfonos bloqueados: cambiar la geometría no los habilita.
+        const prefixes = page.getByRole("combobox");
+        assert.equal(await prefixes.count(), 2);
+        for (const prefix of await prefixes.all()) assert.equal(await prefix.isDisabled(), true);
+        assert.equal(await page.getByRole("listbox", { name: "Países y códigos telefónicos" }).count(), 0);
+      }
       if (tab === "Seguridad") assert.equal(await page.getByLabel("Nueva contraseña", { exact: true }).inputValue(), "Borrador2026*");
       if (tab === "Preferencias" || tab === "Soporte") {
         await page.setViewportSize({ width: 320, height: 1000 });

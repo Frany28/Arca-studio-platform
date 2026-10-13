@@ -5,7 +5,7 @@ import { ChevronDownIcon } from "../InputIcons.jsx";
 import { getPhoneDigits } from "./phoneUtils.js";
 
 /**
- * Presenta el prefijo y el listado de países con la geometría y semántica originales.
+ * Presenta el prefijo y hasta tres opciones de país visibles, con scroll interno.
  * Delega selección, teclado, foco y desplazamiento al hook telefónico.
  * @param {object} props Identificador, estilos, estado disabled y contrato del hook.
  * @returns {import("react").ReactElement} Selector sin wrappers adicionales.
@@ -29,6 +29,10 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
     handleOptionsScroll,
     handlePhoneOptionSelection,
   } = phone;
+  // Tres filas de 35 px con dos gaps de 4 px: 113 px. Los resultados cortos
+  // conservan su altura natural; viewport y ScrollBar comparten la misma medida.
+  const visibleOptionCount = Math.min(filteredPhoneOptions.length || 1, 3);
+  const optionsViewportHeight = visibleOptionCount * 35 + (visibleOptionCount - 1) * 4;
   return (
     <div
       ref={phoneMenuRef}
@@ -91,7 +95,8 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
         >
           <div
             ref={phoneOptionsScrollRef}
-            className="flex max-h-[152px] flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain pr-[12px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain pr-[12px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            style={{ maxHeight: optionsViewportHeight }}
             onScroll={handleOptionsScroll}
           >
           {filteredPhoneOptions.map((option) => (
@@ -140,7 +145,7 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
           </div>
           {phoneScrollMetrics.length < 1 ? (
             <ScrollBar
-              height={152}
+              height={optionsViewportHeight}
               length={phoneScrollMetrics.length}
               position={phoneScrollMetrics.position}
               interactive={!disabled}
