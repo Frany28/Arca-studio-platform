@@ -22,7 +22,9 @@ test("admin files page implements the Figma KPI section with live metrics", asyn
   assert.match(page, /iconType="Info"/);
   assert.match(page, /iconType="Warning"/);
   assert.match(page, /border-y border-\[var\(--color-neutral-200\)\] py-\[24px\]/);
-  assert.match(kpi, /w-\[235px\][\s\S]*gap-\[12px\][\s\S]*text-heading-8[\s\S]*text-heading-4/);
+  assert.match(kpi, /variant = "default"/);
+  assert.match(kpi, /: "min-w-\[235px\] pr-\[16px\]"/);
+  assert.match(kpi, /gap-\[12px\][\s\S]*text-heading-8[\s\S]*text-heading-4/);
   assert.match(page, /api\.admin\.getDashboardMetrics/);
   assert.match(http, /getDashboardMetrics\(\{ signal \} = \{\}\)/);
 });

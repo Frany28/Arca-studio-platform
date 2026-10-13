@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { ADMIN_PROJECT_COLUMN_WIDTHS, ADMIN_PROJECT_TABLE_MIN_WIDTH } from "../../../config/adminProjectTable.js";
 
 function SkeletonBlock({ className, delay = 0, style, tone = "surface" }) {
   return (
@@ -225,14 +226,15 @@ function AdminOverviewSkeleton() {
   );
 }
 
-function AdminProjectTableSkeleton() {
+function AdminProjectTableSkeleton({ management = false }) {
   return (
-    <div className="w-full overflow-hidden rounded-[var(--radius-2)] border border-[var(--color-neutral-200)]">
-      <SkeletonBlock className="h-[48px] w-full rounded-none" />
-      {Array.from({ length: 5 }, (_, index) => (
-        <div key={index} className="grid h-[56px] grid-cols-[1.1fr_1fr_1.5fr_.8fr_.6fr_.6fr] items-center gap-[24px] border-b border-[var(--color-neutral-200)] px-[24px] last:border-b-0">
-          {Array.from({ length: 6 }, (_, cellIndex) => (
-            <SkeletonBlock key={cellIndex} className="h-[20px] w-full rounded-[var(--radius-1)]" delay={index * 45 + cellIndex * 20} tone={cellIndex < 3 ? "text" : "muted"} />
+    <div className={clsx("w-full overflow-hidden border border-[var(--color-neutral-200)]", management ? "rounded-[var(--radius-3)]" : "rounded-[var(--radius-2)]")}>
+      <SkeletonBlock className={management ? "h-[49px] w-full rounded-none" : "h-[48px] w-full rounded-none"} />
+      {Array.from({ length: management ? 10 : 5 }, (_, index) => (
+        <div key={index} className={clsx("grid items-center border-b border-[var(--color-neutral-200)] last:border-b-0", management ? "h-[68px]" : "h-[56px] grid-cols-[1.1fr_1fr_1.5fr_.8fr_.6fr_.6fr] gap-[24px] px-[24px]")}
+          style={management ? { width: ADMIN_PROJECT_TABLE_MIN_WIDTH, gridTemplateColumns: ADMIN_PROJECT_COLUMN_WIDTHS.map((width) => `${width}px`).join(" ") } : undefined}>
+          {Array.from({ length: management ? 7 : 6 }, (_, cellIndex) => (
+            <SkeletonBlock key={cellIndex} className={clsx("h-[20px] rounded-[var(--radius-1)]", management ? "mx-[16px]" : "w-full")} delay={index * 45 + cellIndex * 20} tone={cellIndex < 3 ? "text" : "muted"} />
           ))}
         </div>
       ))}
@@ -240,14 +242,14 @@ function AdminProjectTableSkeleton() {
   );
 }
 
-function AdminUserMetricsSkeleton() {
+function AdminUserMetricsSkeleton({ projects = false }) {
   return (
-    <div className="flex w-full flex-wrap content-center items-center gap-y-[16px] border-y border-[var(--color-neutral-200)] py-[24px]">
+    <div className={clsx("flex w-full flex-wrap content-center items-center gap-y-[16px] border-y border-[var(--color-neutral-200)] py-[24px]", projects && "gap-x-[16px] @min-[940px]:gap-x-0 max-[767px]:flex-col max-[767px]:items-start")}>
       {Array.from({ length: 4 }, (_, index) => (
-        <div key={index} className="flex w-[235px] min-w-[120px] shrink-0 items-center gap-[12px] pr-[16px]">
+        <div key={index} className={clsx("flex min-w-[120px] shrink-0 items-center gap-[12px]", projects ? "w-[200px] @min-[940px]:w-[235px]" : "w-[235px] pr-[16px]")}>
           <SkeletonBlock className="size-[48px] shrink-0 rounded-[var(--radius-2)]" delay={index * 55} />
           <div className="flex flex-col gap-[2px]">
-            <SkeletonBlock className="h-[17px] w-[142px] max-w-full rounded-[var(--radius-1)]" delay={35 + index * 55} tone="text" />
+            <SkeletonBlock className={clsx("h-[17px] max-w-full rounded-[var(--radius-1)]", projects ? "w-[140px]" : "w-[142px]")} delay={35 + index * 55} tone="text" />
             <SkeletonBlock className="h-[30px] w-[38px] rounded-[var(--radius-1)]" delay={65 + index * 55} tone="text" />
           </div>
         </div>
@@ -524,7 +526,7 @@ function ProjectDetailSkeleton({ section = "info" }) {
   return <div className="flex w-full flex-col gap-[32px] py-[24px]"><ProjectDetailHeaderSkeleton activeSection={section} />{panels[section] || panels.info}</div>;
 }
 
-function Loader({ className, count = 1, label = "Cargando contenido", preset = "projectRow", section = "info" }) {
+function Loader({ className, count = 1, label = "Cargando contenido", preset = "projectRow", section = "info", variant }) {
   const itemCount = Math.max(1, Math.floor(Number(count) || 1));
   let content;
 
@@ -547,9 +549,9 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
   } else if (preset === "adminOverview") {
     content = <AdminOverviewSkeleton />;
   } else if (preset === "adminProjectTable") {
-    content = <AdminProjectTableSkeleton />;
+    content = <AdminProjectTableSkeleton management={variant === "management"} />;
   } else if (preset === "adminUserMetrics") {
-    content = <AdminUserMetricsSkeleton />;
+    content = <AdminUserMetricsSkeleton projects={variant === "projects"} />;
   } else if (preset === "adminUserTable") {
     content = <AdminUserTableSkeleton />;
   } else if (preset === "adminUserDetails") {

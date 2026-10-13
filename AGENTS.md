@@ -490,6 +490,7 @@ Si la causa es una distribución incorrecta de responsabilidades, corregirla de 
 
 ## 19.6. Validación y revisión del cambio
 
+* Las capturas de pantalla usadas para validar son temporales: eliminarlas después de revisarlas, tanto del repositorio como de las carpetas temporales utilizadas. Conservar los resultados de la comparación en el informe, sin enlaces a imágenes eliminadas.
 * Revisar las pruebas relacionadas antes de modificar y ejecutar pruebas específicas y relacionadas después del cambio.
 * Cuando se corrige un bug, agregar una prueba de regresión que lo hubiera detectado cuando corresponda. Las pruebas deben comprobar comportamiento y evitar dependencia innecesaria de detalles internos.
 * Adaptar las pruebas si cambia una responsabilidad interna sin cambiar el comportamiento público.

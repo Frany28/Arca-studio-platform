@@ -8,11 +8,12 @@ import {
  * Conserva orden, referencias y aliases; el consumidor coordina los resets de página,
  * selección y feedback para que este hook no dependa de esas responsabilidades.
  * @param {Object[]} projects Proyectos originales del consumidor.
+ * @param {Object[]} [statusCatalog=STATUS_FILTER_ITEMS] Opciones visuales de estados, sin cambios HTTP.
  * @returns {{query: string, setQuery: Function, setStatusFilterIds: Function,
  * setPersonFilterIds: Function, personnelFilterItems: Object[], statusFilterItems: Object[],
  * filteredProjects: Object[], hasFilters: boolean}} Filtros controlados y resultados derivados.
  */
-export function useAdminProjectFilters(projects) {
+export function useAdminProjectFilters(projects, statusCatalog = STATUS_FILTER_ITEMS) {
   const [query, setQuery] = useState("");
   const [statusFilterIds, setStatusFilterIds] = useState([]);
   const [personFilterIds, setPersonFilterIds] = useState([]);
@@ -40,11 +41,11 @@ export function useAdminProjectFilters(projects) {
   ], [personFilterIds, personnel]);
 
   const statusFilterItems = useMemo(
-    () => STATUS_FILTER_ITEMS.map((item) => ({
+    () => statusCatalog.map((item) => ({
       ...item,
       checked: statusFilterIds.includes(item.id) ? "Yes" : "No",
     })),
-    [statusFilterIds],
+    [statusFilterIds, statusCatalog],
   );
 
   const filteredProjects = useMemo(() => {

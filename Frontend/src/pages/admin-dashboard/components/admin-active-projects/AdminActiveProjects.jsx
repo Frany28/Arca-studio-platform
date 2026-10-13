@@ -28,12 +28,13 @@ import useMobileLayout from "../../../../hooks/useMobileLayout.js";
 import { isProjectOperationallyReadOnly } from "../../../../utils/projectReadOnly.js";
 import { getBulkActionAvailability } from "./utils/adminProjectBulkActions.js";
 import { getAdminProjectsPagination } from "./utils/adminProjectPagination.js";
-import { getAssignees, getClient, getStatus } from "./utils/adminProjectPresentation.js";
+import { getAssignees, getClient, getStatus, MANAGEMENT_STATUS_FILTER_ITEMS } from "./utils/adminProjectPresentation.js";
 import { getAdminDashboardPresentation } from "../../utils/adminDashboardMobilePresentation.js";
 import { useAdminProjectFilters } from "./hooks/useAdminProjectFilters.js";
 import { useAdminProjectSelection } from "./hooks/useAdminProjectSelection.js";
 import { useAdminProjectsTableScroll } from "./hooks/useAdminProjectsTableScroll.js";
 import AdminTableToolbar from "../../../../components/admin-table/AdminTableToolbar.jsx";
+import { ADMIN_PROJECT_COLUMN_WIDTHS, ADMIN_PROJECT_TABLE_MIN_WIDTH } from "../../../../config/adminProjectTable.js";
 import "./AdminActiveProjects.css";
 
 const BULK_ACTION_FEEDBACK = {
@@ -54,12 +55,12 @@ const BULK_ACTION_FEEDBACK = {
   },
 };
 
-function TableHeaderLabel({ children, filter = false }) {
+function TableHeaderLabel({ children, filter = false, fixedIcon = false }) {
   const Icon = filter ? Filter : ArrowSwapVertical;
   return (
     <span className="flex items-center gap-[8px] whitespace-nowrap">
       <span>{children}</span>
-      <Icon size="16" variant="Linear" color="currentColor" aria-hidden="true" />
+      <Icon size="16" variant="Linear" color="currentColor" aria-hidden="true" className={fixedIcon ? "shrink-0" : undefined} />
     </span>
   );
 }
@@ -69,6 +70,8 @@ function TableHeaderLabel({ children, filter = false }) {
  * Mantiene aquí las mutaciones y snapshots ligados a los callbacks del consumidor;
  * los hooks locales no conocen la API ni los resets entre responsabilidades.
  * @param {Object} props Proyectos, catálogo de responsables, carga y callbacks existentes.
+ * @param {"dashboard"|"management"} [props.variant="dashboard"] Presentación de la sección;
+ * management omite el subtítulo, adapta encabezados y bloquea operaciones sin integración.
  * @returns {import("react").ReactElement} Tabla y controles con su presentación actual.
  */
 function AdminActiveProjects({
@@ -77,17 +80,21 @@ function AdminActiveProjects({
   error,
   loading,
   onOpenProject,
+  onEditProject,
   onBulkAction,
   onProjectAssigneesChange,
   onRetry,
   projects,
+  variant = "dashboard",
+  pageSize = variant === "management" ? 10 : undefined,
 }) {
+  const isManagement = variant === "management";
   const isMobileLayout = useMobileLayout();
   const presentation = getAdminDashboardPresentation(isMobileLayout);
   const {
     query, setQuery, setStatusFilterIds, setPersonFilterIds,
     personnelFilterItems, statusFilterItems, filteredProjects, hasFilters,
-  } = useAdminProjectFilters(projects);
+  } = useAdminProjectFilters(projects, isManagement ? MANAGEMENT_STATUS_FILTER_ITEMS : undefined);
   const [pageIndex, setPageIndex] = useState(0);
   const [bulkActionPending, setBulkActionPending] = useState("");
   const [bulkActionFeedback, setBulkActionFeedback] = useState(null);
@@ -108,8 +115,8 @@ function AdminActiveProjects({
   const personnelFilterLabel = "Filtrar por personal";
 
   const pagination = useMemo(
-    () => getAdminProjectsPagination(filteredProjects, pageIndex),
-    [filteredProjects, pageIndex],
+    () => getAdminProjectsPagination(filteredProjects, pageIndex, pageSize),
+    [filteredProjects, pageIndex, pageSize],
   );
   const visibleProjects = pagination.pageProjects;
 
@@ -296,13 +303,14 @@ function AdminActiveProjects({
 
   return (
     <section
-      className="admin-active-projects mx-auto flex w-full max-w-[1200px] flex-col gap-[16px] px-[16px] pb-[48px] pt-[24px] sm:px-[24px] lg:px-[48px]"
-      aria-labelledby="admin-active-projects-title"
+      className={clsx("admin-active-projects mx-auto flex w-full max-w-[1200px] flex-col px-[16px] pb-[48px] sm:px-[24px] lg:px-[48px]", isManagement ? "gap-[24px] pt-[48px]" : "gap-[16px] pt-[24px]")}
+      aria-labelledby={isManagement ? undefined : "admin-active-projects-title"}
+      aria-label={isManagement ? "Listado de proyectos" : undefined}
     >
-      <h2 id="admin-active-projects-title" className="text-body-3 text-[var(--color-text-300)]">
+      {!isManagement ? <h2 id="admin-active-projects-title" className="text-body-3 text-[var(--color-text-300)]">
         {/* Figma MOBILE (3727:678728) titula la sección "Proyectos activos". */}
         {isMobileLayout ? "Proyectos activos" : "Proyectos"}
-      </h2>
+      </h2> : null}
 
       <AdminTableToolbar
         search={(
@@ -370,7 +378,7 @@ function AdminActiveProjects({
       </AdminTableToolbar>
 
       {loading ? (
-        <Loader preset="adminProjectTable" label="Cargando proyectos" />
+        <Loader preset="adminProjectTable" variant={isManagement ? "management" : undefined} label="Cargando proyectos" />
       ) : error ? (
         <div className="w-full rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e1)]">
           <EmptyState
@@ -387,45 +395,40 @@ function AdminActiveProjects({
       ) : (
         <>
           {filteredProjects.length ? (
-            <div className="w-full overflow-hidden rounded-[var(--radius-2)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
+            <div className={clsx("w-full overflow-hidden border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]", isManagement ? "rounded-[var(--radius-3)]" : "rounded-[var(--radius-2)]")}>
             <div
               ref={tableViewportRef}
               className="w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
               onScroll={syncTableScrollState}
             >
-              <table className="w-full min-w-[1093px] table-fixed border-collapse text-left">
+              <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: ADMIN_PROJECT_TABLE_MIN_WIDTH }}>
             <colgroup>
-              <col className="w-[48px]" />
-              <col className="w-[155px]" />
-              <col className="w-[184px]" />
-              <col className="w-[300px]" />
-              <col className="w-[117px]" />
-              <col className="w-[117px]" />
-              <col className="w-[172px]" />
+              {ADMIN_PROJECT_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
             </colgroup>
             <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
               {/* En móvil las celdas usan Headings/h8 (500); el estilo nativo de <th> es negrita. */}
-              <tr className={isMobileLayout ? "h-[49px] text-heading-8 [&>th]:font-medium" : "h-[49px] text-body-4"}>
+              <tr className={clsx(isMobileLayout || isManagement ? "h-[49px] text-heading-8 [&>th]:font-medium" : "h-[49px] text-body-4", isManagement && "[&>th]:py-[15px]")}>
                 <th className="p-[16px]">
                   <Checkbox size="S" checked={headerChecked} interactive aria-label="Seleccionar todos los proyectos visibles" onCheckedChange={toggleAllVisible} />
                 </th>
-                <th className="px-[24px] py-[16px]"><TableHeaderLabel>Proyecto</TableHeaderLabel></th>
-                <th className="px-[24px] py-[16px]"><TableHeaderLabel>Cliente</TableHeaderLabel></th>
-                <th className="px-[24px] py-[16px]"><TableHeaderLabel filter>Personal responsable</TableHeaderLabel></th>
-                <th className="px-[24px] py-[16px]"><TableHeaderLabel filter>Status</TableHeaderLabel></th>
-                <th className="px-[24px] py-[16px]"><TableHeaderLabel>Progreso</TableHeaderLabel></th>
+                <th className="px-[24px] py-[16px]"><TableHeaderLabel fixedIcon={isManagement}>Proyecto</TableHeaderLabel></th>
+                <th className="px-[24px] py-[16px]"><TableHeaderLabel fixedIcon={isManagement}>Cliente</TableHeaderLabel></th>
+                <th className="px-[24px] py-[16px]"><TableHeaderLabel fixedIcon={isManagement} filter>Personal responsable</TableHeaderLabel></th>
+                <th className="px-[24px] py-[16px]"><TableHeaderLabel fixedIcon={isManagement} filter>Status</TableHeaderLabel></th>
+                <th className="px-[24px] py-[16px]"><TableHeaderLabel fixedIcon={isManagement}>Progreso</TableHeaderLabel></th>
                 <th className="px-[24px] py-[16px]">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {visibleProjects.map((project) => {
                 const client = getClient(project);
-                const status = getStatus(project);
+                const status = getStatus(project, variant);
                 const assignees = getAssignees(project);
                 const progress = Math.min(100, Math.max(0, Number(project.progress) || 0));
                 const projectName = project.title || project.name || "Proyecto";
                 const isSelected = selectedProjectIds.has(String(project.id));
-                const assignmentDisabled = isProjectOperationallyReadOnly(project);
+                const assignmentDisabled = isProjectOperationallyReadOnly(project)
+                  || (isManagement && !onProjectAssigneesChange);
 
                 return (
                   <tr
@@ -444,7 +447,7 @@ function AdminActiveProjects({
                       <Tag
                         label={projectName}
                         title={projectName}
-                        size={isMobileLayout ? presentation.tagSize : "M"}
+                        size={isManagement ? "L" : isMobileLayout ? presentation.tagSize : "M"}
                         avatar={false}
                         checkbox={false}
                         closeIcon={false}
@@ -460,15 +463,19 @@ function AdminActiveProjects({
                         <span className="text-body-4 min-w-0 truncate text-[var(--color-text-300)]">{client.name}</span>
                       </div>
                     </td>
-                    <td className="px-[24px] py-[16px]">
+                    <td className={clsx("px-[24px]", isManagement ? "py-[12px]" : "py-[16px]")}>
                       <AssigneeMultiSelect
                         value={assignees}
                         options={employeeOptions}
                         loading={assigneesLoading}
                         disabled={assignmentDisabled}
+                        showDisabledTags={isManagement}
+                        showTagAvatars={!isManagement}
                         className="w-[252px]"
                         aria-label={assignmentDisabled
-                          ? `Responsables de ${projectName}. Proyecto cerrado, asignación deshabilitada`
+                          ? isManagement
+                            ? `Responsables de ${projectName}. Asignación deshabilitada`
+                            : `Responsables de ${projectName}. Proyecto cerrado, asignación deshabilitada`
                           : `Responsables de ${projectName}`}
                         confirmRemoval
                         onChange={(nextAssignees) => onProjectAssigneesChange?.(project, nextAssignees)}
@@ -490,8 +497,8 @@ function AdminActiveProjects({
                     <td className="px-[24px] py-[16px]">
                       <div className="flex items-center gap-[8px]">
                         <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} tooltip="Ver proyecto" aria-label={`Ver ${projectName}`} onClick={() => onOpenProject(project)} />
-                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Edit2 size="20" color="currentColor" />} showRightIcon={false} tooltip="Editar proyecto" aria-label={`Editar ${projectName}`} disabled={!project.editable} onClick={() => onOpenProject(project)} />
-                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<More size="20" color="currentColor" />} showRightIcon={false} tooltip="Más opciones" aria-label={`Más opciones de ${projectName}`} aria-disabled="true" />
+                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Edit2 size="20" color="currentColor" />} showRightIcon={false} tooltip="Editar proyecto" aria-label={`Editar ${projectName}`} disabled={!project.editable || (isManagement && !onEditProject)} onClick={() => (onEditProject || onOpenProject)(project)} />
+                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<More size="20" color="currentColor" />} showRightIcon={false} tooltip="Más opciones" aria-label={`Más opciones de ${projectName}`} aria-disabled="true" disabled={isManagement} />
                       </div>
                     </td>
                   </tr>

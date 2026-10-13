@@ -21,7 +21,7 @@ test("selected admin project rows use the Figma neutral selection surface", asyn
   assert.match(source, /checked=\{isSelected \? "Yes" : "No"\}/);
   assert.match(
     source,
-    /<table className="w-full min-w-\[1093px\] table-fixed border-collapse text-left">/,
+    /<table className="w-full table-fixed border-collapse text-left" style=\{\{ minWidth: ADMIN_PROJECT_TABLE_MIN_WIDTH \}\}>/,
   );
   assert.doesNotMatch(source, /import Tooltip/);
   assert.doesNotMatch(source, /<Tooltip/);

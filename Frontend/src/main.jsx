@@ -14,6 +14,7 @@ const InternalDashboardRouter = lazy(
 const AdminUsersPage = lazy(
   () => import("./pages/admin-users/AdminUsersPage.jsx"),
 );
+const AdminProjectsPage = lazy(() => import("./pages/admin-projects/AdminProjectsPage.jsx"));
 const AdminFilesPage = lazy(
   () => import("./pages/admin-files/AdminFilesPage.jsx"),
 );
@@ -109,6 +110,7 @@ createRoot(document.getElementById("root")).render(
             <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
               <Route path="/archivos" element={<AdminFilesPage />} />
               <Route path="/usuarios" element={<AdminUsersPage />} />
+              <Route path="/gestion-proyectos" element={<AdminProjectsPage />} />
               <Route
                 path="/usuarios-vacio"
                 element={<AdminUsersPage empty />}

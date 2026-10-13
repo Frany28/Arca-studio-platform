@@ -60,6 +60,7 @@ function hasTextValue(value) {
  * @param {object} props API pública del Input, callbacks y atributos del campo nativo.
  * @param {boolean} props.required Obligatoriedad visual y nativa; conserva true por defecto.
  * @param {boolean} props.disabled Bloqueo efectivo, también activado por state="Disabled".
+ * @param {boolean} [props.showDisabledTags=false] Conserva las etiquetas informativas en Tags bloqueados.
  * @returns {import("react").ReactElement} Campo accesible con sus adornos y ayudas.
  */
 function Input({
@@ -76,6 +77,7 @@ function Input({
   showLeftIcon = true,
   showRightIcon = true,
   showLabelInfo = true,
+  showDisabledTags = false,
   information: legacyInformation,
   required = true,
   leftIcon = null,
@@ -178,7 +180,7 @@ function Input({
   const showTagsInsideField =
     resolvedType === "Tags" &&
     (["Filled", "Error"].includes(resolvedState) ||
-      (baseState === "Default" && isFocused)) &&
+      (baseState === "Default" && isFocused) || (isDisabled && showDisabledTags)) &&
     showTags;
   const resolvedPlaceholder =
     resolvedType === "Phone number"

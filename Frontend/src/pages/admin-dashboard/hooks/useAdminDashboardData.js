@@ -14,6 +14,8 @@ import { loadAdminDashboardOverview } from "../../../api/adminDashboardOverview.
  * @param {Object|null} params.user - Usuario cuyo ID o correo delimita la caché del overview.
  * @param {number} params.adminMetricsRequestKey - Un cambio vuelve a consultar las métricas.
  * @param {number} params.adminOverviewRequestKey - Un cambio recarga el overview; si es mayor que cero fuerza lectura.
+ * @param {boolean} [params.loadOverview=true] - Permite reutilizar métricas sin cargar el overview.
+ * @param {boolean} [params.loadAssignees=true] - Permite omitir el catálogo cuando no hay asignación editable.
  * @returns {Object} Métricas, overview y responsables con loading; errores independientes
  * de métricas y overview, y setAdminOverview para reconciliar asignaciones desde la página.
  */
@@ -23,6 +25,8 @@ export function useAdminDashboardData({
   user,
   adminMetricsRequestKey,
   adminOverviewRequestKey,
+  loadOverview = true,
+  loadAssignees = true,
 }) {
   const [adminMetrics, setAdminMetrics] = useState(null);
   const [adminMetricsError, setAdminMetricsError] = useState("");
@@ -32,11 +36,11 @@ export function useAdminDashboardData({
   const [adminOverview, setAdminOverview] = useState(null);
   const [adminOverviewError, setAdminOverviewError] = useState("");
   const [adminOverviewLoading, setAdminOverviewLoading] = useState(
-    roleCode === "admin" && !empty,
+    roleCode === "admin" && !empty && loadOverview,
   );
   const [adminAssignees, setAdminAssignees] = useState([]);
   const [adminAssigneesLoading, setAdminAssigneesLoading] = useState(
-    roleCode === "admin" && !empty,
+    roleCode === "admin" && !empty && loadAssignees,
   );
 
   useEffect(() => {
@@ -81,7 +85,7 @@ export function useAdminDashboardData({
   }, [adminMetricsRequestKey, roleCode, empty]);
 
   useEffect(() => {
-    if (roleCode !== "admin" || empty) {
+    if (roleCode !== "admin" || empty || !loadOverview) {
       return undefined;
     }
 
@@ -122,10 +126,10 @@ export function useAdminDashboardData({
       });
 
     return () => abortController.abort();
-  }, [adminOverviewRequestKey, roleCode, empty, user]);
+  }, [adminOverviewRequestKey, roleCode, empty, user, loadOverview]);
 
   useEffect(() => {
-    if (roleCode !== "admin" || empty) {
+    if (roleCode !== "admin" || empty || !loadAssignees) {
       return undefined;
     }
 
@@ -155,7 +159,7 @@ export function useAdminDashboardData({
       });
 
     return () => abortController.abort();
-  }, [roleCode, empty]);
+  }, [roleCode, empty, loadAssignees]);
 
   return {
     adminMetrics,

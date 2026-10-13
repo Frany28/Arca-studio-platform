@@ -16,6 +16,10 @@ La API pública continúa en `Input.jsx`. El valor está controlado cuando
 
 ## Contratos sensibles
 
+- `showDisabledTags` (false por defecto) conserva las etiquetas seleccionadas de un
+  Input Tags deshabilitado para su lectura. No habilita texto, sugerencias, eliminación
+  ni callbacks. AssigneeMultiSelect reenvía la opción; Gestión de proyectos la activa
+  en su variante informativa. Los demás consumidores conservan la presentación anterior.
 - El selector telefónico muestra como máximo tres opciones de 35 px con gaps de
   4 px (113 px de área desplazable). El viewport y `ScrollBar` comparten la altura
   calculada; con menos resultados el menú se ajusta a su contenido.

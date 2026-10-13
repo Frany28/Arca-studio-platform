@@ -81,7 +81,14 @@ function toTag(person, showAvatar) {
   };
 }
 
-// Coordina la selección múltiple, el guardado y la confirmación opcional de bajas.
+/**
+ * Coordina la selección múltiple, el guardado y la confirmación opcional de bajas.
+ * Las etiquetas informativas pueden permanecer visibles con el control bloqueado,
+ * sin habilitar búsqueda, altas ni eliminación de responsables.
+ * @param {Object} props Selección, catálogo, callbacks y estado del campo.
+ * @param {boolean} [props.showDisabledTags=false] Conserva nombres en la variante informativa.
+ * @returns {import("react").ReactElement} Selector conectado al Input compartido.
+ */
 function AssigneeMultiSelect({
   "aria-label": ariaLabel = "Seleccionar responsables",
   className,
@@ -94,6 +101,7 @@ function AssigneeMultiSelect({
   options = [],
   placeholder = "Asignar responsables...",
   showTagAvatars = true,
+  showDisabledTags = false,
   value = [],
 }) {
   const inputId = useId();
@@ -279,6 +287,7 @@ function AssigneeMultiSelect({
           state={resolvedError ? "Error" : "Default"}
           value={query}
           tags={selectedTags}
+          showDisabledTags={showDisabledTags}
           tagOptions={optionTags}
           tagGroupAriaLabel={`${ariaLabel}: empleados disponibles y seleccionados`}
           tagGroupPlacement="overlay"

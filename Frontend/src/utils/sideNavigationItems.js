@@ -89,7 +89,7 @@ export function createUserSideNavigationItems(projects = [], roleCode = "client"
         label: "Proyectos",
         icon: "projects",
         wrapperHeight: "44px",
-        to: "/proyectos",
+        to: "/gestion-proyectos",
       },
       {
         id: "files",

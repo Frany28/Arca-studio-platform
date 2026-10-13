@@ -505,6 +505,16 @@ test("Teléfono: menú y scrollbar conservan dimensiones y cierre fuera del sele
   assert.equal(await list.count(), 0);
 });
 
+test("Tags: variante informativa conserva nombres deshabilitados sin permitir eliminarlos", async (context) => {
+  const page = await openInput(context, { type: "Tags", tags: TAG_OPTIONS, disabled: true, showDisabledTags: true });
+  const remove = page.getByRole("button", { name: "Quitar Ána Pérez", exact: true });
+  assert.equal(await remove.isDisabled(), true);
+  assert.equal(await page.getByText("Ána Pérez", { exact: true }).count(), 1);
+  await remove.evaluate((element) => element.click());
+  assert.equal(await page.getByText("Ána Pérez", { exact: true }).count(), 1);
+  assert.deepEqual(await values(page, "tags"), []);
+});
+
 test("Teléfono: tres opciones visibles, scroll interno y banderas en móvil, tablet y ambos temas", async (context) => {
   const options = [...PHONE_OPTIONS, ...["FR", "DE", "CO", "BR", "AR"].map((countryCode, index) => ({
     ...PHONE_OPTIONS[0], countryCode, dialCode: `+8${index}`, abbreviation: countryCode, label: countryCode,

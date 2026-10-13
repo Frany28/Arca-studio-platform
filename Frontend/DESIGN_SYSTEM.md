@@ -397,7 +397,7 @@ El formato relativo compacto destinado a espacios restringidos constituye una va
 - La navegación responsive se compone con `ResponsiveSideNavigation` y `useMobileNavigationDrawer` (Figma `3727:678728` cerrado y `3727:544029` abierto). Desde 768 px se muestra el riel persistente expandible; en móvil, el riel se oculta y el botón “Abrir menú” de `EnvironmentNavigationBar` abre un drawer modal de 312 px (`min(312px, 100vw - 32px)`) sobre `SideOverlayDrawer`, con la variante `drawer` de `SideNavigation`: logo centrado, sin botón de expansión y botón principal de 52 px con `--radius-3`.
 - El drawer se cierra con el overlay, `Escape`, el botón de cierre accesible por teclado, al navegar o al alcanzar 768 px. Mantiene el foco dentro del panel, lo devuelve al botón de menú y bloquea el scroll del body mientras está abierto. Su apertura es independiente de la expansión del riel: abrir o cerrar el drawer nunca cambia el estado de tablet o escritorio. Ninguna página debe recrear este patrón con estados o drawers locales; todas las páginas autenticadas pasan `onMenuClick={mobileNavigation.open}` y `mobileMenuExpanded={mobileNavigation.isOpen}` al navbar.
 - En móvil, `EnvironmentNavigationBar` aplica la barra de Figma `3727:678728`: 68 px de alto, 16 px laterales, botones de 44 px, fecha en Headings/h8 con día y mes capitalizados (`utils/environmentDate.js`) y línea inferior interna.
-- Las vistas internas (dashboards de administrador y arquitecto, Gestión de usuarios y Gestión de archivos) se componen exclusivamente con `layouts/InternalDashboardLayout.jsx` y `useDashboardNavigation`; indican su destino con `activeItemId` y omiten el saludo con `showGreeting={false}`. Ninguna página recrea riel, drawer, navbar ni contenedor de scroll.
+- Las vistas internas (dashboards de administrador y arquitecto, Gestión de usuarios, Gestión de proyectos y Gestión de archivos) se componen exclusivamente con `layouts/InternalDashboardLayout.jsx` y `useDashboardNavigation`; indican su destino con `activeItemId` y omiten el saludo con `showGreeting={false}`. Ninguna página recrea riel, drawer, navbar ni contenedor de scroll.
 - La expansión del riel persistente de **todas** las vistas autenticadas (cliente, arquitecto y administrador, incluidos Configuración, Detalle de proyecto, Galería, Solicitud de proyecto y los ejemplos) pertenece exclusivamente a `hooks/useResponsiveSidebarExpansion.js`: expandido desde 1280 px (`WEB_MIN_WIDTH_PX`), contraído en tablet; cruzar 1280 px restablece el valor del rango y dentro del mismo rango se conserva la elección manual. Ninguna página ni hook de página declara su propio estado inicial ni listener de `matchMedia` para el riel; `tests/sidebarExpansionPolicy.test.js` lo verifica.
 - Los anchos del riel persistente son únicos para todo el entorno autenticado y viven en los tokens `--app-side-navigation-collapsed-width` y `--app-side-navigation-expanded-width` de `global.css`: 76 px contraído en todos los rangos donde aparece el riel; expandido 234 px en tablet vertical (768–1023 px) y 312 px desde 1024 px (tablet horizontal, Figma `3727:678726`, y escritorio). `SideNavigation` los consume con su padding de 16 px; ninguna página pasa clases de ancho o padding al riel ni calcula el ancho del contenido en JavaScript: el contenido usa `flex-1`. El drawer móvil conserva su ancho propio de 312 px. Figma no define el riel expandido entre 768 y 1023 px; los 234 px de ese rango son una decisión de producto para dejar ancho suficiente al contenido. Cambiar de ancho al cruzar 1024 px no altera la expansión: la política de `useResponsiveSidebarExpansion` solo restablece el estado al cruzar 1280 px.
 - El contenedor de scroll del shell no usa `overflow-x-hidden`: el contenido se adapta al ancho y las tablas anchas desplazan dentro de su propio contenedor. Un desborde horizontal es un error visible, no algo que se recorta en silencio.
@@ -439,6 +439,45 @@ a una intervención independiente de la validación del contrato del riel.
 - `tests/browser/formResponsiveLayout.test.js` verifica ambos temas, los ocho anchos
   aprobados, estados del riel, controles dentro del panel, dropdowns abiertos, borradores,
   navegación, teclado, validación y conservación de geometría de escritorio.
+
+### Gestión de proyectos: interfaz inicial
+
+- Referencia: Figma `3727:686421`, escritorio `3727:686867`, tablet `3727:686872`
+  y móvil `3727:686874`. La ruta administrativa `/gestion-proyectos` reutiliza el shell,
+  `AdminPageTitle`, cuatro `AdminKpiMetric` y la variante `management` de `AdminActiveProjects`.
+  `/proyectos` conserva la galería existente; el destino Proyectos del administrador
+  apunta al módulo de gestión. El botón Nuevo abre el formulario existente.
+- El título y Nuevo comparten fila cuando caben; en móvil el botón aparece bajo el título.
+  La variante projects de AdminKpiMetric usa ancho intrínseco en tablet para conservar
+  cuatro indicadores en una fila a 1024 px con el riel contraído, y columnas de 235 px
+  desde 940 px disponibles; se apila en móvil. Usuarios y Archivos conservan su mínimo
+  de 235 px. Se conserva el contenedor de 1200 px y el padding del entorno.
+- La tabla conserva siete columnas, filas de 68 px, encabezado de 49 px y diez proyectos
+  por página. `config/adminProjectTable.js` centraliza sus anchos mínimos (48, 155, 184,
+  300, 117, 117 y 172 px; total 1093 px) para tabla y skeleton. El scroll horizontal
+  pertenece al viewport de la tabla; el documento y el shell no recortan desbordamientos.
+  La variante por defecto del dashboard conserva sus cinco proyectos por página.
+- Búsqueda, filtros, selección, paginación y estados visuales reutilizan los contratos
+  existentes. El toolbar conserva su adaptación por container queries, incluido
+  Quitar filtros en una fila accesible cuando no cabe. No se comprimen las columnas
+  ni se reemplaza la tabla por tarjetas. Las animaciones y el sidebar permanecen compartidos.
+- Totales, progreso y finalizados se derivan de toda la colección real recogida por
+  `useDashboardProjects`, antes de filtrar o paginar. Solicitudes utiliza
+  `dashboard-metrics.requests.total` (solicitudes pendientes según el contrato existente).
+  Los errores muestran ayudas y valores no disponibles, nunca estadísticas demo.
+  `useAdminDashboardData` permite omitir overview y catálogo de responsables mediante
+  opciones compatibles, activadas por defecto para sus consumidores actuales.
+- En esta fase Nuevo y Ver reutilizan navegación existente. Edición, asignación,
+  Más opciones y acciones masivas están deshabilitadas en esta página porque no se
+  conecta ninguna nueva mutación. `showDisabledTags` conserva los nombres del selector
+  bloqueado sin habilitar eliminación; su valor por defecto es false en Input y
+  AssigneeMultiSelect. El dashboard operativo conserva sus callbacks y comportamiento.
+- Las etiquetas En espera y Drafts son presentación local de los estados existentes
+  pending y draft. Los aliases de finalización y solicitud se conservan; no se cambian
+  estados HTTP ni reglas de negocio. Archivado mantiene el tema Archived del sistema.
+
+Validación, capturas y diferencias respecto a Figma:
+[`docs/ADMIN_PROJECTS_PHASE1_VALIDATION.md`](../docs/ADMIN_PROJECTS_PHASE1_VALIDATION.md).
 
 ### Dashboard administrativo móvil
 

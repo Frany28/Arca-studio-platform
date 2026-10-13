@@ -30,6 +30,7 @@ Se inventari? todo `src` antes de editar. Se resolvieron imports relativos est?t
 | projects | ProjectDetailsPage; components, hooks, panels, utils y datos | Conservar |
 | admin-users | P?gina, modales y drawer junto a pol?tica; hooks locales | Conservar, sin crear carpetas artificiales |
 | admin-files | P?gina encapsulada | Conservar |
+| admin-projects | Composición de Gestión de proyectos y métricas puras; reutiliza tabla y hooks administrativos existentes | Fase 1 añadida el 13/10/2026; sin nuevos componentes UI, hooks ni servicios HTTP |
 | architect-dashboard | P?ginas, components, hooks y datos | Conservar |
 | settings | SettingsPage; panels, components y helpers locales | Conservar |
 
