@@ -53,10 +53,11 @@ test("los anchos del riel provienen solo de los tokens --app-side-navigation-*",
     readFile(new URL("components/ui/SideNavigation/SideNavigation.jsx", SOURCE_ROOT), "utf8"),
   ]);
 
-  // Tablet: 76 px contraído y 234 px expandido; web (≥1280 px): 312 px expandido.
+  // 76 px contraído; expandido 234 px de 768 a 1023 px y 312 px desde 1024 px (Figma).
   assert.match(globalStyles, /--app-side-navigation-collapsed-width: 76px;/);
   assert.match(globalStyles, /--app-side-navigation-expanded-width: 234px;/);
-  assert.match(globalStyles, /@media \(min-width: 1280px\) \{\s*:root \{\s*--app-side-navigation-expanded-width: 312px;/);
+  assert.match(globalStyles, /@media \(min-width: 1024px\) \{\s*:root \{\s*--app-side-navigation-expanded-width: 312px;/);
+  assert.equal((globalStyles.match(/--app-side-navigation-expanded-width:/g) || []).length, 2, "Un valor base y un único cambio en 1024 px");
   assert.match(sideNavigation, /expanded: "w-\[var\(--app-side-navigation-expanded-width\)\]/);
   assert.match(sideNavigation, /"w-\[var\(--app-side-navigation-collapsed-width\)\]/);
 

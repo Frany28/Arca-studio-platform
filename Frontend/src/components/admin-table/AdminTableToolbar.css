@@ -1,8 +1,8 @@
 /*
  * Toolbar de búsqueda y filtros de las tablas administrativas (proyectos activos y usuarios).
  * Se adapta al ancho real de su contenedor y no al viewport, porque ese ancho depende del
- * riel lateral (tokens --app-side-navigation-*: 76 px contraído, 234 px expandido en tablet,
- * 312 px expandido en web, u oculto en móvil).
+ * riel lateral (tokens --app-side-navigation-*: 76 px contraído; expandido 234 px de 768 a
+ * 1023 px y 312 px desde 1024 px; oculto en móvil).
  */
 .admin-table-toolbar {
   container-type: inline-size;

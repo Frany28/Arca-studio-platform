@@ -7,17 +7,17 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 // Anchos de referencia del riel (tokens --app-side-navigation-* de global.css): 76 px
-// contraído; expandido 234 px en tablet (768–1279 px) y 312 px en web (≥1280 px).
-const RAIL_WIDTH = { collapsed: 76, tabletExpanded: 234, webExpanded: 312 };
+// contraído; expandido 234 px en tablet vertical (768–1023 px) y 312 px desde 1024 px.
+const RAIL_WIDTH = { collapsed: 76, portraitTabletExpanded: 234, expanded: 312 };
 
 /**
- * Devuelve el ancho esperado del riel expandido para un viewport de tablet o web.
+ * Devuelve el ancho esperado del riel expandido según el viewport (tablet vertical o desde 1024 px).
  *
  * @param {number} viewportWidth Ancho del viewport en píxeles.
  * @returns {number} Ancho expandido del riel.
  */
 function expandedRailWidth(viewportWidth) {
-  return viewportWidth >= 1280 ? RAIL_WIDTH.webExpanded : RAIL_WIDTH.tabletExpanded;
+  return viewportWidth >= 1024 ? RAIL_WIDTH.expanded : RAIL_WIDTH.portraitTabletExpanded;
 }
 
 const SIDEBAR_SELECTOR = 'aside[aria-label="Navegación lateral"]';
@@ -175,9 +175,9 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
     await page.setViewportSize({ width: 1279, height: 1000 });
     await expectSidebar(page, false, 76);
     await toggle.click();
-    await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+    await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
     await page.setViewportSize({ width: 900, height: 1000 });
-    await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+    await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
     await toggle.click();
     await expectSidebar(page, false, 76);
     // Las tres vistas comparten useResponsiveSidebarExpansion: cruzar 1280 px restablece
@@ -187,7 +187,7 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
     await page.setViewportSize({ width: 1279, height: 1000 });
     await expectSidebar(page, false, 76);
     await toggle.click();
-    await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+    await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
   });
 }
 
@@ -236,6 +236,43 @@ for (const [role, path] of [
   });
 }
 
+for (const [role, path] of [["client", "/dashboard-clientes"], ["admin", "/usuarios"]]) {
+  test(`${role} ${path}: 1023↔1024 px solo cambia el ancho y 1279↔1280 px aplica la política de expansión`, async (context) => {
+    const page = await openPage(context, role, { viewport: { width: 1023, height: 1000 } });
+    await page.goto(`${origin}${path}`);
+    const toggle = page.locator(`${SIDEBAR_SELECTOR}:visible`).first().getByRole("button", { name: TOGGLE_NAME });
+
+    // 1023 ↔ 1024: el token cambia de 234 a 312 px sin alterar el estado elegido.
+    await expectSidebar(page, false, RAIL_WIDTH.collapsed);
+    await page.setViewportSize({ width: 1024, height: 1000 });
+    await expectSidebar(page, false, RAIL_WIDTH.collapsed);
+    await toggle.click();
+    await expectSidebar(page, true, RAIL_WIDTH.expanded);
+    await page.setViewportSize({ width: 1023, height: 1000 });
+    await expectSidebar(page, true, RAIL_WIDTH.portraitTabletExpanded);
+    await page.setViewportSize({ width: 1024, height: 1000 });
+    await expectSidebar(page, true, RAIL_WIDTH.expanded);
+    let { rail, content, viewport } = await measureRailAndContent(page);
+    assert.ok(Math.abs(rail + content - viewport) < 1, "El contenido se adapta al cambio de ancho en 1024 px");
+
+    // 1279 ↔ 1280: mismo ancho expandido; useResponsiveSidebarExpansion restablece el estado.
+    await toggle.click();
+    await page.setViewportSize({ width: 1279, height: 1000 });
+    await expectSidebar(page, false, RAIL_WIDTH.collapsed);
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await expectSidebar(page, true, RAIL_WIDTH.expanded);
+    await page.setViewportSize({ width: 1279, height: 1000 });
+    await expectSidebar(page, false, RAIL_WIDTH.collapsed);
+    await toggle.click();
+    await expectSidebar(page, true, RAIL_WIDTH.expanded);
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await expectSidebar(page, true, RAIL_WIDTH.expanded);
+    ({ rail, content, viewport } = await measureRailAndContent(page));
+    assert.ok(Math.abs(rail + content - viewport) < 1, "El contenido se adapta en 1280 px");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 0);
+  });
+}
+
 for (const desktopExpanded of [true, false]) {
   test(`Solicitud móvil: cerrar y reabrir restaura foco y conserva el riel ${desktopExpanded}`, async (context) => {
     // Se trabaja en tablet (1024 px) para no cruzar 1280 px: ese cruce restablece el riel
@@ -245,7 +282,7 @@ for (const desktopExpanded of [true, false]) {
     await expectSidebar(page, false, 76);
     if (desktopExpanded) {
       await page.getByRole("button", { name: "Expandir navegación lateral", exact: true }).click();
-      await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+      await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
     }
     await page.setViewportSize({ width: 375, height: 812 });
     const menu = page.getByRole("button", { name: "Abrir menú", exact: true });
@@ -269,7 +306,7 @@ for (const desktopExpanded of [true, false]) {
     await drawer.waitFor({ state: "detached" });
     assert.equal(await menu.evaluate((element) => element === document.activeElement), true);
     await page.setViewportSize({ width: 1024, height: 1000 });
-    await expectSidebar(page, desktopExpanded, desktopExpanded ? RAIL_WIDTH.tabletExpanded : RAIL_WIDTH.collapsed);
+    await expectSidebar(page, desktopExpanded, desktopExpanded ? expandedRailWidth(page.viewportSize().width) : RAIL_WIDTH.collapsed);
   });
 }
 
@@ -277,17 +314,17 @@ test("Sidebar: teclado, tema oscuro y movimiento reducido conservan expansión y
   const page = await openPage(context, "client", { reducedMotion: "reduce", colorScheme: "dark", viewport: { width: 900, height: 1000 } });
   await page.goto(`${origin}/dashboard-clientes`);
   await page.evaluate(() => document.documentElement.classList.add("dark"));
-  // Política compartida: en tablet el riel inicia contraído y el cliente lo expande a 234 px.
+  // Política compartida: a 900 px el riel inicia contraído y al expandirse mide 234 px.
   await expectSidebar(page, false, 76);
   const sidebar = page.locator(`${SIDEBAR_SELECTOR}:visible`);
   const toggle = sidebar.getByRole("button", { name: TOGGLE_NAME });
   await toggle.focus();
   await toggle.press("Enter");
-  await expectSidebar(page, true, 234);
+  await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
   await toggle.press("Space");
   await expectSidebar(page, false, 76);
   await toggle.press("Enter");
-  await expectSidebar(page, true, 234);
+  await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
   await sidebar.getByRole("button", { name: "Ver más proyectos", exact: true }).press("Enter");
   await page.waitForURL(`${origin}/proyectos`);
 });
@@ -618,14 +655,14 @@ test("Drawer móvil: crecer a tablet o escritorio lo cierra sin alterar el riel 
   // Bajo 1280 px el riel inicia contraído; se expande manualmente para detectar cualquier reinicio.
   await expectSidebar(page, false, 76);
   await page.locator(`${SIDEBAR_SELECTOR}:visible`).getByRole("button", { name: TOGGLE_NAME }).click();
-  await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+  await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
   await page.setViewportSize({ width: 375, height: 812 });
   await expectMobileLayout(page);
   await openMobileDrawer(page, 312);
 
   await page.setViewportSize({ width: 900, height: 1000 });
   await expectMobileDrawerClosed(page);
-  await expectSidebar(page, true, RAIL_WIDTH.tabletExpanded);
+  await expectSidebar(page, true, expandedRailWidth(page.viewportSize().width));
   assert.equal(await page.locator(`${SIDEBAR_SELECTOR}:visible`).count(), 1, "En tablet solo existe un menú");
   assert.equal(await page.getByRole("button", { name: "Abrir menú", exact: true }).isVisible(), false);
 

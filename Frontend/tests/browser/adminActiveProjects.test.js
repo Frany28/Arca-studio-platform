@@ -8,6 +8,8 @@ import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+import { applyBrowserTimeouts } from "../helpers/browserTimeouts.js";
+
 const ANA = { id: 1, name: "Ana" };
 const LUIS = { id: 2, name: "Luis" };
 const CARMEN = { id: 3, name: "Carmen" };
@@ -36,7 +38,8 @@ after(async () => { await browser?.close(); await server?.close(); });
 async function openPage(context, props = {}, { theme = "light", resizeFallback = false, ...options } = {}) {
   const session = await browser.newContext({ viewport: { width: 1024, height: 900 }, ...options });
   const page = await session.newPage();
-  page.setDefaultTimeout(5000);
+  // Interacciones con 5000 ms; la navegación inicial tolera la compilación en frío de Vite.
+  applyBrowserTimeouts(page);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {

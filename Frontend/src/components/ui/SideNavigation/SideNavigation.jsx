@@ -50,7 +50,8 @@ const SIDE_NAVIGATION_NODE_IDS = {
 /**
  * Clases del contenedor por presentación. El riel persistente conserva sticky, altura de
  * viewport y la transición de ancho; sus anchos provienen de los tokens
- * --app-side-navigation-* de global.css (234 px expandido en tablet y 312 px en web), de modo
+ * --app-side-navigation-* de global.css (76 px contraído; expandido 234 px de 768 a 1023 px y
+ * 312 px desde 1024 px), de modo
  * que ninguna página los redefine. El drawer ocupa el panel que lo aloja y respeta las
  * áreas seguras superior e inferior del dispositivo con el mínimo de 16 px de Figma.
  */

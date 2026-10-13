@@ -85,8 +85,10 @@ input[type="reset"]:disabled,
   --app-breakpoint-tablet: 768px;
   --app-breakpoint-web: 1280px;
 
-  /* SIDE NAVIGATION: único origen de los anchos del riel persistente (tablet y web).
-     Tablet (768–1279 px): 76 px contraído y 234 px expandido. Web (≥1280 px): 76 y 312 px.
+  /* SIDE NAVIGATION: único origen de los anchos del riel persistente (desde 768 px).
+     Contraído: 76 px en todos los rangos. Expandido: 234 px en tablet vertical (768–1023 px)
+     y 312 px desde 1024 px, como Figma 3727:678726 (tablet horizontal) y escritorio; el
+     cambio a 312 px está en el media query de 1024 px de "Side Navigation Widths".
      El drawer móvil conserva su propio ancho de Figma (312 px) en ResponsiveSideNavigation. */
   --app-side-navigation-collapsed-width: 76px;
   --app-side-navigation-expanded-width: 234px;
@@ -313,9 +315,17 @@ input[type="reset"]:disabled,
   }
 }
 
-@media (min-width: 1280px) {
+/* ==========================================================================
+   Side Navigation Widths
+   ========================================================================== */
+@media (min-width: 1024px) {
   :root {
     --app-side-navigation-expanded-width: 312px;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
     --app-current-device: "web";
     --app-current-width: var(--app-web-w);
     --app-current-height: var(--app-web-h);
