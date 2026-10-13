@@ -1,0 +1,38 @@
+/* 520 px = menú de 152 px + gap de 48 px + campo de 320 px de Figma.
+   Apilar depende del ancho disponible, incluido el estado manual del riel. */
+.project-creation-layout {
+  container: project-creation / inline-size;
+}
+
+.project-creation-layout > section {
+  flex-direction: column;
+  gap: 24px;
+}
+
+@container project-creation (min-width: 520px) {
+  .project-creation-layout > section {
+    flex-direction: row;
+    gap: var(--spacing-gap-7);
+  }
+}
+
+.project-information-form {
+  min-width: 0;
+}
+
+.project-information-form .project-form-field {
+  width: min(320px, 100%);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-information-form .project-form-field-full,
+.project-information-form .project-form-textarea {
+  width: 100%;
+  max-width: none;
+}
+
+/* El mínimo de 280 px mantiene el grid de escritorio sin imponerlo a pantallas menores. */
+.project-information-form .project-area-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+}

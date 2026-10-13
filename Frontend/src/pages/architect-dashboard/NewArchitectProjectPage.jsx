@@ -14,6 +14,7 @@ import {
 } from "./architectDashboardData.js";
 import ArchitectProjectInformationForm from "./components/ArchitectProjectInformationForm.jsx";
 import ProjectCreationTabs from "./components/ProjectCreationTabs.jsx";
+import "./NewArchitectProjectPage.css";
 import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
 
 function NewArchitectProjectPage() {
@@ -113,8 +114,8 @@ function NewArchitectProjectPage() {
             }
           />
 
-          <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px]">
-            <section className="flex w-full min-w-0 items-start justify-between gap-[48px] self-stretch">
+          <div className="project-creation-layout mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px] max-[767px]:px-[16px] max-[767px]:pt-[16px] max-[767px]:pb-[24px]">
+            <section className="flex w-full min-w-0 items-start justify-between self-stretch">
               <ProjectCreationTabs activeItemId="general" />
               <ArchitectProjectInformationForm />
             </section>

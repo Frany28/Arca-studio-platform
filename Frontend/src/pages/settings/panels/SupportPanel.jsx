@@ -10,7 +10,7 @@ import Input from "../../../components/ui/Input/Input.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import TextArea from "../../../components/ui/TextArea/TextArea.jsx";
 import { InfoCircleIcon } from "../settingsIcons.jsx";
-import { SETTINGS_MOBILE_FIELD_CLASS_NAME, SETTINGS_MOBILE_ROW_CLASS_NAME } from "../settingsLayoutClassNames.js";
+import { SETTINGS_FIELD_CLASS_NAME, SETTINGS_ROW_CLASS_NAME } from "../settingsLayoutClassNames.js";
 
 const ALLOWED_FILE_EXTENSIONS = new Set(["jpeg", "jpg", "mp4", "pdf", "png"]);
 const ALLOWED_FILE_TYPES = new Set([
@@ -269,7 +269,7 @@ export default function SupportPanel({
 
   return (
     <div className="flex flex-1 flex-col items-center gap-4">
-      <div className="relative flex w-[664px] max-w-full flex-col gap-[24px]">
+      <div className="settings-form-section relative flex flex-col gap-[24px]">
         <div className="flex w-full flex-col gap-[2px] border-b border-[var(--color-neutral-200)] pb-[24px]">
           <h2 className="text-[24px] font-bold leading-[30px] tracking-[-0.5px] text-[var(--color-text-300)]">
             Contactar Soporte
@@ -279,7 +279,7 @@ export default function SupportPanel({
           </p>
         </div>
 
-        <div className={clsx("flex w-full items-start justify-between", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
+        <div className={clsx("flex w-full items-start justify-between", SETTINGS_ROW_CLASS_NAME)}>
           <span className="pt-[2px] text-heading-8 tracking-[-0.5px] text-[var(--color-text-300)]">
             Tipo de problema
           </span>
@@ -300,14 +300,14 @@ export default function SupportPanel({
                   setIsSupportIssueTypeMenuOpen(false);
                 }}
                 interactive
-                className={clsx("w-[320px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+                className={SETTINGS_FIELD_CLASS_NAME}
                 aria-label="Seleccionar tipo de problema"
               />
               <HintText
                 state="Default"
                 hintText="Esto nos ayuda a dirigir tu solicitud correctamente"
                 icon={<InfoCircleIcon className="size-4" />}
-                className={clsx("w-[320px] items-start [&>p]:whitespace-normal [&>p]:break-words", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+                className={clsx("items-start [&>p]:whitespace-normal [&>p]:break-words", SETTINGS_FIELD_CLASS_NAME)}
               />
             </div>
             <Input
@@ -322,14 +322,14 @@ export default function SupportPanel({
               value={supportSubject}
               placeholder="Ej. No puedo visualizar los renders"
               onChange={(event) => setSupportSubject(event.target.value)}
-              className={clsx("w-[320px] max-w-none", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+              className={SETTINGS_FIELD_CLASS_NAME}
             />
           </div>
         </div>
 
-        <div className={clsx("flex w-full items-start justify-between", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
+        <div className={clsx("flex w-full items-start justify-between", SETTINGS_ROW_CLASS_NAME)}>
           <div />
-          <div className={clsx("flex w-[325px] max-w-none flex-col gap-[8px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}>
+          <div className={clsx("settings-form-description flex flex-col gap-[8px]", SETTINGS_FIELD_CLASS_NAME)}>
             <TextArea
               label="Descripción"
               required
@@ -341,7 +341,7 @@ export default function SupportPanel({
               onChange={(event) => setSupportDescription(event.target.value)}
               minHeight={106}
               rows={5}
-              className="!w-full !max-w-none"
+              className="settings-form-textarea"
             />
             <HintText
               state="Default"
@@ -354,11 +354,11 @@ export default function SupportPanel({
 
         <div className="h-px w-full bg-[var(--color-neutral-200)]" />
 
-          <div className={clsx("flex w-full items-start justify-between gap-[16px]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
+          <div className={clsx("flex w-full items-start justify-between gap-[16px]", SETTINGS_ROW_CLASS_NAME)}>
             <span className="pt-[2px] text-heading-8 tracking-[-0.5px] text-[var(--color-text-300)]">
               Imagen de referencia (opcional)
             </span>
-          <div className={clsx("w-[447px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}>
+          <div className={clsx("settings-form-upload", SETTINGS_FIELD_CLASS_NAME)}>
             <FileUploadSection
               className="h-[177px] w-full"
               title="Imagen de referencia"

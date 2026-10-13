@@ -403,6 +403,43 @@ El formato relativo compacto destinado a espacios restringidos constituye una va
 - El contenedor de scroll del shell no usa `overflow-x-hidden`: el contenido se adapta al ancho y las tablas anchas desplazan dentro de su propio contenedor. Un desborde horizontal es un error visible, no algo que se recorta en silencio.
 - Las secciones del shell no usan `min-h-0` para encajar en el alto del viewport: crecen con su contenido y el shell desplaza. Encoger una sección recorta tablas con `overflow-hidden`.
 
+Deuda técnica pendiente: `AvatarLabel` puede truncar nombres y correos sin ofrecer una
+forma suficiente de consultar el texto completo. No se corrige junto con los anchos del
+sidebar: es compartido por su footer, tarjetas de documentos y galerías. Su revisión debe
+cubrir todos esos consumidores, accesibilidad con teclado y lectores de pantalla y una
+forma de visualizar el contenido completo en móvil, tablet y escritorio.
+
+La validación del sidebar del 12 de octubre de 2026 identificó dos problemas responsive
+preexistentes en los formularios de Configuración y Nuevo proyecto, reproducidos también
+con los anchos anteriores del riel. A 768 px, Configuración desbordaba 228 px contraído y
+386 px expandido; Nuevo proyecto, 34 px expandido. Su causa son las composiciones de
+ancho fijo de los formularios, no los tokens del sidebar. La comparación a 1024 px midió
+130 px de desborde en Configuración con el riel anterior y 208 px con el aprobado: el
+espacio disponible modifica la magnitud de un problema previo. Su corrección corresponde
+a una intervención independiente de la validación del contrato del riel.
+
+### Formularios de Configuración y Nuevo proyecto
+
+- La composición responsive depende del espacio disponible tras el riel y el padding,
+  mediante container queries locales; no se redefinen los tokens del sidebar por página.
+- Configuración conserva el menú de 160 px, gap de 48 px y panel de 664 px cuando el
+  contenedor dispone de al menos 872 px. Por debajo, el menú se apila sobre el panel.
+  Las filas de dos campos de 320 px y gap de 24 px se mantienen cuando el panel dispone
+  de 664 px; con menos espacio se apilan y los campos ocupan el ancho disponible. La
+  misma política cubre Perfil, Seguridad, Preferencias y Soporte, incluidos avatar y upload.
+- Nuevo proyecto conserva menú de 152 px y gap de 48 px cuando caben junto con un
+  campo de 320 px (contenedor de al menos 520 px); con menos espacio se apila. Mantiene
+  el formulario de hasta 656 px de escritorio. El grid de áreas limita su mínimo de
+  280 px al 100 % del ancho disponible; los inputs y textareas pueden encogerse sin
+  imponer mínimos al formulario. En móvil reutiliza los 16 px de padding del entorno.
+- Los estilos quedan junto a cada página y las clases compartidas de Configuración
+  se mantienen en `settingsLayoutClassNames.js`. No se cambia la lógica de los
+  componentes UI, validaciones, HTTP, estado de pestañas ni animaciones. No se recorta
+  el contenido con `overflow-x: hidden` ni se usan overrides `!important` para corregirlo.
+- `tests/browser/formResponsiveLayout.test.js` verifica ambos temas, los ocho anchos
+  aprobados, estados del riel, controles dentro del panel, dropdowns abiertos, borradores,
+  navegación, teclado, validación y conservación de geometría de escritorio.
+
 ### Dashboard administrativo móvil
 
 El dashboard administrativo sigue Figma `3727:678728` por debajo de 768 px; tablet y escritorio conservan su presentación. `pages/admin-dashboard/utils/adminDashboardMobilePresentation.js` centraliza los tamaños móviles de botones (44 px de icono, 41 px de texto) y tags (Body/b3, 25 px).

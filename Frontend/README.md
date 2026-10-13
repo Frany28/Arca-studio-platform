@@ -26,9 +26,10 @@ pnpm run preview
 
 ### Regresión de navegación lateral en navegador
 
-`pnpm test:browser` ejecuta `tests/browser/sideNavigation.test.js` con Playwright
-y un servidor Vite temporal en localhost. Usa las páginas, React y CSS reales;
-la sesión y las lecturas de API se interceptan con fixtures vacías y no requieren
+`pnpm test:browser` ejecuta la suite completa de `tests/browser/*.test.js` con
+Playwright como librería sobre `node:test`, con servidores Vite temporales en localhost.
+No usa el runner de Playwright ni `playwright.config`. Usa las páginas, React y CSS reales;
+la sesión y las lecturas de API se interceptan con fixtures y no requieren
 backend ni base de datos. El servidor y los contextos del navegador se cierran al finalizar.
 
 En Windows usa Edge instalado, en modo headless. En otros sistemas utiliza
@@ -39,9 +40,25 @@ un navegador instalado y permisos para iniciar procesos y escuchar en localhost.
 
 La regresión comprueba clics, navegación y anchos de tablet/escritorio, los límites
 responsive, teclado, tema oscuro, movimiento reducido y cierre/reapertura móvil con
-restauración de foco. En dashboard de arquitecto y Usuarios se conserva la sincronización
-al cruzar 1280 px; en Archivos ese breakpoint determina únicamente el estado inicial.
-En todos los casos el usuario puede alternar manualmente la sidebar a cualquier ancho.
+restauración de foco. Todas las vistas autenticadas comparten `useResponsiveSidebarExpansion`:
+cruzar 1280 px restablece la expansión; dentro del mismo rango se conserva la elección manual.
+El riel expandido mide 234 px de 768 a 1023 px y 312 px desde 1024 px; contraído, 76 px.
+Las pruebas cubren 1023↔1024 y 1279↔1280 px y el desborde con ambos estados del riel.
+
+`tests/helpers/browserTimeouts.js` centraliza la separación entre interacción (5000 ms)
+y navegación (30000 ms). La suite de Proyectos activos aplica esta política: su navegación
+inicial permite compilar Vite en frío sin ampliar el límite de clics, foco ni renderizado.
+Las suites que usan los valores por defecto de Playwright conservan sus límites.
+En la regresión de formularios, la espera inicial de la ruta lazy usa también el límite
+compartido de navegación: su compilación puede continuar tras el evento `load` de
+`page.goto`. Clics, foco y renders posteriores mantienen el límite de 5000 ms.
+
+`tests/browser/formResponsiveLayout.test.js` separa la regresión de los formularios de
+Configuración y Nuevo proyecto del contrato del sidebar. Verifica los cuatro paneles,
+tema claro/oscuro, 320, 375, 430, 768, 1024, 1279, 1280 y 1440 px, los dos estados del
+riel donde aparece, dropdowns abiertos, borradores, teclado y geometría de escritorio.
+El [informe de ambas intervenciones](../docs/SIDEBAR_FORM_RESPONSIVE_VALIDATION.md)
+registra los problemas preexistentes, su causa y los resultados de validación separados.
 
 ## Estructura principal
 

@@ -10,7 +10,7 @@ import {
   SmsIcon,
   UserIcon,
 } from "../settingsIcons.jsx";
-import { SETTINGS_MOBILE_FIELD_CLASS_NAME, SETTINGS_MOBILE_ROW_CLASS_NAME } from "../settingsLayoutClassNames.js";
+import { SETTINGS_FIELD_CLASS_NAME, SETTINGS_ROW_CLASS_NAME } from "../settingsLayoutClassNames.js";
 
 export default function ProfilePanel({
   profileName,
@@ -27,7 +27,7 @@ export default function ProfilePanel({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center gap-4">
-      <div className={clsx("flex w-[664px] max-w-full items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
+      <div className={clsx("flex items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_ROW_CLASS_NAME)}>
         <Input
           label="Nombre"
           required={false}
@@ -43,7 +43,7 @@ export default function ProfilePanel({
           rightIcon={null}
           showLeftIcon
           showRightIcon={false}
-          className={clsx("w-[320px] max-w-none", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+          className={SETTINGS_FIELD_CLASS_NAME}
         />
         <Input
           label="Empresa"
@@ -60,11 +60,11 @@ export default function ProfilePanel({
           rightIcon={null}
           showLeftIcon
           showRightIcon={false}
-          className={clsx("w-[320px] max-w-none", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+          className={SETTINGS_FIELD_CLASS_NAME}
         />
       </div>
 
-      <div className={clsx("flex w-[664px] max-w-full items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
+      <div className={clsx("flex items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_ROW_CLASS_NAME)}>
         <Input
           label="Correo electrónico"
           required={false}
@@ -80,10 +80,10 @@ export default function ProfilePanel({
           rightIcon={null}
           showLeftIcon
           showRightIcon={false}
-          className={clsx("w-[320px] min-w-[320px] max-w-[320px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+          className={SETTINGS_FIELD_CLASS_NAME}
           disabled
         />
-        <div className={clsx("flex w-[320px] flex-col gap-[8px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}>
+        <div className={clsx("flex flex-col gap-[8px]", SETTINGS_FIELD_CLASS_NAME)}>
           <span className="text-heading-8 tracking-[-0.5px] text-[var(--color-neutral-400)]">
             Rol
           </span>
@@ -97,11 +97,11 @@ export default function ProfilePanel({
         </div>
       </div>
 
-      <div className={clsx("flex w-[664px] max-w-full items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_MOBILE_ROW_CLASS_NAME)}>
+      <div className={clsx("flex items-start gap-[24px] border-b border-[var(--color-neutral-200)] pb-[16px]", SETTINGS_ROW_CLASS_NAME)}>
         {[primaryPhone, secondaryPhone].map((phone, index) => (
           <div
             key={index}
-            className={clsx("flex w-[320px] min-w-[320px] max-w-[320px] flex-col gap-[8px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+            className={clsx("flex flex-col gap-[8px]", SETTINGS_FIELD_CLASS_NAME)}
           >
             <Input
               label="Teléfono"
@@ -118,7 +118,7 @@ export default function ProfilePanel({
               showRightIcon={false}
               countryCode="US"
               countryPrefix="+1"
-              className={clsx("w-[320px] min-w-[320px] max-w-[320px]", SETTINGS_MOBILE_FIELD_CLASS_NAME)}
+              className={SETTINGS_FIELD_CLASS_NAME}
               disabled
             />
             <HintText
@@ -131,8 +131,8 @@ export default function ProfilePanel({
         ))}
       </div>
 
-      <div className="flex w-[664px] max-w-full flex-col gap-[8px]">
-        <div className="flex w-full items-center justify-between border-b border-[var(--color-neutral-200)] pb-[16px]">
+      <div className="settings-form-section flex flex-col gap-[8px]">
+        <div className="settings-avatar-row flex w-full items-center justify-between border-b border-[var(--color-neutral-200)] pb-[16px]">
           <div className="flex flex-col gap-[2px]">
             <span className="text-heading-8 tracking-[-0.5px] text-[var(--color-text-300)]">
               Avatar

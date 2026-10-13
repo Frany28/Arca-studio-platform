@@ -7,15 +7,15 @@ export default function PreferenceItem({
 }) {
   return (
     <div
-      className={`flex w-[664px] max-w-full items-center justify-between pb-[16px] ${className ?? ""}`}
+      className={`settings-form-section settings-preference-row flex items-center justify-between pb-[16px] ${className ?? ""}`}
     >
-      <div className="flex items-center gap-[8px]">
+      <div className="flex min-w-0 items-center gap-[8px]">
         <div className="rounded-[8px] border border-[var(--color-neutral-200)] shadow-[var(--shadow-e1)]">
           <div className="flex size-[40px] items-center justify-center rounded-[8px] bg-[var(--color-neutral-100)] text-[var(--color-success-200)]">
             {icon}
           </div>
         </div>
-        <div className="flex flex-col gap-[2px]">
+        <div className="flex min-w-0 flex-col gap-[2px]">
           <span className="text-heading-8 tracking-[-0.5px] text-[var(--color-text-300)]">
             {title}
           </span>

@@ -15,9 +15,8 @@
 export const INTERACTION_TIMEOUT_MS = 5000;
 
 /**
- * Límite de navegación. Coincide con el valor por defecto de Playwright, con el que las
- * primeras cargas en frío del resto de archivos (17–20 s medidos en la suite completa)
- * terminan con margen.
+ * Límite de navegación de 30 s para dar margen a las primeras cargas en frío de Vite
+ * cuando los archivos de la suite compiten por CPU. No amplía las esperas de interacción.
  */
 export const NAVIGATION_TIMEOUT_MS = 30000;
 

@@ -7,7 +7,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const ADMIN_PAGES = ["/dashboard-arquitecto", "/usuarios", "/archivos"];
-const CHECKPOINT_WIDTHS = [320, 375, 430, 768, 1024, 1280, 1440, 1920];
+const CHECKPOINT_WIDTHS = [320, 375, 430, 768, 1023, 1024, 1279, 1280, 1440, 1920];
 const PROJECT = {
   id: 30,
   name: "Proyecto residencial con un nombre bastante largo",
@@ -146,7 +146,23 @@ for (const path of ADMIN_PAGES) {
         const fontSize = getComputedStyle(document.querySelector("h1")).fontSize;
         return fontSize === (isMobile ? "24px" : "48px");
       }, width < 768);
-      assert.equal(await measureContentOverflow(page), 0, `${path} desborda a ${width} px`);
+      if (width < 768) {
+        assert.equal(await measureContentOverflow(page), 0, `${path} desborda a ${width} px`);
+        continue;
+      }
+      const sidebar = page.locator('aside[aria-label="Navegación lateral"]:visible');
+      const toggle = sidebar.getByRole("button", { name: /^(Contraer|Expandir) navegación lateral$/ });
+      for (const expanded of [false, true]) {
+        if (await toggle.getAttribute("aria-expanded") !== String(expanded)) await toggle.click();
+        const railWidth = expanded ? (width >= 1024 ? 312 : 234) : 76;
+        // Medir después de la transición conserva la animación y evita geometría intermedia.
+        await page.waitForFunction((expectedWidth) => {
+          const rail = [...document.querySelectorAll('aside[aria-label="Navegación lateral"]')]
+            .find((element) => element.getClientRects().length);
+          return Math.abs(rail.getBoundingClientRect().width - expectedWidth) < 0.5;
+        }, railWidth);
+        assert.equal(await measureContentOverflow(page), 0, `${path} desborda a ${width} px con riel ${expanded ? "expandido" : "contraído"}`);
+      }
     }
   });
 }

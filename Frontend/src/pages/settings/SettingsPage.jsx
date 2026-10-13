@@ -18,6 +18,7 @@ import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer
 import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
 import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import SettingsVerticalTabMenu from "../../components/ui/SettingsVerticalTabMenu.jsx";
+import "./SettingsPage.css";
 import TabPanel from "../../components/ui/TabPanel.jsx";
 import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
 import { getCommentNavigationParams } from "../../utils/commentSelection.js";
@@ -590,16 +591,16 @@ export default function SettingsPage() {
             }
           />
 
-          {/* En móvil se usa el padding del entorno (16 px) y el menú se apila sobre el panel. */}
-          <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px] max-[767px]:px-[16px] max-[767px]:pb-[24px] max-[767px]:pt-[16px]">
-            <section className="flex w-full min-w-0 items-start gap-12 self-stretch max-[767px]:flex-col max-[767px]:gap-[24px]">
+          {/* El contenedor conserva el padding; el menú se apila si no cabe el panel de Figma. */}
+          <div className="settings-layout mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px] max-[767px]:px-[16px] max-[767px]:pb-[24px] max-[767px]:pt-[16px]">
+            <section className="flex w-full min-w-0 items-start self-stretch">
               <SettingsVerticalTabMenu
                 activeItemId={activeSettingsTabId}
                 onChange={setActiveSettingsTabId}
               />
               <TabPanel
                 transitionKey={activeSettingsTabId}
-                className="min-w-0 flex-1 max-[767px]:w-full"
+                className="settings-panel min-w-0 flex-1"
               >
                 {activePanel}
               </TabPanel>

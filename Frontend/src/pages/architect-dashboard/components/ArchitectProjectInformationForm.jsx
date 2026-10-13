@@ -48,23 +48,27 @@ function ProjectTextArea({ label }) {
       rows={5}
       minHeight={102}
       resize={false}
-      className="w-full max-w-none"
+      className="project-form-textarea"
       textareaClassName="whitespace-pre-wrap"
     />
   );
 }
 
+/**
+ * Compone los controles originales de información general del proyecto.
+ * El layout responsive acota campos y grid al ancho disponible sin cambiar su estado.
+ */
 function ArchitectProjectInformationForm() {
   const [selectedProjectType, setSelectedProjectType] = useState(null);
   const [isProjectTypeMenuOpen, setIsProjectTypeMenuOpen] = useState(false);
 
   return (
-    <form className="flex w-full max-w-[656px] flex-col gap-[16px]">
+    <form aria-label="Información general del proyecto" className="project-information-form flex w-full max-w-[656px] flex-col gap-[16px]">
       <RequiredInput
         label="Nombre del proyecto"
         placeholder='Ej. “Apto. Noventa y Uno”'
         size="M"
-        className="!w-[320px] !max-w-[320px]"
+        className="project-form-field"
       />
 
       <div className="flex w-[320px] max-w-full flex-col gap-[8px]">
@@ -87,18 +91,18 @@ function ArchitectProjectInformationForm() {
         />
       </div>
 
-      <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-[16px]">
+      <div className="project-area-grid grid w-full gap-[16px]">
         <RequiredInput
           label="Área general"
           placeholder='Ej. “Apto. Noventa y Uno”'
           size="L"
-          className="!w-full !max-w-none"
+          className="project-form-field project-form-field-full"
         />
         <RequiredInput
           label="Área de construcción"
           placeholder='Ej. “Apto. Noventa y Uno”'
           size="L"
-          className="!w-full !max-w-none"
+          className="project-form-field project-form-field-full"
         />
       </div>
 
@@ -106,7 +110,7 @@ function ArchitectProjectInformationForm() {
         label="Ubicación del proyecto"
         placeholder='Ej. “MC83+862, Calle 78 Dr. Portillo, Maracaibo 4001, Zulia”'
         size="L"
-        className="!w-full !max-w-none"
+        className="project-form-field project-form-field-full"
       />
 
       <ProjectTextArea label="Zonificación" />

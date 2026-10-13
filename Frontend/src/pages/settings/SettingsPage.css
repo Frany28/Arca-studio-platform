@@ -1,0 +1,72 @@
+/* La composición responde al espacio que dejan riel, padding y menú, no solo al viewport.
+   872 px = menú de 160 px + gap de 48 px + panel de Figma de 664 px. */
+.settings-layout {
+  container: settings-layout / inline-size;
+}
+
+.settings-layout > section {
+  flex-direction: column;
+  gap: 24px;
+}
+
+@container settings-layout (min-width: 872px) {
+  .settings-layout > section {
+    flex-direction: row;
+    gap: var(--spacing-gap-7);
+  }
+}
+
+.settings-panel {
+  --settings-form-width: 664px;
+  --settings-field-width: 320px;
+  container: settings-panel / inline-size;
+  width: 100%;
+}
+
+.settings-panel .settings-form-section,
+.settings-panel .settings-form-row {
+  width: min(var(--settings-form-width), 100%);
+  min-width: 0;
+}
+
+.settings-panel .settings-form-field {
+  width: min(var(--settings-field-width), 100%);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-panel .settings-form-description {
+  --settings-field-width: 325px;
+}
+
+.settings-panel .settings-form-upload {
+  --settings-field-width: 447px;
+}
+
+.settings-panel .settings-form-textarea {
+  width: 100%;
+  max-width: none;
+}
+
+/* Las dos columnas originales (320 + 24 + 320) solo se mantienen cuando caben. */
+@container settings-panel (width < 664px) {
+  .settings-panel .settings-form-row {
+    flex-direction: column;
+    gap: var(--spacing-gap-4);
+  }
+
+  .settings-panel .settings-form-field {
+    width: 100%;
+  }
+
+  .settings-panel .settings-desktop-spacer {
+    display: none;
+  }
+
+  .settings-panel .settings-avatar-row,
+  .settings-panel .settings-preference-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-gap-4);
+  }
+}

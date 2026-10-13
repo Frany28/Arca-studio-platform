@@ -196,16 +196,18 @@ for (const path of ["/dashboard-arquitecto", "/usuarios", "/archivos"]) {
  * Algunas páginas envuelven el riel en un contenedor propio; se toma el hermano de ese nivel.
  *
  * @param {import("playwright").Page} page Página en prueba.
- * @returns {Promise<{rail: number, content: number, viewport: number}>} Anchos renderizados.
+ * @returns {Promise<{rail: number, content: number, viewport: number, overflow: number}>} Anchos y desborde del contenido.
  */
 function measureRailAndContent(page) {
   return page.evaluate((selector) => {
     const rail = [...document.querySelectorAll(selector)].find((element) => element.getClientRects().length);
     const railLevel = rail.nextElementSibling ? rail : rail.parentElement;
+    const content = railLevel.nextElementSibling;
     return {
       rail: rail.getBoundingClientRect().width,
-      content: railLevel.nextElementSibling.getBoundingClientRect().width,
+      content: content.getBoundingClientRect().width,
       viewport: document.documentElement.clientWidth,
+      overflow: Math.max(content.scrollWidth - content.clientWidth, document.documentElement.scrollWidth - window.innerWidth),
     };
   }, SIDEBAR_SELECTOR);
 }
@@ -216,10 +218,14 @@ for (const [role, path] of [
   ["client", "/solicitudes/nueva"],
   ["architect", "/dashboard-arquitecto"],
   ["admin", "/usuarios"],
+  ["admin", "/archivos"],
+  ["client", "/dashboard-clientes-vacio"],
+  ["client", "/proyectos/quinta-bella-vista/renders-imagenes-vacio"],
 ]) {
   test(`${role} ${path}: anchos unificados del riel y contenido que ocupa el resto`, async (context) => {
     const page = await openPage(context, role);
-    for (const width of [768, 1024, 1279, 1280, 1440]) {
+    const contentOverflows = [];
+    for (const width of [768, 1023, 1024, 1279, 1280, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(`${origin}${path}`);
       const initiallyExpanded = width >= 1280;
@@ -229,14 +235,36 @@ for (const [role, path] of [
         if (expanded !== initiallyExpanded) await toggle.click();
         const railWidth = expanded ? expandedRailWidth(width) : RAIL_WIDTH.collapsed;
         await expectSidebar(page, expanded, railWidth);
-        const { rail, content, viewport } = await measureRailAndContent(page);
+        const { rail, content, viewport, overflow } = await measureRailAndContent(page);
         assert.ok(Math.abs(rail + content - viewport) < 1, `${path} a ${width} px: el contenido (${content}) no ocupa el resto del riel (${rail})`);
+        if (overflow > 0) contentOverflows.push({ width, expanded, overflow });
+      }
+    }
+    assert.deepEqual(contentOverflows, [], `${path}: desborde horizontal del contenido por viewport y estado del riel`);
+  });
+}
+
+// Estos consumidores presentaban desbordes previos en sus formularios. Aquí se verifica
+// el contrato del riel; su contenido se cubre en la intervención responsive independiente.
+for (const [role, path] of [["admin", "/configuraciones"], ["architect", "/dashboard-arquitecto/nuevo-proyecto"]]) {
+  test(`${role} ${path}: el riel comparte anchos y deja al formulario el resto del viewport`, async (context) => {
+    const page = await openPage(context, role);
+    for (const width of [768, 1023, 1024, 1279, 1280, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${origin}${path}`);
+      const initiallyExpanded = width >= 1280;
+      const toggle = page.locator(`${SIDEBAR_SELECTOR}:visible`).getByRole("button", { name: TOGGLE_NAME });
+      for (const expanded of [initiallyExpanded, !initiallyExpanded]) {
+        if (expanded !== initiallyExpanded) await toggle.click();
+        await expectSidebar(page, expanded, expanded ? expandedRailWidth(width) : RAIL_WIDTH.collapsed);
+        const { rail, content, viewport } = await measureRailAndContent(page);
+        assert.ok(Math.abs(rail + content - viewport) < 1, `${path} a ${width} px: distribución incorrecta del riel y el formulario`);
       }
     }
   });
 }
 
-for (const [role, path] of [["client", "/dashboard-clientes"], ["admin", "/usuarios"]]) {
+for (const [role, path] of [["client", "/dashboard-clientes"], ["architect", "/dashboard-arquitecto"], ["admin", "/usuarios"]]) {
   test(`${role} ${path}: 1023↔1024 px solo cambia el ancho y 1279↔1280 px aplica la política de expansión`, async (context) => {
     const page = await openPage(context, role, { viewport: { width: 1023, height: 1000 } });
     await page.goto(`${origin}${path}`);
