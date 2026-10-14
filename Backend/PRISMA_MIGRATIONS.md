@@ -24,7 +24,7 @@ Hasta esta migración, `supportRepository.ensureSupportTables` ejecutaba `CREATE
 
 La migración reproduce exactamente la definición anterior: columnas, tipos, valores por defecto, claves primarias y la clave foránea `support_request_files_support_request_id_fkey` con `ON DELETE CASCADE`. `user_id` y `uploaded_by` siguen sin clave foránea. Además activa RLS, como el resto de tablas.
 
-Usa `CREATE TABLE IF NOT EXISTS`: si un backend anterior ya creó las tablas en algún entorno, la migración las adopta sin recrearlas ni modificar sus datos. Al revisarlo el 14 de octubre de 2026, las tablas no existían en la base configurada para desarrollo y staging, y todas las migraciones anteriores estaban aplicadas.
+Usa `CREATE TABLE IF NOT EXISTS`: si un backend anterior ya creó las tablas en algún entorno, la migración las adopta sin recrearlas ni modificar sus datos. Antes comprueba que columnas, tipos, nulabilidad, claves primarias y clave foránea coinciden; ante cualquier diferencia aborta sin cambios. Al revisarlo el 14 de octubre de 2026, las tablas no existían en la base configurada para desarrollo y staging, y todas las migraciones anteriores estaban aplicadas.
 
 Orden seguro de despliegue:
 
@@ -38,6 +38,10 @@ Orden seguro de despliegue:
 
 Si se publica el backend antes de aplicar la migración, solo fallan los endpoints de soporte, con HTTP 500 y código `42P01` (tabla inexistente); el resto del sistema no se ve afectado. Para resolverlo, aplicar la migración. El backend anterior sigue funcionando con la migración aplicada, porque su `CREATE TABLE IF NOT EXISTS` no hace nada sobre tablas existentes.
 
+## Privilegios de los roles de la API (`20261014130000_revoke_api_role_table_privileges`)
+
+Revoca `TRUNCATE`, `TRIGGER`, `REFERENCES` y `MAINTAIN` a `anon`, `authenticated` y `service_role` sobre las tablas de ARCA en `public` (hallazgo D-2). Debe aplicarse después de `20261014120000_support_tables`. Si D-4 no está aplicada, D-2 aborta sin cambios. El inventario, la compatibilidad con Supabase, el despliegue y la reversión están en [docs/DB_PRIVILEGES.md](../docs/DB_PRIVILEGES.md).
+
 ## Flujo para un cambio nuevo
 
 1. Modificar `prisma/schema.prisma` para cambios que Prisma pueda representar.
@@ -49,6 +53,7 @@ Si se publica el backend antes de aplicar la migración, solo fallan los endpoin
 
 3. Revisar siempre el `migration.sql` generado antes de conservarlo.
 4. Para RLS, índices por expresiones, restricciones especiales o SQL avanzado, editar ese `migration.sql` manualmente.
+   Toda tabla nueva en `public` debe incluir, en la misma migración, `ALTER TABLE public.<tabla> ENABLE ROW LEVEL SECURITY;` y `REVOKE TRUNCATE, TRIGGER, REFERENCES, MAINTAIN ON TABLE public.<tabla> FROM anon, authenticated, service_role;`. Los privilegios predeterminados de `postgres` se mantienen sin cambios a propósito y concederían esos cuatro privilegios a cada tabla nueva (ver [docs/DB_PRIVILEGES.md](../docs/DB_PRIVILEGES.md)). `tests/dbPrivileges.test.js` rechaza las migraciones posteriores a D-2 que creen una tabla sin ese `REVOKE`.
 5. Validar primero sobre la base de pruebas.
 6. En staging o producción ejecutar únicamente:
 

@@ -139,6 +139,15 @@ test("la migración versionada y Prisma declaran las mismas tablas de soporte", 
   ]);
   assert.match(sql, /CONSTRAINT support_request_files_support_request_id_fkey[\s\S]*ON DELETE CASCADE ON UPDATE NO ACTION/);
   assert.match(schema, /map: "support_request_files_support_request_id_fkey"/);
+
+  // Si una tabla ya existía, la verificación estructural debe esperar exactamente las columnas de Prisma.
+  const expectedByGuard = [...sql.match(/expected_columns text\[\] := ARRAY\[([\s\S]*?)\];/)[1].matchAll(/'([a-z_]+)\.([a-z_]+):/g)]
+    .map(([, table, column]) => `${table}.${column}`).sort();
+  const expectedByPrisma = ["support_requests", "support_request_files"]
+    .flatMap((table) => prismaColumns(schema, table).map((column) => `${table}.${column}`)).sort();
+  assert.deepEqual(expectedByGuard, expectedByPrisma);
+  assert.match(sql, /IF actual_columns IS DISTINCT FROM expected_columns THEN\s+RAISE EXCEPTION/);
+  assert.match(sql, /confdeltype = 'c'/);
   // Solo crea estructura: ninguna sentencia elimina, vacía ni modifica datos existentes.
   const statementsWithoutComments = sql.replace(/--.*$/gm, "");
   assert.doesNotMatch(statementsWithoutComments, /^\s*(?:DROP|TRUNCATE|DELETE|UPDATE|INSERT)\b/im);
