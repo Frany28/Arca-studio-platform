@@ -1,7 +1,7 @@
 import { authConfig } from "../config/auth.js";
 import { findActiveUserById } from "../repositories/userRepository.js";
 import { parseCookies } from "../utils/cookies.js";
-import { verifyAuthToken } from "../utils/tokens.js";
+import { isSessionTokenPayload, verifyAuthToken } from "../utils/tokens.js";
 import { getOrLoadUser } from "../services/userSessionCache.js";
 import { isTokenOlderThanUser } from "../utils/sessionFreshness.js";
 
@@ -113,7 +113,7 @@ function getBearerToken(req) {
 
 /**
  * Resuelve la sesión autenticada a partir de la solicitud y la configuración disponible.
- * Participa en la cadena HTTP y continúa o rechaza la solicitud según el resultado.
+ * Solo acepta tokens de sesión: los de un solo uso (recuperación, registro) producen una sesión vacía.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @returns {Promise<object>} Resultado producido por la operación.
@@ -125,7 +125,9 @@ async function resolveSession(req) {
     secret: authConfig.tokenSecret,
   });
 
-  if (!payload?.sub) {
+  // Los tokens de recuperación y registro comparten secreto y formato con la
+  // sesión; sin esta comprobación un enlace de correo serviría como sesión.
+  if (!isSessionTokenPayload(payload)) {
     return {
       session: getEmptySession(),
       user: null,

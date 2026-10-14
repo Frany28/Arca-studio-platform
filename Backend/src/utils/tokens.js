@@ -63,13 +63,31 @@ export function createAuthToken(payload, { expiresInSeconds, secret }) {
 }
 
 /**
- * Verifica el valor de autenticación token y rechaza valores vencidos o inconsistentes.
- * Centraliza este comportamiento para que sus consumidores utilicen el mismo criterio.
+ * Determina si un payload ya verificado corresponde a una sesión y no a un token de un solo uso.
+ * Los tokens de recuperación, registro u otras operaciones siempre declaran `purpose`; las sesiones
+ * nunca lo incluyen, así que cualquier `purpose` (incluso vacío o null) se rechaza para fallar cerrado
+ * y conservar la validez de las sesiones emitidas antes de esta regla.
  *
- * @param {string} token - Valor de `token` requerido por esta operación.
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {unknown} options.secret - Valor de `options.secret` requerido por esta operación.
- * @returns {object} Resultado producido por la operación.
+ * @param {object|null} payload - Payload devuelto por `verifyAuthToken`.
+ * @returns {boolean} true solo si el payload identifica a un usuario y no declara propósito.
+ */
+export function isSessionTokenPayload(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      payload.sub &&
+      !Object.hasOwn(payload, "purpose"),
+  );
+}
+
+/**
+ * Verifica la firma, la cabecera y la vigencia de un token firmado con el secreto de autenticación.
+ * No distingue el tipo de token: quien autentique sesiones debe aplicar además `isSessionTokenPayload`.
+ *
+ * @param {string} token - Token compacto recibido por cookie, encabezado o enlace.
+ * @param {object} options - Opciones de verificación.
+ * @param {string} options.secret - Secreto HMAC usado para firmar el token.
+ * @returns {object|null} Payload verificado, o null si el token es inválido o expiró.
  */
 export function verifyAuthToken(token, { secret }) {
   if (!token || typeof token !== "string") {
