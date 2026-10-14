@@ -1,4 +1,5 @@
 import { query } from "../config/db.js";
+import { toPublicProjectView } from "../domain/projectPublicView.js";
 import { normalizeProjectStatus, PROJECT_STATUS } from "../domain/projectStatus.js";
 import { pageResult } from "../utils/pagination.js";
 
@@ -226,15 +227,28 @@ function hasDirectProjectAccess(project, user) {
 }
 
 /**
- * Determina si el valor de público showcase archivo cumple la condición esperada.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Ejecuta una consulta solo cuando se cumple la condición y, si no, devuelve un resultado vacío.
+ * Evita leer datos que la vista pública nunca devuelve (requisitos, especificaciones, documentos).
  *
- * @param {unknown} file - Valor de `file` requerido por esta operación.
- * @returns {boolean} Resultado producido por la operación.
+ * @param {boolean} enabled - Si la consulta debe ejecutarse.
+ * @param {() => Promise<{ rows: Array<object> }>} run - Consulta diferida.
+ * @returns {Promise<{ rows: Array<object> }>} Resultado de la consulta o un resultado sin filas.
  */
-function isPublicShowcaseFile(file) {
-  const type = String(file.file_type || "").toLowerCase();
-  return type.startsWith("image/") || type.startsWith("video/");
+function queryWhen(enabled, run) {
+  return enabled ? run() : Promise.resolve({ rows: [] });
+}
+
+/**
+ * Presenta una fila de proyecto según la relación del usuario con él (hallazgo P-1).
+ * Con acceso directo devuelve el proyecto completo; si solo lo ve por ser público, la proyección de vitrina.
+ *
+ * @param {object} row - Fila de proyecto obtenida desde PostgreSQL.
+ * @param {object} user - Usuario autenticado que consulta.
+ * @returns {object} Proyecto completo o su vista pública.
+ */
+function presentProjectRow(row, user) {
+  const project = toProject(row);
+  return hasDirectProjectAccess(row, user) ? project : toPublicProjectView(project);
 }
 
 /**
@@ -417,12 +431,18 @@ export async function listProjectsForUser(
     [...params, cursor?.[0] || null, cursor?.[1] || null, limit + 1],
   );
 
-  return pageResult(result.rows, limit, toProject, (row) => [row.updated_at, String(row.id)]);
+  return pageResult(
+    result.rows,
+    limit,
+    (row) => presentProjectRow(row, user),
+    (row) => [row.updated_at, String(row.id)],
+  );
 }
 
 /**
- * Busca el valor de proyecto detail by condition for usuario y devuelve null cuando no existe un registro accesible.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Busca el detalle de un proyecto accesible para el usuario y devuelve null si no lo es.
+ * Sin acceso directo no consulta requisitos, especificaciones ni documentos recientes, filtra
+ * imágenes y videos en SQL antes del LIMIT (cursores correctos) y devuelve la vista pública (P-1).
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.conditionSql - Valor de `options.conditionSql` requerido por esta operación.
@@ -528,6 +548,9 @@ async function findProjectDetailByConditionForUser({
   }
 
   const projectId = Number(projectResult.rows[0].id);
+  const hasDirectAccess = hasDirectProjectAccess(projectResult.rows[0], user);
+  // Requisitos, especificaciones y documentos recientes no forman parte de la vista
+  // pública: sin acceso directo ni siquiera se consultan.
 
   const [
     requirementsResult,
@@ -536,7 +559,7 @@ async function findProjectDetailByConditionForUser({
     recentDocumentsResult,
   ] =
     await Promise.all([
-      query(
+      queryWhen(hasDirectAccess, () => query(
         `
           select id, description, sort_order
           from public.project_requirements
@@ -545,8 +568,8 @@ async function findProjectDetailByConditionForUser({
           order by sort_order, id
         `,
         [projectId],
-      ),
-      query(
+      )),
+      queryWhen(hasDirectAccess, () => query(
         `
           select
             specification.id,
@@ -575,7 +598,7 @@ async function findProjectDetailByConditionForUser({
           order by specification.sort_order, specification.id
         `,
         [projectId],
-      ),
+      )),
       query(
         `
           select
@@ -607,12 +630,15 @@ async function findProjectDetailByConditionForUser({
             and file.deleted_at is null
             and file.status <> 'deleted'
             and ($2::timestamptz is null or (file.created_at, file.id) < ($2::timestamptz, $3::bigint))
+            -- Sin acceso directo solo hay imágenes y videos. Filtrar antes del LIMIT
+            -- mantiene páginas completas y un cursor correcto.
+            and ($5::boolean or file.file_type like 'image/%' or file.file_type like 'video/%')
           order by file.created_at desc, file.id desc
           limit $4
         `,
-        [projectId, fileCursor?.[0] || null, fileCursor?.[1] || null, fileLimit + 1],
+        [projectId, fileCursor?.[0] || null, fileCursor?.[1] || null, fileLimit + 1, hasDirectAccess],
       ),
-      query(
+      queryWhen(hasDirectAccess, () => query(
         `
           select
             file.id,
@@ -648,27 +674,21 @@ async function findProjectDetailByConditionForUser({
           limit 3
         `,
         [projectId],
-      ),
+      )),
     ]);
 
-  const hasDirectAccess = hasDirectProjectAccess(projectResult.rows[0], user);
-  const visibleFileRows = hasDirectAccess
-    ? filesResult.rows
-    : filesResult.rows.filter(isPublicShowcaseFile);
   const filePage = pageResult(
-    visibleFileRows,
+    filesResult.rows,
     fileLimit,
     toPublicProjectFile,
     (row) => [row.file_created_at, String(row.id)],
   );
 
-  return {
+  const detail = {
     ...toProject(projectResult.rows[0]),
     files: filePage.items,
     filesNextCursor: filePage.nextCursor,
-    recentDocuments: hasDirectAccess
-      ? recentDocumentsResult.rows.map(toRecentProjectDocument)
-      : [],
+    recentDocuments: recentDocumentsResult.rows.map(toRecentProjectDocument),
     requirements: requirementsResult.rows.map((requirement) => ({
       description: requirement.description,
       id: Number(requirement.id),
@@ -689,6 +709,8 @@ async function findProjectDetailByConditionForUser({
       title: specification.title,
     })),
   };
+
+  return hasDirectAccess ? detail : toPublicProjectView(detail);
 }
 
 /**

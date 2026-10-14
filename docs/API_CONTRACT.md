@@ -28,7 +28,7 @@ El frontend confirma login con `GET /auth/me` y usa exclusivamente ese usuario c
 
 `user` de sesión contiene `id:number`, `clientId:number|null`, `email`, `firstName`, `lastName`, `name`, `phone`, `status`, `lastLoginAt`, `updatedAt`, `hasProfilePhoto:boolean`, `role:{id,code,name}`, `permissions:[{id,code,name,description,module}]` y `permissionCodes:string[]`. No contiene `profilePhotoUrl`. AuthContext convierte `role` a su código y conserva el objeto en `roleDetails`; fabrica el avatar con `/auth/profile-photo/image?v=<updatedAt o timestamp>`.
 
-Todas las rutas de negocio consumidas requieren sesión salvo las operaciones públicas señaladas en autenticación. Autorización combina permisos, rol y pertenencia al recurso; un `404` puede ocultar un recurso no accesible. Que `isPublic=true` no elimina autenticación: sirve para ampliar la lectura de proyectos a usuarios autenticados, con archivos de showcase filtrados y sin acceso automático a comentarios.
+Todas las rutas de negocio consumidas requieren sesión salvo las operaciones públicas señaladas en autenticación. Autorización combina permisos, rol y pertenencia al recurso; un `404` puede ocultar un recurso no accesible. Que `isPublic=true` no elimina autenticación: sirve para ampliar la lectura de proyectos a usuarios autenticados, con archivos de showcase filtrados y sin acceso automático a comentarios. Quien solo ve un proyecto por ser público (sin acceso directo como cliente propietario, arquitecto asignado o administrador) recibe la vista `PublicProject` descrita abajo.
 
 ### CORS y origen de mutaciones
 
@@ -109,6 +109,19 @@ Registro: fullName 3–300 caracteres, al menos dos palabras; company máximo 15
 | GET `/projects/:projectId/events` | —; EventSource con credenciales | 200 stream SSE | Sesión + acceso a comentarios; 400, 404, 429 SSE_CONNECTION_LIMIT |
 
 `Project` contiene: `id`, `name`, `publicSlug`, `status`, `progress`, `isPublic`, `createdAt`, `updatedAt`, `createdBy`, `description`, `projectType`, `startDate`, `endDate`, `budget`, `generalArea`, `constructionArea`, `areaUnit`, `hasPlans`, `location`, `city`, `state`, `country`, `locationCoordinates:{latitude,longitude}|null`, `locationFormattedAddress`, `providerPlaceId`, `client:{id,name}`, `assignedArchitect:{id,name,hasProfilePhoto}|null`, `assignees` y `assignedArchitects` (`[{id,name,roleCode,roleName}]`), `imageFileId`, `imageFileVersionId`, `hasImage`. Los campos opcionales de datos pueden ser null. IDs y magnitudes numéricas se convierten a number.
+
+`PublicProject` (hallazgo P-1) es la proyección que reciben, en el listado y en el detalle, los usuarios sin acceso directo. La construye el backend (`src/domain/projectPublicView.js`) a partir de una lista de campos permitidos, por lo que cualquier campo nuevo de `Project` queda privado hasta añadirlo expresamente.
+
+- **Contiene solo:** `id`, `name`, `publicSlug`, `status`, `progress`, `isPublic`, `createdAt`, `updatedAt`, `description`, `projectType`, `startDate`, `generalArea`, `constructionArea`, `areaUnit`, `city`, `state`, `country`, `assignedArchitect`, `assignees`, `assignedArchitects`, `imageFileId`, `imageFileVersionId` y `hasImage`.
+- **`location`:** se sustituye por la ubicación general `"Ciudad, Estado, País"`, con los componentes disponibles, o `null`.
+- **No contiene:** `budget`, `client`, `createdBy`, `endDate`, `hasPlans`, `locationCoordinates`, `locationFormattedAddress` ni `providerPlaceId`.
+- **En el detalle:**
+  - `requirements`, `technicalSpecifications` y `recentDocuments` son siempre `[]`;
+  - `files` solo incluye imágenes y videos, filtrados en SQL antes del `LIMIT`, por lo que `filesNextCursor` es correcto;
+  - cada archivo tiene `title` genérico (`"Imagen 12"`, `"Video 7"`), `description:null` y `uploadedBy:null`.
+- **Descarga de contenido:** usa un nombre genérico (`imagen-12.png`) en `Content-Disposition`.
+
+El frontend no debe usarse para ocultar información sensible.
 
 `ProjectDetail` añade `files:ProjectFile[]`, `filesNextCursor`, `recentDocuments:ProjectFile[]`, `requirements:[{id,description,sortOrder}]`, `technicalSpecifications:[{id,title,description,defaultOpen,sortOrder,items}]`; items conservan los campos del JSON existente y normalizan `id` y `sortOrder`. `ProjectFile` contiene `id,title,description,extension,fileType,fileCategory,size,available,currentVersion,currentVersionId,createdAt,uploadedBy:{id,name,hasProfilePhoto}|null`. La respuesta de upload usa `fileSize` y `originalName`, no `size` y `title` de la lectura.
 

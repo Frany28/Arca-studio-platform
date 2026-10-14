@@ -12,6 +12,7 @@ import {
   sanitizeStorageFileName,
 } from "../config/storage.js";
 import { pool, query } from "../config/db.js";
+import { getShowcaseFileName } from "../domain/projectPublicView.js";
 import { isProjectFinalized, isProjectOperationallyReadOnly } from "../domain/projectStatus.js";
 
 const DEFAULT_FILE_STATUS = "active";
@@ -841,42 +842,43 @@ export async function deleteProjectFile({ fileId, projectId, user }) {
 }
 
 /**
- * Busca el valor de proyecto archivo for download y devuelve null cuando no existe un registro accesible.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Busca un archivo de proyecto descargable por el usuario y devuelve null si no tiene acceso.
+ * Con acceso directo admite cualquier tipo; si el proyecto solo es visible por ser público, únicamente
+ * imágenes y videos, y sustituye el nombre original por uno genérico para no exponer metadatos (P-1).
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.fileId - Valor de `options.fileId` requerido por esta operación.
- * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<object>} Resultado producido por la operación.
+ * @param {string} options.fileId - Identificador del archivo.
+ * @param {string} options.projectId - Identificador del proyecto.
+ * @param {object} options.user - Usuario autenticado que solicita la descarga.
+ * @returns {Promise<object|null>} Datos de almacenamiento y presentación del archivo, o null.
  */
 export async function findProjectFileForDownload({ fileId, projectId, user }) {
   const params = [projectId, fileId];
   const roleCode = user?.role?.code;
+  const publicShowcaseCondition = `(
+    project.is_public = true and (
+      file.file_type like 'image/%' or
+      file.file_type like 'video/%'
+    )
+  )`;
+  let directCondition = "false";
   let accessCondition = "false";
 
   if (roleCode === "admin") {
+    directCondition = "true";
     accessCondition = "true";
   } else if (roleCode === "architect") {
     params.push(user.id);
-    accessCondition = `(project.assigned_architect_id = $3 or exists (
+    directCondition = `(project.assigned_architect_id = $3 or exists (
       select 1 from public.project_assignees assignment
       where assignment.project_id = project.id
         and assignment.user_id = $3
-    ) or (
-      project.is_public = true and (
-        file.file_type like 'image/%' or
-        file.file_type like 'video/%'
-      )
     ))`;
+    accessCondition = `(${directCondition} or ${publicShowcaseCondition})`;
   } else if (roleCode === "client" && user.clientId) {
     params.push(user.clientId);
-    accessCondition = `(project.client_id = $3 or (
-      project.is_public = true and (
-        file.file_type like 'image/%' or
-        file.file_type like 'video/%'
-      )
-    ))`;
+    directCondition = "(project.client_id = $3)";
+    accessCondition = `(${directCondition} or ${publicShowcaseCondition})`;
   }
 
   const result = await query(
@@ -888,7 +890,9 @@ export async function findProjectFileForDownload({ fileId, projectId, user }) {
         version.id as version_id,
         version.file_name,
         version.original_name,
-        version.file_size
+        version.file_extension,
+        version.file_size,
+        (${directCondition}) as direct_access
       from public.files file
       inner join public.projects project
         on project.id = file.project_id
@@ -913,14 +917,18 @@ export async function findProjectFileForDownload({ fileId, projectId, user }) {
     return null;
   }
 
+  const directAccess = Boolean(file.direct_access);
+  const showcaseName = getShowcaseFileName({ extension: file.file_extension, fileType: file.file_type, id: file.id });
+
   return {
     fileName: file.file_name,
     fileSize: file.file_size === null ? null : Number(file.file_size),
     fileType: file.file_type,
     id: Number(file.id),
     currentVersionId: Number(file.version_id),
-    originalName: file.original_name || file.title || "archivo",
-    title: file.title,
+    directAccess,
+    originalName: directAccess ? file.original_name || file.title || "archivo" : showcaseName,
+    title: directAccess ? file.title : showcaseName,
   };
 }
 
