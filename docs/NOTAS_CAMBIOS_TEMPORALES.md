@@ -41,6 +41,12 @@ Eliminar el mecanismo completo (flag, `PUBLIC_TEST_*` y el usuario de prueba en 
 | `AUTH_BYPASS_FLAG_PRESENT` | En producción, `ROUTE_AUTH_DISABLED_FOR_TESTS` tiene cualquier valor distinto de vacío o `false` |
 | `CSRF_ALLOWS_MISSING_ORIGIN` | En producción, `CSRF_ALLOW_NO_ORIGIN=true` |
 | `CORS_ORIGIN_INSECURE` | En producción, algún origen de `CORS_ORIGIN`, `CORS_ORIGINS` o `FRONTEND_URL` no es HTTPS, contiene `*` o no es una URL válida |
+| `DATABASE_SSL_CA_REQUIRED` | En producción, `DATABASE_URL` apunta a Supabase y falta `DATABASE_SSL_CA_CERT` |
+| `DATABASE_SSL_CA_INVALID` | En producción, `DATABASE_SSL_CA_CERT` no contiene certificados PEM válidos |
+| `DATABASE_TLS_VERIFICATION_DISABLED` | En producción, `DATABASE_SSL_REJECT_UNAUTHORIZED=false` |
+| `DATABASE_TLS_DISABLED` | En producción, `DATABASE_SSL=false` con una base que no es loopback |
+| `DATABASE_URL_TLS_INSECURE` | En producción, `DATABASE_URL` incluye `sslmode` distinto de `require`/`verify-ca`/`verify-full`, `ssl` falso, `uselibpqcompat` o rutas de certificados |
+| `DATABASE_URL_INVALID` | En producción, `DATABASE_URL` no es una URL válida |
 
 ### Qué garantiza
 
@@ -63,5 +69,6 @@ Verificar en Vercel, sin copiar los valores:
 - `AUTH_TOKEN_SECRET`: definido, con al menos 32 caracteres.
 - `CORS_ORIGIN`, `CORS_ORIGINS` y `FRONTEND_URL`: solo orígenes `https://` concretos; eliminar `https://*.netlify.app` si está configurado.
 - `CSRF_ALLOW_NO_ORIGIN` y `ROUTE_AUTH_DISABLED_FOR_TESTS`: sin definir o `false`.
+- `DATABASE_SSL_CA_CERT`: certificado CA de Supabase en PEM, validado antes con `pnpm check:db-tls`. `DATABASE_SSL_REJECT_UNAUTHORIZED` sin definir o `true`, y `DATABASE_URL` sin parámetros TLS que debiliten la verificación (ver `docs/DATABASE_TLS.md`).
 
 Tras desplegar en un entorno de prueba, comprobar `GET /api/health`. Si la función falla al inicializarse, el log de Vercel indica el código y la variable que hay que corregir.

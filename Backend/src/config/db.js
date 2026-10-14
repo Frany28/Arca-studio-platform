@@ -1,4 +1,6 @@
 import pg from "pg";
+import { isLoopbackDatabase, resolveDatabaseConnection } from "./databaseTls.js";
+import { isLocalRuntime } from "./environment.js";
 
 const { Pool } = pg;
 
@@ -8,66 +10,14 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
 }
 
-/**
- * Interpreta el valor de boolean y descarta los formatos que no sean válidos.
- * Centraliza esta decisión para mantener consistente la configuración del backend.
- *
- * @param {unknown} value - Valor de `value` requerido por esta operación.
- * @param {unknown} fallback - Valor de `fallback` requerido por esta operación.
- * @returns {unknown} Resultado producido por la operación.
- */
-function parseBoolean(value, fallback) {
-  if (value === undefined || value === "") {
-    return fallback;
-  }
-
-  return String(value).trim().toLowerCase() === "true";
-}
-
-/**
- * Determina si el valor de local base de datos cumple la condición esperada.
- * Centraliza esta decisión para mantener consistente la configuración del backend.
- *
- * @param {string} url - Valor de `url` requerido por esta operación.
- * @returns {boolean} Resultado producido por la operación.
- */
-function isLocalDatabase(url) {
-  try {
-    const { hostname } = new URL(url);
-    return ["localhost", "127.0.0.1", "::1"].includes(hostname);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Obtiene el valor de ssl configuración para que el flujo llamador pueda continuar.
- * Centraliza esta decisión para mantener consistente la configuración del backend.
- *
- * @returns {boolean} Resultado producido por la operación.
- */
-function getSslConfig() {
-  if (!parseBoolean(process.env.DATABASE_SSL, true)) {
-    return false;
-  }
-
-  if (isLocalDatabase(databaseUrl)) {
-    return false;
-  }
-
-  const sslConfig = {
-    rejectUnauthorized: parseBoolean(
-      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED,
-      false,
-    ),
-  };
-
-  if (process.env.DATABASE_SSL_CA_CERT) {
-    sslConfig.ca = process.env.DATABASE_SSL_CA_CERT.replace(/\\n/g, "\n");
-    sslConfig.rejectUnauthorized = true;
-  }
-
-  return sslConfig;
+// La URL nunca decide la TLS: resolveDatabaseConnection elimina sus parámetros
+// TLS y aplica una política única. En un entorno desplegado una configuración
+// insegura lanza aquí, antes de crear el pool; en local se avisa por consola.
+const databaseConnection = resolveDatabaseConnection(process.env, {
+  local: isLocalRuntime(process.env),
+});
+for (const warning of databaseConnection.warnings) {
+  console.warn(JSON.stringify({ type: "database_tls_warning", message: warning }));
 }
 
 /**
@@ -102,7 +52,7 @@ function getPoolMax() {
     return 1;
   }
 
-  return isLocalDatabase(databaseUrl) ? 10 : 2;
+  return isLoopbackDatabase(databaseUrl) ? 10 : 2;
 }
 
 /**
@@ -168,8 +118,8 @@ export function isReadOnlyQuery(text) {
 }
 
 export const pool = new Pool({
-  connectionString: databaseUrl,
-  ssl: getSslConfig(),
+  connectionString: databaseConnection.connectionString,
+  ssl: databaseConnection.ssl,
   max: getPoolMax(),
   allowExitOnIdle: isServerlessRuntime(),
   idleTimeoutMillis: getIdleTimeoutMs(),

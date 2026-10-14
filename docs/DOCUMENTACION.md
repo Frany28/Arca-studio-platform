@@ -350,9 +350,9 @@ En produccion, `AUTH_TOKEN_SECRET` es obligatorio.
 | Variable                           | Requerida | Default | Descripcion                  |
 | ---------------------------------- | --------- | ------- | ---------------------------- |
 | `DATABASE_URL`                     | Si        | -       | Connection string PostgreSQL |
-| `DATABASE_SSL`                     | No        | `true`  | Activa SSL si no es local    |
-| `DATABASE_SSL_REJECT_UNAUTHORIZED` | No        | `false` | Valida certificado           |
-| `DATABASE_SSL_CA_CERT`             | No        | -       | Certificado CA               |
+| `DATABASE_SSL`                     | No        | `true`  | TLS hacia PostgreSQL; `false` solo en local o con base en loopback |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | No        | -       | Solo local: `true` verifica sin CA propia. Desplegado: siempre verifica; `false` impide arrancar |
+| `DATABASE_SSL_CA_CERT`             | Desplegado con Supabase | - | Certificado CA de Supabase en PEM (ver `docs/DATABASE_TLS.md`) |
 | `DATABASE_POOL_MAX`                | No        | `10`    | Maximo de conexiones         |
 | `DATABASE_IDLE_TIMEOUT_MS`         | No        | `30000` | Timeout idle                 |
 | `DATABASE_CONNECTION_TIMEOUT_MS`   | No        | `5000`  | Timeout de conexion          |

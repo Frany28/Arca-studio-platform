@@ -9,6 +9,7 @@
   },
   "scripts": {
     "check:user-login": "node scripts/check-user-login.mjs",
+    "check:db-tls": "node scripts/check-database-tls.mjs",
     "dev:upsert-user": "node scripts/upsert-test-user.mjs",
     "user:set-status": "node scripts/set-user-status.mjs",
     "dev": "node local.js",

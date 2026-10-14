@@ -1,3 +1,5 @@
+import { collectDatabaseTlsViolations } from "./databaseTls.js";
+
 // Valores canónicos de NODE_ENV. Cualquier otro (ausente, mayúsculas, espacios,
 // "staging", "prod"…) es ambiguo y se rechaza: las protecciones de cookies,
 // CORS, CSRF y JWT comparan exactamente con "production".
@@ -90,7 +92,7 @@ function isSecureProductionOrigin(origin) {
 
 /**
  * Evalúa las reglas de seguridad del entorno sin revelar valores de variables.
- * En local solo exige un NODE_ENV canónico; en producción exige además secreto, orígenes y CSRF seguros.
+ * En local solo exige un NODE_ENV canónico; en producción exige además secreto, orígenes, CSRF y TLS de PostgreSQL seguros.
  *
  * @param {Record<string, string|undefined>} [environment] - Variables de entorno a evaluar.
  * @returns {Array<{ code: string, variable: string, message: string }>} Infracciones encontradas.
@@ -149,6 +151,9 @@ export function collectEnvironmentViolations(environment = process.env) {
       variable: "CORS_ORIGIN, CORS_ORIGINS o FRONTEND_URL",
     });
   }
+
+  // TLS hacia PostgreSQL: verificación obligatoria, CA de Supabase y URL sin parámetros que la debiliten.
+  violations.push(...collectDatabaseTlsViolations(environment));
 
   return violations;
 }
