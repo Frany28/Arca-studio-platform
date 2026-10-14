@@ -260,8 +260,6 @@ export async function streamProjectFile(req, res, next) {
     const security = getFileResponseSecurity({
       contentType: object.ContentType || file.fileType,
       frameAncestors,
-      // Los PDF de proyectos solo se ven en el visor integrado (fetch + PDF.js).
-      pdfViewing: "in-app",
     });
     res.removeHeader("X-Frame-Options");
     res.setHeader(
@@ -336,10 +334,9 @@ export async function streamProjectRequestFile(req, res, next) {
     } else {
       res.status(200);
     }
-    // Solo 'self' puede incrustar adjuntos de solicitudes. Sus PDF se abren en una pestaña nueva
-    // (no hay visor integrado en el modal de revisión) y conservan la política de Helmet.
-    const security = getFileResponseSecurity({ contentType: object.ContentType || file.fileType, pdfViewing: "direct" });
-    if (security.contentSecurityPolicy) res.setHeader("Content-Security-Policy", security.contentSecurityPolicy);
+    // Solo 'self' puede incrustar adjuntos de solicitudes; sus PDF se ven en el visor integrado.
+    const security = getFileResponseSecurity({ contentType: object.ContentType || file.fileType });
+    res.setHeader("Content-Security-Policy", security.contentSecurityPolicy);
     res.setHeader("Content-Type", security.contentType);
     res.setHeader("Cache-Control", "private, max-age=60, must-revalidate");
     res.setHeader("Content-Disposition", `${security.disposition}; filename="${encodeURIComponent(file.originalName)}"`);

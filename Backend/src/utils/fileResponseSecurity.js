@@ -10,12 +10,11 @@
 // - Video: `sandbox` impide reproducirlo al abrirlo directamente; se usa la política
 //   estricta sin `sandbox`.
 // - DOCX/XLSX: el navegador los descarga; `sandbox` no lo impide.
-// - PDF de proyectos: solo se visualizan dentro de ARCA Studio (fetch + PDF.js), que no aplica
-//   Content-Disposition ni la CSP del recurso. Se sirven como `attachment` con la política
-//   estricta y `sandbox`: abrir la URL directamente descarga el archivo y nunca lo interpreta
-//   el navegador. Comprobado con el visor real en tests/browser/projectPdfViewer.test.js.
-// - PDF de adjuntos de solicitudes: el modal de revisión los abre en una pestaña nueva y no tiene
-//   visor integrado; conservan la política anterior hasta disponer de uno (`pdfViewing: "direct"`).
+// - PDF de proyectos y de adjuntos de solicitudes: solo se visualizan dentro de ARCA Studio
+//   (fetch + PDF.js en ProjectDocumentViewerModal), que no aplica Content-Disposition ni la CSP
+//   del recurso. Se sirven como `attachment` con la política estricta y `sandbox`: abrir la URL
+//   directamente descarga el archivo y nunca lo interpreta el navegador. Comprobado con los
+//   visores reales en Frontend/tests/browser/projectPdfViewer.test.js.
 // - Cualquier tipo fuera de la lista (p. ej. text/html en metadatos del almacenamiento) se
 //   entrega como descarga `application/octet-stream` y nunca se interpreta en el navegador.
 
@@ -63,23 +62,19 @@ function buildStrictPolicy(frameAncestors, sandbox) {
 
 /**
  * Decide tipo de contenido, disposición y CSP de una respuesta de archivo.
- * Los tipos permitidos reciben la política medida para cada uno; el resto se fuerza a descarga.
- * `contentSecurityPolicy: null` indica que el endpoint conserva su política actual (PDF directo).
+ * Los tipos permitidos reciben la política medida para cada uno; los PDF (visibles solo en el visor
+ * integrado) y cualquier tipo fuera de la lista se entregan como descarga con `sandbox`.
  *
  * @param {object} options - Datos de la respuesta.
  * @param {string|null} options.contentType - Tipo MIME efectivo (almacenamiento o base).
  * @param {Array<string>} [options.frameAncestors] - Orígenes del frontend que pueden incrustar archivos.
- * @param {"in-app"|"direct"} [options.pdfViewing] - "in-app" si los PDF solo se ven en el visor de la
- *   aplicación (se sirven como descarga con sandbox); "direct" si aún se abren en una pestaña.
- * @returns {{ contentType: string, disposition: "inline"|"attachment", contentSecurityPolicy: string|null }} Cabeceras a aplicar.
+ * @returns {{ contentType: string, disposition: "inline"|"attachment", contentSecurityPolicy: string }} Cabeceras a aplicar.
  */
-export function getFileResponseSecurity({ contentType, frameAncestors = [], pdfViewing = "direct" }) {
+export function getFileResponseSecurity({ contentType, frameAncestors = [] }) {
   const type = normalizeContentType(contentType);
 
   if (type === PDF_TYPE) {
-    return pdfViewing === "in-app"
-      ? { contentSecurityPolicy: buildStrictPolicy(frameAncestors, true), contentType: type, disposition: "attachment" }
-      : { contentSecurityPolicy: null, contentType: type, disposition: "inline" };
+    return { contentSecurityPolicy: buildStrictPolicy(frameAncestors, true), contentType: type, disposition: "attachment" };
   }
   if (UNSANDBOXED_INLINE_TYPES.has(type)) {
     return { contentSecurityPolicy: buildStrictPolicy(frameAncestors, false), contentType: type, disposition: "inline" };

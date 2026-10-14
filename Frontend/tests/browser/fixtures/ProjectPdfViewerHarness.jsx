@@ -14,7 +14,7 @@ const PDF_DOCUMENT = {
 };
 
 /** Monta el visor real de documentos del proyecto, abierto sobre un PDF de varias páginas. */
-function PdfViewerHarness() {
+export default function PdfViewerHarness() {
   return (
     <AuthProvider>
       <ProjectDocumentViewerModal document={PDF_DOCUMENT} open projectId={15} onClose={() => {}} />

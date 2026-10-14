@@ -124,7 +124,23 @@ function OfficeInlineDocumentPreview({
   );
 }
 
+/**
+ * Visor de documentos a pantalla completa (PDF, DOCX y XLSX) que descarga el archivo con fetch.
+ * Con `commentsEnabled` muestra las observaciones del proyecto; sin ellas (por ejemplo, adjuntos de
+ * solicitudes) no consulta comentarios, no permite crear puntos y el documento ocupa todo el ancho.
+ *
+ * @param {Object} props - Propiedades del visor.
+ * @param {Object} props.document - Documento con fileUrl, name, fileType o mimeType e identificadores.
+ * @param {boolean} [props.commentsEnabled=true] - Si se cargan y permiten observaciones del proyecto.
+ * @param {string|number|null} [props.initialFocusedCommentId=null] - Observación que se enfoca al abrir.
+ * @param {Function} props.onClose - Cierra el visor.
+ * @param {boolean} [props.open=false] - Visibilidad del visor.
+ * @param {string|number} [props.projectId] - Proyecto de las observaciones.
+ * @param {import("react").RefObject<HTMLElement>} [props.triggerRef] - Elemento que recupera el foco al cerrar.
+ * @returns {import("react").ReactElement|null} Visor o null mientras no se renderiza.
+ */
 export function ProjectDocumentViewerModal({
+  commentsEnabled = true,
   document,
   initialFocusedCommentId = null,
   onClose,
@@ -132,7 +148,9 @@ export function ProjectDocumentViewerModal({
   projectId,
   triggerRef,
 }) {
-  const { readOnly } = useProjectReadOnly();
+  const { readOnly: projectReadOnly } = useProjectReadOnly();
+  // Sin observaciones no hay puntos que crear: el visor queda en modo de solo lectura.
+  const readOnly = projectReadOnly || !commentsEnabled;
   const kind = getDocumentKind(document);
   const source = document?.fileUrl || "";
   const documentName = getFileDisplayName(document?.name);
@@ -150,7 +168,7 @@ export function ProjectDocumentViewerModal({
   const [focusedCommentId, setFocusedCommentId] = useState(null);
   const [replyRequest, setReplyRequest] = useState(null);
   const { addComment, comments, error: commentsError, isSubmitting } = useDocumentComments({
-    enabled: open && kind !== "unsupported",
+    enabled: open && commentsEnabled && kind !== "unsupported",
     fileId: document?.id,
     fileVersionId: document?.currentVersionId,
     projectId,
@@ -346,24 +364,26 @@ export function ProjectDocumentViewerModal({
             {viewer}
           </div>
         </div>
-        <div className="w-[296px] shrink-0 max-[767px]:h-[36dvh] max-[767px]:w-full">
-          <GeneralCommentsDrawer
-            composerDisabled={isSubmitting}
-            composerDisabledMessage={isSubmitting ? "Guardando observación..." : ""}
-            composerFocusSignal={pendingSelection ? JSON.stringify(pendingSelection) : ""}
-            comments={comments}
-            commentsError={commentsError}
-            focusedSelectionCommentId={focusedCommentId}
-            mediaItem={document}
-            mediaType="document"
-            pendingSelection={pendingSelection}
-            replyRequest={replyRequest}
-            requireSelectionForRoot
-            onClearSelection={() => setPendingSelection(null)}
-            onSelectionPreviewClick={handlePointSelect}
-            onSubmitComment={handleSubmitComment}
-          />
-        </div>
+        {commentsEnabled ? (
+          <div className="w-[296px] shrink-0 max-[767px]:h-[36dvh] max-[767px]:w-full">
+            <GeneralCommentsDrawer
+              composerDisabled={isSubmitting}
+              composerDisabledMessage={isSubmitting ? "Guardando observación..." : ""}
+              composerFocusSignal={pendingSelection ? JSON.stringify(pendingSelection) : ""}
+              comments={comments}
+              commentsError={commentsError}
+              focusedSelectionCommentId={focusedCommentId}
+              mediaItem={document}
+              mediaType="document"
+              pendingSelection={pendingSelection}
+              replyRequest={replyRequest}
+              requireSelectionForRoot
+              onClearSelection={() => setPendingSelection(null)}
+              onSelectionPreviewClick={handlePointSelect}
+              onSubmitComment={handleSubmitComment}
+            />
+          </div>
+        ) : null}
       </div>
     </DocumentFullscreenModal>
   );

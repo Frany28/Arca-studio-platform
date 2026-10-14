@@ -26,7 +26,7 @@ const FRAME_ORIGINS = getAllowedOrigins().join(" ");
 const STRICT = `default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self' ${FRAME_ORIGINS}`;
 const STRICT_SANDBOX = `${STRICT}; sandbox`;
 
-test("política por tipo: imágenes y Office con sandbox, video sin sandbox, PDF según su visualización, resto como descarga", () => {
+test("política por tipo: imágenes y Office con sandbox, video sin sandbox, PDF y resto como descarga", () => {
   const frameAncestors = getAllowedOrigins();
   for (const type of ["image/png", "image/jpeg", "image/webp", "IMAGE/PNG; charset=binary", DOCX, XLSX]) {
     assert.deepEqual(getFileResponseSecurity({ contentType: type, frameAncestors }), {
@@ -34,8 +34,7 @@ test("política por tipo: imágenes y Office con sandbox, video sin sandbox, PDF
     }, type);
   }
   assert.deepEqual(getFileResponseSecurity({ contentType: "video/mp4", frameAncestors }), { contentSecurityPolicy: STRICT, contentType: "video/mp4", disposition: "inline" });
-  assert.deepEqual(getFileResponseSecurity({ contentType: "application/pdf", frameAncestors }), { contentSecurityPolicy: null, contentType: "application/pdf", disposition: "inline" });
-  assert.deepEqual(getFileResponseSecurity({ contentType: "Application/PDF", frameAncestors, pdfViewing: "in-app" }), {
+  assert.deepEqual(getFileResponseSecurity({ contentType: "Application/PDF", frameAncestors }), {
     contentSecurityPolicy: STRICT_SANDBOX, contentType: "application/pdf", disposition: "attachment",
   });
   for (const type of ["text/html", "image/svg+xml", "application/xhtml+xml", "text/javascript", "model/gltf-binary", "", null]) {
@@ -148,15 +147,22 @@ test("adjunto de solicitud: imagen con política estricta solo incrustable por '
   assert.equal(response.headers.get("content-disposition"), 'inline; filename="plano%20final.bin"');
 });
 
-test("adjunto de solicitud: PDF conserva la política de Helmet (se abre en pestaña nueva, sin visor integrado)", async (context) => {
+test("adjunto de solicitud: PDF solo visible en la aplicación, como descarga con CSP estricta y sandbox", async (context) => {
   mockFile(context, { fileType: "application/pdf" });
   const get = await startApp(context);
   const response = await get("/project-requests/3/files/5/content");
-  const csp = response.headers.get("content-security-policy");
-  assert.match(csp, /default-src 'self'/);
-  assert.match(csp, /object-src 'none'/);
-  assert.match(csp, /frame-ancestors 'self'/);
+  assert.equal(response.headers.get("content-security-policy"), "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'; sandbox");
   assert.equal(response.headers.get("content-type"), "application/pdf");
+  assert.equal(response.headers.get("content-disposition"), 'attachment; filename="plano%20final.bin"');
+  assert.equal(await response.text(), "contenido");
+});
+
+test("adjunto de solicitud: un PDF sin acceso responde 404 sin consultar el almacenamiento", async (context) => {
+  mockFile(context, { fileType: "application/pdf", found: false });
+  const get = await startApp(context);
+  const response = await get("/project-requests/3/files/5/content");
+  assert.equal(response.status, 404);
+  assert.equal(objectStorage.get.mock.callCount(), 0);
 });
 
 test("adjunto de solicitud: un tipo no permitido se entrega como descarga inerte", async (context) => {

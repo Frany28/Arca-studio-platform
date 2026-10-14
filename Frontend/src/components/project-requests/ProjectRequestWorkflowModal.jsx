@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import Button from "../ui/Button/Button.jsx";
 import { api } from "../../api/http.js";
 import Modal from "../ui/Modal/Modal.jsx";
 import TextArea from "../ui/TextArea/TextArea.jsx";
+import { ProjectDocumentViewerModal } from "../../pages/projects/components/ProjectDocumentPreview.jsx";
+import { isPdfAttachment, toAttachmentViewerDocument } from "../../utils/projectRequestAttachments.js";
 import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
 import MeetingRecommendationField from "./MeetingRecommendationField.jsx";
 
@@ -48,8 +50,17 @@ function ProjectRequestWorkflowModal({
   const [localError, setLocalError] = useState("");
   const [meetingRecommendation, setMeetingRecommendation] = useState(null);
   const [meetingError, setMeetingError] = useState("");
+  // El documento se conserva al cerrar para que el visor complete su animación de salida.
+  const [pdfViewer, setPdfViewer] = useState({ document: null, open: false });
+  const pdfTriggerRef = useRef(null);
 
   if (!projectRequest) return null;
+
+  const openPdfViewer = (event, file) => {
+    pdfTriggerRef.current = event.currentTarget;
+    setPdfViewer({ document: toAttachmentViewerDocument(file, projectRequest.id), open: true });
+  };
+  const closePdfViewer = () => setPdfViewer((current) => ({ ...current, open: false }));
 
   const status = getProjectRequestStatus(projectRequest.status);
   const requiresReason = mode === "review" || action !== "approve";
@@ -124,17 +135,29 @@ function ProjectRequestWorkflowModal({
             <ul className="flex flex-col gap-[4px]">
               {projectRequest.files.map((file) => (
                 <li key={file.id}>
-                  <a
-                    href={api.projectRequests.getFileContentUrl({
-                      fileId: file.id,
-                      projectRequestId: projectRequest.id,
-                    })}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-body-4 text-[var(--color-primary-300)] underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]"
-                  >
-                    {file.name}
-                  </a>
+                  {isPdfAttachment(file) ? (
+                    // Los PDF se ven dentro de ARCA Studio; el backend los sirve como descarga.
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      onClick={(event) => openPdfViewer(event, file)}
+                      className="text-left text-body-4 text-[var(--color-primary-300)] underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]"
+                    >
+                      {file.name}
+                    </button>
+                  ) : (
+                    <a
+                      href={api.projectRequests.getFileContentUrl({
+                        fileId: file.id,
+                        projectRequestId: projectRequest.id,
+                      })}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-body-4 text-[var(--color-primary-300)] underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]"
+                    >
+                      {file.name}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -195,6 +218,17 @@ function ProjectRequestWorkflowModal({
             {submitting ? "Guardando..." : mode === "decision" ? "Confirmar decisión" : "Guardar revisión"}
           </Button>
         </footer>
+
+        {/* Dentro de la sección: los eventos del portal no llegan a la capa del modal y no lo cierran. */}
+        {pdfViewer.document ? (
+          <ProjectDocumentViewerModal
+            commentsEnabled={false}
+            document={pdfViewer.document}
+            open={pdfViewer.open}
+            onClose={closePdfViewer}
+            triggerRef={pdfTriggerRef}
+          />
+        ) : null}
       </section>
     </Modal>
   );
