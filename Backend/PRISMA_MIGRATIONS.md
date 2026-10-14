@@ -42,6 +42,10 @@ Si se publica el backend antes de aplicar la migración, solo fallan los endpoin
 
 Revoca `TRUNCATE`, `TRIGGER`, `REFERENCES` y `MAINTAIN` a `anon`, `authenticated` y `service_role` sobre las tablas de ARCA en `public` (hallazgo D-2). Debe aplicarse después de `20261014120000_support_tables`. Si D-4 no está aplicada, D-2 aborta sin cambios. El inventario, la compatibilidad con Supabase, el despliegue y la reversión están en [docs/DB_PRIVILEGES.md](../docs/DB_PRIVILEGES.md).
 
+## Rate limiting compartido (`20261014140000_rate_limit_buckets`)
+
+Crea `rate_limit_buckets` para los contadores compartidos entre instancias (hallazgo B-2). La tabla es nueva y vacía, con RLS y el `REVOKE` de D-2, este último solo si existen los roles de Supabase. Debe aplicarse **antes** de publicar el backend que la usa, porque sin ella los endpoints de autenticación responden 503. El historial completo de migraciones se comprobó sobre un PostgreSQL 18 aislado y vacío. Diseño, despliegue y reversión en [docs/RATE_LIMITING.md](../docs/RATE_LIMITING.md).
+
 ## Flujo para un cambio nuevo
 
 1. Modificar `prisma/schema.prisma` para cambios que Prisma pueda representar.

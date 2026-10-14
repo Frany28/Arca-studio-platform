@@ -24,13 +24,32 @@ async function readMigration() {
   return { raw, statements: raw.replace(/--.*$/gm, "") };
 }
 
+/**
+ * Reúne las tablas creadas por las migraciones posteriores a la indicada.
+ *
+ * @param {string} migrationName - Migración de referencia.
+ * @returns {Promise<Set<string>>} Nombres de tabla.
+ */
+async function tablesCreatedAfter(migrationName) {
+  const names = (await readdir(migrationsDirectory)).filter((name) => /^\d{14}_/.test(name) && name > migrationName);
+  const tables = new Set();
+  for (const name of names) {
+    const sql = (await readFile(path.join(migrationsDirectory, name, "migration.sql"), "utf8")).replace(/--.*$/gm, "");
+    for (const [, table] of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?public"?\.)?"?([a-z_]+)"?/gi)) tables.add(table);
+  }
+  return tables;
+}
+
 test("D-2 revoca los privilegios peligrosos en todas las tablas propias y solo en ellas", async () => {
   const [{ statements }, schema] = await Promise.all([
     readMigration(),
     readFile(path.join(backendDirectory, "prisma", "schema.prisma"), "utf8"),
   ]);
   const declared = [...statements.match(/ARRAY\[([\s\S]*?)\]/)[1].matchAll(/'([a-z_]+)'/g)].map(([, name]) => name).sort();
-  const models = [...schema.matchAll(/^model ([a-z_]+) \{/gm)].map(([, name]) => name);
+  // Las tablas creadas por migraciones posteriores a D-2 revocan sus propios privilegios
+  // (lo comprueba la prueba de tablas nuevas), así que no forman parte de esta lista.
+  const laterTables = await tablesCreatedAfter(MIGRATION_NAME);
+  const models = [...schema.matchAll(/^model ([a-z_]+) \{/gm)].map(([, name]) => name).filter((name) => !laterTables.has(name));
   assert.deepEqual(declared, ["_prisma_migrations", ...models].sort());
   assert.equal(new Set(declared).size, declared.length);
 });

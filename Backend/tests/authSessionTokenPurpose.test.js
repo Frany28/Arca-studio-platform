@@ -52,7 +52,13 @@ function userRow() {
 function mockDatabase(context) {
   const calls = [];
   clearUserSessionCache();
-  context.mock.method(pool, "query", async (sql) => {
+  context.mock.method(pool, "query", async (sql, params) => {
+    // Contador compartido de B-2: cada clave (tríos clave, ámbito, ventana) recibe su primer intento.
+    if (sql.includes("public.rate_limit_buckets")) {
+      const rows = [];
+      for (let index = 0; index < params.length; index += 3) rows.push({ count: 1, key_hash: params[index], retry_after_ms: params[index + 2] });
+      return { rows, rowCount: rows.length };
+    }
     calls.push(sql);
     if (sql.includes("from public.users u")) return { rows: [userRow()], rowCount: 1 };
     if (sql.includes("from public.password_recovery_tokens")) {

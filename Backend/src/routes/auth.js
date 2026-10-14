@@ -12,7 +12,7 @@ import {
   verifyResetToken,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middlewares/auth.js";
-import { loginRateLimit } from "../middlewares/loginRateLimit.js";
+import { authRateLimits } from "../middlewares/authRateLimit.js";
 import { validate } from "../middlewares/validate.js";
 import { loginSchema } from "../validation/schemas.js";
 import {
@@ -36,15 +36,15 @@ router.use((_req, res, next) => {
   next();
 });
 
-router.post("/login", loginRateLimit, validate(loginSchema), login);
-router.post("/registration/start", loginRateLimit, validate(startRegistrationSchema), startRegistration);
-router.post("/registration/resend", loginRateLimit, validate(resendRegistrationSchema), resendRegistration);
-router.post("/registration/verify", loginRateLimit, validate(verifyRegistrationSchema), verifyRegistration);
-router.post("/registration/complete", loginRateLimit, validate(completeRegistrationSchema), completeRegistration);
-router.post("/forgot-password", loginRateLimit, forgotPassword);
-router.post("/verify-reset-token", loginRateLimit, verifyResetToken);
-router.post("/reset-password", loginRateLimit, resetPassword);
-router.post("/change-password", requireAuth, loginRateLimit, changePassword);
+router.post("/login", authRateLimits.login, validate(loginSchema), login);
+router.post("/registration/start", authRateLimits.registration, validate(startRegistrationSchema), startRegistration);
+router.post("/registration/resend", authRateLimits.registration, validate(resendRegistrationSchema), resendRegistration);
+router.post("/registration/verify", authRateLimits.registration, validate(verifyRegistrationSchema), verifyRegistration);
+router.post("/registration/complete", authRateLimits.registration, validate(completeRegistrationSchema), completeRegistration);
+router.post("/forgot-password", authRateLimits.passwordReset, forgotPassword);
+router.post("/verify-reset-token", authRateLimits.passwordReset, verifyResetToken);
+router.post("/reset-password", authRateLimits.passwordReset, resetPassword);
+router.post("/change-password", requireAuth, authRateLimits.changePassword, changePassword);
 router.get("/profile-photo/image", requireAuth, getProfilePhotoImage);
 router.post(
   "/profile-photo",
