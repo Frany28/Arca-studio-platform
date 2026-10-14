@@ -11,7 +11,7 @@ La revisión estática no permite certificar 100 usuarios concurrentes. El siste
 | Crítica | Los uploads de hasta 50 MB usan `express.raw` y un `Buffer` completo por petición. | 100 uploads pueden requerir varios GB de memoria antes del overhead de Node y S3. |
 | Alta | Cada request autenticado ejecuta `findActiveUserById`, incluyendo agregación de permisos. | Amplifica consultas y ocupa el pool aun en rutas que no necesitan refrescar permisos. |
 | Alta | Cada instancia crea un pool de 10 conexiones y no existe presupuesto global. | El escalado horizontal serverless puede agotar las conexiones de Supabase. |
-| Alta | SSE y rate limiting se almacenan en `Map` locales. | Los eventos no cruzan instancias y los límites se evaden al cambiar de instancia. |
+| Alta | SSE se almacena en `Map` locales. El rate limiting ya usa contadores compartidos en PostgreSQL (`rate_limit_buckets`, hallazgo B-2). | Los eventos no cruzan instancias. |
 | Alta | SSE depende de conexiones persistentes en un despliegue serverless. | Puede cerrarse por límites de duración de la plataforma. |
 | Media | Listados de proyectos y comentarios no tienen paginación. | Respuestas y consultas crecen sin límite con los datos. |
 | Media | La foto de perfil se descarga y concatena completamente en memoria. | Consumo de memoria evitable durante descargas concurrentes. |
@@ -75,6 +75,6 @@ Después de la carga verificar conteos de comentarios/solicitudes/archivos, dupl
 
 1. Subidas directas a S3 con URL firmada o streaming y descargas de foto en streaming.
 2. Pooler compatible con serverless y límite global de conexiones.
-3. Redis para rate limiting y pub/sub; mover SSE a un runtime persistente si Vercel no garantiza su duración.
+3. Pub/sub compartido para SSE y mover SSE a un runtime persistente si Vercel no garantiza su duración. El rate limiting ya es compartido en PostgreSQL (`docs/RATE_LIMITING.md`).
 4. Caché breve y revocable de sesión/permisos.
 5. Paginación por cursor e índices definidos a partir de los planes medidos.

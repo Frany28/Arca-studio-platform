@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRateLimitQueryMock } from "./helpers/rateLimitQueryMock.js";
 import test from "node:test";
 import bcrypt from "bcrypt";
 
@@ -52,13 +53,11 @@ function userRow() {
 function mockDatabase(context) {
   const calls = [];
   clearUserSessionCache();
+  const rateLimitQueries = createRateLimitQueryMock();
   context.mock.method(pool, "query", async (sql, params) => {
-    // Contador compartido de B-2: cada clave (tríos clave, ámbito, ventana) recibe su primer intento.
-    if (sql.includes("public.rate_limit_buckets")) {
-      const rows = [];
-      for (let index = 0; index < params.length; index += 3) rows.push({ count: 1, key_hash: params[index], retry_after_ms: params[index + 2] });
-      return { rows, rowCount: rows.length };
-    }
+    // Contador compartido de B-2 (no cuenta como consulta de negocio).
+    const rateLimited = rateLimitQueries.handle(sql, params);
+    if (rateLimited) return rateLimited;
     calls.push(sql);
     if (sql.includes("from public.users u")) return { rows: [userRow()], rowCount: 1 };
     if (sql.includes("from public.password_recovery_tokens")) {

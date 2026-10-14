@@ -185,3 +185,65 @@ test("fallo de PostgreSQL: con la base inaccesible el límite se informa como no
   });
   assert.match(stdout, /RESULT RATE_LIMIT_STORE_UNAVAILABLE/);
 });
+
+/**
+ * Ejecuta el mismo script en tres procesos independientes contra la base de prueba.
+ *
+ * @param {string} body - Cuerpo del script (módulo ES) con acceso a `consumeRateLimit`, `policies` y `pool`.
+ * @returns {Promise<Array<{ stdout: string, stderr: string }>>} Salida de cada proceso.
+ */
+function runInThreeProcesses(body) {
+  const script = `
+    const { consumeRateLimit } = await import(${JSON.stringify(pathToFileURL(`${backendDirectory}src/services/rateLimitService.js`).href)});
+    const policies = await import(${JSON.stringify(pathToFileURL(`${backendDirectory}src/config/authRateLimits.js`).href)});
+    const actions = await import(${JSON.stringify(pathToFileURL(`${backendDirectory}src/middlewares/actionRateLimits.js`).href)});
+    const { pool } = await import(${JSON.stringify(pathToFileURL(`${backendDirectory}src/config/db.js`).href)});
+    ${body}
+    await pool.end();
+  `;
+  const env = { ...process.env, AUTH_TOKEN_SECRET: SECRET, DATABASE_POOL_MAX: "5", DATABASE_URL: databaseUrl, NODE_ENV: "test" };
+  return Promise.all([1, 2, 3].map(() => run(process.execPath, ["--input-type=module", "-e", script], { env, timeout: 60_000 })));
+}
+
+test("cargas entre instancias: tres procesos con 30 cargas simultáneas cada uno aceptan exactamente 60", { skip }, async () => {
+  const outputs = await runInThreeProcesses(`
+    const { uploads } = actions.ACTION_RATE_LIMITS;
+    const dimensions = [{ name: "user", parts: ["user:70"], ...uploads }];
+    const results = await Promise.all(Array.from({ length: 30 }, () => consumeRateLimit("uploads", dimensions, { scheduleCleanup: () => {} })));
+    console.log("RESULT" + results.filter((r) => r.allowed).length);
+  `);
+  const allowed = outputs.map(({ stdout }) => Number(stdout.match(/RESULT(\d+)/)[1]));
+  assert.equal(allowed.reduce((sum, value) => sum + value, 0), 60, `aceptadas por instancia: ${allowed.join(", ")}`);
+});
+
+test("anomalías entre instancias: un solo registro al cruzar el umbral aunque haya tres procesos", { skip }, async () => {
+  const outputs = await runInThreeProcesses(`
+    const dimensions = [{ alertAt: 30, name: "scope-volume", observeOnly: true, parts: ["all"], windowMs: 60000 }];
+    await Promise.all(Array.from({ length: 20 }, () => consumeRateLimit("anomaly-test", dimensions, { scheduleCleanup: () => {} })));
+  `);
+  const lines = outputs.flatMap(({ stderr, stdout }) => `${stdout}\n${stderr}`.split(/\r?\n/)).filter((line) => line.includes("rate_limit_anomaly"));
+  assert.equal(lines.length, 1, "exactamente una instancia registra la anomalía");
+  assert.deepEqual(JSON.parse(lines[0]), { dimension: "scope-volume", scope: "anomaly-test", threshold: 30, type: "rate_limit_anomaly", windowSeconds: 60 });
+});
+
+test("tokens falsificados: con la política real solo existe el contador de observación del ámbito", { skip }, async () => {
+  const { consumeRateLimit } = modules.service;
+  const { AUTH_RATE_LIMIT_POLICIES } = modules.policies;
+  await modules.db.query("delete from public.rate_limit_buckets where scope = 'password-reset'");
+  for (let index = 0; index < 25; index += 1) {
+    const dimensions = AUTH_RATE_LIMIT_POLICIES["password-reset"]({ body: { token: `forjado-${index}-${"x".repeat(30)}` } }, null);
+    await consumeRateLimit("password-reset", dimensions, noCleanup);
+  }
+  const { rows } = await modules.db.query("select count(*)::int as total, max(count) as volume from public.rate_limit_buckets where scope = 'password-reset'");
+  assert.deepEqual(rows[0], { total: 1, volume: 25 });
+});
+
+test("correos: los alias de Gmail comparten una única fila y bloquean al sexto envío", { skip }, async () => {
+  const { consumeRateLimit } = modules.service;
+  const { AUTH_RATE_LIMIT_POLICIES } = modules.policies;
+  const results = [];
+  for (const email of ["luis.mora@gmail.com", "luismora+1@gmail.com", "L.U.I.S.mora@gmail.com", "luismora@gmail.com", "luis.mora+x@gmail.com", "luismora@gmail.com"]) {
+    results.push((await consumeRateLimit("email-password-reset", AUTH_RATE_LIMIT_POLICIES["email-password-reset"]({ body: { email } }), noCleanup)).allowed);
+  }
+  assert.deepEqual(results, [true, true, true, true, true, false]);
+});

@@ -12,7 +12,7 @@ import {
   verifyResetToken,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middlewares/auth.js";
-import { authRateLimits } from "../middlewares/authRateLimit.js";
+import { authRateLimits, emailRateLimits } from "../middlewares/authRateLimit.js";
 import { validate } from "../middlewares/validate.js";
 import { loginSchema } from "../validation/schemas.js";
 import {
@@ -37,11 +37,11 @@ router.use((_req, res, next) => {
 });
 
 router.post("/login", authRateLimits.login, validate(loginSchema), login);
-router.post("/registration/start", authRateLimits.registration, validate(startRegistrationSchema), startRegistration);
-router.post("/registration/resend", authRateLimits.registration, validate(resendRegistrationSchema), resendRegistration);
+router.post("/registration/start", authRateLimits.registration, validate(startRegistrationSchema), emailRateLimits.registration, startRegistration);
+router.post("/registration/resend", authRateLimits.registration, validate(resendRegistrationSchema), emailRateLimits.registration, resendRegistration);
 router.post("/registration/verify", authRateLimits.registration, validate(verifyRegistrationSchema), verifyRegistration);
 router.post("/registration/complete", authRateLimits.registration, validate(completeRegistrationSchema), completeRegistration);
-router.post("/forgot-password", authRateLimits.passwordReset, forgotPassword);
+router.post("/forgot-password", authRateLimits.passwordReset, emailRateLimits.passwordReset, forgotPassword);
 router.post("/verify-reset-token", authRateLimits.passwordReset, verifyResetToken);
 router.post("/reset-password", authRateLimits.passwordReset, resetPassword);
 router.post("/change-password", requireAuth, authRateLimits.changePassword, changePassword);

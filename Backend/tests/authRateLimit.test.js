@@ -18,6 +18,7 @@ const { consumeRateLimit, scheduleRateLimitCleanup } = await import("../src/serv
 const { createAuthRateLimit } = await import("../src/middlewares/authRateLimit.js");
 const { incrementRateLimitBuckets } = await import("../src/repositories/rateLimitRepository.js");
 const { default: app } = await import("../src/app.js");
+const { createRateLimitQueryMock } = await import("./helpers/rateLimitQueryMock.js");
 
 const SITE = "https://arca-studio-platform.netlify.app";
 const SECRET = "netlify-proxy-secret-for-tests";
@@ -102,24 +103,30 @@ test("solo se acepta la IP con una firma de Netlify válida para nuestro sitio",
 
 // --- Políticas: dimensiones por ámbito, sin bloqueos colectivos --------------------------------
 
+/**
+ * Filtra las dimensiones que pueden bloquear (excluye las de observación de anomalías).
+ *
+ * @param {Array<object>} dimensions - Dimensiones de una política.
+ * @returns {Array<object>} Dimensiones limitantes.
+ */
+const limiting = (dimensions) => dimensions.filter((dimension) => !dimension.observeOnly);
+
 test("sin IP verificada solo cuenta la cuenta; nunca se usa req.ip compartida de Netlify", () => {
   const req = { body: { email: "Ana@Arca.test" }, ip: "198.51.100.10" };
   const dimensions = AUTH_RATE_LIMIT_POLICIES.login(req, null);
-  assert.deepEqual(dimensions.map(({ name, max, windowMs }) => ({ max, name, windowMs })), [{ max: 20, name: "account", windowMs: 3_600_000 }]);
+  assert.deepEqual(limiting(dimensions).map(({ name, max, windowMs }) => ({ max, name, windowMs })), [{ max: 20, name: "account", windowMs: 3_600_000 }]);
   assert.doesNotMatch(JSON.stringify(dimensions), /198\.51\.100\.10/);
-  // Sin cuenta reconocible ni IP verificada no hay contador colectivo ("anonymous").
-  assert.deepEqual(AUTH_RATE_LIMIT_POLICIES["password-reset"]({ body: {}, ip: "198.51.100.10" }, null), []);
+  // Sin cuenta reconocible ni IP verificada no hay contador limitante colectivo ("anonymous").
+  assert.deepEqual(limiting(AUTH_RATE_LIMIT_POLICIES["password-reset"]({ body: {}, ip: "198.51.100.10" }, null)), []);
 });
 
 test("con IP verificada se aplican cuenta + IP 5/15 min, cuenta 20/h e IP 30/15 min", () => {
   const dimensions = AUTH_RATE_LIMIT_POLICIES.login({ body: { email: "ana@arca.test" } }, "203.0.113.7");
-  assert.deepEqual(dimensions.map(({ name, max, windowMs }) => [name, max, windowMs]), [
+  assert.deepEqual(limiting(dimensions).map(({ name, max, windowMs }) => [name, max, windowMs]), [
     ["account", 20, 3_600_000], ["account-ip", 5, 900_000], ["ip", 30, 900_000],
   ]);
   assert.equal(AUTH_RATE_LIMIT_DIMENSIONS.accountIp.max, 5);
-  // Recuperación: el correo o, en los pasos del enlace, el token identifican la cuenta.
-  assert.deepEqual(AUTH_RATE_LIMIT_POLICIES["password-reset"]({ body: { token: "token-de-prueba-largo" } }, null).map(({ parts }) => parts), [["token:token-de-prueba-largo"]]);
-  assert.deepEqual(AUTH_RATE_LIMIT_POLICIES["change-password"]({ user: { id: 7 } }, null).map(({ name, max }) => [name, max]), [["user", 5]]);
+  assert.deepEqual(limiting(AUTH_RATE_LIMIT_POLICIES["change-password"]({ user: { id: 7 } }, null)).map(({ name, max }) => [name, max]), [["user", 5]]);
 });
 
 // --- Servicio ------------------------------------------------------------------------------------
@@ -213,17 +220,14 @@ test("middleware: 429 conserva el contrato actual y 503 nunca deja pasar la peti
  * @returns {Array<string>} Consultas de negocio ejecutadas (sin las del contador).
  */
 function mockAppDatabase(context, { failRateLimit = false } = {}) {
-  const store = sharedStore();
+  const rateLimitQueries = createRateLimitQueryMock();
   const businessQueries = [];
   context.mock.method(pool, "query", async (sql, params) => {
-    if (sql.includes("public.rate_limit_buckets")) {
-      if (sql.includes("delete from")) return { rowCount: 0, rows: [] };
-      if (failRateLimit) throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
-      const buckets = [];
-      for (let index = 0; index < params.length; index += 3) buckets.push({ keyHash: params[index], windowMs: params[index + 2] });
-      const rows = await store.increment(buckets);
-      return { rows: rows.map(({ count, keyHash, retryAfterMs }) => ({ count, key_hash: keyHash, retry_after_ms: retryAfterMs })) };
+    if (failRateLimit && sql.includes("public.rate_limit_buckets")) {
+      throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
     }
+    const rateLimited = rateLimitQueries.handle(sql, params);
+    if (rateLimited) return rateLimited;
     businessQueries.push(sql);
     return { rowCount: 0, rows: [] };
   });
@@ -263,9 +267,8 @@ test("recuperación: tiene su propio contador y no consume el del login", async 
   const post = await startApp(context);
   for (let attempt = 0; attempt < 20; attempt += 1) await post("/api/auth/login", { email: "ana@arca.test", password: "Incorrecta1!" });
   assert.equal((await post("/api/auth/login", { email: "ana@arca.test", password: "Incorrecta1!" })).status, 429);
+  // El login agotado no afecta a la recuperación, que tiene su propio límite por destinatario (5/h).
   assert.equal((await post("/api/auth/forgot-password", { email: "ana@arca.test" })).status, 202);
-  for (let attempt = 0; attempt < 19; attempt += 1) await post("/api/auth/forgot-password", { email: "ana@arca.test" });
-  assert.equal((await post("/api/auth/forgot-password", { email: "ana@arca.test" })).status, 429);
 });
 
 test("si PostgreSQL no permite comprobar el límite, login y recuperación responden 503 sin ejecutarse", async (context) => {

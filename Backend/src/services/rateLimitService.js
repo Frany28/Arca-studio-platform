@@ -26,12 +26,58 @@ export function scheduleRateLimitCleanup({ random = Math.random, deleteExpired =
 }
 
 /**
+ * Registra una actividad anómala cuando un contador de observación alcanza exactamente su umbral.
+ * Como el contador es atómico y compartido, una sola instancia ve ese valor: hay un único registro por
+ * ventana aunque haya muchas instancias. Nunca bloquea ni incluye identificadores en claro.
+ *
+ * @param {object} event - Datos del contador.
+ * @param {number} event.count - Valor del contador tras el incremento.
+ * @param {{ name: string, alertAt: number, windowMs: number }} event.dimension - Dimensión observada.
+ * @param {string} event.scope - Ámbito.
+ * @returns {void}
+ */
+function logAnomalyThreshold({ count, dimension, scope }) {
+  if (count !== dimension.alertAt) return;
+  console.warn(JSON.stringify({
+    dimension: dimension.name,
+    threshold: dimension.alertAt,
+    type: "rate_limit_anomaly",
+    scope,
+    windowSeconds: Math.round(dimension.windowMs / 1000),
+  }));
+}
+
+/**
+ * Registra la primera petición bloqueada de cada clave en su ventana (count = max + 1).
+ * Incluye solo un prefijo del HMAC como huella seudónima para correlacionar, nunca el correo, token o IP.
+ *
+ * @param {object} event - Datos del contador.
+ * @param {number} event.count - Valor del contador tras el incremento.
+ * @param {{ name: string, max: number, windowMs: number }} event.dimension - Dimensión superada.
+ * @param {Buffer} event.keyHash - Clave HMAC del contador.
+ * @param {string} event.scope - Ámbito.
+ * @returns {void}
+ */
+function logFirstExceed({ count, dimension, keyHash, scope }) {
+  if (count !== dimension.max + 1) return;
+  console.warn(JSON.stringify({
+    dimension: dimension.name,
+    fingerprint: keyHash.toString("hex").slice(0, 12),
+    max: dimension.max,
+    type: "rate_limit_exceeded",
+    scope,
+    windowSeconds: Math.round(dimension.windowMs / 1000),
+  }));
+}
+
+/**
  * Consume un intento en cada dimensión de un ámbito y decide si la petición puede continuar.
  * Cada dimensión se identifica con una clave HMAC; todas se incrementan en una única operación atómica
- * compartida por las instancias del backend. Se bloquea si cualquiera supera su máximo.
+ * compartida por las instancias del backend. Se bloquea si cualquier dimensión limitante supera su
+ * máximo; las de observación (`observeOnly`) solo generan registros de anomalía.
  *
  * @param {string} scope - Ámbito del límite (login, registration, password-reset, change-password…).
- * @param {Array<{ name: string, parts: Array<string|number>, max: number, windowMs: number }>} dimensions - Dimensiones a contar.
+ * @param {Array<{ name: string, parts: Array<string|number>, max?: number, windowMs: number, observeOnly?: boolean, alertAt?: number }>} dimensions - Dimensiones a contar.
  * @param {object} [options] - Dependencias inyectables.
  * @param {Function} [options.incrementBuckets] - Implementación del contador compartido.
  * @param {Function} [options.scheduleCleanup] - Limpieza de contadores caducados.
@@ -66,9 +112,14 @@ export async function consumeRateLimit(
     if (!row) {
       throw Object.assign(new Error("Rate limit store returned an incomplete result"), { code: "RATE_LIMIT_STORE_UNAVAILABLE" });
     }
+    if (dimension.observeOnly) {
+      logAnomalyThreshold({ count: row.count, dimension, scope });
+      continue;
+    }
     if (row.count > dimension.max) {
       exceeded.push(dimension.name);
       retryAfterMs = Math.max(retryAfterMs, row.retryAfterMs);
+      logFirstExceed({ count: row.count, dimension, keyHash, scope });
     }
   }
 

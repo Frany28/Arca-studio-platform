@@ -31,7 +31,7 @@ import {
   streamAdminUserProfilePhoto,
 } from "../controllers/adminUserController.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
-import { createRateLimit } from "../middlewares/rateLimit.js";
+import { adminRateLimits } from "../middlewares/actionRateLimits.js";
 import { validate } from "../middlewares/validate.js";
 import {
   adminAssigneePhotoSchema,
@@ -55,32 +55,6 @@ import {
 } from "../validation/adminUserSchemas.js";
 
 const router = Router();
-const adminUserCreateRateLimit = createRateLimit({
-  name: "admin-user-create",
-  max: 20,
-  windowMs: 60 * 60 * 1000,
-});
-const adminUserStatusRateLimit = createRateLimit({
-  name: "admin-user-status",
-  max: 60,
-  windowMs: 60 * 60 * 1000,
-});
-const adminUserNoteRateLimit = createRateLimit({
-  name: "admin-user-note",
-  max: 120,
-  windowMs: 60 * 60 * 1000,
-});
-const adminProjectBulkActionRateLimit = createRateLimit({
-  name: "admin-project-bulk-action",
-  max: 60,
-  windowMs: 60 * 60 * 1000,
-});
-const adminProjectRequestDecisionRateLimit = createRateLimit({
-  name: "admin-project-request-decision",
-  max: 60,
-  windowMs: 60 * 60 * 1000,
-});
-
 router.use(requireAuth, requireRoles("admin"));
 
 router.get("/dashboard-metrics", getDashboardMetrics);
@@ -91,31 +65,31 @@ router.get("/users/:userId", validate(adminUserDetailSchema), getAdminUser);
 router.get("/users/:userId/notes", validate(adminUserNoteListSchema), getAdminUserNotes);
 router.post(
   "/users/:userId/notes",
-  adminUserNoteRateLimit,
+  adminRateLimits.userNote,
   validate(adminUserNoteCreateSchema),
   postAdminUserNote,
 );
 router.patch(
   "/users/:userId",
-  adminUserStatusRateLimit,
+  adminRateLimits.userStatus,
   validate(adminUserUpdateSchema),
   patchAdminUser,
 );
 router.patch(
   "/users/:userId/notes/:noteId",
-  adminUserNoteRateLimit,
+  adminRateLimits.userNote,
   validate(adminUserNoteUpdateSchema),
   patchAdminUserNote,
 );
 router.patch(
   "/users/:userId/notes/:noteId/archive",
-  adminUserNoteRateLimit,
+  adminRateLimits.userNote,
   validate(adminUserNoteArchiveSchema),
   archiveAdminUserNoteById,
 );
 router.delete(
   "/users/:userId/notes/:noteId",
-  adminUserNoteRateLimit,
+  adminRateLimits.userNote,
   validate(adminUserNoteDeleteSchema),
   archiveAdminUserNoteByLegacyDelete,
 );
@@ -126,13 +100,13 @@ router.get(
 );
 router.post(
   "/users",
-  adminUserCreateRateLimit,
+  adminRateLimits.userCreate,
   validate(adminUserCreateSchema),
   postAdminUser,
 );
 router.patch(
   "/users/:userId/status",
-  adminUserStatusRateLimit,
+  adminRateLimits.userStatus,
   validate(adminUserStatusSchema),
   patchAdminUserStatus,
 );
@@ -148,7 +122,7 @@ router.put(
 );
 router.patch(
   "/projects/bulk-action",
-  adminProjectBulkActionRateLimit,
+  adminRateLimits.projectBulkAction,
   validate(adminProjectBulkActionSchema),
   updateAdminProjects,
 );
@@ -159,7 +133,7 @@ router.put(
 );
 router.patch(
   "/project-requests/:projectRequestId/decision",
-  adminProjectRequestDecisionRateLimit,
+  adminRateLimits.projectRequestDecision,
   validate(projectRequestDecisionSchema),
   patchProjectRequestDecision,
 );

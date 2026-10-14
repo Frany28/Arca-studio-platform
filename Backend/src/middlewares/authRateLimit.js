@@ -1,49 +1,19 @@
 import { AUTH_RATE_LIMIT_POLICIES } from "../config/authRateLimits.js";
-import { consumeRateLimit } from "../services/rateLimitService.js";
-import { getVerifiedClientIp } from "../utils/verifiedClientIp.js";
-
-// Contrato 429 idéntico al del limitador en memoria (src/middlewares/rateLimit.js).
-const RATE_LIMITED_MESSAGE = "Demasiadas solicitudes. Intenta de nuevo más tarde.";
-const UNAVAILABLE_RETRY_AFTER_SECONDS = 30;
+import { createSharedRateLimit } from "./sharedRateLimit.js";
 
 /**
- * Crea el middleware de rate limiting compartido de un ámbito de autenticación (hallazgo B-2).
- * Responde 429 RATE_LIMITED con Retry-After si se supera alguna dimensión, y 503 RATE_LIMIT_UNAVAILABLE
- * si PostgreSQL no permite comprobar el límite: la protección nunca se omite en silencio.
+ * Crea el middleware de rate limiting compartido de un ámbito de autenticación o de correo de seguridad.
+ * Las dimensiones salen de config/authRateLimits.js; el contrato 429/503 es el de sharedRateLimit.js.
  *
  * @param {keyof typeof AUTH_RATE_LIMIT_POLICIES} scope - Ámbito definido en config/authRateLimits.js.
- * @param {object} [options] - Dependencias inyectables para pruebas.
- * @param {Function} [options.consume] - Consumo del límite compartido.
- * @param {Function} [options.resolveVerifiedIp] - Obtención de la IP verificada.
+ * @param {object} [options] - Dependencias inyectables para pruebas (consume, resolveVerifiedIp).
  * @returns {import("express").RequestHandler} Middleware de Express.
  * @throws {Error} Si el ámbito no tiene política definida.
  */
-export function createAuthRateLimit(scope, { consume = consumeRateLimit, resolveVerifiedIp = getVerifiedClientIp } = {}) {
+export function createAuthRateLimit(scope, options = {}) {
   const policy = AUTH_RATE_LIMIT_POLICIES[scope];
   if (!policy) throw new Error(`Unknown auth rate limit scope: ${scope}`);
-
-  return async function authRateLimit(req, res, next) {
-    let result;
-    try {
-      result = await consume(scope, policy(req, resolveVerifiedIp(req)));
-    } catch (error) {
-      console.error(JSON.stringify({ type: "rate_limit_unavailable", scope, code: error?.cause?.code || error?.code || "UNKNOWN" }));
-      res.setHeader("Retry-After", String(UNAVAILABLE_RETRY_AFTER_SECONDS));
-      res.status(503).json({
-        code: "RATE_LIMIT_UNAVAILABLE",
-        message: "No se pudo verificar el límite de intentos. Intenta de nuevo en unos segundos.",
-        retryAfter: UNAVAILABLE_RETRY_AFTER_SECONDS,
-      });
-      return;
-    }
-
-    if (!result.allowed) {
-      res.setHeader("Retry-After", String(result.retryAfterSeconds));
-      res.status(429).json({ code: "RATE_LIMITED", message: RATE_LIMITED_MESSAGE, retryAfter: result.retryAfterSeconds });
-      return;
-    }
-    next();
-  };
+  return createSharedRateLimit(scope, policy, options);
 }
 
 export const authRateLimits = Object.freeze({
@@ -51,4 +21,11 @@ export const authRateLimits = Object.freeze({
   login: createAuthRateLimit("login"),
   passwordReset: createAuthRateLimit("password-reset"),
   registration: createAuthRateLimit("registration"),
+});
+
+// Envío de correos de seguridad por destinatario. Van después de validar la petición y antes del
+// controlador, así que una petición bloqueada nunca consulta la cuenta ni envía correo.
+export const emailRateLimits = Object.freeze({
+  passwordReset: createAuthRateLimit("email-password-reset"),
+  registration: createAuthRateLimit("email-registration"),
 });

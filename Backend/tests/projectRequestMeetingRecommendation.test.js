@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRateLimitQueryMock } from "./helpers/rateLimitQueryMock.js";
 import { readFile } from "node:fs/promises";
 import { after, test } from "node:test";
 
@@ -91,7 +92,11 @@ test("PUT real conserva autenticación, roles, Zod y la respuesta del controller
   });
   app.use("/api/project-requests", routes);
   app.use((error, _req, res, _next) => res.status(error.status || 500).json({ code: error.code, message: error.message, fields: error.fields }));
-  context.mock.method(pool, "query", async (_sql, values) => {
+  const rateLimitQueries = createRateLimitQueryMock();
+  context.mock.method(pool, "query", async (sql, values) => {
+    // Contador compartido de B-2: no cuenta como escritura de la revisión.
+    const rateLimited = rateLimitQueries.handle(sql, values);
+    if (rateLimited) return rateLimited;
     writes += 1;
     return { rows: [{ target_exists: true, allowed: true, status: "pending_review", review: { id: "3", recommendation: values[2], note: values[3], meeting_recommendation: values[5], updated_at: "2026-10-06T10:00:00Z" } }] };
   });

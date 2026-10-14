@@ -377,6 +377,12 @@ En produccion, `AUTH_TOKEN_SECRET` es obligatorio.
 | `AUTH_COOKIE_SECURE`              | No         | Segun `NODE_ENV`                                     | Cookie segura                         |
 | `AUTH_LOGIN_RATE_LIMIT_MAX`       | No         | `5`                                                  | Intentos maximos                      |
 | `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS` | No         | `900000`                                             | Ventana rate limit                    |
+| `EMAIL_REGISTRATION_RATE_LIMIT_MAX` / `_WINDOW_MS` | No | `5` / `3600000` | Correos de registro por destinatario (inicio y reenvío) |
+| `EMAIL_PASSWORD_RESET_RATE_LIMIT_MAX` / `_WINDOW_MS` | No | `5` / `3600000` | Correos de recuperación por destinatario |
+| `UPLOAD_RATE_LIMIT_MAX` / `_WINDOW_MS` | No | `60` / `600000` | Cargas por usuario (lotes del frontend) |
+| `COMMENT_RATE_LIMIT_MAX` / `_WINDOW_MS` | No | `30` / `60000` | Comentarios por usuario |
+| `PROJECT_REQUEST_RATE_LIMIT_MAX` / `_WINDOW_MS` | No | `10` / `60000` | Solicitudes de proyecto por usuario |
+| `NETLIFY_PROXY_SIGNATURE_SECRET` | No | - | Proxy firmado de Netlify para IP verificada (inactivo; ver `docs/RATE_LIMITING.md`) |
 | `AUTH_TOKEN_EXPIRES_IN_SECONDS`   | No         | `43200`                                              | Duracion del token                    |
 | `PUBLIC_TEST_USER_ID`             | No         | `1`                                                  | Usuario de prueba si no hay token     |
 | `PUBLIC_TEST_CLIENT_ID`           | No         | `null`                                               | Cliente asociado al usuario de prueba |

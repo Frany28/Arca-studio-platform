@@ -1,15 +1,72 @@
-import { createRateLimit } from "./rateLimit.js";
+import { createSharedRateLimit } from "./sharedRateLimit.js";
+
+// Límites de acciones de usuarios autenticados (hallazgo B-2, segunda fase): comentarios, solicitudes,
+// cargas de archivos y operaciones administrativas, compartidos entre instancias en PostgreSQL.
+//
+// La clave es el usuario autenticado (nunca la IP): detrás de Netlify todos comparten IP y no hay
+// bloqueos colectivos. Si el contador no está disponible responden 503 antes de ejecutar la operación
+// (fail-closed). Se conservan los límites anteriores salvo las cargas: los lotes del frontend suben
+// todos los archivos a la vez, por lo que se admite una ráfaga de 60 por cada 10 minutos.
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 
 /**
- * Procesa el valor de env number para completar la responsabilidad asignada al módulo.
- * Participa en la cadena HTTP y continúa o rechaza la solicitud según el resultado.
+ * Lee un entero positivo de configuración con un valor por defecto.
+ * Los valores ausentes, no numéricos o no positivos usan el predeterminado para no desactivar el límite.
  *
- * @param {string} name - Valor de `name` requerido por esta operación.
- * @param {unknown} fallback - Valor de `fallback` requerido por esta operación.
- * @returns {unknown} Resultado producido por la operación.
+ * @param {string} name - Variable de entorno.
+ * @param {number} fallback - Valor por defecto.
+ * @returns {number} Valor configurado.
  */
-function envNumber(name, fallback) { return Number(process.env[name] || fallback); }
+function positiveIntegerSetting(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
 
-export const commentRateLimit = createRateLimit({ name: "comments", max: envNumber("COMMENT_RATE_LIMIT_MAX", 30), windowMs: envNumber("COMMENT_RATE_LIMIT_WINDOW_MS", 60000) });
-export const requestRateLimit = createRateLimit({ name: "project-requests", max: envNumber("PROJECT_REQUEST_RATE_LIMIT_MAX", 10), windowMs: envNumber("PROJECT_REQUEST_RATE_LIMIT_WINDOW_MS", 60000) });
-export const uploadRateLimit = createRateLimit({ name: "uploads", max: envNumber("UPLOAD_RATE_LIMIT_MAX", 20), windowMs: envNumber("UPLOAD_RATE_LIMIT_WINDOW_MS", 60000) });
+export const ACTION_RATE_LIMITS = Object.freeze({
+  adminProjectBulkAction: Object.freeze({ max: 60, windowMs: HOUR_MS }),
+  adminProjectRequestDecision: Object.freeze({ max: 60, windowMs: HOUR_MS }),
+  adminUserCreate: Object.freeze({ max: 20, windowMs: HOUR_MS }),
+  adminUserNote: Object.freeze({ max: 120, windowMs: HOUR_MS }),
+  adminUserStatus: Object.freeze({ max: 60, windowMs: HOUR_MS }),
+  comments: Object.freeze({
+    max: positiveIntegerSetting("COMMENT_RATE_LIMIT_MAX", 30),
+    windowMs: positiveIntegerSetting("COMMENT_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
+  }),
+  projectRequests: Object.freeze({
+    max: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_MAX", 10),
+    windowMs: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
+  }),
+  uploads: Object.freeze({
+    max: positiveIntegerSetting("UPLOAD_RATE_LIMIT_MAX", 60),
+    windowMs: positiveIntegerSetting("UPLOAD_RATE_LIMIT_WINDOW_MS", 10 * MINUTE_MS),
+  }),
+});
+
+/**
+ * Crea el limitador compartido de una acción de usuario autenticado.
+ * Las rutas lo colocan después de requireAuth; sin usuario no hay dimensión y la autenticación ya habrá
+ * rechazado la petición.
+ *
+ * @param {string} scope - Ámbito del contador.
+ * @param {{ max: number, windowMs: number }} limit - Límite por usuario.
+ * @returns {import("express").RequestHandler} Middleware de Express.
+ */
+export function createUserActionRateLimit(scope, limit) {
+  return createSharedRateLimit(scope, function userDimensions(req) {
+    return req.user?.id ? [{ name: "user", parts: [`user:${req.user.id}`], ...limit }] : [];
+  });
+}
+
+export const commentRateLimit = createUserActionRateLimit("comments", ACTION_RATE_LIMITS.comments);
+export const requestRateLimit = createUserActionRateLimit("project-requests", ACTION_RATE_LIMITS.projectRequests);
+export const uploadRateLimit = createUserActionRateLimit("uploads", ACTION_RATE_LIMITS.uploads);
+
+export const adminRateLimits = Object.freeze({
+  projectBulkAction: createUserActionRateLimit("admin-project-bulk-action", ACTION_RATE_LIMITS.adminProjectBulkAction),
+  projectRequestDecision: createUserActionRateLimit("admin-project-request-decision", ACTION_RATE_LIMITS.adminProjectRequestDecision),
+  userCreate: createUserActionRateLimit("admin-user-create", ACTION_RATE_LIMITS.adminUserCreate),
+  userNote: createUserActionRateLimit("admin-user-note", ACTION_RATE_LIMITS.adminUserNote),
+  userStatus: createUserActionRateLimit("admin-user-status", ACTION_RATE_LIMITS.adminUserStatus),
+});

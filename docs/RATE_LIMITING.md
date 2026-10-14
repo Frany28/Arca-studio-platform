@@ -1,152 +1,187 @@
 # Rate limiting compartido (hallazgo B-2)
 
-## Problema
+## Problema original
 
-`src/middlewares/rateLimit.js` guarda los contadores en la memoria de cada instancia. En Vercel cada instancia tiene sus propios contadores, y se confirmaron cuatro debilidades:
+El limitador anterior guardaba los contadores en la memoria de cada instancia de Vercel. Se confirmaron cuatro debilidades:
 
 - **Varias instancias:** con 3 instancias, una cuenta admitió 15 intentos en lugar de 5.
-- **IP compartida:** detrás de Netlify, `req.ip` es la IP de Netlify para todos los usuarios. En los endpoints sin correo, la clave `IP:anonymous` bloqueaba a todos a la vez.
+- **IP compartida:** detrás de Netlify, `req.ip` es la IP de Netlify para todos los usuarios, y la clave `IP:anonymous` bloqueaba a todos a la vez.
 - **Expulsión LRU:** rellenar el almacén con claves de relleno reiniciaba el contador de una cuenta bloqueada.
 - **Datos en claro:** las claves contenían el correo.
 
-## Diseño
+**Todos los límites usan ahora un contador compartido en PostgreSQL. El limitador en memoria se eliminó.**
+
+## Componentes
 
 | Pieza | Archivo | Responsabilidad |
 | --- | --- | --- |
-| Tabla | `prisma/migrations/20261014140000_rate_limit_buckets` | `key_hash` (32 bytes), `scope`, `count`, `window_started_at`, `expires_at`; índice por caducidad; RLS; `REVOKE` de D-2 si existen los roles de Supabase |
-| Repositorio | `src/repositories/rateLimitRepository.js` | Incremento atómico de varias claves en una sentencia y limpieza por lotes |
-| Claves | `src/utils/rateLimitKey.js` | HMAC-SHA256 (clave derivada con HKDF de `AUTH_TOKEN_SECRET`) de ámbito + dimensión + identificador |
-| IP verificada | `src/utils/verifiedClientIp.js` | Firma del proxy de Netlify (`X-Nf-Sign`) + `X-Nf-Client-Connection-Ip` |
-| Servicio | `src/services/rateLimitService.js` | Consume las dimensiones, calcula `Retry-After` y programa la limpieza |
-| Políticas | `src/config/authRateLimits.js` | Dimensiones de cada ámbito de autenticación |
-| Middleware | `src/middlewares/authRateLimit.js` | 429 `RATE_LIMITED` (mismo contrato) y 503 `RATE_LIMIT_UNAVAILABLE` |
+| Tabla | `Backend/prisma/migrations/20261014140000_rate_limit_buckets` | `key_hash` (32 bytes), `scope`, `count`, `window_started_at`, `expires_at`; índice por caducidad; RLS; `REVOKE` de D-2 si existen los roles de Supabase |
+| Repositorio | `src/repositories/rateLimitRepository.js` | Incremento atómico de varias claves en una sentencia (orden estable de bloqueo) y limpieza por lotes |
+| Claves | `src/utils/rateLimitKey.js` | HMAC-SHA256 con clave derivada (HKDF) de `AUTH_TOKEN_SECRET`; normalización de correos y de destinatarios |
+| IP verificada | `src/utils/verifiedClientIp.js` | Proxy firmado de Netlify. **Inactivo** mientras no exista `NETLIFY_PROXY_SIGNATURE_SECRET` |
+| Servicio | `src/services/rateLimitService.js` | Consume dimensiones, calcula `Retry-After`, registra anomalías y primeros bloqueos, programa la limpieza |
+| Middleware común | `src/middlewares/sharedRateLimit.js` | 429 `RATE_LIMITED` (mismo contrato) y 503 `RATE_LIMIT_UNAVAILABLE` (fail-closed) |
+| Autenticación y correos | `src/config/authRateLimits.js`, `src/middlewares/authRateLimit.js` | Políticas de los ámbitos de autenticación y de correos de seguridad |
+| Acciones de usuario | `src/middlewares/actionRateLimits.js` | Comentarios, solicitudes, cargas y administración, por usuario autenticado |
 
-### Atomicidad, concurrencia y expiración
+## Atomicidad, concurrencia y expiración
 
 `INSERT ... ON CONFLICT (key_hash) DO UPDATE` bloquea cada fila. Las peticiones simultáneas, aunque vengan de instancias distintas, cuentan exactamente, y si la ventana caducó la misma sentencia la reinicia.
 
-- **Reloj único:** se usa el de PostgreSQL (`now()`), así que el desfase entre instancias no influye.
+- **Reloj único:** se usa el de PostgreSQL (`now()`).
 - **Sin interbloqueos:** las claves se insertan ordenadas por `key_hash`.
-- **Limpieza:** el 2 % de las peticiones limitadas lanza, sin esperar su resultado, un `DELETE` de hasta 500 filas caducadas (`FOR UPDATE SKIP LOCKED`). Un fallo de la limpieza solo se registra (`rate_limit_cleanup_failed`), porque las filas caducadas se reinician en el siguiente uso y no afectan a la protección.
+- **Limpieza:** el 2 % de las peticiones limitadas lanza, sin esperar su resultado, un `DELETE` de hasta 500 filas caducadas (`FOR UPDATE SKIP LOCKED`). Un fallo de la limpieza solo se registra (`rate_limit_cleanup_failed`).
 
-### Ámbitos y dimensiones
+## Ámbitos y límites
 
-Cada flujo tiene su propio contador: `login`, `registration` (inicio, reenvío, verificación y completar), `password-reset` (solicitud, verificación del enlace y nueva contraseña) y `change-password`.
-
-| Dimensión | Límite | Cuándo se aplica |
+| Ámbito | Rutas | Dimensión: límite |
 | --- | --- | --- |
-| Cuenta | 20 / hora | Siempre que haya cuenta: correo normalizado o, en los pasos con enlace, el token |
-| Cuenta + IP verificada | 5 / 15 min (`AUTH_LOGIN_RATE_LIMIT_*`) | Solo con IP verificada |
-| IP verificada | 30 / 15 min | Solo con IP verificada |
-| Usuario (cambio de contraseña) | 5 / 15 min | Siempre. Requiere sesión, por lo que un tercero no puede consumirlo |
+| `login` | `POST /auth/login` | cuenta (correo): 20/h · cuenta + IP verificada: 5/15 min (`AUTH_LOGIN_RATE_LIMIT_*`) · IP verificada: 30/15 min |
+| `registration` | inicio, reenvío, verificación y completar del registro | igual que login; la cuenta es el correo o un token de registro **con firma válida** |
+| `password-reset` | `forgot-password`, `verify-reset-token`, `reset-password` | igual que login; la cuenta es el correo o un token de recuperación **con firma válida** |
+| `change-password` | `POST /auth/change-password` | usuario: 5/15 min · IP verificada: 30/15 min |
+| `email-registration` | inicio y reenvío del registro (límite compartido) | destinatario: 5/h (`EMAIL_REGISTRATION_RATE_LIMIT_*`) |
+| `email-password-reset` | `forgot-password` | destinatario: 5/h (`EMAIL_PASSWORD_RESET_RATE_LIMIT_*`) |
+| `comments` | comentarios de proyectos y del entorno | usuario: 30/min (`COMMENT_RATE_LIMIT_*`) |
+| `project-requests` | crear, editar, enviar y revisar solicitudes | usuario: 10/min (`PROJECT_REQUEST_RATE_LIMIT_*`) |
+| `uploads` | cargas de proyectos, solicitudes y soporte | usuario: **60 cada 10 min** (`UPLOAD_RATE_LIMIT_*`) |
+| `admin-*` | crear usuario 20/h, estado 60/h, notas 120/h, acción masiva 60/h, decisión 60/h | usuario |
 
-### Modo temporal sin IP verificada
+Por qué las cargas pasaron a 60 cada 10 minutos: el panel de cargas del frontend sube **todos los archivos del lote a la vez**, sin máximo. Con 20 por minuto, un lote de 21 o más archivos recibía 429 a partir del archivo 21.
+
+## Correos de seguridad (T1)
+
+- **Dónde se aplica el límite:** después de validar la petición y **antes** de consultar si la cuenta existe. Cuenta igual para correos registrados y no registrados, así que la respuesta no revela qué cuentas existen (prueba: misma secuencia `202×5, 429`). Una petición bloqueada no llega al controlador: no consulta la cuenta ni envía correo.
+- **Alias:** solo se unifican con reglas verificadas en la ayuda oficial de Gmail, y solo para `@gmail.com`: los puntos del nombre de usuario no cambian el buzón y el texto tras `+` es una etiqueta.
+  - `googlemail.com`, Google Workspace, Outlook y otros dominios solo se normalizan en mayúsculas y espacios, porque no hay una regla oficial equivalente para la recepción.
+  - Fuentes: [Los puntos no importan en Gmail](https://support.google.com/mail/answer/7436150), [Alias con «+» en Gmail](https://support.google.com/mail/answer/22370).
+- **Notificaciones futuras:** las de proyectos (aprobaciones, cambios de estado, avisos) tendrán políticas propias y **no** usan estos límites.
+
+## Tokens falsificados (T2)
+
+En los pasos con enlace, el token solo identifica la cuenta si `verifyAuthToken` confirma la firma HMAC, la caducidad y el propósito (`user_registration` o `password_reset`). Un token falsificado o de otro propósito no crea contador de cuenta: solo suma al contador de observación del ámbito, que es una única fila. El controlador mantiene su verificación completa: existencia, uso y caducidad en PostgreSQL.
+
+## Anomalías (T3)
+
+Cada ámbito de autenticación y de correo suma además un contador de observación global (`scope-volume`) que **nunca bloquea**.
+
+| Ámbito | Umbral |
+| --- | --- |
+| `login` | 300 / 5 min |
+| `registration`, `password-reset` | 200 / 15 min |
+| `change-password` | 50 / 15 min |
+| `email-registration`, `email-password-reset` | 50 / h |
+
+**Registros estructurados (en los logs de Vercel):**
+
+- `rate_limit_anomaly` con `scope`, `dimension`, `threshold` y `windowSeconds`.
+- `rate_limit_exceeded` (primer bloqueo de cada clave en su ventana) con `scope`, `dimension`, `max`, `windowSeconds` y `fingerprint`, que son los 12 primeros caracteres hexadecimales del HMAC, una huella seudónima.
+
+Ninguno incluye correos, tokens, IP ni identificadores de usuario.
+
+**Por qué funciona con varias instancias:** el contador es atómico y compartido, así que una sola instancia ve exactamente el valor del umbral. El resultado es un único registro por ventana. Está comprobado con tres procesos reales.
+
+**Coste:** la observación es una fila por ámbito actualizada en cada petición. Bajo un ataque muy intenso esa fila serializa las actualizaciones (milisegundos cada una). Es aceptable para estos endpoints, de bajo volumen.
+
+## Modo temporal sin IP verificada
 
 Mientras no esté activo el proxy firmado de Netlify:
 
-- Solo se aplica la dimensión de cuenta.
-- **Nunca se usa `req.ip`** (detrás de Netlify es la misma para todos) **ni `X-Forwarded-For`**, así que no hay bloqueos colectivos.
-- Una petición sin cuenta reconocible no consume contador. El controlador la rechaza antes de cualquier operación costosa: validación de correo o firma del token, sin consultar la base.
+- **Nunca se usan** `req.ip` (detrás de Netlify es la misma para todos) **ni** `X-Forwarded-For`.
+- Solo se aplican límites por cuenta, destinatario, token válido o usuario, más la observación global. No hay bloqueos colectivos.
+- Las peticiones sin identidad reconocible (correo inválido, token falsificado) no consumen contador limitante y se rechazan sin consultar la base.
 
-Límites de este modo:
+## Fallo de PostgreSQL
 
-- No hay límite por IP para un ataque repartido entre muchas cuentas.
-- Un atacante puede agotar el límite de 20 por hora de una cuenta concreta y bloquearla hasta una hora. Este riesgo existía antes con 5 intentos cada 15 minutos.
-- Ninguna de las dos situaciones bloquea a otros usuarios.
-
-### Fallo de PostgreSQL
-
-En los endpoints de autenticación, si no se puede comprobar el límite:
-
-- Respuesta `503 RATE_LIMIT_UNAVAILABLE` con `Retry-After: 30`.
-- Registro `rate_limit_unavailable` con el código del error.
-- El controlador no se ejecuta.
-
-Esos endpoints también necesitan PostgreSQL para funcionar, así que el 503 no añade caídas.
-
-### Endpoints no relacionados con autenticación
-
-Comentarios, solicitudes de proyecto, cargas y acciones administrativas siguen con el limitador en memoria y sus límites actuales. Su clave es la del usuario autenticado, por lo que no sufren bloqueos colectivos. Siguen afectados por la multiplicación por instancias y la expulsión LRU, con un riesgo bajo: requieren sesión.
-
-Antes de cambiarlos al contador compartido conviene decidir su comportamiento ante un fallo de PostgreSQL:
-
-- **503:** coherente con autenticación. Sin PostgreSQL esos endpoints fallarían de todos modos, aunque el código de error sería otro.
-- **Seguir con un contador en memoria y registrar el fallo:** mantiene la operación, pero degrada la protección.
-
-Queda pendiente de decisión.
+Todos los ámbitos responden `503 RATE_LIMIT_UNAVAILABLE` con `Retry-After: 30` y registran `rate_limit_unavailable`, **antes** de ejecutar la operación: no se envía correo, no se escribe ningún archivo, no se crea el comentario. Estos endpoints necesitan PostgreSQL de todos modos, así que el 503 no añade caídas, solo cambia el código de error.
 
 ## IP real con el proxy firmado de Netlify (preparado, no activo)
 
 **Fuentes oficiales:**
 
-- [Netlify, Rewrites and proxies](https://docs.netlify.com/manage/routing/redirects/rewrites-proxies/): los proxies con `signed = "VARIABLE"` envían un JWS HS256 en `x-nf-sign` con `{ deploy_context, exp, iss: "netlify", netlify_id, site_url }`. La variable debe tener scope **Runtime**.
-- [Vercel, Request headers](https://vercel.com/docs/headers/request-headers) y [Vercel, Reverse proxy](https://vercel.com/docs/security/reverse-proxy.md): Vercel sobrescribe `X-Forwarded-For` con quien se conecta, que detrás de Netlify es Netlify.
-- `X-Nf-Client-Connection-Ip` solo aparece en el foro de soporte de Netlify ([cambio de cabeceras](https://answers.netlify.com/t/upcoming-change-stripping-exposed-netlify-headers-from-function-and-proxy-requests/52665)), como la cabecera que se conserva en los proxies externos.
+- [Netlify, Rewrites and proxies](https://docs.netlify.com/manage/routing/redirects/rewrites-proxies/): JWS HS256 en `x-nf-sign` con `{ deploy_context, exp, iss: "netlify", netlify_id, site_url }`. La variable debe tener scope Runtime.
+- [Vercel, Request headers](https://vercel.com/docs/headers/request-headers): Vercel sobrescribe `X-Forwarded-For`.
+- `X-Nf-Client-Connection-Ip` solo aparece en el [foro de soporte de Netlify](https://answers.netlify.com/t/upcoming-change-stripping-exposed-netlify-headers-from-function-and-proxy-requests/52665).
 
-**El backend solo confía en la IP si se cumplen todas estas condiciones:**
+**La firma no cubre la IP.** Para activarlo (requiere aprobación):
 
-- existe `NETLIFY_PROXY_SIGNATURE_SECRET`;
-- la firma HS256 es válida (comparación de tiempo constante) y `iss` es `netlify`;
-- `exp` no caducó (con 30 s de tolerancia);
-- `site_url` es uno de los orígenes CORS exactos;
-- `X-Nf-Client-Connection-Ip` es una única IP válida.
-
-Cualquier otro caso devuelve `null` y se aplica el modo temporal.
-
-**Limitación:** la firma no cubre la IP. Antes de activar el mecanismo hay que comprobar en staging que Netlify **sobrescribe** una cabecera `X-Nf-Client-Connection-Ip` enviada por el cliente.
-
-**Pasos para activarlo (requieren aprobación porque modifican servicios externos):**
-
-1. Generar un secreto aleatorio (32 bytes o más).
-2. Netlify: crear la variable `ARCA_PROXY_SIGNATURE_SECRET` con scope Runtime y añadir `signed = "ARCA_PROXY_SIGNATURE_SECRET"` a la regla `/api/*` de `netlify.toml`.
+1. Generar un secreto de 32 bytes o más.
+2. Netlify: crear la variable `ARCA_PROXY_SIGNATURE_SECRET` con scope Runtime y añadir `signed = "ARCA_PROXY_SIGNATURE_SECRET"` a la regla `/api/*`.
 3. Vercel: crear `NETLIFY_PROXY_SIGNATURE_SECRET` con el mismo valor.
 4. Staging:
-   - una petición desde el navegador debe producir IP verificada;
-   - una petición directa a `vercel.app` con `X-Nf-Client-Connection-Ip` inventada no debe producirla;
-   - una petición a Netlify con esa cabecera inventada debe recibir la IP real.
-5. Solo entonces, desplegar en producción.
+   - una petición del navegador debe producir IP verificada;
+   - una petición directa a `vercel.app` con la cabecera inventada no debe producirla;
+   - Netlify debe **sobrescribir** una cabecera `X-Nf-Client-Connection-Ip` enviada por el cliente.
+
+## Migraciones
+
+`20261014140000_rate_limit_buckets` es la única migración de B-2, ya preparada. Esta fase no añadió migraciones: comentarios, cargas, administración, correos y anomalías usan la misma tabla.
+
+Su orden respecto a las migraciones pendientes:
+
+1. `20261014120000_support_tables` (D-4).
+2. `20261014130000_revoke_api_role_table_privileges` (D-2).
+3. `20261014140000_rate_limit_buckets` (B-2).
 
 ## Orden de despliegue
 
 1. Copia de seguridad o punto de restauración de Supabase.
-2. Aplicar primero en una base de pruebas.
-3. `pnpm db:migrate:status`: solo deben quedar pendientes las migraciones esperadas. Respetar también el orden de D-4 y D-2 (`PRISMA_MIGRATIONS.md`).
-4. `pnpm db:migrate:deploy`, y `pnpm db:migrate:status` de nuevo.
-5. Publicar el backend. Sin la tabla, los endpoints de autenticación responderían 503, por eso la migración va primero.
-6. Comprobar el login con la cuenta demo, la recuperación de contraseña y que `Retry-After` aparece al superar el límite.
-7. Cuando se apruebe el proxy firmado, seguir los pasos de la sección anterior.
-
-**Requisito:** todas las instancias deben compartir `AUTH_TOKEN_SECRET`. La guardia de entorno ya lo exige en producción.
+2. **Variables de Vercel:** comprobar que `UPLOAD_RATE_LIMIT_MAX` y `UPLOAD_RATE_LIMIT_WINDOW_MS` no conservan los valores antiguos (20 / 60000); si existen, eliminarlas o ponerlas en 60 / 600000. Comprobar también que todas las instancias comparten `AUTH_TOKEN_SECRET`.
+3. Base de pruebas: `pnpm db:migrate:status` y después `pnpm db:migrate:deploy` (D-4, D-2 y B-2 en ese orden).
+4. Producción: lo mismo, con `pnpm db:migrate:status` al final para confirmar que no queda nada pendiente.
+5. Publicar el backend. **Nunca antes de la migración**: sin la tabla, todos los endpoints limitados responderían 503.
+6. Comprobaciones:
+   - login con la cuenta demo;
+   - recuperación de contraseña: 5 envíos y luego 429 con `Retry-After`;
+   - un comentario;
+   - un lote de cargas;
+   - una acción administrativa;
+   - los logs no contienen `rate_limit_unavailable`.
 
 ## Reversión
 
-- **Backend:** volver a publicar la versión anterior, que usa el limitador en memoria. La tabla puede quedarse: no la usa nadie.
+- **Backend:** volver a publicar la versión anterior. La tabla puede quedarse: no la usa nadie.
 - **Base de datos:** no hace falta revertir. Si se quisiera eliminar la tabla, crear una migración nueva con `DROP TABLE public.rate_limit_buckets` después de retirar el código.
-- **Proxy firmado:** quitar `signed` de `netlify.toml` y la variable de Vercel. El backend vuelve automáticamente al modo temporal.
+- **Límites:** ajustar las variables de entorno documentadas. Un valor no válido usa el predeterminado, nunca desactiva el límite.
+
+## Riesgos abiertos
+
+- **Sin límite por IP** mientras el proxy firmado no esté activo: un ataque repartido entre muchas cuentas o destinatarios solo queda limitado por identidad. T3 lo detecta en los logs, pero no lo bloquea.
+- **Cuota del proveedor de correo:** un atacante puede enviar hasta 5 correos por hora a cada destinatario distinto. En el plan gratuito de Resend (100 al día) eso puede agotar la cuota. El presupuesto global de correos de seguridad (A2) quedó propuesto, pendiente de decisión.
+- **Bloqueo de una cuenta concreta:** se puede agotar el límite de 20 por hora de una cuenta, o de 5 por hora de un destinatario, y bloquearla hasta una hora. No afecta a otros usuarios.
+- **Fila de observación:** concentra las actualizaciones de cada ámbito. Medir en staging con carga.
 
 ## Pruebas
 
-- **`Backend/tests/authRateLimit.test.js`** (unitarias, en `pnpm verify`):
-  - claves HMAC sin datos personales;
-  - IP verificada: firma válida, cabeceras suplantadas, `alg none`, caducidad, emisor y sitio;
-  - dimensiones con y sin IP;
-  - servicio (bloqueo, `Retry-After`, fallo e inconsistencias);
-  - limpieza;
-  - SQL parametrizado;
-  - contrato 429 y 503;
-  - login, recuperación y fallo de PostgreSQL con la aplicación real.
+- **`Backend/tests/authRateLimit.test.js`:** claves, IP verificada, políticas, servicio, middleware 429/503, login y recuperación con la aplicación real.
+- **`Backend/tests/rateLimitEmailAndActions.test.js`:**
+  - alias de Gmail;
+  - límites de correo;
+  - orden de los middlewares;
+  - recuperación sin enviar al sexto intento y sin enumeración;
+  - registro: inicio y reenvío comparten límite;
+  - tokens falsificados sin filas;
+  - anomalía única y sin datos personales;
+  - límites de acciones;
+  - lote de 60 cargas en paralelo y la 61 con 429 sin escribir;
+  - 503 sin escribir archivos;
+  - 503 en comentarios y administración sin consultas de negocio;
+  - 429 de comentarios por usuario.
 - **`Backend/tests/rateLimitStore.integration.test.js`** (PostgreSQL aislado, opcional):
-  - migración con RLS y sin privilegios peligrosos;
-  - 60 intentos simultáneos con exactamente 20 admitidos;
-  - 3 procesos independientes que comparten el contador;
+  - migración;
+  - concurrencia (60 → 20);
+  - 3 procesos compartiendo el contador;
   - expiración;
-  - dimensiones cuenta, cuenta + IP e IP;
+  - dimensiones;
   - IP no confiable;
   - claves sin datos personales;
   - limpieza;
-  - base inaccesible.
-
-Ejecución de la prueba de integración (clúster desechable):
+  - base inaccesible;
+  - cargas entre 3 procesos (90 → 60);
+  - anomalía única entre 3 procesos;
+  - tokens falsificados;
+  - alias de Gmail.
+- **`Backend/tests/helpers/rateLimitQueryMock.js`:** emulación compartida del contador para las pruebas que sustituyen `pool.query`.
 
 ```powershell
 $env:ARCA_RATE_LIMIT_DB_TESTS = "1"

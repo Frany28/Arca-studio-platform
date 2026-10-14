@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRateLimitQueryMock } from "./helpers/rateLimitQueryMock.js";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { isProjectFinalized, normalizeProjectStatus, PROJECT_STATUS } from "../src/domain/projectStatus.js";
@@ -154,6 +155,9 @@ test("permisos HTTP administrativos y validación bulk se mantienen antes de con
   const { normalizeError } = await import("../src/errors/appError.js");
   let user = null;
   context.mock.method(pool, "connect", async () => { throw new Error("No debe acceder a PostgreSQL"); });
+  // El contador compartido de B-2 es la única consulta permitida antes de validar.
+  const rateLimitQueries = createRateLimitQueryMock();
+  context.mock.method(pool, "query", async (sql, params) => rateLimitQueries.handle(sql, params) ?? Promise.reject(new Error("No debe acceder a PostgreSQL")));
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {

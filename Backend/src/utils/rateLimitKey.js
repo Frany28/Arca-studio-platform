@@ -23,6 +23,25 @@ export function normalizeEmailIdentity(value) {
 }
 
 /**
+ * Normaliza el destinatario de un correo para que sus alias compartan el límite de envíos.
+ * Solo aplica reglas verificadas en la ayuda oficial de Gmail para cuentas @gmail.com: los puntos del
+ * nombre de usuario no cambian el buzón y el texto tras "+" es una etiqueta. Otros dominios (incluidos
+ * Google Workspace y Outlook) solo se normalizan en mayúsculas y espacios.
+ *
+ * @param {unknown} value - Correo recibido en el cuerpo de la petición.
+ * @returns {string|null} Destinatario normalizado, o null si no es un correo utilizable.
+ */
+export function normalizeEmailRecipient(value) {
+  const email = normalizeEmailIdentity(value);
+  if (!email) return null;
+  const separator = email.lastIndexOf("@");
+  const domain = email.slice(separator + 1);
+  if (domain !== "gmail.com") return email;
+  const localPart = email.slice(0, separator).split("+")[0].replaceAll(".", "");
+  return localPart ? `${localPart}@${domain}` : null;
+}
+
+/**
  * Calcula la clave de un contador como HMAC-SHA256 del ámbito, la dimensión y el identificador.
  * El resultado no permite recuperar correos, tokens, IDs ni IP, y separa contadores de distintos ámbitos.
  *
