@@ -1,5 +1,7 @@
 # Estado canónico finished de proyectos
 
+**Estado actual — 14 de octubre de 2026:** la migración `20261013000000_project_finished_status` está **aplicada en Supabase**, con autorización explícita del desarrollador. Prisma confirma 22 migraciones aplicadas y ninguna pendiente. Se conservaron los seis proyectos, sus fechas, responsables, relaciones y auditoría. Ver [respaldo y verificación de la aplicación](PROJECT_FINISHED_STATUS_DEPLOYMENT.md). Las referencias a pendientes en la evidencia histórica describen las revisiones anteriores a esta autorización.
+
 ## Causa y alcance
 
 El enum PostgreSQL y las reglas de cierre del backend utilizaban `completed`. Las galerías del frontend utilizaban `finished`, mientras los filtros administrativos lo volvían a convertir a `completed`. Gestión reconocía ambos valores, pero la escritura masiva de visibilidad aceptaba únicamente el primero. Además, la publicación individual no exigía finalización. Se establece `finished` como único estado canónico de proyecto finalizado.
@@ -71,7 +73,9 @@ Remove-Item Env:ARCA_PROJECT_STATUS_TEST_DATABASE_URL
 
 La prueba no usa automáticamente `DATABASE_URL` de staging ni modifica bases preexistentes. Solo elimina la base efímera creada por ella. Esto comprueba el SQL versionado; `verify:db` únicamente consulta el estado de Prisma y no reemplaza esta prueba.
 
-## Aplicación después de revisión y autorización
+## Procedimiento de aplicación
+
+La aplicación autorizada del 14 de octubre de 2026 está documentada en [el informe de despliegue de la migración](PROJECT_FINISHED_STATUS_DEPLOYMENT.md). Los pasos siguientes conservan el procedimiento de referencia.
 
 1. Confirmar backup recuperable y destino de staging autorizado. No ejecutar los comandos de despliegue siguientes en una base remota sin aprobación explícita.
 2. Desde Backend ejecutar `node scripts/audit-project-status.mjs` y `pnpm verify:db`. La auditoría usa una transacción exclusivamente de lectura, no muestra credenciales y registra columnas, enum, recuentos (incluidos archivados/eliminados), historial, índices, restricciones, dependencias, triggers, funciones e historial de migraciones. Usa DIRECT_URL cuando esté disponible y la configuración de conexión existente.

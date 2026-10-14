@@ -1,5 +1,7 @@
 # Diagnóstico de conexión PostgreSQL — 14 de octubre de 2026
 
+**Actualización posterior del mismo día:** el desarrollador autorizó modificar Supabase y se aplicó `20261013000000_project_finished_status` con respaldo previo. La base usa ahora `finished` y no hay migraciones pendientes. Ver [aplicación y verificación](PROJECT_FINISHED_STATUS_DEPLOYMENT.md). Este diagnóstico conserva a continuación los resultados obtenidos antes de esa autorización.
+
 ## Resultado
 
 La conexión local a Supabase funciona a través del **pooler de sesión existente**, sin cambios en PostgreSQL. El fallo `ENOTFOUND` procedía de utilizar el endpoint directo IPv6 desde una red sin ruta IPv6. No había evidencia de un proyecto eliminado, hostname inventado o contraseña incorrecta.
@@ -65,7 +67,7 @@ La auditoría inicia `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`, ejecuta 
 {"database_name":"postgres","transaction_read_only":"on","server_version":"17.6"}
 ```
 
-## Estado real de Supabase
+## Estado de Supabase antes de aplicar la migración
 
 | Elemento | Resultado |
 | --- | --- |
