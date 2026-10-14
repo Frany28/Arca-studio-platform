@@ -18,6 +18,26 @@ La base ya existía antes de incorporar Prisma. La migración `20260713000000_ba
 
 El baseline está registrado como aplicado en la base de pruebas. No debe ejecutarse manualmente sobre esa base. En una base vacía, `prisma migrate deploy` sí lo utiliza para construir toda la estructura.
 
+## Tablas del módulo de soporte (`20261014120000_support_tables`)
+
+Hasta esta migración, `supportRepository.ensureSupportTables` ejecutaba `CREATE TABLE IF NOT EXISTS` para `support_requests` y `support_request_files` en la primera solicitud de soporte. El esquema cambiaba en runtime y el rol de la aplicación necesitaba permisos de DDL (hallazgo D-4 de la auditoría). Ahora ambas tablas se declaran en `schema.prisma` y en la migración, y el repositorio no ejecuta DDL. `tests/supportSchemaManagement.test.js` impide que vuelva a aparecer DDL en `src/`.
+
+La migración reproduce exactamente la definición anterior: columnas, tipos, valores por defecto, claves primarias y la clave foránea `support_request_files_support_request_id_fkey` con `ON DELETE CASCADE`. `user_id` y `uploaded_by` siguen sin clave foránea. Además activa RLS, como el resto de tablas.
+
+Usa `CREATE TABLE IF NOT EXISTS`: si un backend anterior ya creó las tablas en algún entorno, la migración las adopta sin recrearlas ni modificar sus datos. Al revisarlo el 14 de octubre de 2026, las tablas no existían en la base configurada para desarrollo y staging, y todas las migraciones anteriores estaban aplicadas.
+
+Orden seguro de despliegue:
+
+```text
+1. pnpm db:migrate:status       → confirmar que solo 20261014120000_support_tables está pendiente
+2. pnpm db:migrate:deploy       → crea las tablas (o adopta las existentes)
+3. pnpm db:migrate:status       → confirmar que no quedan migraciones pendientes
+4. publicar el backend nuevo
+5. probar POST /api/support/requests con la cuenta demo
+```
+
+Si se publica el backend antes de aplicar la migración, solo fallan los endpoints de soporte, con HTTP 500 y código `42P01` (tabla inexistente); el resto del sistema no se ve afectado. Para resolverlo, aplicar la migración. El backend anterior sigue funcionando con la migración aplicada, porque su `CREATE TABLE IF NOT EXISTS` no hace nada sobre tablas existentes.
+
 ## Flujo para un cambio nuevo
 
 1. Modificar `prisma/schema.prisma` para cambios que Prisma pueda representar.

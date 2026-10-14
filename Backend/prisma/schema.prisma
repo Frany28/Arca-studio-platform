@@ -274,6 +274,40 @@ model admin_user_notes {
 
   @@index([admin_user_id, target_user_id, created_at(sort: Desc), id(sort: Desc)], map: "admin_user_notes_owner_target_cursor_idx")
 }
+/// Support requests opened by authenticated users from the help center.
+/// user_id intentionally has no foreign key, matching the table originally created at runtime.
+/// This model contains row level security and requires additional setup for migrations.
+model support_requests {
+  id                    BigInt                  @id @default(autoincrement())
+  user_id               BigInt
+  issue_type            String?
+  subject               String
+  description           String
+  status                String                  @default("open")
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @db.Timestamptz(6)
+  deleted_at            DateTime?               @db.Timestamptz(6)
+  support_request_files support_request_files[]
+}
+
+/// Attachments of support requests stored in object storage.
+/// uploaded_by intentionally has no foreign key, matching the table originally created at runtime.
+/// This model contains row level security and requires additional setup for migrations.
+model support_request_files {
+  id                 BigInt           @id @default(autoincrement())
+  support_request_id BigInt
+  uploaded_by        BigInt
+  original_name      String
+  file_type          String
+  file_extension     String?
+  file_size          BigInt
+  storage_key        String
+  file_url           String
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  deleted_at         DateTime?        @db.Timestamptz(6)
+  support_requests   support_requests @relation(fields: [support_request_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "support_request_files_support_request_id_fkey")
+}
+
 
 /// Multiple active employees assigned to a project.
 /// This model contains row level security and requires additional setup for migrations.

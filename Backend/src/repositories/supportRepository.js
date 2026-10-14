@@ -10,51 +10,10 @@ import {
 } from "../config/storage.js";
 import { pool, query } from "../config/db.js";
 
-let supportTablesReady = false;
-
-/**
- * Procesa el valor de ensure soporte tables para completar la responsabilidad asignada al módulo.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
- *
- * @returns {Promise<void>} Finalización de la operación.
- */
-async function ensureSupportTables() {
-  if (supportTablesReady) {
-    return;
-  }
-
-  await query(`
-    create table if not exists public.support_requests (
-      id bigserial primary key,
-      user_id bigint not null,
-      issue_type text,
-      subject text not null,
-      description text not null,
-      status text not null default 'open',
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now(),
-      deleted_at timestamptz
-    )
-  `);
-
-  await query(`
-    create table if not exists public.support_request_files (
-      id bigserial primary key,
-      support_request_id bigint not null references public.support_requests(id) on delete cascade,
-      uploaded_by bigint not null,
-      original_name text not null,
-      file_type text not null,
-      file_extension text,
-      file_size bigint not null,
-      storage_key text not null,
-      file_url text not null,
-      created_at timestamptz not null default now(),
-      deleted_at timestamptz
-    )
-  `);
-
-  supportTablesReady = true;
-}
+// Las tablas support_requests y support_request_files se gestionan solo mediante
+// la migración 20261014120000_support_tables. Este repositorio no ejecuta DDL:
+// si la migración no está aplicada, las consultas fallan con 42P01 y se
+// informan como error interno en lugar de alterar el esquema en runtime.
 
 /**
  * Obtiene el tipo funcional del archivo para que el flujo llamador pueda continuar.
@@ -89,8 +48,6 @@ export async function createSupportRequestForUser({
   subject,
   user,
 }) {
-  await ensureSupportTables();
-
   const result = await query(
     `
       insert into public.support_requests (
@@ -132,8 +89,6 @@ export async function createSupportRequestForUser({
  * @returns {Promise<object>} Resultado producido por la operación.
  */
 export async function findSupportRequestForUpload(supportRequestId, user) {
-  await ensureSupportTables();
-
   const result = await query(
     `
       select id, user_id, status
@@ -178,8 +133,6 @@ export async function uploadSupportRequestFile({
   supportRequestId,
   user,
 }) {
-  await ensureSupportTables();
-
   const storageConfig = getSupabaseStorageConfig();
 
   if (!storageConfig.bucket) {
