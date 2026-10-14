@@ -6,6 +6,7 @@ import {
   getProjectFileObject,
   uploadProjectFile,
 } from "../repositories/fileRepository.js";
+import { getFileResponseSecurity } from "../utils/fileResponseSecurity.js";
 import { getProjectFileCacheHeaders } from "../utils/projectFileCache.js";
 import {
   prepareProjectRequestUpload,
@@ -202,7 +203,7 @@ export async function deleteProjectAttachment(req, res, next) {
 
 /**
  * Transmite el archivo del proyecto sin cargar el contenido completo en memoria.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Aplica tipo, disposición y CSP según getFileResponseSecurity: tipos fuera de la lista se fuerzan a descarga.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
@@ -255,13 +256,17 @@ export async function streamProjectFile(req, res, next) {
       fileName: file.fileName,
       range,
     });
-    const contentType = object.ContentType || file.fileType || "application/octet-stream";
-
     const frameAncestors = getAllowedOrigins().filter((origin) => origin !== "*");
+    const security = getFileResponseSecurity({
+      contentType: object.ContentType || file.fileType,
+      frameAncestors,
+      // Los PDF de proyectos solo se ven en el visor integrado (fetch + PDF.js).
+      pdfViewing: "in-app",
+    });
     res.removeHeader("X-Frame-Options");
     res.setHeader(
       "Content-Security-Policy",
-      `frame-ancestors 'self' ${frameAncestors.join(" ")}`,
+      security.contentSecurityPolicy,
     );
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
 
@@ -274,7 +279,7 @@ export async function streamProjectFile(req, res, next) {
       res.setHeader("Accept-Ranges", "bytes");
     }
 
-    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Type", security.contentType);
     res.setHeader("Cache-Control", cacheHeaders.cacheControl);
     res.vary("Cookie");
     if (cacheHeaders.etag) {
@@ -282,7 +287,7 @@ export async function streamProjectFile(req, res, next) {
     }
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="${encodeURIComponent(file.originalName)}"`,
+      `${security.disposition}; filename="${encodeURIComponent(file.originalName)}"`,
     );
 
     if (object.ContentLength) {
@@ -299,7 +304,7 @@ export async function streamProjectFile(req, res, next) {
 
 /**
  * Transmite el archivo de la solicitud de proyecto sin cargar el contenido completo en memoria.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Aplica tipo, disposición y CSP según getFileResponseSecurity: tipos fuera de la lista se fuerzan a descarga.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
@@ -331,9 +336,13 @@ export async function streamProjectRequestFile(req, res, next) {
     } else {
       res.status(200);
     }
-    res.setHeader("Content-Type", object.ContentType || file.fileType || "application/octet-stream");
+    // Solo 'self' puede incrustar adjuntos de solicitudes. Sus PDF se abren en una pestaña nueva
+    // (no hay visor integrado en el modal de revisión) y conservan la política de Helmet.
+    const security = getFileResponseSecurity({ contentType: object.ContentType || file.fileType, pdfViewing: "direct" });
+    if (security.contentSecurityPolicy) res.setHeader("Content-Security-Policy", security.contentSecurityPolicy);
+    res.setHeader("Content-Type", security.contentType);
     res.setHeader("Cache-Control", "private, max-age=60, must-revalidate");
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(file.originalName)}"`);
+    res.setHeader("Content-Disposition", `${security.disposition}; filename="${encodeURIComponent(file.originalName)}"`);
     res.vary("Cookie");
     if (object.ContentLength) res.setHeader("Content-Length", object.ContentLength);
     object.Body.pipe(res);

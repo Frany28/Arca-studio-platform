@@ -123,6 +123,16 @@ Registro: fullName 3–300 caracteres, al menos dos palabras; company máximo 15
 
 El frontend no debe usarse para ocultar información sensible.
 
+**Cabeceras del contenido de archivos (hallazgo B-1).** `GET /projects/:projectId/files/:fileId/content` y `GET /project-requests/:projectRequestId/files/:fileId/content` aplican `src/utils/fileResponseSecurity.js`:
+
+- PNG, JPEG y WebP (incluidas panorámicas), DOCX y XLSX: `inline` con `default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self' <orígenes CORS>; sandbox`.
+- MP4: la misma política sin `sandbox`, porque `sandbox` impide reproducir el video al abrirlo en una pestaña (medido en Chrome y Edge 155).
+- PDF de proyectos: solo se visualizan dentro de ARCA Studio. El visor hace `fetch` y usa PDF.js, que no aplican `Content-Disposition` ni la CSP del recurso. Se sirven como `attachment` con la política estricta y `sandbox`: abrir la URL directamente descarga el archivo. Lo verifican `Frontend/tests/browser/projectPdfViewer.test.js` (renderizado, cambio de páginas, zoom y descarga directa) y `Backend/tests/fileResponseSecurity.test.js`. La autorización sigue verificándose en el backend: sin acceso, 404.
+- PDF de adjuntos de solicitudes: el modal de revisión los abre en una pestaña nueva y no tiene visor integrado, por lo que conservan la CSP de Helmet e `inline` hasta incorporar uno.
+- Cualquier otro tipo, incluido un `Content-Type` del almacenamiento como `text/html`, `image/svg+xml` o GLB heredado: `application/octet-stream` con `attachment` y política estricta con `sandbox`.
+
+En los adjuntos de solicitudes, `frame-ancestors` solo admite `'self'`. Se mantienen `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: cross-origin`, `Range`/206, caché y ETag. `<img>`, `<video>` y `fetch()` no aplican la CSP del recurso, por lo que galería, panorámicas y vistas previas no cambian.
+
 `ProjectDetail` añade `files:ProjectFile[]`, `filesNextCursor`, `recentDocuments:ProjectFile[]`, `requirements:[{id,description,sortOrder}]`, `technicalSpecifications:[{id,title,description,defaultOpen,sortOrder,items}]`; items conservan los campos del JSON existente y normalizan `id` y `sortOrder`. `ProjectFile` contiene `id,title,description,extension,fileType,fileCategory,size,available,currentVersion,currentVersionId,createdAt,uploadedBy:{id,name,hasProfilePhoto}|null`. La respuesta de upload usa `fileSize` y `originalName`, no `size` y `title` de la lectura.
 
 `CommentInput`: `{content,commentType?,parentCommentId?,targetId?,image?,selection?,fileId?,fileVersionId?}`. content recortado de 1–2000; tipo `general` (default), `image`, `video`, `panorama`, `document`. IDs de archivo/versión/padre positivos o null. `targetId` string o number; image y selection objetos o null. Recursos no generales ni documentales necesitan targetId para una raíz. Metadatos se sanean; URLs privadas no sobreviven en el JSON.
