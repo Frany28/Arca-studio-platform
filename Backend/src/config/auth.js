@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getHostedRuntimeMarkers } from "./environment.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -20,6 +21,30 @@ function getRequiredProductionSecret() {
   }
 
   return crypto.randomBytes(32).toString("hex");
+}
+
+// Entornos en los que el bypass de autenticación puede activarse. Es una lista
+// de permitidos: cualquier valor ausente, mal escrito o desconocido lo desactiva.
+const ROUTE_AUTH_BYPASS_ENVIRONMENTS = new Set(["development", "test"]);
+
+/**
+ * Decide si el bypass de autenticación para pruebas locales puede activarse.
+ * Exige a la vez `ROUTE_AUTH_DISABLED_FOR_TESTS=true`, un `NODE_ENV` explícito de desarrollo o pruebas
+ * y la ausencia de marcadores de plataforma; ante cualquier valor ambiguo falla cerrado (`false`).
+ *
+ * @param {Record<string, string|undefined>} [environment] - Variables de entorno a evaluar.
+ * @returns {{ enabled: boolean, requested: boolean }} Si el bypass queda activo y si fue solicitado.
+ */
+export function resolveRouteAuthBypass(environment = process.env) {
+  const requested =
+    String(environment.ROUTE_AUTH_DISABLED_FOR_TESTS ?? "").trim().toLowerCase() === "true";
+  const nodeEnvironment = String(environment.NODE_ENV ?? "").trim().toLowerCase();
+  const hosted = getHostedRuntimeMarkers(environment).length > 0;
+
+  return {
+    enabled: requested && ROUTE_AUTH_BYPASS_ENVIRONMENTS.has(nodeEnvironment) && !hosted,
+    requested,
+  };
 }
 
 /**

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "./src/config/environmentGuard.js";
 import app from "./src/app.js";
 import { pool } from "./src/config/db.js";
 import { closeAllProjectEventConnections } from "./src/services/projectEvents.js";

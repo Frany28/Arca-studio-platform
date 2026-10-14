@@ -340,10 +340,10 @@ En produccion, `AUTH_TOKEN_SECRET` es obligatorio.
 | Variable                | Requerida | Default    | Descripcion                            |
 | ----------------------- | --------- | ---------- | -------------------------------------- |
 | `PORT`                  | No        | `3000`     | Puerto local                           |
-| `NODE_ENV`              | No        | -          | Ambiente                               |
+| `NODE_ENV`              | Sí        | -          | Exactamente `development`, `test` o `production`; otro valor impide arrancar (ver `docs/NOTAS_CAMBIOS_TEMPORALES.md`) |
 | `FILE_UPLOAD_LIMIT`     | No        | `50mb`     | Limite de `express.raw` en solicitudes |
 | `FILE_UPLOAD_MAX_BYTES` | No        | `52428800` | Validacion de tamano en controlador    |
-| `ROUTE_AUTH_DISABLED_FOR_TESTS` | No | `false` | Desactiva auth solo para pruebas locales controladas |
+| `ROUTE_AUTH_DISABLED_FOR_TESTS` | No | `false` | Desactiva auth solo para pruebas locales controladas: requiere NODE_ENV `development`/`test` y se ignora en Vercel, Lambda o Netlify |
 
 ### Backend - base de datos
 

@@ -1,30 +1,21 @@
-import { authConfig } from "../config/auth.js";
+import { authConfig, resolveRouteAuthBypass } from "../config/auth.js";
 import { findActiveUserById } from "../repositories/userRepository.js";
 import { parseCookies } from "../utils/cookies.js";
 import { isSessionTokenPayload, verifyAuthToken } from "../utils/tokens.js";
 import { getOrLoadUser } from "../services/userSessionCache.js";
 import { isTokenOlderThanUser } from "../utils/sessionFreshness.js";
 
-/**
- * Interpreta el valor de boolean y descarta los formatos que no sean válidos.
- * Participa en la cadena HTTP y continúa o rechaza la solicitud según el resultado.
- *
- * @param {unknown} value - Valor de `value` requerido por esta operación.
- * @param {unknown} [fallback] - Valor de `fallback` requerido por esta operación.
- * @returns {unknown} Resultado producido por la operación.
- */
-function parseBoolean(value, fallback = false) {
-  if (value === undefined || value === "") {
-    return fallback;
-  }
+const routeAuthBypass = resolveRouteAuthBypass();
+const ROUTE_AUTH_DISABLED_FOR_TESTS = routeAuthBypass.enabled;
 
-  return String(value).trim().toLowerCase() === "true";
+// Una solicitud de bypass rechazada indica una configuración incorrecta del
+// despliegue; se registra para que no pase inadvertida, sin detener el servicio.
+if (routeAuthBypass.requested && !routeAuthBypass.enabled) {
+  console.warn(JSON.stringify({
+    type: "route_auth_bypass_ignored",
+    message: "ROUTE_AUTH_DISABLED_FOR_TESTS se ignoró: solo se permite con NODE_ENV development/test fuera de plataformas de despliegue.",
+  }));
 }
-
-const ROUTE_AUTH_DISABLED_FOR_TESTS = parseBoolean(
-  process.env.ROUTE_AUTH_DISABLED_FOR_TESTS,
-  false,
-) && process.env.NODE_ENV !== "production";
 
 /**
  * Obtiene el usuario público de pruebas para que el flujo llamador pueda continuar.
