@@ -1,4 +1,5 @@
 import { pool, query } from "../config/db.js";
+import { isProjectFinalized, normalizeProjectStatus, PROJECT_STATUS } from "../domain/projectStatus.js";
 import { mapAdminDashboardMetrics } from "../utils/adminDashboardMetrics.js";
 import {
   mapAdminDashboardActivity,
@@ -56,8 +57,8 @@ function mapRequestAssignmentResult(row = {}) {
 }
 
 /**
- * Transforma el valor de managed proyecto a la representación estable utilizada por la aplicación.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Traduce el resultado administrativo a la respuesta pública de estado y visibilidad.
+ * Emite finished para la finalización histórica y conserva los indicadores de archivo existentes.
  *
  * @param {unknown} [row] - Fila obtenida desde PostgreSQL.
  * @returns {object} Resultado producido por la operación.
@@ -68,13 +69,13 @@ function mapManagedProject(row = {}) {
     archivedAt: null,
     id: Number(row.id),
     isPublic: Boolean(row.is_public),
-    status: row.status,
+    status: normalizeProjectStatus(row.status),
   };
 }
 
 /**
- * Procesa el valor de apply administrativo proyecto bulk action para completar la responsabilidad asignada al módulo.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Aplica visibilidad, archivado o recuperación en una transacción con bloqueo de proyectos.
+ * Exige finalización para visibilidad y conserva el estado previo al archivo, incluidos finished.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.action - Valor de `options.action` requerido por esta operación.
@@ -115,11 +116,11 @@ export async function applyAdminProjectBulkAction({
     if (
       action === "change_visibility"
       && lockedResult.rows.some(
-        (project) => project.status !== "completed" || project.deleted_at,
+        (project) => !isProjectFinalized(project.status) || project.deleted_at,
       )
     ) {
       await client.query("rollback");
-      return { missingIds: [], outcome: "visibility_requires_completed", projects: [] };
+      return { missingIds: [], outcome: "visibility_requires_finished", projects: [] };
     }
 
     if (
@@ -279,8 +280,8 @@ export async function findAdminAssigneeProfilePhoto(userId) {
 }
 
 /**
- * Reemplaza el valor de proyecto responsables de forma atómica con los valores solicitados.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Reemplaza responsables elegibles únicamente en proyectos operativamente abiertos.
+ * Excluye archived y finished bajo bloqueo PostgreSQL para conservar asignaciones al finalizar.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {Array<unknown>} options.assigneeIds - Valor de `options.assigneeIds` requerido por esta operación.
@@ -302,7 +303,7 @@ export async function replaceProjectAssignees({
           and deleted_at is null
           and status not in (
             'archived'::public.project_status,
-            'completed'::public.project_status
+            '${PROJECT_STATUS.FINISHED}'::public.project_status
           )
         for update
       ),
@@ -592,8 +593,8 @@ export async function getAdminDashboardMetrics() {
 }
 
 /**
- * Obtiene el resumen del panel administrativo para que el flujo llamador pueda continuar.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Reúne actividad reciente y solicitudes pendientes para el resumen administrativo.
+ * Consulta PostgreSQL e identifica entregas finalizadas por el código canónico finished del historial.
  *
  * @returns {Promise<object>} Resultado producido por la operación.
  */
@@ -615,7 +616,7 @@ export async function getAdminDashboardOverview() {
           history.project_id,
           project.name as project_name,
           case
-            when history.new_status = 'completed' then 'Entrega finalizada'
+            when history.new_status = '${PROJECT_STATUS.FINISHED}' then 'Entrega finalizada'
             else 'Estado actualizado'
           end as activity_title,
           concat_ws(' ', actor.first_name, actor.last_name) as user_name,

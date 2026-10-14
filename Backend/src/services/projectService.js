@@ -9,6 +9,7 @@ import {
 import {
   assertMutableProjectState,
   assertOperationallyMutableProjectState,
+  assertProjectPublicationState,
 } from "./projectMutationPolicy.js";
 
 /**
@@ -46,8 +47,8 @@ export async function assertProjectOperationallyMutable(
 }
 
 /**
- * Cambia el valor de proyecto publication aplicando las reglas de negocio correspondientes.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Cambia la visibilidad solo de proyectos finalizados que tengan acceso directo autorizado.
+ * Comprueba el cierre operativo y delega una escritura PostgreSQL que vuelve a exigir finished.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {boolean} options.isPublic - Valor de `options.isPublic` requerido por esta operación.
@@ -57,7 +58,7 @@ export async function assertProjectOperationallyMutable(
  */
 export async function changeProjectPublication({ isPublic, projectId, user }) {
   const project = await findDirectProjectStateForUser(projectId, user);
-  assertMutableProjectState(project);
+  assertProjectPublicationState(project);
   return updateProjectVisibility(projectId, isPublic, user);
 }
 

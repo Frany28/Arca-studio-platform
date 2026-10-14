@@ -1,3 +1,5 @@
+import { FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "./projectStatus.js";
+
 export const PROJECT_STATUS_GROUPS = [
   {
     id: "in_process",
@@ -21,7 +23,7 @@ export const PROJECT_STATUS_GROUPS = [
       "border-[var(--color-neutral-600)] bg-[var(--color-neutral-100)] text-[var(--color-text-300)]",
   },
   {
-    id: "finished",
+    id: FINISHED_PROJECT_STATUS,
     status: "Finalizados",
     badgeTheme: "Success",
     badgeClassName:
@@ -32,7 +34,7 @@ export const PROJECT_STATUS_GROUPS = [
 /**
  * Agrupa proyectos por los estados del catálogo conservando su orden de presentación.
  * Los estados no reconocidos van a Otros con estilo del primer grupo; omite grupos vacíos
- * y conserva el orden original de los proyectos dentro de cada grupo.
+ * y conserva el orden original; el alias histórico se agrupa bajo finished.
  *
  * @param {Array} projects - Proyectos con status.
  * @returns {Array} Grupos visuales con projects y propiedades de badge.
@@ -42,14 +44,14 @@ export function groupProjectsByStatus(projects) {
 
   return PROJECT_STATUS_GROUPS.map((group) => ({
     ...group,
-    projects: projects.filter((project) => project.status === group.id),
+    projects: projects.filter((project) => normalizeProjectStatus(project.status) === group.id),
   }))
     .concat({
       ...fallbackGroup,
       id: "other",
       projects: projects.filter(
         (project) =>
-          !PROJECT_STATUS_GROUPS.some((group) => group.id === project.status),
+          !PROJECT_STATUS_GROUPS.some((group) => group.id === normalizeProjectStatus(project.status)),
       ),
       status: "Otros",
     })

@@ -756,7 +756,7 @@ enum project_compatibility_level {
 enum project_status {
   pending
   in_process
-  completed
+  finished
   cancelled
   archived
 }

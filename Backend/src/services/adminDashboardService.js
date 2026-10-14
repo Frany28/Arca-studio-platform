@@ -40,8 +40,8 @@ export function loadAdminAssignees() {
 }
 
 /**
- * Procesa el valor de manage administrativo proyectos para completar la responsabilidad asignada al módulo.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Coordina las acciones administrativas de visibilidad, archivo y recuperación de proyectos.
+ * Traduce resultados transaccionales a errores públicos y exige finished para cambiar visibilidad.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.action - Valor de `options.action` requerido por esta operación.
@@ -66,7 +66,7 @@ export async function manageAdminProjects({ action, isPublic, projectIds, userId
     );
   }
 
-  if (result.outcome === "visibility_requires_completed") {
+  if (result.outcome === "visibility_requires_finished") {
     throw new ValidationError(
       "La visibilidad solo puede cambiarse en proyectos finalizados.",
       { projectIds: "Incluye al menos un proyecto no finalizado o archivado." },

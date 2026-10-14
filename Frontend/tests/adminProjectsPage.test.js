@@ -7,9 +7,9 @@ import { getStatus } from "../src/pages/admin-dashboard/components/admin-active-
 test("Gestión: indicadores incluyen toda la colección y aliases históricos sin mutarla", () => {
   const projects = [{ status: "in_process" }, { status: "finished" }, { status: "completed" }, { status: "archived" }, { status: "pending" }];
   const snapshot = structuredClone(projects);
-  assert.deepEqual(getAdminProjectMetrics(projects), { total: 5, inProgress: 1, completed: 2 });
+  assert.deepEqual(getAdminProjectMetrics(projects), { total: 5, inProgress: 1, finished: 2 });
   assert.deepEqual(projects, snapshot);
-  assert.deepEqual(getAdminProjectMetrics([]), { total: 0, inProgress: 0, completed: 0 });
+  assert.deepEqual(getAdminProjectMetrics([]), { total: 0, inProgress: 0, finished: 0 });
 });
 
 test("Gestión: etiquetas específicas conservan los estados y la presentación del dashboard", () => {

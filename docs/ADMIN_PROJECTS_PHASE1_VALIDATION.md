@@ -49,7 +49,8 @@ de autenticación ni permisos.
 
 La página usa la colección real recogida por cursor por `useDashboardProjects`.
 Total, en progreso y finalizados se calculan antes de filtros y paginación; se
-conservan los aliases `finished`/`completed`. Solicitudes usa
+usa `finished` como estado canónico y reconoce temporalmente el alias histórico
+`completed` según [la unificación de estados](PROJECT_FINISHED_STATUS.md). Solicitudes usa
 `GET /admin/dashboard-metrics`, campo `requests.total`: solicitudes pendientes según
 el contrato existente, no todas las solicitudes históricas. Los valores de Figma
 no se incorporaron como estadísticas. Los fixtures están exclusivamente en tests.

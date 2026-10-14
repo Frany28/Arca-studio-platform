@@ -1,8 +1,8 @@
 import { getAvatarPresentation } from "../../../../../utils/avatarPresentation.js";
+import { FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "../../../../../utils/projectStatus.js";
 
 const STATUS_DETAILS = {
-  completed: { label: "Finalizado", theme: "Success" },
-  finished: { label: "Finalizado", theme: "Success" },
+  [FINISHED_PROJECT_STATUS]: { label: "Finalizado", theme: "Success" },
   archived: { label: "Archivado", theme: "Archived" },
   in_process: { label: "En progreso", theme: "Info" },
   in_review: { label: "En revisión", theme: "Brand 2" },
@@ -14,7 +14,7 @@ export const STATUS_FILTER_ITEMS = [
   { id: "in_process", label: "En progreso", type: "Checkbox" },
   { id: "in_review", label: "En revisión", type: "Checkbox" },
   { id: "pending_approval", label: "Solicitud", type: "Checkbox" },
-  { id: "completed", label: "Finalizado", type: "Checkbox" },
+  { id: FINISHED_PROJECT_STATUS, label: "Finalizado", type: "Checkbox" },
   { id: "archived", label: "Archivado", type: "Checkbox" },
 ];
 
@@ -26,14 +26,13 @@ export const MANAGEMENT_STATUS_FILTER_ITEMS = [
 ];
 
 /**
- * Conserva los aliases históricos al comparar los estados con el catálogo de filtros.
+ * Usa finished en los filtros y admite temporalmente el alias histórico de finalización.
  * @param {string|null|undefined} status Estado del proyecto, sin normalizar otros valores.
  * @returns {string|null|undefined} ID equivalente; los estados desconocidos se conservan.
  */
 export function getStatusFilterId(status) {
-  if (status === "finished") return "completed";
   if (status === "request") return "pending_approval";
-  return status;
+  return normalizeProjectStatus(status);
 }
 
 /**
@@ -48,7 +47,7 @@ export function getStatus(project, variant = "dashboard") {
     if (project.status === "draft") return { label: "Drafts", theme: "Brand 1" };
     if (["pending_approval", "request"].includes(project.status)) return { label: "Solicitud", theme: "Brand 1" };
   }
-  return STATUS_DETAILS[project.status] || { label: "Solicitud", theme: "Neutral" };
+  return STATUS_DETAILS[normalizeProjectStatus(project.status)] || { label: "Solicitud", theme: "Neutral" };
 }
 
 /**

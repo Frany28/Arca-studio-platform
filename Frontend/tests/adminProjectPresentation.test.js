@@ -22,12 +22,13 @@ test("catálogo de filtros conserva orden, IDs y aliases sin normalizar valores 
     { id: "in_process", label: "En progreso", type: "Checkbox" },
     { id: "in_review", label: "En revisión", type: "Checkbox" },
     { id: "pending_approval", label: "Solicitud", type: "Checkbox" },
-    { id: "completed", label: "Finalizado", type: "Checkbox" },
+    { id: "finished", label: "Finalizado", type: "Checkbox" },
     { id: "archived", label: "Archivado", type: "Checkbox" },
   ]);
-  assert.equal(getStatusFilterId("finished"), "completed");
+  assert.equal(getStatusFilterId("completed"), "finished");
+  assert.equal(getStatusFilterId("finished"), "finished");
   assert.equal(getStatusFilterId("request"), "pending_approval");
-  for (const value of ["completed", "archived", "other", "FINISHED", undefined, null]) {
+  for (const value of ["archived", "other", "FINISHED", undefined, null]) {
     assert.equal(getStatusFilterId(value), value);
   }
 });

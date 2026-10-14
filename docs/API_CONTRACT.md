@@ -91,11 +91,13 @@ Registro: fullName 3–300 caracteres, al menos dos palabras; company máximo 15
 
 ### Proyectos
 
+`Project.status` usa `pending|in_process|finished|cancelled|archived`: **finished** es el único código canónico de finalización. Las lecturas normalizan temporalmente el alias histórico `completed` a `finished`; no se acepta como valor nuevo del enum PostgreSQL tras la migración. Publicación individual y masiva exigen finalización y conservan autenticación, permisos y acceso directo. Archivar oculta el proyecto y conserva `archived_from_status`; recuperar un finalizado devuelve `finished` y mantiene `isPublic:false`. Operaciones de archivos, comentarios y responsables siguen rechazando finalizados con `PROJECT_FINALIZED`. No existe actualmente un endpoint HTTP general para editar `Project.status`, ni un filtro de estado en GET `/projects`; los filtros de las pantallas se aplican a la colección obtenida por cursor. Ver [auditoría, compatibilidad y procedimiento de migración](PROJECT_FINISHED_STATUS.md).
+
 | Método y path | Request | Éxito | Acceso / códigos relevantes |
 | --- | --- | --- | --- |
 | GET `/projects` | P; `scope?: accessible|owned` | 200 `{projects:Project[],nextCursor}` | Sesión + projects.read; alcance según rol/propiedad/publicación |
 | GET `/projects/:projectId` | ID o slug; `filesCursor?`, `filesLimit?` 1–100 | 200 `{project:ProjectDetail}` | Sesión + projects.read; 404 PROJECT_NOT_FOUND |
-| PATCH `/projects/:projectId/publication` | `{isPublic:boolean}` | 200 `{project:Project}` (sin los extras de ProjectDetail) | Sesión + projects.publish y acceso directo; 400 INVALID_PROJECT_ID / INVALID_PUBLICATION_STATE, 404, 409 PROJECT_ARCHIVED |
+| PATCH `/projects/:projectId/publication` | `{isPublic:boolean}` | 200 `{project:Project}` (sin los extras de ProjectDetail) | Sesión + projects.publish y acceso directo; exige finished; 400 INVALID_PROJECT_ID / INVALID_PUBLICATION_STATE, 404, 409 PROJECT_ARCHIVED / PROJECT_NOT_FINISHED |
 | POST `/projects/:projectId/files` | Binario | 201 `{file:UploadedFile}` | Sesión + projects.files.upload y acceso al proyecto; 404, 409 DUPLICATE_PROJECT_FILE / PROJECT_ARCHIVED / PROJECT_FINALIZED |
 | DELETE `/projects/:projectId/files/:fileId` | — | 200 `{deleted:true,fileId}` | Sesión + projects.files.delete y acceso; 404, 409 estados de solo lectura |
 | GET `/projects/:projectId/files/:fileId/content` | `versionId?`; cabecera `Range?` | 200/206 binario | Sesión + projects.read, acceso al archivo; 404 FILE_NOT_FOUND |
@@ -200,7 +202,7 @@ Todas las rutas siguientes requieren sesión y `role.code=admin` por middleware 
 | GET `/admin/users/:userId/profile-photo` | — | 200 imagen; 404 |
 | GET `/admin/assignees/:userId/profile-photo` | — | 200 imagen; 404 |
 | PUT `/admin/projects/:projectId/assignees` | `{assigneeIds:number[]}` ≤20 únicos; [] permitido | 200 `{assignees}`; activos elegibles, 400 validación, 404 proyecto, 409 estados de solo lectura |
-| PATCH `/admin/projects/bulk-action` | `{action:change_visibility,isPublic:boolean,projectIds}` o `{action:archive|unarchive,projectIds}`; 1–100 IDs únicos | 200 `{projects:[{id,status,isPublic,archived,archivedAt:null}]}`; 400 visibilidad exige completed, desarchivar exige archived; 404 |
+| PATCH `/admin/projects/bulk-action` | `{action:change_visibility,isPublic:boolean,projectIds}` o `{action:archive|unarchive,projectIds}`; 1–100 IDs únicos | 200 `{projects:[{id,status,isPublic,archived,archivedAt:null}]}`; 400 visibilidad exige finished, desarchivar exige archived; 404 |
 | PUT `/admin/project-requests/:projectRequestId/assignees` | `{assigneeIds:number[]}` ≤20 únicos | 200 `{assignees}`; admin/architect activos; pending_verification/pending_review; en revisión conserva arquitecto; 400, 404, 409 PROJECT_REQUEST_CLOSED |
 | PATCH `/admin/project-requests/:projectRequestId/decision` | `{action:approve|reject|request_changes,internalNotes?:string|null,reason?}`; reason requerido 10–2000 para rechazo/corrección; internalNotes ≤4000 | 200 `{project:{id,name,status}|null,projectRequest:{id,status,correctionReason,rejectionReason,convertedProjectId,reviewedAt}}`; 404, 409 PROJECT_REQUEST_INVALID_STATE / PROJECT_REQUEST_REVIEW_REQUIRED |
 

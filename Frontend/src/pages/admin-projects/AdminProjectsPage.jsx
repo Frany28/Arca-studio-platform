@@ -69,7 +69,7 @@ export default function AdminProjectsPage() {
           <div className="flex w-full flex-wrap items-center gap-x-[16px] gap-y-[16px] border-y border-[var(--color-neutral-200)] py-[24px] @min-[940px]:gap-x-0 max-[767px]:flex-col max-[767px]:items-start" aria-label="Indicadores de proyectos">
             <AdminKpiMetric variant="projects" label="Proyectos totales" value={display(projectsError ? null : metrics.total)} iconType="Accent" icon={<Buildings2 size="24" color="currentColor" />} />
             <AdminKpiMetric variant="projects" label="Proyectos en progreso" value={display(projectsError ? null : metrics.inProgress)} iconType="Info" icon={<Convertshape size="24" color="currentColor" />} />
-            <AdminKpiMetric variant="projects" label="Proyectos finalizados" value={display(projectsError ? null : metrics.completed)} iconType="Success" icon={<ClipboardTick size="24" color="currentColor" />} />
+            <AdminKpiMetric variant="projects" label="Proyectos finalizados" value={display(projectsError ? null : metrics.finished)} iconType="Success" icon={<ClipboardTick size="24" color="currentColor" />} />
             <AdminKpiMetric variant="projects" label="Solicitudes" value={display(adminMetrics?.requests?.total)} iconType="Warning" icon={<MessageNotif size="24" color="currentColor" />} />
           </div>
         )}

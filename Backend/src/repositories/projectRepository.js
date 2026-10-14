@@ -1,4 +1,5 @@
 import { query } from "../config/db.js";
+import { normalizeProjectStatus, PROJECT_STATUS } from "../domain/projectStatus.js";
 import { pageResult } from "../utils/pagination.js";
 
 /**
@@ -13,8 +14,8 @@ function toNumber(value) {
 }
 
 /**
- * Transforma el valor de proyecto a la representación pública esperada.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Transforma la fila de proyecto en el contrato público preservando datos y responsables.
+ * Emite finished como estado finalizado, incluso ante una lectura histórica con el alias antiguo.
  *
  * @param {unknown} row - Fila obtenida desde PostgreSQL.
  * @returns {object} Resultado producido por la operación.
@@ -82,7 +83,7 @@ function toProject(row) {
     publicSlug: row.public_slug || null,
     startDate: row.start_date,
     state: row.state || null,
-    status: row.status,
+    status: normalizeProjectStatus(row.status),
     updatedAt: row.updated_at,
   };
 }
@@ -741,8 +742,8 @@ conditionSql: (parameter) => `p.public_slug = ${parameter}`,
 }
 
 /**
- * Actualiza el valor de proyecto visibility conservando las reglas de acceso e integridad.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Actualiza la visibilidad de un proyecto finalizado con acceso directo autorizado.
+ * Exige finished también en la escritura para impedir cambios concurrentes tras archivar el proyecto.
  *
  * @param {string} projectId - Valor de `projectId` requerido por esta operación.
  * @param {boolean} isPublic - Valor de `isPublic` requerido por esta operación.
@@ -762,7 +763,7 @@ export async function updateProjectVisibility(projectId, isPublic, user) {
           updated_at = now()
         where id = $${projectIdParam}
           and deleted_at is null
-          and status <> 'archived'::public.project_status
+          and status = '${PROJECT_STATUS.FINISHED}'::public.project_status
           and (${condition})
         returning *
       )

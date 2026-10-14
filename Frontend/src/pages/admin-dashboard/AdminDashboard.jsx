@@ -8,6 +8,7 @@ import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import { useProjectRequestWorkflow } from "../../hooks/useProjectRequestWorkflow.js";
 import InternalDashboardLayout from "../../layouts/InternalDashboardLayout.jsx";
 import { getProjectPath } from "../../utils/projectRoutes.js";
+import { isProjectOperationallyReadOnly } from "../../utils/projectReadOnly.js";
 import AdminDashboardHeader from "./components/AdminDashboardHeader.jsx";
 import AdminDashboardMetrics from "./components/AdminDashboardMetrics.jsx";
 import AdminDashboardOperations from "./components/AdminDashboardOperations.jsx";
@@ -115,7 +116,7 @@ function AdminDashboard({ empty = false }) {
       [...projectRows]
         .filter(
           (project) =>
-            !["archived", "completed", "cancelled"].includes(project.status),
+            !isProjectOperationallyReadOnly(project) && project.status !== "cancelled",
         )
         .sort((first, second) => {
           const firstDate = first.endDate

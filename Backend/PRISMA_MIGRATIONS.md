@@ -4,6 +4,10 @@ El backend usa **Prisma Migrate 7.8** para registrar y desplegar cambios de Post
 
 ## Estado inicial
 
+Para el estado finalizado canónico `finished`, consultar [auditoría, compatibilidad y procedimiento](../docs/PROJECT_FINISHED_STATUS.md). La migración `20261013000000_project_finished_status` renombra el enum y normaliza los códigos del historial en una transacción, sin recrear datos ni modificar fechas. Su aplicación remota requiere revisión y autorización explícita.
+
+La conexión local de Prisma se corrigió para una red IPv4 utilizando el pooler de sesión existente en puerto 5432, sin cambiar el proveedor ni la configuración runtime. Ver [diagnóstico de conexión y estado de migraciones](../docs/POSTGRES_CONNECTION_DIAGNOSIS.md). El endpoint directo IPv6 original se conserva para entornos compatibles; un exit code 1 de `verify:db` puede indicar migraciones pendientes aunque la conexión funcione.
+
 La base ya existía antes de incorporar Prisma. La migración `20260713000000_baseline` representa su estructura completa al 13 de julio de 2026, incluidos:
 
 - 21 tablas y sus relaciones;
@@ -46,7 +50,7 @@ No usar `prisma db push` ni `prisma migrate reset` sobre bases con datos. No usa
 
 Prisma mantiene su historial en la tabla `_prisma_migrations`. Los antiguos archivos SQL independientes fueron retirados porque sus cambios ya forman parte del baseline; desde ahora la única fuente de migraciones es `prisma/migrations`.
 
-El comando `pnpm verify` valida el esquema, confirma el estado de migraciones, ejecuta las pruebas del backend y construye el frontend. Requiere acceso a la base configurada para consultar el estado.
+El comando `pnpm verify` ejecuta lint/JSDoc, valida el esquema, ejecuta pruebas del backend y frontend y construye el frontend sin consultar la base. `pnpm verify:db` comprueba por separado el estado de migraciones y requiere acceso a la base configurada; no aplica migraciones ni prueba por sí solo el SQL de una migración nueva.
 
 ## Despliegue futuro en VPS
 

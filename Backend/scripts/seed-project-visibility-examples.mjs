@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import { pool, query } from "../src/config/db.js";
+import { PROJECT_STATUS } from "../src/domain/projectStatus.js";
 import { slugifyProjectName } from "../src/utils/projectSlug.js";
 
 const examples = [
@@ -64,7 +65,7 @@ const examples = [
     name: "Residencia Horizonte Finalizada",
     progress: 100,
     startDate: "2026-02-03",
-    status: "completed",
+    status: PROJECT_STATUS.FINISHED,
   },
 ];
 

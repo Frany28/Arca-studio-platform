@@ -1,4 +1,5 @@
 import { pool, query } from "../config/db.js";
+import { PROJECT_STATUS } from "../domain/projectStatus.js";
 import { sanitizeCommentMetadata } from "../utils/commentMetadata.js";
 import { pageResult } from "../utils/pagination.js";
 
@@ -261,8 +262,8 @@ export async function listProjectComments(projectId, user, { cursor = null, limi
 }
 
 /**
- * Crea el valor de proyecto comentario registro con los datos validados recibidos.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Crea un comentario únicamente en proyectos accesibles y operativamente abiertos.
+ * Bloquea la fila en PostgreSQL y excluye archivados y finished para evitar carreras de cierre.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} [options.commentType] - Valor de `options.commentType` requerido por esta operación.
@@ -313,7 +314,7 @@ export async function createProjectCommentRecord({
           and p.deleted_at is null
           and p.status not in (
             'archived'::public.project_status,
-            'completed'::public.project_status
+            '${PROJECT_STATUS.FINISHED}'::public.project_status
           )
           and (${access.sql})
         limit 1
@@ -492,8 +493,8 @@ export async function listDocumentComments({
 }
 
 /**
- * Crea el valor de documento comentario registro con los datos validados recibidos.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Crea una observación documental conservando las referencias de archivo y versión autorizadas.
+ * Excluye archivados y finished bajo bloqueo PostgreSQL para preservar el cierre operativo.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.content - Valor de `options.content` requerido por esta operación.
@@ -534,7 +535,7 @@ export async function createDocumentCommentRecord({
           and p.deleted_at is null
           and p.status not in (
             'archived'::public.project_status,
-            'completed'::public.project_status
+            '${PROJECT_STATUS.FINISHED}'::public.project_status
           )
           and (${access.sql})
         limit 1

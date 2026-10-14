@@ -23,7 +23,7 @@ test("active projects pass the shared mutation policy", async () => {
 });
 
 test("finalized projects reject operational changes but still allow publication", async () => {
-  const finalizedProject = { id: 18, status: "completed" };
+  const finalizedProject = { id: 18, status: "finished" };
 
   assert.equal(assertMutableProjectState(finalizedProject), finalizedProject);
   assert.throws(
@@ -63,12 +63,12 @@ test("every operational mutation path enforces closed project states in depth", 
   ]);
 
   assert.match(assignmentService, /assignEmployeesToProject[\s\S]*assertProjectOperationallyMutable\(projectId\)/);
-  assert.match(assignmentRepository, /replaceProjectAssignees[\s\S]*status not in[\s\S]*'completed'/);
+  assert.match(assignmentRepository, /replaceProjectAssignees[\s\S]*status not in[\s\S]*PROJECT_STATUS\.FINISHED/);
   assert.match(commentController, /createProjectComment[\s\S]*assertProjectOperationallyMutable\(projectId\)/);
   assert.equal((commentRepository.match(/status not in/g) || []).length >= 2, true);
   assert.equal((fileController.match(/assertProjectOperationallyMutable\(projectId\)/g) || []).length >= 2, true);
   assert.match(fileRepository, /PROJECT_FINALIZED/);
   assert.match(projectController, /changeProjectPublication/);
-  assert.match(projectRepository, /updateProjectVisibility[\s\S]*status <> 'archived'/);
-  assert.match(seedSource, /name: "Residencia Horizonte Finalizada"[\s\S]*status: "completed"/);
+  assert.match(projectRepository, /updateProjectVisibility[\s\S]*status = '\$\{PROJECT_STATUS\.FINISHED\}'/);
+  assert.match(seedSource, /name: "Residencia Horizonte Finalizada"[\s\S]*status: PROJECT_STATUS\.FINISHED/);
 });

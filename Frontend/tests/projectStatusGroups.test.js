@@ -18,6 +18,7 @@ test("projects are grouped by status and unknown statuses use Otros", () => {
     { id: 1, status: "in_process" },
     { id: 2, status: "finished" },
     { id: 3, status: "legacy_status" },
+    { id: 4, status: "completed" },
   ]);
 
   assert.deepEqual(
@@ -28,7 +29,7 @@ test("projects are grouped by status and unknown statuses use Otros", () => {
     })),
     [
       { id: "in_process", projectIds: [1], status: "En Progreso" },
-      { id: "finished", projectIds: [2], status: "Finalizados" },
+      { id: "finished", projectIds: [2, 4], status: "Finalizados" },
       { id: "other", projectIds: [3], status: "Otros" },
     ],
   );

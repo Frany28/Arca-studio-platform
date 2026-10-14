@@ -29,7 +29,7 @@ test("archived project details propagate one shared read-only policy", async () 
   ]);
 
   assert.match(contextSource, /message = ""/);
-  assert.match(readOnlySource, /"completed", "finished"/);
+  assert.match(readOnlySource, /normalizeProjectStatus/);
   assert.match(detailsSource, /readOnly=\{projectIsReadOnly\}/);
   assert.match(detailsSource, /"Proyecto finalizado" : "Proyecto archivado"/);
   assert.match(drawerSource, /resolvedComposerDisabled = composerDisabled \|\| readOnly/);

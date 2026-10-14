@@ -1,8 +1,8 @@
-const FINALIZED_PROJECT_STATUSES = new Set(["completed", "finished"]);
+import { FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "./projectStatus.js";
 
 /**
- * Reconoce completed y finished como estados de proyecto finalizado.
- * Compara el valor exacto sin normalizar mayúsculas ni espacios.
+ * Reconoce finished como estado canónico de proyecto finalizado.
+ * Admite temporalmente el alias histórico sin normalizar mayúsculas ni espacios.
  *
  * @param {Object|string|null} projectOrStatus - Proyecto o código de estado.
  * @returns {boolean} Si el proyecto está finalizado.
@@ -12,7 +12,7 @@ export function isProjectFinalized(projectOrStatus) {
     ? projectOrStatus
     : projectOrStatus?.status;
 
-  return FINALIZED_PROJECT_STATUSES.has(status);
+  return normalizeProjectStatus(status) === FINISHED_PROJECT_STATUS;
 }
 
 /**
@@ -27,7 +27,7 @@ export function isProjectOperationallyReadOnly(projectOrStatus) {
     ? projectOrStatus
     : projectOrStatus?.status;
 
-  return status === "archived" || FINALIZED_PROJECT_STATUSES.has(status);
+  return status === "archived" || isProjectFinalized(status);
 }
 
 /**

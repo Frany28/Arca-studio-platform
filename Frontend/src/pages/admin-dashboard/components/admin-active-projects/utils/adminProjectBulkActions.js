@@ -1,7 +1,12 @@
-const FINALIZED_PROJECT_STATUSES = new Set(["completed", "finished"]);
+import { isProjectFinalized } from "../../../../../utils/projectReadOnly.js";
 
+/**
+ * Reutiliza el cierre operativo compartido para las acciones administrativas de visibilidad.
+ * @param {Object|null} project Proyecto seleccionado en el dashboard o Gestión.
+ * @returns {boolean} Si el proyecto tiene el estado canónico de finalización o su alias temporal.
+ */
 export function isFinalizedProject(project) {
-  return FINALIZED_PROJECT_STATUSES.has(project?.status);
+  return isProjectFinalized(project);
 }
 
 export function isArchivedProject(project) {

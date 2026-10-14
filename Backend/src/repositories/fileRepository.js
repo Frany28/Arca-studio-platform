@@ -12,18 +12,19 @@ import {
   sanitizeStorageFileName,
 } from "../config/storage.js";
 import { pool, query } from "../config/db.js";
+import { isProjectFinalized, isProjectOperationallyReadOnly } from "../domain/projectStatus.js";
 
 const DEFAULT_FILE_STATUS = "active";
 
 /**
- * Crea el error de proyecto de solo lectura con los datos validados recibidos.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Distingue los conflictos operativos de proyectos archivados y finalizados con finished.
+ * Conserva el código público de error para las escrituras protegidas por bloqueo PostgreSQL.
  *
  * @param {unknown} status - Valor de `status` requerido por esta operación.
  * @returns {unknown} Resultado producido por la operación.
  */
 function createProjectReadOnlyError(status) {
-  const finalized = status === "completed";
+  const finalized = isProjectFinalized(status);
   const error = new Error("Read-only project");
   error.code = finalized ? "PROJECT_FINALIZED" : "PROJECT_ARCHIVED";
   error.status = 409;
@@ -520,8 +521,8 @@ export async function findExistingProjectFile({
 }
 
 /**
- * Carga el archivo del proyecto coordinando la persistencia y el almacenamiento.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Guarda el archivo y su versión coordinando PostgreSQL con el almacenamiento existente.
+ * Bloquea el proyecto y rechaza archived y finished antes de escribir datos o subir el objeto.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.body - Valor de `options.body` requerido por esta operación.
@@ -581,7 +582,7 @@ export async function uploadProjectFile({
       [projectId],
     );
 
-    if (["archived", "completed"].includes(projectStateResult.rows[0]?.status)) {
+    if (isProjectOperationallyReadOnly(projectStateResult.rows[0]?.status)) {
       throw createProjectReadOnlyError(projectStateResult.rows[0].status);
     }
 
@@ -703,8 +704,8 @@ export async function uploadProjectFile({
 }
 
 /**
- * Elimina el archivo del proyecto después de comprobar acceso y existencia.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Elimina el archivo del proyecto después de comprobar acceso, existencia y estado operativo.
+ * Bloquea la fila y rechaza archived y finished antes de modificar PostgreSQL y almacenamiento.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.fileId - Valor de `options.fileId` requerido por esta operación.
@@ -757,7 +758,7 @@ export async function deleteProjectFile({ fileId, projectId, user }) {
       return null;
     }
 
-    if (["archived", "completed"].includes(file.project_status)) {
+    if (isProjectOperationallyReadOnly(file.project_status)) {
       throw createProjectReadOnlyError(file.project_status);
     }
 
