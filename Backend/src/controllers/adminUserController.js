@@ -8,6 +8,7 @@ import {
   updateAdminUser,
   updateAdminUserNote,
   updateAdminUserStatus,
+  revokeAdminUserSessions,
 } from "../services/adminUserService.js";
 import { getAdminUserProfilePhoto } from "../services/profilePhotoService.js";
 
@@ -257,6 +258,28 @@ export async function patchAdminUserStatus(req, res, next) {
       message: statusMessages[user.status],
       user,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Revoca todas las sesiones de un usuario administrado y responde con el número revocado.
+ * La autorización de administrador, el límite y la validación de `userId` los aplica la ruta.
+ *
+ * @param {import("express").Request} req - Solicitud con `params.userId` validado.
+ * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
+ * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @returns {Promise<void>} Finalización de la operación.
+ */
+export async function postAdminUserSessionRevocation(req, res, next) {
+  try {
+    const result = await revokeAdminUserSessions({
+      actorUserId: req.user.id,
+      userId: req.params.userId,
+    });
+    res.set("Cache-Control", "no-store");
+    res.status(200).json(result);
   } catch (error) {
     next(error);
   }

@@ -27,6 +27,7 @@ import {
   patchAdminUserNote,
   patchAdminUserStatus,
   postAdminUser,
+  postAdminUserSessionRevocation,
   postAdminUserNote,
   streamAdminUserProfilePhoto,
 } from "../controllers/adminUserController.js";
@@ -50,6 +51,7 @@ import {
   adminUserNoteListSchema,
   adminUserNoteUpdateSchema,
   adminUserPhotoSchema,
+  adminUserSessionRevokeSchema,
   adminUserStatusSchema,
   adminUserUpdateSchema,
 } from "../validation/adminUserSchemas.js";
@@ -109,6 +111,12 @@ router.patch(
   adminRateLimits.userStatus,
   validate(adminUserStatusSchema),
   patchAdminUserStatus,
+);
+router.post(
+  "/users/:userId/sessions/revoke",
+  adminRateLimits.userSessionRevoke,
+  validate(adminUserSessionRevokeSchema),
+  postAdminUserSessionRevocation,
 );
 router.get(
   "/assignees/:userId/profile-photo",

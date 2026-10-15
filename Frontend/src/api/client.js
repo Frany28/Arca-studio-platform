@@ -1,5 +1,8 @@
 /* Infraestructura HTTP compartida por los módulos de acceso a la API. */
 import { NETWORK_USER_ERROR_MESSAGE } from "../utils/userFacingError.js";
+import { reportSessionExpiration } from "./sessionExpiration.js";
+
+export { onSessionExpired } from "./sessionExpiration.js";
 
 const viteEnv = import.meta.env || {};
 const API_BASE_URL = (
@@ -24,7 +27,8 @@ export function getApiUrl(path) {
  * @param {string} path - Ruta relativa a la base de API.
  * @param {Object} [options={}] - Opciones fetch; admite headers y signal.
  * @returns {Promise<Object|null>} Contenido JSON recibido o null.
- * @throws {Error} Fallo HTTP con status/code/fields, fallo de red o cancelaci?n.
+ * @throws {Error} Fallo HTTP con status/code/fields, fallo de red o cancelaci?n. Un 401
+ *   UNAUTHENTICATED además notifica la expiración global de la sesión (B-3).
  */
 export async function apiRequest(path, options = {}) {
   let response;
@@ -63,6 +67,7 @@ export async function apiRequest(path, options = {}) {
     error.status = response.status;
     error.code = data?.code || "API_ROUTE_UNAVAILABLE";
     error.fields = data?.fields || null;
+    reportSessionExpiration({ code: error.code, path, status: error.status });
     throw error;
   }
 
@@ -163,6 +168,7 @@ export function uploadRawFile({ file, onUploadProgress, path, signal }) {
         );
         error.status = request.status;
         error.code = data?.code || "FILE_UPLOAD_FAILED";
+        reportSessionExpiration({ code: error.code, path, status: error.status });
         reject(error);
         return;
       }

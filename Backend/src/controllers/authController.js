@@ -15,7 +15,6 @@ import {
   sanitizeUser,
   toPublicUser,
   updateLastLoginAt,
-  updateUserPassword,
   updateUserProfilePhotoUrl,
 } from "../repositories/userRepository.js";
 import {
@@ -33,8 +32,15 @@ import {
   buildSessionCookie,
   preventAuthResponseCaching,
 } from "../utils/authCookies.js";
-import { createAuthToken, verifyAuthToken } from "../utils/tokens.js";
-import { invalidateCachedUser } from "../services/userSessionCache.js";
+import { verifyAuthToken } from "../utils/tokens.js";
+import {
+  changePasswordAndRotateSession,
+  issueUserSession,
+  resetPasswordAndRevokeSessions,
+  revokeCurrentSession,
+  revokeOtherUserSessions,
+  scheduleExpiredSessionCleanup,
+} from "../services/sessionService.js";
 import { prepareUpload, uploadPolicies } from "../services/fileUploadService.js";
 
 const FAKE_BCRYPT_HASH =
@@ -163,23 +169,16 @@ export async function login(req, res, next) {
       return;
     }
 
+    // Cada inicio de sesión crea una sesión independiente (B-3): ya no invalida las de otros
+    // dispositivos aunque el trigger de `users` actualice `updated_at` al registrar el acceso.
+    const { token } = await issueUserSession(userRecord.id);
     await updateLastLoginAt(userRecord.id);
+    scheduleExpiredSessionCleanup();
 
     const safeUser = sanitizeUser({
       ...userRecord,
       last_login_at: new Date().toISOString(),
     });
-    const token = createAuthToken(
-      {
-        email: safeUser.email,
-        role: safeUser.role.code,
-        sub: String(safeUser.id),
-      },
-      {
-        expiresInSeconds: authConfig.tokenExpiresInSeconds,
-        secret: authConfig.tokenSecret,
-      },
-    );
 
     res.setHeader(
       "Set-Cookie",
@@ -209,22 +208,55 @@ export function me(req, res) {
 }
 
 /**
- * Procesa el valor de logout para completar la responsabilidad asignada al módulo.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Cierra la sesión actual: revoca su `sid` en PostgreSQL y expira la cookie. Las demás sesiones
+ * del usuario siguen activas. La cookie se expira antes de revocar para que el navegador la
+ * descarte aunque la revocación falle; en ese caso el error se propaga y no se informa éxito.
  *
- * @param {import("express").Request} _req - Solicitud HTTP que este controlador no necesita inspeccionar.
+ * @param {import("express").Request} req - Solicitud con la sesión resuelta por `loadSession`.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
- * @returns {void} Finalización de la operación.
+ * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @returns {Promise<void>} Finalización de la operación.
  */
-export function logout(_req, res) {
-  preventAuthResponseCaching(res);
-  res.setHeader("Set-Cookie", buildExpiredSessionCookie());
-  res.status(204).end();
+export async function logout(req, res, next) {
+  try {
+    preventAuthResponseCaching(res);
+    res.setHeader("Set-Cookie", buildExpiredSessionCookie());
+
+    if (req.session?.isAuthenticated && req.session.payload?.sid) {
+      await revokeCurrentSession(req.session.payload.sid);
+    }
+
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
 }
 
 /**
- * Cambia el valor de contraseña aplicando las reglas de negocio correspondientes.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Revoca todas las sesiones del usuario autenticado excepto la actual (otros dispositivos).
+ * La sesión desde la que se solicita conserva el acceso y su cookie no cambia.
+ *
+ * @param {import("express").Request} req - Solicitud autenticada.
+ * @param {import("express").Response} res - Respuesta con el número de sesiones revocadas.
+ * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @returns {Promise<void>} Finalización de la operación.
+ */
+export async function revokeOtherSessions(req, res, next) {
+  try {
+    const revokedCount = await revokeOtherUserSessions({
+      currentSessionId: req.session.payload.sid,
+      userId: req.user.id,
+    });
+
+    res.status(200).json({ revokedCount });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Cambia la contraseña tras verificar la actual, revoca todas las sesiones del usuario y emite
+ * una cookie con una sesión nueva: solo el dispositivo que hizo el cambio conserva el acceso.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
@@ -272,23 +304,24 @@ export async function changePassword(req, res, next) {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await updateUserPassword(req.user.id, passwordHash);
-    invalidateCachedUser(req.user.id);
-    const token = createAuthToken(
-      {
-        email: req.user.email,
-        role: req.user.role.code,
-        sub: String(req.user.id),
-      },
-      {
-        expiresInSeconds: authConfig.tokenExpiresInSeconds,
-        secret: authConfig.tokenSecret,
-      },
-    );
+    // Revoca todas las sesiones (también la actual) y emite una nueva en la misma transacción.
+    const rotatedSession = await changePasswordAndRotateSession({
+      passwordHash,
+      userId: req.user.id,
+    });
+
+    if (!rotatedSession) {
+      res.setHeader("Set-Cookie", buildExpiredSessionCookie());
+      res.status(401).json({
+        code: "UNAUTHENTICATED",
+        message: "Sesión requerida.",
+      });
+      return;
+    }
 
     res.setHeader(
       "Set-Cookie",
-      buildSessionCookie(token, authConfig.tokenExpiresInSeconds),
+      buildSessionCookie(rotatedSession.token, authConfig.tokenExpiresInSeconds),
     );
     res.status(200).json({
       message: "Tu contraseña ha sido actualizada con éxito.",
@@ -346,7 +379,6 @@ export async function uploadProfilePhoto(req, res, next) {
     uploadedStorageKey = storageKey;
 
     const user = await updateUserProfilePhotoUrl(req.user.id, fileUrl);
-    invalidateCachedUser(req.user.id);
 
     if (!user) {
       await objectStorage.delete(storageKey).catch(() => {});
@@ -358,18 +390,8 @@ export async function uploadProfilePhoto(req, res, next) {
       return;
     }
 
-    const token = createAuthToken(
-      {
-        email: user.email,
-        role: user.role.code,
-        sub: String(user.id),
-      },
-      {
-        expiresInSeconds: authConfig.tokenExpiresInSeconds,
-        secret: authConfig.tokenSecret,
-      },
-    );
-
+    // La foto no es un cambio de seguridad: la sesión actual y las de otros dispositivos se
+    // conservan, por lo que no se reemite la cookie (B-3).
     if (
       previousStorageKey?.startsWith(previousProfilePhotoPrefix) &&
       previousStorageKey !== storageKey
@@ -377,10 +399,6 @@ export async function uploadProfilePhoto(req, res, next) {
       await objectStorage.delete(previousStorageKey).catch(() => {});
     }
 
-    res.setHeader(
-      "Set-Cookie",
-      buildSessionCookie(token, authConfig.tokenExpiresInSeconds),
-    );
     res.status(200).json({
       user: toPublicUser(user),
     });
@@ -584,8 +602,8 @@ export async function resetPassword(req, res, next) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    await updateUserPassword(userRecord.id, passwordHash);
-    invalidateCachedUser(userRecord.id);
+    // Quien recupera la cuenta debe iniciar sesión de nuevo: se revocan todas las sesiones.
+    await resetPasswordAndRevokeSessions({ passwordHash, userId: userRecord.id });
 
     res.status(200).json({
       message: "Tu contraseña ha sido actualizada con éxito.",

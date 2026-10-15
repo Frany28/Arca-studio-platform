@@ -11,7 +11,8 @@ import {
   refreshPendingRegistration,
   upsertPendingRegistration,
 } from "../repositories/registrationRepository.js";
-import { createAuthToken, verifyAuthToken } from "../utils/tokens.js";
+import { verifyAuthToken } from "../utils/tokens.js";
+import { issueUserSession } from "./sessionService.js";
 import {
   createRegistrationEmailPayload,
   hashRegistrationToken,
@@ -145,9 +146,7 @@ export async function completeRegistration({ token, password }) {
   }
   if (!completed) throw new NotFoundError("INVALID_REGISTRATION_TOKEN", "El enlace de registro no es válido, expiró o ya fue utilizado.");
   const user = await findActiveUserById(completed.userId);
-  const sessionToken = createAuthToken(
-    { email: user.email, role: user.role.code, sub: String(user.id) },
-    { expiresInSeconds: authConfig.tokenExpiresInSeconds, secret: authConfig.tokenSecret },
-  );
+  // La cuenta recién creada inicia una sesión revocable (B-3) igual que un inicio de sesión normal.
+  const { token: sessionToken } = await issueUserSession(user.id);
   return { token: sessionToken, user };
 }

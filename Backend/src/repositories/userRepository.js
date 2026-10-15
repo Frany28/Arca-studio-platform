@@ -1,4 +1,5 @@
-import { query } from "../config/db.js";
+import { pool, query } from "../config/db.js";
+import { createSession, revokeUserSessions } from "./sessionRepository.js";
 
 const USER_SELECT = `
   select
@@ -148,6 +149,38 @@ export async function findActiveUserById(id) {
 }
 
 /**
+ * Busca el usuario activo de una sesión vigente en una sola consulta indexada (hallazgo B-3).
+ * Devuelve null si la sesión no existe, pertenece a otro usuario, fue revocada o caducó, o si la
+ * cuenta o su rol dejaron de estar activos; así cada instancia ve la revocación de inmediato.
+ *
+ * @param {object} options - Identificadores tomados del JWT ya verificado.
+ * @param {string} options.sessionId - Identificador de la sesión (`sid`).
+ * @param {string|number} options.userId - Usuario del token (`sub`).
+ * @returns {Promise<object|null>} Usuario seguro con permisos, o null.
+ */
+export async function findActiveSessionUser({ sessionId, userId }) {
+  const result = await query(
+    `
+      ${USER_SELECT}
+        and u.id = $1
+        and u.status = 'active'
+        and exists (
+          select 1
+          from public.user_sessions s
+          where s.id = $2::uuid
+            and s.user_id = u.id
+            and s.revoked_at is null
+            and s.expires_at > now()
+        )
+      limit 1
+    `,
+    [userId, sessionId],
+  );
+
+  return toSafeUser(result.rows[0]);
+}
+
+/**
  * Busca el valor de active usuario credentials by id y devuelve null cuando no existe un registro accesible.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
@@ -189,22 +222,55 @@ export async function updateLastLoginAt(id) {
 }
 
 /**
- * Actualiza el valor de usuario contraseña conservando las reglas de acceso e integridad.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Sustituye la contraseña y revoca todas las sesiones del usuario en una única transacción (B-3).
+ * Opcionalmente crea en la misma transacción la sesión que conservará quien hizo el cambio, de modo
+ * que nunca queda una contraseña nueva con sesiones antiguas activas ni un usuario sin sesión válida.
  *
- * @param {string} id - Valor de `id` requerido por esta operación.
- * @param {string} passwordHash - Valor de `passwordHash` requerido por esta operación.
- * @returns {Promise<void>} Finalización de la operación.
+ * @param {object} options - Datos del cambio.
+ * @param {number|string} options.userId - Usuario cuya contraseña cambia.
+ * @param {string} options.passwordHash - Hash bcrypt de la nueva contraseña.
+ * @param {string} options.revocationReason - Motivo registrado en las sesiones revocadas.
+ * @param {number|null} [options.newSessionExpiresInSeconds] - Vigencia de la sesión nueva, o null para no crearla.
+ * @returns {Promise<{ updated: boolean, newSessionId: string|null }>} Resultado del cambio.
+ * @throws {Error} Cuando PostgreSQL falla; la transacción se revierte por completo.
  */
-export async function updateUserPassword(id, passwordHash) {
-  await query(
-    `
-      update public.users
-      set password_hash = $2, updated_at = now()
-      where id = $1
-    `,
-    [id, passwordHash],
-  );
+export async function updateUserPasswordRevokingSessions({
+  newSessionExpiresInSeconds = null,
+  passwordHash,
+  revocationReason,
+  userId,
+}) {
+  const client = await pool.connect();
+
+  try {
+    await client.query("begin");
+    const updated = await client.query(
+      `
+        update public.users
+        set password_hash = $2, updated_at = now()
+        where id = $1
+      `,
+      [userId, passwordHash],
+    );
+
+    if (updated.rowCount === 0) {
+      await client.query("rollback");
+      return { newSessionId: null, updated: false };
+    }
+
+    await revokeUserSessions({ reason: revocationReason, userId }, client);
+    const newSession = newSessionExpiresInSeconds
+      ? await createSession({ expiresInSeconds: newSessionExpiresInSeconds, userId }, client)
+      : null;
+    await client.query("commit");
+
+    return { newSessionId: newSession?.id || null, updated: true };
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**

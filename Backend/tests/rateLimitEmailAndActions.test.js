@@ -198,7 +198,8 @@ test("los tokens con firma inválida o de otro propósito no generan contador de
   }
   assert.deepEqual(policy("password-reset", validRegistration), [], "token de registro en recuperación");
   assert.deepEqual(policy("registration", validReset), [], "token de recuperación en registro");
-  assert.deepEqual(policy("password-reset", sign({ sub: "7" })), [], "token de sesión");
+  assert.deepEqual(policy("password-reset", sign({ sub: "7" })), [], "token de sesión anterior a B-3");
+  assert.deepEqual(policy("password-reset", sign({ sid: "0b6f3c9e-6d5a-4c1e-9a43-6f1a2b3c4d5e", sub: "7" })), [], "token de sesión con sid");
 });
 
 test("una avalancha de tokens falsificados no añade filas al contador", async (context) => {

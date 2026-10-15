@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// Opt-in: solo lecturas contra staging; no crea cuentas, notas ni solicitudes.
+// Opt-in contra staging: no crea cuentas, notas ni solicitudes. Desde B-3 la autenticación exige una
+// sesión en `user_sessions`: la prueba crea una sesión temporal del administrador y la elimina al terminar.
 test("PostgreSQL y HTTP: cola identifica al solicitante y detalles devuelve identidad y errores específicos", {
   skip: process.env.ARCA_REQUEST_CLIENT_DB_TESTS !== "1",
 }, async () => {
@@ -9,10 +10,10 @@ test("PostgreSQL y HTTP: cola identifica al solicitante y detalles devuelve iden
   dotenv.config({ quiet: true });
   const { query, pool } = await import("../src/config/db.js");
   const { default: app } = await import("../src/app.js");
-  const { authConfig } = await import("../src/config/auth.js");
-  const { createAuthToken } = await import("../src/utils/tokens.js");
+  const { issueUserSession } = await import("../src/services/sessionService.js");
   const server = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
+  const temporarySessionIds = [];
   try {
     const admins = await query(`select u.id from public.users u join public.roles r on r.id = u.role_id
       where r.code = 'admin' and u.status = 'active' and u.deleted_at is null limit 1`);
@@ -26,9 +27,13 @@ test("PostgreSQL y HTTP: cola identifica al solicitante y detalles devuelve iden
     assert.ok(admins.rows[0], "Se requiere un administrador activo de staging.");
     assert.ok(requests.rows[0], "Se requiere una solicitud pendiente de staging.");
     const request = requests.rows[0];
-    const authorization = (id) => ({ Authorization: `Bearer ${createAuthToken({ sub: String(id) }, { secret: authConfig.tokenSecret, expiresInSeconds: 120 })}` });
+    const authorization = async (id) => {
+      const session = await issueUserSession(id);
+      temporarySessionIds.push(session.sessionId);
+      return { Authorization: `Bearer ${session.token}` };
+    };
     const base = `http://127.0.0.1:${server.address().port}/api`;
-    const headers = authorization(admins.rows[0].id);
+    const headers = await authorization(admins.rows[0].id);
     const queue = await fetch(`${base}/project-requests/review-queue?limit=100`, { headers });
     assert.equal(queue.status, 200);
     const entry = (await queue.json()).projectRequests.find((item) => item.id === Number(request.id));
@@ -45,7 +50,7 @@ test("PostgreSQL y HTTP: cola identifica al solicitante y detalles devuelve iden
       [max.rows[0].id, headers, 404, "USER_NOT_FOUND"],
       ["undefined", headers, 400, "VALIDATION_ERROR"],
       [entry.requestedBy, {}, 401, "UNAUTHENTICATED"],
-      [entry.requestedBy, authorization(entry.requestedBy), 403, "FORBIDDEN"],
+      [entry.requestedBy, await authorization(entry.requestedBy), 403, "FORBIDDEN"],
     ]) {
       const response = await fetch(`${base}/admin/users/${id}`, { headers: requestHeaders });
       assert.equal(response.status, status);
@@ -53,6 +58,9 @@ test("PostgreSQL y HTTP: cola identifica al solicitante y detalles devuelve iden
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    if (temporarySessionIds.length) {
+      await query("delete from public.user_sessions where id = any($1::uuid[])", [temporarySessionIds]);
+    }
     await pool.end();
   }
 });

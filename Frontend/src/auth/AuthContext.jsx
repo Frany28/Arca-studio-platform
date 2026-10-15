@@ -6,13 +6,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { api, getApiUrl } from "../api/http.js";
+import { onSessionExpired } from "../api/client.js";
 import {
   AUTH_SESSION_STATUS,
   createAuthSessionRestorer,
+  createSessionExpirationHandler,
   loginAndConfirmSession,
 } from "./authSession.js";
 
@@ -82,6 +85,13 @@ export function AuthProvider({ children }) {
   const [sessionRestorer] = useState(() =>
     createAuthSessionRestorer({ fetchSession: api.auth.me }),
   );
+  // Lectura síncrona del estado para el manejador global de 401: varias peticiones pueden
+  // rechazarse a la vez y solo la primera debe limpiar la sesión y avisar a otras pestañas.
+  const isAuthenticatedRef = useRef(false);
+
+  useEffect(() => {
+    isAuthenticatedRef.current = Boolean(user);
+  }, [user]);
 
   const restoreSession = useCallback(() => {
     setSessionStatus(AUTH_SESSION_STATUS.LOADING);
@@ -159,6 +169,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const handleStorageEvent = (event) => {
       if (event.key === "arca_auth_logout") {
+        isAuthenticatedRef.current = false;
         setUser(null);
         setSessionStatus(AUTH_SESSION_STATUS.UNAUTHENTICATED);
       }
@@ -186,6 +197,7 @@ export function AuthProvider({ children }) {
    * @returns {Promise<void>} Finaliza tras intentar logout y difundir el cierre.
    */
   const logout = useCallback(async () => {
+    isAuthenticatedRef.current = false;
     sessionRestorer?.cancel();
     setUser(null);
     setSessionStatus(AUTH_SESSION_STATUS.UNAUTHENTICATED);
@@ -197,6 +209,29 @@ export function AuthProvider({ children }) {
     }
 
     broadcastLogout();
+  }, [broadcastLogout, sessionRestorer]);
+
+  // Sesión revocada, caducada o cuenta desactivada detectada por cualquier petición (B-3): tras
+  // confirmarlo con /auth/me se limpia el estado local y ProtectedRoute redirige al login. Un 403
+  // no llega aquí porque solo indica falta de permisos.
+  useEffect(() => {
+    const handleSessionExpired = createSessionExpirationHandler({
+      isAuthenticated: () => isAuthenticatedRef.current,
+      onConfirmedUser: (confirmedUser) => setUser(normalizeUser(confirmedUser)),
+      onExpired: () => {
+        isAuthenticatedRef.current = false;
+        setUser(null);
+        setSessionStatus(AUTH_SESSION_STATUS.UNAUTHENTICATED);
+        broadcastLogout();
+      },
+      restorer: sessionRestorer,
+    });
+
+    return onSessionExpired(() => {
+      handleSessionExpired().catch((error) => {
+        console.error("session_expiration_check_failed", error);
+      });
+    });
   }, [broadcastLogout, sessionRestorer]);
 
   const value = useMemo(

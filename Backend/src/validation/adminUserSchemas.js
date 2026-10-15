@@ -133,6 +133,12 @@ export const adminUserStatusSchema = z.object({
   }),
 });
 
+export const adminUserSessionRevokeSchema = z.object({
+  params: z.object({
+    userId: z.coerce.number().int().positive(),
+  }),
+});
+
 export const adminUserPhotoSchema = z.object({
   params: z.object({
     userId: z.coerce.number().int().positive(),

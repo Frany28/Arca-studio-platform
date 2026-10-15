@@ -8,10 +8,12 @@ import {
   logout,
   me,
   resetPassword,
+  revokeOtherSessions,
   uploadProfilePhoto,
   verifyResetToken,
 } from "../controllers/authController.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { ownSessionRevokeRateLimit } from "../middlewares/actionRateLimits.js";
 import { authRateLimits, emailRateLimits } from "../middlewares/authRateLimit.js";
 import { validate } from "../middlewares/validate.js";
 import { loginSchema } from "../validation/schemas.js";
@@ -53,5 +55,6 @@ router.post(
 );
 router.get("/me", requireAuth, me);
 router.post("/logout", logout);
+router.post("/sessions/revoke-others", requireAuth, ownSessionRevokeRateLimit, revokeOtherSessions);
 
 export default router;

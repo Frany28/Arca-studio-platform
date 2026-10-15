@@ -29,11 +29,13 @@ export const ACTION_RATE_LIMITS = Object.freeze({
   adminProjectRequestDecision: Object.freeze({ max: 60, windowMs: HOUR_MS }),
   adminUserCreate: Object.freeze({ max: 20, windowMs: HOUR_MS }),
   adminUserNote: Object.freeze({ max: 120, windowMs: HOUR_MS }),
+  adminUserSessionRevoke: Object.freeze({ max: 60, windowMs: HOUR_MS }),
   adminUserStatus: Object.freeze({ max: 60, windowMs: HOUR_MS }),
   comments: Object.freeze({
     max: positiveIntegerSetting("COMMENT_RATE_LIMIT_MAX", 30),
     windowMs: positiveIntegerSetting("COMMENT_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
   }),
+  ownSessionRevoke: Object.freeze({ max: 10, windowMs: HOUR_MS }),
   projectRequests: Object.freeze({
     max: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_MAX", 10),
     windowMs: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
@@ -62,11 +64,13 @@ export function createUserActionRateLimit(scope, limit) {
 export const commentRateLimit = createUserActionRateLimit("comments", ACTION_RATE_LIMITS.comments);
 export const requestRateLimit = createUserActionRateLimit("project-requests", ACTION_RATE_LIMITS.projectRequests);
 export const uploadRateLimit = createUserActionRateLimit("uploads", ACTION_RATE_LIMITS.uploads);
+export const ownSessionRevokeRateLimit = createUserActionRateLimit("own-session-revoke", ACTION_RATE_LIMITS.ownSessionRevoke);
 
 export const adminRateLimits = Object.freeze({
   projectBulkAction: createUserActionRateLimit("admin-project-bulk-action", ACTION_RATE_LIMITS.adminProjectBulkAction),
   projectRequestDecision: createUserActionRateLimit("admin-project-request-decision", ACTION_RATE_LIMITS.adminProjectRequestDecision),
   userCreate: createUserActionRateLimit("admin-user-create", ACTION_RATE_LIMITS.adminUserCreate),
   userNote: createUserActionRateLimit("admin-user-note", ACTION_RATE_LIMITS.adminUserNote),
+  userSessionRevoke: createUserActionRateLimit("admin-user-session-revoke", ACTION_RATE_LIMITS.adminUserSessionRevoke),
   userStatus: createUserActionRateLimit("admin-user-status", ACTION_RATE_LIMITS.adminUserStatus),
 });

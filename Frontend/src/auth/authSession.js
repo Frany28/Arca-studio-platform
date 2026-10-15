@@ -195,3 +195,48 @@ export function createAuthSessionRestorer(options) {
     },
   };
 }
+
+/**
+ * Crea el manejador global de 401 UNAUTHENTICATED de peticiones autenticadas (B-3).
+ * Antes de cerrar la sesión local la confirma con /auth/me mediante el restaurador compartido:
+ * así una respuesta tardía de una sesión anterior no expulsa a quien ya volvió a iniciar sesión y
+ * una caída temporal del backend no se confunde con una revocación. No llama al logout del backend,
+ * por lo que no puede provocar nuevos 401 ni bucles de redirección.
+ *
+ * @param {Object} params - Dependencias del manejador.
+ * @param {Function} params.isAuthenticated - Devuelve si la interfaz tiene sesión en este momento.
+ * @param {Function} params.onConfirmedUser - Recibe el usuario si la sesión sigue activa.
+ * @param {Function} params.onExpired - Limpia la sesión local; debe ser idempotente.
+ * @param {Object} params.restorer - Restaurador de createAuthSessionRestorer (deduplica llamadas).
+ * @returns {Function} Manejador que resuelve "ignored", "expired", "active", "unavailable" o "cancelled".
+ */
+export function createSessionExpirationHandler({
+  isAuthenticated,
+  onConfirmedUser,
+  onExpired,
+  restorer,
+}) {
+  return async function handleSessionExpired() {
+    if (!isAuthenticated()) return "ignored";
+
+    let result;
+    try {
+      result = await restorer.restore();
+    } catch (error) {
+      if (error?.name === "AbortError") return "cancelled";
+      throw error;
+    }
+
+    // Un logout o un login simultáneos ya resolvieron el estado local.
+    if (!isAuthenticated()) return "ignored";
+    if (result.status === AUTH_SESSION_STATUS.UNAUTHENTICATED) {
+      onExpired();
+      return "expired";
+    }
+    if (result.status === AUTH_SESSION_STATUS.AUTHENTICATED) {
+      onConfirmedUser(result.user);
+      return "active";
+    }
+    return "unavailable";
+  };
+}

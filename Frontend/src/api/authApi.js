@@ -1,4 +1,5 @@
 import { apiRequest, getApiUrl } from "./client.js";
+import { reportSessionExpiration } from "./sessionExpiration.js";
 
 export const authApi = {
   /**
@@ -195,6 +196,7 @@ export const authApi = {
           );
           error.status = request.status;
           error.code = data?.code || "PROFILE_PHOTO_UPLOAD_FAILED";
+          reportSessionExpiration({ code: error.code, path: "/auth/profile-photo", status: error.status });
           reject(error);
           return;
         }

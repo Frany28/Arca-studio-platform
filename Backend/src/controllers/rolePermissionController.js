@@ -5,7 +5,6 @@ import {
   listRoles,
   replaceRolePermissions,
 } from "../repositories/rolePermissionRepository.js";
-import { clearUserSessionCache } from "../services/userSessionCache.js";
 
 /**
  * Interpreta el valor de include inactive y descarta los formatos que no sean válidos.
@@ -149,8 +148,6 @@ export async function updateRolePermissions(req, res, next) {
       });
       return;
     }
-
-    clearUserSessionCache();
 
     res.status(200).json({
       role: result.boundary,

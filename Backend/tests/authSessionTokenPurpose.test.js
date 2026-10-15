@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRateLimitQueryMock } from "./helpers/rateLimitQueryMock.js";
+import { createSessionStoreMock, mockPoolTransactions } from "./helpers/sessionStoreMock.js";
 import test from "node:test";
 import bcrypt from "bcrypt";
 
@@ -13,7 +14,6 @@ const { pool } = await import("../src/config/db.js");
 const { default: app } = await import("../src/app.js");
 const { authConfig } = await import("../src/config/auth.js");
 const { createPasswordResetPayload } = await import("../src/services/passwordResetEmailService.js");
-const { clearUserSessionCache } = await import("../src/services/userSessionCache.js");
 const { createAuthToken, isSessionTokenPayload } = await import("../src/utils/tokens.js");
 
 const PASSWORD = "Segura2026*";
@@ -45,27 +45,34 @@ function userRow() {
 }
 
 /**
- * Sustituye `pool.query` por respuestas mínimas para usuarios y tokens de recuperación.
+ * Sustituye `pool.query` por respuestas mínimas para usuarios, sesiones (B-3) y tokens de recuperación.
  *
  * @param {import("node:test").TestContext} context - Contexto que restaura el mock.
- * @returns {Array<string>} Consultas recibidas, para comprobar qué rutas tocaron la base.
+ * @returns {{ calls: Array<string>, sessionStore: object }} Consultas recibidas y sesiones simuladas.
  */
 function mockDatabase(context) {
   const calls = [];
-  clearUserSessionCache();
   const rateLimitQueries = createRateLimitQueryMock();
+  const sessionStore = createSessionStoreMock();
+  mockPoolTransactions(context, pool);
   context.mock.method(pool, "query", async (sql, params) => {
     // Contador compartido de B-2 (no cuenta como consulta de negocio).
     const rateLimited = rateLimitQueries.handle(sql, params);
     if (rateLimited) return rateLimited;
     calls.push(sql);
-    if (sql.includes("from public.users u")) return { rows: [userRow()], rowCount: 1 };
+    const sessionResult = sessionStore.handle(sql, params);
+    if (sessionResult) return sessionResult;
+    if (sql.includes("from public.users u")) {
+      const rows = sessionStore.filterSessionUserRows(sql, params, [userRow()]);
+      return { rows, rowCount: rows.length };
+    }
+    if (sql.includes("update public.users")) return { rows: [], rowCount: 1 };
     if (sql.includes("from public.password_recovery_tokens")) {
       return { rows: [{ expires_at: new Date(Date.now() + 60_000), id: 1 }], rowCount: 1 };
     }
     return { rows: [], rowCount: 0 };
   });
-  return calls;
+  return { calls, sessionStore };
 }
 
 /**
@@ -101,17 +108,24 @@ function tokenFromResetUrl(resetUrl) {
   return new URL(resetUrl).searchParams.get("token");
 }
 
-test("solo los payloads sin propósito y con usuario se consideran sesiones", () => {
-  assert.equal(isSessionTokenPayload({ sub: "7", role: "client" }), true);
+const SESSION_ID = "0b6f3c9e-6d5a-4c1e-9a43-6f1a2b3c4d5e";
+
+test("solo los payloads sin propósito, con usuario y con sid UUID se consideran sesiones", () => {
+  assert.equal(isSessionTokenPayload({ sid: SESSION_ID, sub: "7" }), true);
   for (const purpose of ["password_reset", "user_registration", "session", "", null, undefined]) {
-    assert.equal(isSessionTokenPayload({ purpose, sub: "7" }), false, `purpose=${purpose}`);
+    assert.equal(isSessionTokenPayload({ purpose, sid: SESSION_ID, sub: "7" }), false, `purpose=${purpose}`);
   }
+  assert.equal(isSessionTokenPayload({ role: "client", sub: "7" }), false, "JWT anterior a B-3 sin sid");
+  for (const sid of ["", "no-es-uuid", 7, null, `${SESSION_ID}x`]) {
+    assert.equal(isSessionTokenPayload({ sid, sub: "7" }), false, `sid=${sid}`);
+  }
+  assert.equal(isSessionTokenPayload({ sid: SESSION_ID, sub: "7 or 1=1" }), false);
   assert.equal(isSessionTokenPayload({ role: "admin" }), false);
   assert.equal(isSessionTokenPayload(null), false);
 });
 
 test("un JWT de recuperación válido recibe 401 en /api/auth/me por Bearer y por cookie", async (context) => {
-  const calls = mockDatabase(context);
+  const { calls } = mockDatabase(context);
   const request = await startServer(context);
   const resetToken = tokenFromResetUrl(createPasswordResetPayload({ email: "cliente@arca.test", id: 7 }).resetUrl);
 
@@ -137,16 +151,47 @@ test("cualquier otro token de un solo uso con sujeto recibe 401", async (context
   }
 });
 
-test("los tokens de sesión existentes siguen autenticando", async (context) => {
-  mockDatabase(context);
+test("un JWT de sesión anterior a B-3 (sin sid) recibe 401 sin consultar la base", async (context) => {
+  const { calls } = mockDatabase(context);
   const request = await startServer(context);
-  const sessionToken = signToken({ email: "cliente@arca.test", role: "client", sub: "7" });
+  const legacyToken = signToken({ email: "cliente@arca.test", role: "client", sub: "7" });
 
-  const response = await request("/api/auth/me", {
-    headers: { Cookie: `${authConfig.cookieName}=${sessionToken}` },
+  for (const headers of [
+    { Authorization: `Bearer ${legacyToken}` },
+    { Cookie: `${authConfig.cookieName}=${legacyToken}` },
+  ]) {
+    const response = await request("/api/auth/me", { headers });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).code, "UNAUTHENTICATED");
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("un token con sid de una sesión activa autentica; con sid desconocido recibe 401", async (context) => {
+  const { sessionStore } = mockDatabase(context);
+  const request = await startServer(context);
+  const session = sessionStore.create(7);
+
+  const active = await request("/api/auth/me", {
+    headers: { Cookie: `${authConfig.cookieName}=${signToken({ sid: session.id, sub: "7" })}` },
   });
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).user.id, 7);
+  assert.equal(active.status, 200);
+  assert.equal((await active.json()).user.id, 7);
+
+  const unknown = await request("/api/auth/me", {
+    headers: { Cookie: `${authConfig.cookieName}=${signToken({ sid: SESSION_ID, sub: "7" })}` },
+  });
+  assert.equal(unknown.status, 401);
+});
+
+test("un token con sid y purpose sigue rechazándose aunque la sesión exista", async (context) => {
+  const { sessionStore } = mockDatabase(context);
+  const request = await startServer(context);
+  const session = sessionStore.create(7);
+  const response = await request("/api/auth/me", {
+    headers: { Authorization: `Bearer ${signToken({ purpose: "password_reset", sid: session.id, sub: "7" })}` },
+  });
+  assert.equal(response.status, 401);
 });
 
 test("el login emite una sesión que /api/auth/me acepta", async (context) => {
@@ -183,7 +228,7 @@ test("el token de recuperación sigue siendo válido para su propio flujo", asyn
   assert.equal(reset.status, 200);
 
   const sessionAsReset = await post("/api/auth/verify-reset-token", {
-    token: signToken({ email: "cliente@arca.test", role: "client", sub: "7" }),
+    token: signToken({ sid: SESSION_ID, sub: "7" }),
   });
   assert.equal(sessionAsReset.status, 400, "una sesión tampoco sirve como token de recuperación");
 });

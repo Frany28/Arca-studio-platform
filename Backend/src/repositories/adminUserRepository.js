@@ -1,5 +1,32 @@
 import { pool, query } from "../config/db.js";
 import { mapAdminUserMetrics } from "../utils/adminUsers.js";
+import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "./sessionRepository.js";
+
+/**
+ * Decide si una edición administrativa cambia la seguridad de la cuenta y con qué motivo deben
+ * revocarse sus sesiones (B-3). Cambiar nombre, teléfonos o empresa no cierra sesiones; sí lo hacen
+ * una contraseña nueva, otro rol, otro correo o cualquier cambio de estado.
+ *
+ * @param {object} options - Estado anterior y nuevo de la cuenta.
+ * @param {{ email: string, role_id: number|string, status: string }} options.current - Fila previa bloqueada.
+ * @param {string} options.email - Correo nuevo.
+ * @param {string|null} options.passwordHash - Hash de la contraseña nueva, o null si no cambia.
+ * @param {number|string} options.roleId - Rol nuevo.
+ * @param {string} options.status - Estado nuevo.
+ * @returns {string|null} Motivo de revocación, o null si no hay cambio de seguridad.
+ */
+export function resolveAdminEditRevocationReason({ current, email, passwordHash, roleId, status }) {
+  if (status !== "active") return SESSION_REVOCATION_REASONS.userDisabled;
+  if (passwordHash) return SESSION_REVOCATION_REASONS.passwordChanged;
+  if (
+    String(current.role_id) !== String(roleId)
+    || String(current.email).toLowerCase() !== String(email).toLowerCase()
+    || current.status !== status
+  ) {
+    return SESSION_REVOCATION_REASONS.securityProfileChanged;
+  }
+  return null;
+}
 
 /**
  * Busca el valor de administrativo usuario conflict y devuelve null cuando no existe un registro accesible.
@@ -72,7 +99,8 @@ export async function findAdminUserAccessRecord(userId) {
  * @param {unknown} options.secondaryPhone - Valor de `options.secondaryPhone` requerido por esta operación.
  * @param {unknown} options.status - Valor de `options.status` requerido por esta operación.
  * @param {string} options.userId - Valor de `options.userId` requerido por esta operación.
- * @returns {Promise<object>} Resultado producido por la operación.
+ * @returns {Promise<object>} Usuario actualizado y `revokedSessions`: las sesiones se revocan en la misma
+ *   transacción cuando cambian contraseña, rol, correo o estado (B-3).
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function updateAdminUserRecord({
@@ -91,7 +119,7 @@ export async function updateAdminUserRecord({
   try {
     await client.query("begin");
     const currentResult = await client.query(
-      `select client_id from public.users where id = $1 and deleted_at is null for update`,
+      `select client_id, role_id, email, status from public.users where id = $1 and deleted_at is null for update`,
       [userId],
     );
     const current = currentResult.rows[0];
@@ -150,9 +178,20 @@ export async function updateAdminUserRecord({
       `,
       [userId, clientId, role.id, email, firstName, lastName, phone, secondaryPhone, companyName, status, passwordHash],
     );
+    const revocationReason = resolveAdminEditRevocationReason({
+      current,
+      email,
+      passwordHash,
+      roleId: role.id,
+      status,
+    });
+    const revokedSessions = revocationReason
+      ? await revokeUserSessions({ reason: revocationReason, userId }, client)
+      : 0;
     await client.query("commit");
     return {
       reason: null,
+      revokedSessions,
       user: { ...userResult.rows[0], role_code: role.code, role_name: role.name },
     };
   } catch (error) {
@@ -539,8 +578,8 @@ export async function archiveAdminUserNoteRecord({ adminUserId, noteId, targetUs
 }
 
 /**
- * Actualiza el estado persistido de un usuario administrado conservando las reglas de acceso e integridad.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Actualiza el estado persistido de un usuario administrado y de su cliente asociado. Si el estado
+ * deja de ser activo revoca todas sus sesiones en la misma transacción (B-3).
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.status - Valor de `options.status` requerido por esta operación.
@@ -579,6 +618,10 @@ export async function updateAdminUserStatusRecord({ status, userId }) {
         `,
         [updatedUser.client_id, status === "active" ? "active" : "inactive"],
       );
+    }
+
+    if (updatedUser && status !== "active") {
+      await revokeUserSessions({ reason: SESSION_REVOCATION_REASONS.userDisabled, userId }, client);
     }
 
     await client.query("commit");

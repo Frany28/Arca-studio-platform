@@ -1,9 +1,7 @@
 import { authConfig, resolveRouteAuthBypass } from "../config/auth.js";
-import { findActiveUserById } from "../repositories/userRepository.js";
 import { parseCookies } from "../utils/cookies.js";
 import { isSessionTokenPayload, verifyAuthToken } from "../utils/tokens.js";
-import { getOrLoadUser } from "../services/userSessionCache.js";
-import { isTokenOlderThanUser } from "../utils/sessionFreshness.js";
+import { loadSessionUser } from "../services/sessionService.js";
 
 const routeAuthBypass = resolveRouteAuthBypass();
 const ROUTE_AUTH_DISABLED_FOR_TESTS = routeAuthBypass.enabled;
@@ -104,10 +102,11 @@ function getBearerToken(req) {
 
 /**
  * Resuelve la sesión autenticada a partir de la solicitud y la configuración disponible.
- * Solo acepta tokens de sesión: los de un solo uso (recuperación, registro) producen una sesión vacía.
+ * Solo acepta tokens de sesión con `sid`; la sesión debe seguir activa en PostgreSQL (B-3), por lo
+ * que una revocación o desactivación surte efecto en la siguiente petición de cualquier instancia.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
- * @returns {Promise<object>} Resultado producido por la operación.
+ * @returns {Promise<object>} Sesión resuelta y usuario autenticado, o una sesión vacía.
  */
 async function resolveSession(req) {
   const cookies = parseCookies(req.headers.cookie);
@@ -118,6 +117,7 @@ async function resolveSession(req) {
 
   // Los tokens de recuperación y registro comparten secreto y formato con la
   // sesión; sin esta comprobación un enlace de correo serviría como sesión.
+  // Los JWT anteriores a B-3 no tienen `sid` y también se rechazan aquí.
   if (!isSessionTokenPayload(payload)) {
     return {
       session: getEmptySession(),
@@ -125,11 +125,9 @@ async function resolveSession(req) {
     };
   }
 
-  const user = await getOrLoadUser(payload.sub, () =>
-    findActiveUserById(payload.sub),
-  );
+  const user = await loadSessionUser(payload);
 
-  if (!user || isTokenOlderThanUser(payload, user)) {
+  if (!user) {
     return {
       session: getEmptySession(),
       user: null,

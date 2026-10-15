@@ -62,20 +62,26 @@ export function createAuthToken(payload, { expiresInSeconds, secret }) {
   return `${encodedHeader}.${encodedBody}.${signature}`;
 }
 
+const SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Determina si un payload ya verificado corresponde a una sesión y no a un token de un solo uso.
- * Los tokens de recuperación, registro u otras operaciones siempre declaran `purpose`; las sesiones
- * nunca lo incluyen, así que cualquier `purpose` (incluso vacío o null) se rechaza para fallar cerrado
- * y conservar la validez de las sesiones emitidas antes de esta regla.
+ * Determina si un payload ya verificado corresponde a una sesión revocable y no a un token de un
+ * solo uso. Los tokens de recuperación o registro declaran `purpose` (cualquier valor se rechaza
+ * para fallar cerrado) y las sesiones exigen un `sid` UUID de `user_sessions`: los JWT emitidos
+ * antes de B-3, sin `sid`, dejan de ser válidos y obligan a iniciar sesión de nuevo.
  *
  * @param {object|null} payload - Payload devuelto por `verifyAuthToken`.
- * @returns {boolean} true solo si el payload identifica a un usuario y no declara propósito.
+ * @returns {boolean} true solo si identifica a un usuario y a una sesión, sin propósito declarado.
  */
 export function isSessionTokenPayload(payload) {
   return Boolean(
     payload &&
       typeof payload === "object" &&
       payload.sub &&
+      /^\d+$/.test(String(payload.sub)) &&
+      typeof payload.sid === "string" &&
+      SESSION_ID_PATTERN.test(payload.sid) &&
       !Object.hasOwn(payload, "purpose"),
   );
 }

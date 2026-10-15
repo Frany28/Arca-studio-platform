@@ -274,6 +274,21 @@ model admin_user_notes {
 
   @@index([admin_user_id, target_user_id, created_at(sort: Desc), id(sort: Desc)], map: "admin_user_notes_owner_target_cursor_idx")
 }
+/// Revocable login sessions (B-3). The session JWT carries `sid` = id. No IP, user agent or token is stored.
+/// This model contains row level security and requires additional setup for migrations.
+model user_sessions {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        BigInt
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at     DateTime  @db.Timestamptz(6)
+  revoked_at     DateTime? @db.Timestamptz(6)
+  revoked_reason String?   @db.VarChar(40)
+  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_sessions_user")
+
+  @@index([user_id], map: "user_sessions_active_user_idx", where: raw("(revoked_at IS NULL)"))
+  @@index([expires_at], map: "user_sessions_expires_at_idx")
+}
+
 /// Shared rate limiting counters (B-2). key_hash is an HMAC-SHA256; no personal data is stored.
 /// This model contains row level security and requires additional setup for migrations.
 model rate_limit_buckets {
@@ -628,6 +643,7 @@ model users {
   notifications_notifications_created_byTousers         notifications[]            @relation("notifications_created_byTousers")
   notifications_notifications_user_idTousers            notifications[]            @relation("notifications_user_idTousers")
   password_recovery_tokens                              password_recovery_tokens[]
+  user_sessions                                         user_sessions[]
   environment_comments                                  environment_comments[]
   project_comments                                      project_comments[]
   project_progress_updates                              project_progress_updates[]

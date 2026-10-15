@@ -19,7 +19,7 @@ import {
   updateAdminUserRecord,
 } from "../repositories/adminUserRepository.js";
 import { mapAdminUser, mapAdminUserDetails, mapAdminUserNote } from "../utils/adminUsers.js";
-import { invalidateCachedUser } from "./userSessionCache.js";
+import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "../repositories/sessionRepository.js";
 import {
   decodeCursor,
   pageResult,
@@ -232,8 +232,37 @@ export async function updateAdminUserStatus({ actorUserId, status, userId }) {
     throw new NotFoundError("USER_NOT_FOUND", "El usuario seleccionado no existe.");
   }
 
-  invalidateCachedUser(userId);
   return mapAdminUser(updatedUser);
+}
+
+/**
+ * Revoca todas las sesiones activas de otro usuario por decisión de un administrador (B-3).
+ * El usuario deberá iniciar sesión de nuevo en todos sus dispositivos; su cuenta no cambia.
+ * Un administrador no puede revocar sus propias sesiones por esta vía.
+ *
+ * @param {object} options - Datos de la revocación.
+ * @param {number|string} options.actorUserId - Administrador que ejecuta la acción.
+ * @param {number|string} options.userId - Usuario cuyas sesiones se revocan.
+ * @returns {Promise<{ revokedCount: number }>} Número de sesiones revocadas.
+ * @throws {ConflictError} Cuando el administrador intenta revocar sus propias sesiones.
+ * @throws {NotFoundError} Cuando el usuario no existe o fue eliminado.
+ */
+export async function revokeAdminUserSessions({ actorUserId, userId }) {
+  if (Number(actorUserId) === Number(userId)) {
+    throw new ConflictError(
+      "SELF_SESSION_REVOKE_NOT_ALLOWED",
+      "Usa el cierre de sesión de tu cuenta para revocar tus propias sesiones.",
+    );
+  }
+  if (!(await adminUserExists(userId))) {
+    throw new NotFoundError("USER_NOT_FOUND", "El usuario seleccionado no existe.");
+  }
+
+  const revokedCount = await revokeUserSessions({
+    reason: SESSION_REVOCATION_REASONS.adminRevoked,
+    userId,
+  });
+  return { revokedCount };
 }
 
 /**
@@ -305,6 +334,5 @@ export async function updateAdminUser({ actorUserId, payload, userId }) {
     throw new NotFoundError("USER_NOT_FOUND", "El usuario seleccionado no existe.");
   }
 
-  invalidateCachedUser(userId);
   return mapAdminUser(updated.user);
 }
