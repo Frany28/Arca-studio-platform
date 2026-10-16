@@ -3,6 +3,7 @@ import {
   cloneElement,
   isValidElement,
   useEffect,
+  useEffectEvent,
   useId,
   useImperativeHandle,
   useLayoutEffect,
@@ -12,10 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { TOOLTIP_DEFAULT_PROPS, TOOLTIP_POSITIONS } from "./tooltipConfig.js";
-import {
-  getAdaptiveTooltipPosition,
-  getTooltipViewportOffset,
-} from "./tooltipPosition.js";
+import { getTooltipPlacement, getTooltipSide } from "./tooltipPosition.js";
 
 const TOUCH_LONG_PRESS_MS = 550;
 const TOUCH_TOOLTIP_DISMISS_MS = 1200;
@@ -48,6 +46,15 @@ const TOOLTIP_TAIL_CLASSNAMES = {
   "Bottom center": "left-1/2 top-[-8.512px] -translate-x-1/2",
   "Bottom right": "right-[6px] top-[-8.512px]",
   "Bottom left": "left-[6px] top-[-8.512px]",
+};
+
+// Borde de la burbuja en el que se apoya la flecha cuando el portal calcula su desplazamiento;
+// el eje restante se fija con `arrowOffset` para que la punta siga al centro del ancla.
+const TOOLTIP_TAIL_SIDE_CLASSNAMES = {
+  Right: "left-[-10px] -translate-y-1/2",
+  Left: "right-[-10px] -translate-y-1/2",
+  Top: "bottom-[-8.512px] -translate-x-1/2",
+  Bottom: "top-[-8.512px] -translate-x-1/2",
 };
 
 const TOOLTIP_BUBBLE_CLASSNAMES = {
@@ -137,25 +144,63 @@ function getResolvedNodeId({ tipPosition, showSubtext, showTip }) {
   return TOOLTIP_NODE_IDS.base;
 }
 
-// Calcula la posición inicial del tooltip respecto al elemento ancla.
-function getPortalPosition(anchor, tipPosition) {
-  const rect = anchor.getBoundingClientRect();
-  const positions = {
-    Right: { left: rect.right + 12, top: rect.top + rect.height / 2, transform: "translateY(-50%)" },
-    Left: { left: rect.left - 12, top: rect.top + rect.height / 2, transform: "translate(-100%, -50%)" },
-    "Top center": { left: rect.left + rect.width / 2, top: rect.top - 12, transform: "translate(-50%, -100%)" },
-    "Top right": { left: rect.right, top: rect.top - 12, transform: "translateY(-100%)" },
-    "Top left": { left: rect.left, top: rect.top - 12, transform: "translateY(-100%)" },
-    "Bottom center": { left: rect.left + rect.width / 2, top: rect.bottom + 12, transform: "translateX(-50%)" },
-    "Bottom right": { left: rect.right, top: rect.bottom + 12, transform: "translateX(-100%)" },
-    "Bottom left": { left: rect.left, top: rect.bottom + 12, transform: "none" },
-  };
+/**
+ * Elige el nodo donde se monta el portal del tooltip.
+ * Con un elemento en pantalla completa solo se pinta su subárbol (top layer), así que el tooltip
+ * de un ancla contenida en él debe montarse dentro; en otro caso usa la capa global del body.
+ *
+ * @param {Element} anchor Elemento que abrió el tooltip.
+ * @returns {Element} Contenedor del portal.
+ */
+function getTooltipPortalContainer(anchor) {
+  const fullscreenElement = document.fullscreenElement;
 
-  return positions[tipPosition];
+  return fullscreenElement?.contains(anchor) ? fullscreenElement : document.body;
+}
+
+/**
+ * Compara dos colocaciones para descartar actualizaciones de estado que no cambian nada.
+ * Evita re-renderizados en cadena al recalcular la posición en cada render abierto.
+ *
+ * @param {object|null} current Colocación vigente.
+ * @param {object} next Colocación recién calculada.
+ * @returns {boolean} true si ambas producen el mismo resultado visual.
+ */
+function isSamePortalPlacement(current, next) {
+  return Boolean(current) &&
+    current.container === next.container &&
+    current.position === next.position &&
+    current.left === next.left &&
+    current.top === next.top &&
+    current.arrowOffset === next.arrowOffset;
+}
+
+/**
+ * Obtiene la clase y el estilo que colocan la flecha en la burbuja.
+ * Con `arrowOffset` (portal posicionado) la flecha se apoya en el borde del lado y se desplaza
+ * hasta el centro del ancla; sin él conserva las posiciones fijas del diseño (inline y showcase).
+ *
+ * @param {string} tipPosition Posición resuelta del tooltip.
+ * @param {number} [arrowOffset] Centro de la flecha desde el borde izquierdo o superior de la burbuja.
+ * @returns {{ className: string, style: object|undefined }} Colocación de la flecha.
+ */
+function getTailPlacement(tipPosition, arrowOffset) {
+  if (typeof arrowOffset !== "number") {
+    return { className: TOOLTIP_TAIL_CLASSNAMES[tipPosition], style: undefined };
+  }
+
+  const side = getTooltipSide(tipPosition);
+  const isVerticalSide = side === "Top" || side === "Bottom";
+
+  return {
+    className: TOOLTIP_TAIL_SIDE_CLASSNAMES[side],
+    style: isVerticalSide ? { left: arrowOffset } : { top: arrowOffset },
+  };
 }
 
 // Renderiza el contenido visual del tooltip y su flecha opcional.
 function TooltipBubble({
+  arrowOffset,
   className,
   content,
   text,
@@ -167,7 +212,7 @@ function TooltipBubble({
   ...props
 }) {
   const resolvedPosition = getResolvedPosition(tipPosition);
-  const tailClassName = TOOLTIP_TAIL_CLASSNAMES[resolvedPosition];
+  const tailPlacement = getTailPlacement(resolvedPosition, arrowOffset);
 
   return (
     <div
@@ -204,8 +249,9 @@ function TooltipBubble({
         <span
           className={clsx(
             "absolute inline-flex h-[16px] w-[20px] items-center justify-center",
-            tailClassName,
+            tailPlacement.className,
           )}
+          style={tailPlacement.style}
           aria-hidden="true"
         >
           <TooltipTail tipPosition={resolvedPosition} />
@@ -234,10 +280,7 @@ function Tooltip({
   ...props
 }) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
-  const [portalPosition, setPortalPosition] = useState(null);
-  const [portalTipPosition, setPortalTipPosition] = useState(
-    getResolvedPosition(tipPosition),
-  );
+  const [portalPlacement, setPortalPlacement] = useState(null);
   const anchorRef = useRef(null);
   const portalRef = useRef(null);
   const longPressTimerRef = useRef(null);
@@ -266,90 +309,70 @@ function Tooltip({
     [],
   );
 
+  /**
+   * Mide el ancla y la burbuja montada en el portal y guarda la colocación final en un solo paso.
+   * El tamaño de la burbuja no depende de su posición (`w-max` con ancho máximo del viewport),
+   * por lo que una única medición basta y el lado se recalcula siempre desde la preferencia,
+   * sin depender del lado anterior: no hay ciclos de reposicionamiento.
+   */
+  const syncPortalPlacement = useEffectEvent(() => {
+    if (!portal || !resolvedOpen) {
+      // Al cerrar se descarta la colocación para que la próxima apertura vuelva a medir.
+      if (portalPlacement) setPortalPlacement(null);
+      return;
+    }
+
+    const anchor = anchorRef.current;
+    const portalNode = portalRef.current;
+
+    if (!anchor?.isConnected || !portalNode) {
+      return;
+    }
+
+    const bubbleRect = portalNode.getBoundingClientRect();
+    const nextPlacement = {
+      container: getTooltipPortalContainer(anchor),
+      ...getTooltipPlacement({
+        anchorRect: anchor.getBoundingClientRect(),
+        preferredPosition: resolvedPosition,
+        tooltipHeight: bubbleRect.height,
+        tooltipWidth: bubbleRect.width,
+        viewportHeight: window.innerHeight,
+        viewportWidth: document.documentElement.clientWidth || window.innerWidth,
+      }),
+    };
+
+    setPortalPlacement((current) =>
+      isSamePortalPlacement(current, nextPlacement) ? current : nextPlacement,
+    );
+  });
+
+  // Recalcula tras cada render (antes de pintar) para seguir anclas que se mueven, cambios de
+  // texto y el primer montaje oculto; la comparación de colocaciones corta el ciclo.
   useLayoutEffect(() => {
-    if (!portal || !resolvedOpen || !anchorRef.current) {
+    syncPortalPlacement();
+  });
+
+  useEffect(() => {
+    if (!portal || !resolvedOpen) {
       return undefined;
     }
 
-    const updatePosition = () => {
-      if (anchorRef.current) {
-        setPortalPosition(
-          getPortalPosition(anchorRef.current, portalTipPosition),
-        );
-      }
-    };
+    const handleLayoutChange = () => syncPortalPlacement();
 
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", handleLayoutChange);
+    window.addEventListener("scroll", handleLayoutChange, true);
+    document.addEventListener("fullscreenchange", handleLayoutChange);
 
     return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", handleLayoutChange);
+      window.removeEventListener("scroll", handleLayoutChange, true);
+      document.removeEventListener("fullscreenchange", handleLayoutChange);
     };
-  }, [portal, portalTipPosition, resolvedOpen]);
-
-  useLayoutEffect(() => {
-    if (
-      !portal ||
-      !resolvedOpen ||
-      !portalPosition ||
-      !portalRef.current ||
-      !anchorRef.current
-    ) {
-      return;
-    }
-
-    const rect = portalRef.current.getBoundingClientRect();
-    const anchorRect = anchorRef.current.getBoundingClientRect();
-    const adaptivePosition = getAdaptiveTooltipPosition({
-      anchorBottom: anchorRect.bottom,
-      anchorLeft: anchorRect.left,
-      anchorRight: anchorRect.right,
-      anchorTop: anchorRect.top,
-      preferredPosition: resolvedPosition,
-      tooltipHeight: rect.height,
-      tooltipWidth: rect.width,
-      viewportHeight: window.innerHeight,
-      viewportWidth: window.innerWidth,
-    });
-
-    if (adaptivePosition !== portalTipPosition) {
-      setPortalTipPosition(adaptivePosition);
-      setPortalPosition(getPortalPosition(anchorRef.current, adaptivePosition));
-      return;
-    }
-
-    const { offsetX, offsetY } = getTooltipViewportOffset({
-      bottom: rect.bottom,
-      left: rect.left,
-      right: rect.right,
-      top: rect.top,
-      viewportHeight: window.innerHeight,
-      viewportWidth: window.innerWidth,
-    });
-
-    const isVerticalPlacement =
-      portalTipPosition.startsWith("Top") ||
-      portalTipPosition.startsWith("Bottom");
-    const safeOffsetX = isVerticalPlacement ? offsetX : 0;
-    const safeOffsetY = isVerticalPlacement ? 0 : offsetY;
-
-    if (Math.abs(safeOffsetX) > 0.5 || Math.abs(safeOffsetY) > 0.5) {
-      setPortalPosition((current) => ({
-        ...current,
-        left: current.left + safeOffsetX,
-        top: current.top + safeOffsetY,
-      }));
-    }
-  }, [portal, portalPosition, portalTipPosition, resolvedOpen, resolvedPosition]);
+  }, [portal, resolvedOpen]);
 
   // Actualiza el estado abierto respetando modo controlado o interno.
   const setTooltipOpen = (nextOpen) => {
-    if (nextOpen) {
-      setPortalTipPosition(resolvedPosition);
-    }
-
     if (!isOpenControlled) {
       setInternalOpen(nextOpen);
     }
@@ -509,28 +532,35 @@ function Tooltip({
     childContextMenuHandler?.(event);
   };
 
+  // El primer render abierto monta la burbuja oculta en el origen para medirla; la colocación
+  // se aplica en el layout effect antes de pintar, por lo que no hay saltos visibles.
   const portalTooltip =
-    resolvedOpen && portal && portalPosition && typeof document !== "undefined"
+    resolvedOpen && portal && typeof document !== "undefined"
       ? createPortal(
           <span
             ref={portalRef}
             className="pointer-events-none fixed z-[var(--z-tooltip)]"
-            style={portalPosition}
+            style={
+              portalPlacement
+                ? { left: portalPlacement.left, top: portalPlacement.top }
+                : { left: 0, top: 0, visibility: "hidden" }
+            }
           >
             <TooltipBubble
+              arrowOffset={portalPlacement?.arrowOffset}
               className={className}
               content={content}
               text={text}
               subtext={subtext}
               showSubtext={showSubtext}
               showTip={showTip}
-              tipPosition={portalTipPosition}
+              tipPosition={portalPlacement?.position ?? resolvedPosition}
               tooltipId={tooltipId}
               aria-label={ariaLabel}
               {...props}
             />
           </span>,
-          document.body,
+          portalPlacement?.container ?? document.body,
         )
       : null;
 

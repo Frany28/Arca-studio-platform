@@ -287,21 +287,24 @@ function PlaybackBar({
         onPointerLeave={handlePointerLeave}
         onPointerMove={updateHoverTime}
       >
-        {showTimeTooltip ? (
-          <div
-            className="pointer-events-none absolute bottom-full z-40 mb-[12px] -translate-x-1/2"
-            style={{
-              left: `${Math.min(Math.max(hoverLeft, 2), 98)}%`,
-            }}
-          >
-            <Tooltip
-              text={formatPlaybackTime(hoverTime)}
-              showTip
-              tipPosition="Top center"
-              aria-label={`Tiempo ${formatPlaybackTime(hoverTime)}`}
-            />
-          </div>
-        ) : null}
+        {/* Ancla de ancho cero en el punto del puntero: el Tooltip compartido ajusta la burbuja
+            a los bordes y mantiene la flecha sobre ese instante, también en pantalla completa. */}
+        <Tooltip
+          asChild
+          portal
+          showTip
+          open={showTimeTooltip}
+          text={formatPlaybackTime(hoverTime)}
+          tipPosition="Top center"
+          aria-label={`Tiempo ${formatPlaybackTime(hoverTime)}`}
+        >
+          <span
+            aria-hidden="true"
+            data-tooltip-anchor="playback-time"
+            className="pointer-events-none absolute inset-y-0 w-0"
+            style={{ left: `${hoverLeft}%` }}
+          />
+        </Tooltip>
 
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-full bg-white/90">
           <div
