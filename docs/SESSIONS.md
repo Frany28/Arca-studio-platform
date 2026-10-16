@@ -1,5 +1,10 @@
 # Sesiones revocables (hallazgo B-3)
 
+> **Aviso de despliegue: todos los usuarios deberán volver a iniciar sesión.**
+> En cuanto se publique el backend de B-3, ninguna sesión abierta seguirá siendo válida: los tokens emitidos antes no tienen `sid` y se rechazan con `401`. Afecta a todas las cuentas, incluidas las de administración y la cuenta demo. Nadie pierde datos ni cambia de contraseña; basta con volver a entrar (la cuenta demo conserva sus credenciales precargadas). Hay que avisar a quienes revisan el staging antes de publicar y hacerlo en un momento de poco uso.
+>
+> Texto sugerido para el aviso: «Hoy a las HH:MM publicaremos una mejora de seguridad de las sesiones. Después de esa hora tendrás que volver a iniciar sesión una vez en cada dispositivo. Tus datos y tu contraseña no cambian.»
+
 ## Problema original
 
 La sesión era un JWT HS256 sin estado en la cookie HttpOnly `__Host-arca_session`. Cada instancia de Vercel cargaba el usuario con una caché en memoria de 30 s y rechazaba el token si `users.updated_at` era posterior a su `iat` (con 5 s de tolerancia). Se confirmaron estos problemas:
@@ -88,20 +93,89 @@ node --test tests/userSessions.integration.test.js
 
 ## Despliegue seguro
 
-1. **Migración** `20261015090000_user_sessions` en Supabase (`pnpm db:migrate:deploy` con la URL de migraciones). Es aditiva: el backend actual la ignora.
-2. Comprobar en Supabase que existe la tabla con RLS y sin los privilegios revocados por D-2.
-3. **Backend.** A partir de aquí todos los usuarios deben iniciar sesión de nuevo. Conviene publicarlo en un momento de poco uso y avisar a quienes revisan el staging. La cuenta demo sigue funcionando con sus credenciales precargadas.
-4. **Frontend** (manejo global de 401). Es compatible con el backend anterior y con el nuevo, así que también puede publicarse antes.
-5. Opcional: eliminar `AUTH_CACHE_TTL_MS`, `AUTH_CACHE_MAX_ENTRIES` y `AUTH_TOKEN_CLOCK_TOLERANCE_MS` de Vercel.
+Revisado el 15 de octubre de 2026 con consultas de catálogo de solo lectura en Supabase:
+- PostgreSQL 17.6; las migraciones se ejecutan como `postgres`, propietario de las tablas.
+- `public.user_sessions` no existe, así que no hay colisión de nombre.
+- `gen_random_uuid()` está disponible.
+- `users.id` es `bigint`, igual que la FK.
+- La última migración aplicada es `20261014140000_rate_limit_buckets`.
+- Hay un intento fallido de `20260825120000_project_request_legal_documentation`, marcado como revertido, seguido de un reintento correcto. Prisma no lo trata como bloqueante: B-2 se aplicó después.
+- Un `CREATE TABLE` equivalente dentro de `BEGIN READ ONLY` fue analizado y rechazado con `25006`, como se esperaba.
 
-Si el backend se desplegara sin la migración, el login y todas las peticiones autenticadas fallarían con un 5xx, porque la tabla no existe. Por eso el orden 1 → 3 es obligatorio.
+1. **Migración** `20261015090000_user_sessions` (`pnpm db:migrate:deploy` con la URL de migraciones). Es aditiva y el backend actual la ignora.
+2. **Comprobación:** que la tabla existe con RLS, que `anon`, `authenticated` y `service_role` no tienen `TRUNCATE`, `TRIGGER`, `REFERENCES` ni `MAINTAIN`, y que `_prisma_migrations` registra la migración como terminada.
+3. **Frontend** (Netlify). Es compatible con el backend anterior y con el nuevo. Publicarlo antes del backend hace que, en el momento del corte, las pestañas abiertas detecten el `401` y lleven al login en lugar de mostrar errores sueltos.
+4. **Aviso a los usuarios** (ver el aviso al principio de este documento).
+5. **Backend** (Vercel), en un momento de poco uso. Desde aquí todos deben iniciar sesión de nuevo.
+6. **Verificación posterior:**
+   - login con la cuenta demo;
+   - `/auth/me` responde `200`;
+   - un logout y la reutilización de la cookie anterior dan `401`;
+   - un login en dos navegadores deja ambos activos;
+   - revisar en los logs de Vercel que no hay errores `42P01` (tabla inexistente).
+7. Opcional: eliminar `AUTH_CACHE_TTL_MS`, `AUTH_CACHE_MAX_ENTRIES` y `AUTH_TOKEN_CLOCK_TOLERANCE_MS` de Vercel.
 
-**Reversión.** Volver al backend anterior restablece las sesiones sin estado: los tokens con `sid` siguen siendo válidos para él, porque ignora el claim. La tabla puede quedarse, ya que nadie la consulta.
+Si el backend se desplegara sin la migración, el login y todas las peticiones autenticadas fallarían con un 5xx porque la tabla no existe. Por eso la migración debe ir siempre antes que el backend.
+
+### Transición con el frontend anterior
+
+Si el backend se publica antes que el frontend nuevo, el frontend anterior sigue funcionando:
+- Al recargar o abrir la aplicación, `/auth/me` responde `401` y la restauración lleva al login.
+- En una pestaña ya abierta, las peticiones fallan con `401` y se muestra el error de cada vista, sin bucles ni redirección automática, hasta navegar o recargar.
+- Login, logout, cambio de contraseña y foto de perfil son compatibles: la cookie sigue siendo HttpOnly y el frontend nunca leyó su contenido.
+
+El frontend nuevo con el backend anterior tampoco cambia el comportamiento: no llama a los endpoints nuevos y el `401` global solo actúa cuando `/auth/me` confirma la falta de sesión.
+
+### Reversión
+
+- **Backend:** volver al despliegue anterior en Vercel (Instant Rollback). El backend anterior ignora `sid`, así que los tokens emitidos con B-3 siguen siendo válidos y nadie tiene que volver a entrar.
+- **Advertencia:** al volver, las sesiones revocadas durante B-3 (logout, cambios de contraseña, desactivaciones) vuelven a aceptarse hasta su `exp` (máximo 12 h), salvo que `users.updated_at` sea posterior al token. Si hubo una revocación por seguridad, invalidar todos los tokens exige rotar `AUTH_TOKEN_SECRET`, que es un cambio de credenciales y requiere autorización explícita.
+- **Frontend:** puede quedarse; es compatible con ambos backends.
+- **Base de datos:** no hace falta revertir. La tabla puede quedarse porque el backend anterior no la consulta. Si se quisiera eliminar, se haría con una migración nueva (`DROP TABLE public.user_sessions`) después de retirar el código, nunca con `migrate reset`.
+
+## Vías fuera de la aplicación
+
+La revocación está en el código de la aplicación. Cualquier cambio hecho por otra vía no revoca sesiones:
+
+| Vía | Qué cambia | Efecto actual |
+| --- | --- | --- |
+| `scripts/upsert-test-user.mjs` | Contraseña, rol, estado y `deleted_at = null` | **No revoca.** Rotar así la contraseña de la cuenta demo (paso obligatorio antes de producción, AGENTS §15) deja válidas todas sus sesiones previas durante hasta 12 h. |
+| `scripts/set-user-status.mjs` (solo clientes) | `status` | Desactivar bloquea el acceso porque la consulta exige `status = 'active'`, pero no revoca: al reactivar, las sesiones previas vuelven a funcionar. |
+| SQL manual o panel de Supabase sobre `roles.is_active` | Rol completo | Igual: bloquea mientras está inactivo y las sesiones reviven al reactivarlo. Hoy ningún endpoint ni script desactiva roles, y los tres roles están activos. |
+| SQL manual sobre `users` (contraseña, correo, rol, `deleted_at`) | Cuenta | No revoca. |
+
+Severidad: baja mientras estas vías no se usen. Pasa a **media** en cuanto se use `upsert-test-user` para rotar credenciales, que es precisamente el procedimiento previsto para retirar la cuenta demo.
+
+**Corrección recomendada (pendiente de aprobación, requiere migración):** triggers en PostgreSQL que revoquen sesiones en el mismo `UPDATE`, sea cual sea la vía.
+- En `users`: `AFTER UPDATE OF password_hash, role_id, email, status, deleted_at`, solo cuando el valor cambia (`IS DISTINCT FROM`). Así no se dispara con `last_login_at`.
+- En `roles`: `AFTER UPDATE OF is_active`, cuando pasa de `true` a `false`.
+
+Si se prefiere no tocar la base de datos, la alternativa mínima es que ambos scripts llamen a `revokeUserSessions` en la misma transacción. Esa opción no cubre el SQL manual.
+
+## Coste por petición y cómo medirlo bajo concurrencia
+
+**Estimación:** una consulta indexada (≈1–2 ms de ejecución) más un viaje de red de Vercel a Supabase por cada petición autenticada. Antes, la mayoría de las peticiones repetidas de un usuario en una misma instancia salían de la caché de 30 s. Cada consulta ocupa una conexión del pool solo durante ese tiempo; el riesgo bajo carga es que haya peticiones esperando conexión (`pool.waiting`), no el coste de la consulta en sí.
+
+**Medición propuesta (solo staging; nunca en producción ni con cuentas reales):**
+1. **Cuentas:** crear unas cuantas cuentas de prueba dedicadas, con rol cliente y marcadas `LOADTEST`. No usar la cuenta demo ni cuentas reales. Sus credenciales van en un `LOAD_USERS_FILE` fuera del repositorio.
+2. **Corregir el script de k6.** `load-tests/mixed-workload.js` lee `token` del cuerpo del login, pero el login solo devuelve `{user}` y la cookie; así todas las peticiones enviarían `Bearer undefined` y recibirían `401` (es un fallo anterior a B-3). Debe usar la cookie de sesión de la respuesta (`response.cookies`) y no registrar su valor.
+3. **Activar métricas temporalmente en staging:** `REQUEST_METRICS_ENABLED=true` y `DATABASE_SLOW_QUERY_MS`, para ver la duración de cada petición y el estado del pool (`idle`, `total`, `waiting`).
+4. **Comparar** el perfil `smoke` y un escalón de 25–50 VU con el backend anterior y con B-3, mismo perfil y misma hora. Criterios:
+   - `p95` de `/auth/me` y `/projects` sin una subida mayor de un viaje de red;
+   - `pool.waiting` cerca de 0;
+   - ningún `5xx` ni `503 RATE_LIMIT_UNAVAILABLE`.
+5. **En Supabase,** consultar en solo lectura `pg_stat_statements` para la consulta de sesión (`mean_exec_time`, `calls`) y el número de conexiones activas frente al límite del pooler.
+6. **Al terminar:**
+   - cerrar las sesiones de las cuentas de carga (logout o `revoke-others`);
+   - desactivar o eliminar esas cuentas;
+   - volver a dejar `REQUEST_METRICS_ENABLED=false`.
+
+   Los inicios de sesión del `setup` (uno por cuenta) caben en los límites de B-2.
 
 ## Riesgos residuales
 
 - **Cuenta demo pública:** cualquiera que conozca las credenciales puede llamar a `revoke-others` o cambiar la contraseña y cerrar las sesiones de los demás revisores. El riesgo ya existía con la contraseña y ahora es explícito. El límite de 10 por hora lo acota; la mitigación de fondo es una cuenta demo por revisor (AGENTS §5).
 - Una petición que ya superó la autenticación termina aunque su sesión se revoque mientras tanto. Una conexión SSE abierta sigue hasta 30 s.
-- Si PostgreSQL no está disponible, toda petición autenticada falla (fail-closed). Antes, la caché podía servir hasta 30 s.
-- Desactivar un **rol** completo (`roles.is_active = false`) bloquea el acceso, pero no revoca las sesiones; si el rol se reactiva, vuelven a funcionar. El script `user:set-status` tampoco revoca, aunque `status <> 'active'` ya bloquea el acceso.
+- Si PostgreSQL no está disponible, toda petición autenticada falla (fail-closed). Antes, la caché podía cubrir hasta 30 s.
+- Cambios hechos fuera de la aplicación (scripts, SQL manual, desactivar un rol) no revocan sesiones: ver «Vías fuera de la aplicación».
 - No hay interfaz para listar o cerrar sesiones: los endpoints quedan preparados (no se diseñaron pantallas nuevas en esta fase).
