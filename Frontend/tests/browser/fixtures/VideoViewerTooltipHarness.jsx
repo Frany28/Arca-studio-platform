@@ -15,7 +15,7 @@ if (new URLSearchParams(window.location.search).get("theme") === "dark") {
 }
 
 /** Monta el reproductor real abierto, con los comentarios temporales que entrega la API simulada. */
-function VideoViewerTooltipHarness() {
+export default function VideoViewerTooltipHarness() {
   return (
     <AuthProvider>
       <VideoViewerModal visible item={VIDEO_ITEM} projectId={15} onClose={() => {}} />

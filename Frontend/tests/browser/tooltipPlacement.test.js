@@ -251,22 +251,29 @@ async function assertVideoControlTooltips(page, label) {
     const text = `Ir a la observación en ${minutes}:${String(time % 60).padStart(2, "0")}`;
     const geometry = await hoverAndMeasure(page, page.getByRole("button", { name: text }), text);
     assertTooltipGeometry(geometry, `${label} · marcador ${time} %`, "Top");
+    assert.deepEqual(
+      await page.locator('[role="tooltip"]').allTextContents(),
+      [text],
+      `${label} · marcador ${time} %: el tiempo de la pista no debe superponerse al marcador`,
+    );
   }
 
   const track = page.getByRole("slider", { name: "Progreso del video" });
   const trackBox = await track.boundingBox();
-  for (const ratio of [0, 0.05, 0.5, 0.95, 1]) {
-    // Se apunta a la mitad de un segundo para que el texto esperado no dependa del redondeo, y
-    // justo por encima de los marcadores para no abrir sus tooltips.
-    const seconds = Math.min(Math.floor(VIDEO_DURATION_SECONDS * ratio), VIDEO_DURATION_SECONDS - 1);
-    const x = trackBox.x + trackBox.width * Math.min((seconds + 0.5) / VIDEO_DURATION_SECONDS, 1);
-    const y = trackBox.y + 2;
-    await page.mouse.move(x, y);
+  // Segundos entre marcadores, incluidos los extremos de la pista; sobre un marcador solo se
+  // muestra el tooltip del marcador. Se apunta a la mitad del segundo para no depender del redondeo.
+  for (const seconds of [1, 25, 75, 98]) {
+    const x = trackBox.x + trackBox.width * ((seconds + 0.5) / VIDEO_DURATION_SECONDS);
+    await page.mouse.move(x, trackBox.y + trackBox.height / 2);
     const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
     const geometry = await measureTooltip(page, text, page.locator('[data-tooltip-anchor="playback-time"]'));
-    assertTooltipGeometry(geometry, `${label} · tiempo ${ratio * 100} %`, "Top");
-    assert.ok(Math.abs(geometry.tailCenterX - x) <= ARROW_TOLERANCE_PX + 1, `${label} · tiempo ${ratio * 100} %: la flecha no sigue al puntero`);
+    assertTooltipGeometry(geometry, `${label} · tiempo ${seconds} s`, "Top");
+    assert.ok(Math.abs(geometry.tailCenterX - x) <= ARROW_TOLERANCE_PX + 1, `${label} · tiempo ${seconds} s: la flecha no sigue al puntero`);
   }
+
+  const marker = page.getByRole("button", { name: "Ir a la observación en 0:50" });
+  await hoverAndMeasure(page, marker, "Ir a la observación en 0:50");
+  assert.deepEqual(await page.locator('[role="tooltip"]').allTextContents(), ["Ir a la observación en 0:50"]);
 }
 
 test("Tooltip aligns every preferred position and its arrow to the anchor", async (context) => {
@@ -338,8 +345,21 @@ test("Tooltip opens on hover and keyboard focus and renders in both themes", asy
   for (const dark of [false, true]) {
     await page.evaluate((scenario) => window.renderTooltipScenario(scenario), { dark, interactive: true, position: "Top right", x: 960, y: 340 });
     assert.equal(await page.locator('[role="tooltip"]').count(), 0);
+    // Registra cada estilo que recibe la capa del portal para detectar posiciones intermedias visibles.
+    await page.evaluate(() => {
+      window.portalStyles = [];
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of [record.target, ...record.addedNodes]) {
+            if (node instanceof HTMLElement && node.firstElementChild?.getAttribute("role") === "tooltip") window.portalStyles.push(node.getAttribute("style"));
+          }
+        }
+      }).observe(document.body, { attributeFilter: ["style"], attributes: true, childList: true, subtree: true });
+    });
     await anchor.hover();
     assertTooltipGeometry(await measureTooltip(page, "Pantalla completa", anchor), `hover ${dark ? "oscuro" : "claro"}`, "Top");
+    const visibleStyles = new Set((await page.evaluate(() => window.portalStyles)).filter((style) => !style.includes("hidden")));
+    assert.equal(visibleStyles.size, 1, `Solo debe pintarse la posición final: ${[...visibleStyles].join(" | ")}`);
     backgrounds[dark ? "dark" : "light"] = await page.locator('[role="tooltip"]').evaluate((node) => getComputedStyle(node).backgroundColor);
     await page.mouse.move(10, 10);
     await page.locator('[role="tooltip"]').waitFor({ state: "detached" });

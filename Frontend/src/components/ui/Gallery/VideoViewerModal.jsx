@@ -253,6 +253,12 @@ function PlaybackBar({
       return;
     }
 
+    // Sobre un marcador manda su propio tooltip; mostrar también el del tiempo los superpone.
+    if (event.target.closest?.("[data-playback-marker]")) {
+      setHoverTime(null);
+      return;
+    }
+
     const nextHover = getPointerTime(event, safeDuration);
     setHoverLeft(nextHover.left);
     setHoverTime(nextHover.time);
@@ -337,6 +343,7 @@ function PlaybackBar({
               <button
                 type="button"
                 aria-label={markerLabel}
+                data-playback-marker=""
                 className={clsx(
                   "absolute top-1/2 z-20 h-[16px] w-[4px] -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-[var(--color-accent-300)] transition-[height,box-shadow,width] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
                   isActive
