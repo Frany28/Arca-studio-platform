@@ -657,6 +657,9 @@ model users {
   project_status_history                                project_status_history[]
   projects_projects_assigned_architect_idTousers        projects[]                 @relation("projects_assigned_architect_idTousers")
   projects_projects_created_byTousers                   projects[]                 @relation("projects_created_byTousers")
+  services_created                                      services[]                 @relation("services_created_by")
+  services_updated                                      services[]                 @relation("services_updated_by")
+  service_versions_changed                              service_versions[]         @relation("service_versions_changed_by")
   clients                                               clients?                   @relation(fields: [client_id], references: [id], map: "fk_users_client")
   roles                                                 roles                      @relation(fields: [role_id], references: [id], map: "fk_users_role")
 
@@ -683,6 +686,85 @@ model user_registrations {
   updated_at      DateTime  @default(now()) @db.Timestamptz(6)
 
   @@index([expires_at], map: "idx_user_registrations_expires_at")
+}
+
+/// Unidades de medida configurables del catálogo (m², metro lineal, punto, proyecto...).
+/// Se desactivan con is_active; no se eliminan mientras un servicio o versión las referencie.
+/// This table contains check constraints and requires additional setup for migrations.
+/// This model contains row level security and requires additional setup for migrations.
+model measurement_units {
+  id               BigInt             @id @default(autoincrement())
+  code             String             @unique(map: "uq_measurement_units_code") @db.VarChar(30)
+  name             String             @db.VarChar(80)
+  symbol           String             @db.VarChar(20)
+  allows_decimals  Boolean            @default(true)
+  is_active        Boolean            @default(true)
+  sort_order       Int                @default(0)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  services         services[]
+  service_versions service_versions[]
+}
+
+/// Estado actual de cada servicio del tabulador; tarifas de referencia en USD con escala NUMERIC(14,2).
+/// Sin eliminación física (is_active = false). created_by/updated_by NULL = carga del sistema.
+/// This table contains check constraints and requires additional setup for migrations.
+/// This model contains row level security and requires additional setup for migrations.
+model services {
+  id                  BigInt             @id @default(autoincrement())
+  code                String             @unique(map: "uq_services_code") @db.VarChar(30)
+  name                String             @db.VarChar(150)
+  description         String?
+  kind                service_kind       @default(individual)
+  measurement_unit_id BigInt
+  reference_rate      Decimal            @db.Decimal(14, 2)
+  currency_code       String             @default("USD") @db.Char(3)
+  is_active           Boolean            @default(true)
+  sort_order          Int                @default(0)
+  created_by          BigInt?
+  updated_by          BigInt?
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  measurement_units   measurement_units  @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_measurement_unit")
+  users_created_by    users?             @relation("services_created_by", fields: [created_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_created_by")
+  users_updated_by    users?             @relation("services_updated_by", fields: [updated_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_updated_by")
+  service_versions    service_versions[]
+
+  @@index([sort_order, id], map: "services_catalog_order_idx")
+  @@index([measurement_unit_id], map: "idx_services_measurement_unit_id")
+}
+
+/// Historial inmutable de servicios: copia completa del servicio y su unidad en cada versión.
+/// Un trigger (service_versions_immutable) solo permite pasar is_current de true a false e impide borrar.
+/// This table contains check constraints and requires additional setup for migrations.
+/// This model contains row level security and requires additional setup for migrations.
+model service_versions {
+  id                   BigInt            @id @default(autoincrement())
+  service_id           BigInt            @unique(map: "uq_service_versions_current", where: raw("is_current"))
+  version_number       Int
+  code                 String            @db.VarChar(30)
+  name                 String            @db.VarChar(150)
+  description          String?
+  kind                 service_kind
+  measurement_unit_id  BigInt
+  unit_code            String            @db.VarChar(30)
+  unit_name            String            @db.VarChar(80)
+  unit_symbol          String            @db.VarChar(20)
+  unit_allows_decimals Boolean
+  reference_rate       Decimal           @db.Decimal(14, 2)
+  currency_code        String            @db.Char(3)
+  is_active            Boolean
+  sort_order           Int
+  change_note          String?           @db.VarChar(255)
+  changed_by           BigInt?
+  is_current           Boolean           @default(true)
+  created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  services             services          @relation(fields: [service_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_service")
+  measurement_units    measurement_units @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_measurement_unit")
+  users                users?            @relation("service_versions_changed_by", fields: [changed_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_changed_by")
+
+  @@unique([service_id, version_number], map: "uq_service_versions_service_version")
+  @@index([measurement_unit_id], map: "idx_service_versions_measurement_unit_id")
 }
 
 enum anchor_type {
@@ -835,6 +917,12 @@ enum project_type {
   corporate
   stands_exhibitions
   advertising_stand
+}
+
+/// Servicio individual del tabulador o modalidad llave en mano (tarifa por m²).
+enum service_kind {
+  individual
+  turnkey
 }
 
 enum user_status {

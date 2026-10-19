@@ -46,6 +46,27 @@ Revoca `TRUNCATE`, `TRIGGER`, `REFERENCES` y `MAINTAIN` a `anon`, `authenticated
 
 Crea `rate_limit_buckets` para los contadores compartidos entre instancias (hallazgo B-2). La tabla es nueva y vacía, con RLS y el `REVOKE` de D-2, este último solo si existen los roles de Supabase. Debe aplicarse **antes** de publicar el backend que la usa, porque sin ella los endpoints de autenticación responden 503. El historial completo de migraciones se comprobó sobre un PostgreSQL 18 aislado y vacío. Diseño, despliegue y reversión en [docs/RATE_LIMITING.md](../docs/RATE_LIMITING.md).
 
+## Catálogo de servicios (`20261019120000_service_catalog`)
+
+Crea, sin modificar tablas ni datos existentes, el enum `service_kind` (`individual`, `turnkey`) y tres tablas vacías con RLS y el `REVOKE` de D-2:
+
+- `measurement_units`: unidades configurables (código `snake_case` único, nombre, símbolo, `allows_decimals`, `is_active`, `sort_order`). Se desactivan; no se eliminan mientras estén referenciadas.
+- `services`: código único en mayúsculas, nombre, descripción, tipo, unidad, `reference_rate NUMERIC(14,2) >= 0` (misma escala que `QUOTE_DECIMAL_FORMATS`), `currency_code = 'USD'`, estado, orden y autoría. Las modalidades llave en mano usan `kind = 'turnkey'` con unidad m². Sin eliminación física.
+- `service_versions`: copia completa del servicio y de su unidad en cada versión, con `version_number` único por servicio, `changed_by`, `change_note` e `is_current`. El índice único parcial `uq_service_versions_current` impide dos versiones vigentes y el trigger `service_versions_immutable` impide modificar o borrar versiones; solo permite pasar `is_current` de `true` a `false`. Las cotizaciones futuras referenciarán `service_versions.id` además de copiar los importes aplicados.
+
+Todas las claves foráneas usan `ON DELETE RESTRICT` (PostgreSQL responde `23001`). `created_by`, `updated_by` y `changed_by` admiten `NULL` para cargas del sistema. No carga servicios: los 19 registros del tabulador 3.2 irán en una migración de datos independiente. `tests/serviceCatalogMigration.test.js` comprueba en `pnpm verify` la consistencia con `schema.prisma`, las restricciones y que la migración no sea destructiva. `tests/serviceCatalog.integration.test.js` aplica el historial completo en una base local desechable (`ARCA_SERVICE_CATALOG_DB_TESTS=1`, `ARCA_SERVICE_CATALOG_TEST_DATABASE_URL` en localhost y, opcionalmente, `ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES=1`).
+
+Orden seguro de despliegue (requiere autorización explícita):
+
+```text
+1. backup de PostgreSQL
+2. pnpm db:migrate:status       → confirmar que solo 20261019120000_service_catalog está pendiente
+3. pnpm db:migrate:deploy       → crea el enum, las tablas, índices y el trigger
+4. pnpm db:migrate:status       → confirmar que no quedan migraciones pendientes
+```
+
+Ningún backend publicado usa todavía estas tablas, por lo que el orden respecto al despliegue del backend es indiferente. Reversión mientras estén vacías: `DROP TABLE public.service_versions, public.services, public.measurement_units; DROP FUNCTION public.prevent_service_version_mutation(); DROP TYPE public.service_kind;` y eliminar la fila de `_prisma_migrations`, solo con autorización.
+
 ## Flujo para un cambio nuevo
 
 1. Modificar `prisma/schema.prisma` para cambios que Prisma pueda representar.
