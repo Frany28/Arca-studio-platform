@@ -9,9 +9,11 @@ pnpm verify
 pnpm verify:db
 ```
 
-`pnpm verify` ejecuta, en orden, lint de documentación del backend, validación
-estática del schema Prisma, tests del backend, tests del frontend y build del
-frontend. No consulta PostgreSQL. No incluye el lint del frontend.
+`pnpm verify` ejecuta, en orden, lint de documentación del backend, lint del
+frontend, validación estática del schema Prisma, tests del backend, tests del
+frontend y build del frontend. No consulta PostgreSQL. El lint del frontend se
+incorporó el 17 de octubre de 2026, cuando quedó en cero errores y advertencias:
+cualquier error nuevo hace fallar `verify`.
 La configuración Prisma existente sigue requiriendo `DIRECT_URL` o
 `DATABASE_URL` configurada para cargar y validar el schema; no exige que el
 destino esté disponible ni introduce valores de reemplazo.
@@ -33,11 +35,34 @@ falla con `Schema engine error`; la comprobación independiente de conexión
 identifica `ENOTFOUND` en el hostname seleccionado por `DIRECT_URL`. No se ha
 demostrado un defecto en las migraciones locales.
 
-No se encontraron consumidores de `verify` en los workflows ni scripts del
-repositorio. No se modificaron automatizaciones. Un consumidor externo que
-necesite comprobar PostgreSQL debe ejecutar también `verify:db`.
+## Estado al 17 de octubre de 2026
+
+- Backend: 448 tests, 421 aprobados, 0 fallidos y 27 omitidos. Los omitidos son
+  pruebas contra PostgreSQL que solo se ejecutan con su variable opt-in.
+- Frontend: 311 tests aprobados, 0 fallidos; `pnpm lint` sin errores ni
+  advertencias; build correcto.
+- `pnpm verify` pasa en una copia limpia sin `.env`, igual que en CI.
+
+### Evolución del número de tests del frontend
+
+Los 312 aprobados y 59 fallidos del registro histórico (371 en total) bajaron a
+217 en el diagnóstico del 1 de octubre porque el commit `38ced64` retiró el sitio
+público (home, procesos, servicios y vídeo de presentación) junto con sus
+assets y sus tests. No se eliminaron tests de funcionalidades vigentes para
+ocultar fallos. La cifra actual de 311 corresponde a tests añadidos después.
+
+## Integración continua
+
+`.github/workflows/verify.yml` ejecuta `pnpm verify` en cada pull request y en
+cada push a `main`, con una `DATABASE_URL` sintética que solo satisface
+`prisma validate`. Para que bloquee merges, marcar el check `verify` como
+requerido en la protección de rama de `main`. `verify:db` no forma parte del
+workflow porque necesita credenciales reales de PostgreSQL. Un consumidor que
+necesite comprobar la base debe ejecutarlo aparte.
 
 ## Registro histórico anterior a la separación
+
+> Registro conservado como referencia. Las cifras vigentes están en "Estado al 17 de octubre de 2026".
 
 Baseline verificado el **1 de octubre de 2026**, después de instalar exactamente las dependencias bloqueadas mediante `pnpm install --frozen-lockfile`, sin modificar manifiestos ni lockfiles.
 

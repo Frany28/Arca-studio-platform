@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
@@ -12,11 +10,9 @@ import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx
 import ProjectDocumentCard from "./ProjectDocumentCard.jsx";
 import DocumentFullscreenModal from "./document-preview/DocumentFullscreenModal.jsx";
 import PdfViewerSurface from "./document-preview/PdfViewerSurface.jsx";
-import DocxViewerSurface from "./document-preview/DocxViewerSurface.jsx";
-import XlsxViewerSurface from "./document-preview/XlsxViewerSurface.jsx";
+import OfficeViewerSurface from "./document-preview/OfficeViewerSurface.jsx";
+import { loadPdfjs } from "./document-preview/pdfjsLoader.js";
 import { ViewerButton, ExpandIcon, CloseIcon, MIN_ZOOM, MAX_ZOOM } from "./document-preview/DocumentViewerControls.jsx";
-
-GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 function getDocumentKind(document) {
   const extension = String(document?.fileType || document?.extension || "")
@@ -114,11 +110,7 @@ function OfficeInlineDocumentPreview({
         </ViewerButton>
       </div>
       <div className="min-h-0 flex-1">
-        {kind === "docx" ? (
-          <DocxViewerSurface annotations={annotations} data={state.data} focusedId={focusedId} onPointCreate={onPointCreate} onPointSelect={onPointSelect} pendingSelection={pendingSelection} title={title} />
-        ) : (
-          <XlsxViewerSurface annotations={annotations} data={state.data} focusedId={focusedId} onPointCreate={onPointCreate} onPointSelect={onPointSelect} pendingSelection={pendingSelection} title={title} />
-        )}
+        <OfficeViewerSurface kind={kind} annotations={annotations} data={state.data} focusedId={focusedId} onPointCreate={onPointCreate} onPointSelect={onPointSelect} pendingSelection={pendingSelection} title={title} />
       </div>
     </div>
   );
@@ -217,8 +209,11 @@ export function ProjectDocumentViewerModal({
         if (!response.ok) throw new Error("DOCUMENT_LOAD_FAILED");
         return response.arrayBuffer();
       })
-      .then((buffer) => {
+      .then(async (buffer) => {
         if (kind !== "pdf") return { buffer };
+        const { getDocument } = await loadPdfjs();
+        // Si el visor se cerró durante la descarga de PDF.js, no crear una tarea que nadie destruirá.
+        if (cancelled) return { buffer };
         loadingTask = getDocument({ data: new Uint8Array(buffer) });
         return loadingTask.promise.then((documentProxy) => ({
           buffer,
@@ -339,10 +334,8 @@ export function ProjectDocumentViewerModal({
         zoom={zoom}
       />
     );
-  } else if (kind === "docx") {
-    viewer = <DocxViewerSurface annotations={comments} data={loadState.data} focusedId={focusedCommentId} onPointCreate={readOnly ? undefined : handleSelectionChange} onPointSelect={handlePointSelect} pendingSelection={pendingSelection} title={documentName} />;
-  } else if (kind === "xlsx") {
-    viewer = <XlsxViewerSurface annotations={comments} data={loadState.data} focusedId={focusedCommentId} onPointCreate={readOnly ? undefined : handleSelectionChange} onPointSelect={handlePointSelect} pendingSelection={pendingSelection} title={documentName} />;
+  } else {
+    viewer = <OfficeViewerSurface kind={kind} annotations={comments} data={loadState.data} focusedId={focusedCommentId} onPointCreate={readOnly ? undefined : handleSelectionChange} onPointSelect={handlePointSelect} pendingSelection={pendingSelection} title={documentName} />;
   }
 
   return (
@@ -443,12 +436,15 @@ export default function ProjectDocumentPreview({ document, focusedCommentId = nu
         if (!response.ok) throw new Error("DOCUMENT_LOAD_FAILED");
         return response.arrayBuffer();
       })
-      .then((buffer) => {
+      .then(async (buffer) => {
+        const { getDocument } = await loadPdfjs();
+        // Si el efecto se limpió durante la descarga de PDF.js, no crear una tarea que nadie destruirá.
+        if (cancelled) return null;
         loadingTask = getDocument({ data: new Uint8Array(buffer) });
         return loadingTask.promise;
       })
       .then((pdfDocument) => {
-        if (cancelled) return;
+        if (cancelled || !pdfDocument) return;
         setLoadState({
           documentProxy: pdfDocument,
           pageCount: pdfDocument.numPages,

@@ -7,7 +7,7 @@ Actualizado al estado actual del repositorio.
 Sistema Web Arca Studio es una aplicacion web para gestionar proyectos de arquitectura/interiorismo. El producto separa experiencia de cliente y experiencia de arquitecto/administrador, con autenticacion, dashboards, detalle de proyectos, solicitudes, archivos, comentarios, renders, videos, seguimiento, garantias y configuraciones de usuario.
 
 ```text
-Sistema_Web_Arca_Studio/
+Arca-studio-platform/
   Frontend/   Aplicacion React + Vite
   Backend/    API Node.js + Express
   netlify.toml
@@ -333,7 +333,6 @@ En produccion, `AUTH_TOKEN_SECRET` es obligatorio.
 | Variable           | Requerida | Descripcion                                                        |
 | ------------------ | --------- | ------------------------------------------------------------------ |
 | `VITE_API_URL`     | No        | URL base de la API. Dev: `http://localhost:3000/api`; prod: `/api` |
-| `DEPLOY_BASE_PATH` | No        | Base path para Vite                                                |
 
 ### Backend - servidor
 

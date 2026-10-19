@@ -125,7 +125,6 @@ Nota: el codigo actual mantiene la ruta con `nueva-contraseña`. Si se normaliza
 - `VITE_API_URL`: URL base opcional de la API solo para desarrollo. Si no se
   define, Vite envia `/api` al backend local mediante su proxy. En produccion
   siempre se usa `/api` para mantener la cookie de sesion en el mismo sitio.
-- `DEPLOY_BASE_PATH`: base path usada por Vite cuando aplica.
 
 ## Desarrollo local
 

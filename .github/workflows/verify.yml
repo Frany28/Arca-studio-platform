@@ -1,0 +1,56 @@
+name: Verify
+
+# Ejecuta `pnpm verify` (lint, schema Prisma, tests y build) en cada PR y en cada push a main.
+# Para que bloquee merges, marcar el check "verify" como requerido en la protección de rama de main.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            Backend/pnpm-lock.yaml
+            Frontend/pnpm-lock.yaml
+
+      - name: Install backend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: Backend
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: Frontend
+
+      - name: Run verify
+        run: pnpm verify
+        working-directory: Backend
+        env:
+          # `prisma validate` solo necesita una URL con formato válido; no abre conexión.
+          # Los tests contra PostgreSQL son opt-in y quedan omitidos sin sus variables.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
