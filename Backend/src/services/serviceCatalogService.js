@@ -6,6 +6,7 @@ import {
   listChangedServiceFields,
   mergeServiceChanges,
 } from "../domain/serviceCatalog.js";
+import { lockDenomination } from "../repositories/measurementUnitDenominationRepository.js";
 import { findMeasurementUnitById } from "../repositories/measurementUnitRepository.js";
 import {
   findServiceById,
@@ -42,6 +43,7 @@ export async function getServicesPage(filters = {}) {
     limit,
     measurementUnitId: filters.measurementUnitId,
     search: filters.search,
+    unitDenominationId: filters.unitDenominationId,
   });
   const page = pageResult(rows, limit, (service) => service, (service) => [service.sortOrder, String(service.id)]);
   return { nextCursor: page.nextCursor, services: page.items };
@@ -87,6 +89,59 @@ async function assertAssignableUnit(client, { kind, measurementUnitId, requireAc
 }
 
 /**
+ * Comprueba en la transacción que una denominación exista, esté activa y pertenezca a la
+ * unidad base del servicio, y la bloquea con FOR SHARE hasta el COMMIT: así nadie puede
+ * desactivarla o editarla (FOR UPDATE) mientras se asigna. La compatibilidad con el tipo de
+ * servicio la decide la unidad base, no la denominación.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {object} options - Datos de la asignación.
+ * @param {number} options.measurementUnitId - Unidad base del servicio.
+ * @param {number} options.unitDenominationId - Denominación elegida.
+ * @returns {Promise<void>}
+ * @throws {ValidationError} Si la denominación no existe, está inactiva o es de otra unidad base.
+ */
+async function assertAssignableDenomination(client, { measurementUnitId, unitDenominationId }) {
+  const denomination = await lockDenomination(client, unitDenominationId, "share");
+  if (!denomination) throw new ValidationError(undefined, { unitDenominationId: "La denominación no existe." });
+  if (denomination.measurementUnit.id !== measurementUnitId) {
+    throw new ValidationError(undefined, { unitDenominationId: "La denominación no pertenece a la unidad de medida seleccionada." });
+  }
+  if (!denomination.isActive) {
+    throw new ValidationError(undefined, { unitDenominationId: "La denominación está inactiva." });
+  }
+}
+
+/**
+ * Valida los cambios de unidad, tipo o denominación de una edición antes de guardarla.
+ * Un cambio de unidad base que conserva la denominación anterior se rechaza: la denominación
+ * pertenece a la otra base y retirarla en silencio cambiaría la etiqueta visible del servicio.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {object} options - Datos de la edición.
+ * @param {Array<string>} options.changedFields - Campos con cambio efectivo.
+ * @param {object} options.next - Estado resultante (mergeServiceChanges).
+ * @param {object} options.payload - Cuerpo validado de la edición.
+ * @returns {Promise<void>}
+ * @throws {ValidationError} Si la unidad o la denominación no son válidas para el estado resultante.
+ */
+async function assertServiceUnitChanges(client, { changedFields, next, payload }) {
+  const unitChanged = changedFields.includes("measurementUnitId");
+  const denominationChanged = changedFields.includes("unitDenominationId");
+  if (unitChanged && payload.unitDenominationId === undefined && next.unitDenominationId !== null) {
+    throw new ValidationError(undefined, {
+      unitDenominationId: "La denominación actual pertenece a otra unidad. Indica una denominación de la nueva unidad o null.",
+    });
+  }
+  if (unitChanged || changedFields.includes("kind")) {
+    await assertAssignableUnit(client, { kind: next.kind, measurementUnitId: next.measurementUnitId, requireActive: unitChanged });
+  }
+  if ((unitChanged || denominationChanged) && next.unitDenominationId !== null) {
+    await assertAssignableDenomination(client, { measurementUnitId: next.measurementUnitId, unitDenominationId: next.unitDenominationId });
+  }
+}
+
+/**
  * Crea un servicio y su versión 1 en una única transacción: si falla cualquiera de las dos
  * escrituras no queda ningún registro. La unicidad del código la garantiza PostgreSQL
  * (uq_services_code), lo que también cubre dos altas simultáneas.
@@ -102,6 +157,9 @@ export async function createService({ payload, user }) {
   try {
     return await withTransaction(async (client) => {
       await assertAssignableUnit(client, { kind: payload.kind, measurementUnitId: payload.measurementUnitId, requireActive: true });
+      if (payload.unitDenominationId) {
+        await assertAssignableDenomination(client, { measurementUnitId: payload.measurementUnitId, unitDenominationId: payload.unitDenominationId });
+      }
       const serviceId = await insertServiceRecord(client, {
         ...payload,
         currency: SERVICE_CURRENCY,
@@ -146,10 +204,7 @@ export async function updateService({ payload, serviceId, user }) {
       const changedFields = listChangedServiceFields(current, next);
       if (changedFields.length === 0) return { changed: false, changedFields, service: current };
 
-      const unitChanged = changedFields.includes("measurementUnitId");
-      if (unitChanged || changedFields.includes("kind")) {
-        await assertAssignableUnit(client, { kind: next.kind, measurementUnitId: next.measurementUnitId, requireActive: unitChanged });
-      }
+      await assertServiceUnitChanges(client, { changedFields, next, payload });
       await updateServiceRecord(client, serviceId, next, user.id);
       await retireCurrentServiceVersion(client, serviceId);
       await insertServiceVersionSnapshot(client, {

@@ -1,25 +1,41 @@
 import { query } from "../config/db.js";
+import { formatUnitLabel } from "../domain/measurementUnitLabel.js";
 
 const SERVICE_COLUMNS = `
   s.id, s.code, s.name, s.description, s.kind, s.reference_rate, s.currency_code, s.is_active, s.sort_order,
   s.created_at, s.updated_at,
   u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
   u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active,
+  d.id as denomination_id, d.denomination as denomination_text, d.is_active as denomination_is_active,
   v.version_number as current_version`;
 
 const SERVICE_FROM = `
   from public.services s
   inner join public.measurement_units u on u.id = s.measurement_unit_id
+  left join public.measurement_unit_denominations d on d.id = s.unit_denomination_id
   left join public.service_versions v on v.service_id = s.id and v.is_current`;
+
+/**
+ * Transforma la denominación opcional de un servicio en su forma pública.
+ *
+ * @param {object} row - Fila del catálogo con las columnas de la denominación.
+ * @returns {{ id: number, denomination: string, isActive: boolean }|null} Denominación o null.
+ */
+function toServiceDenomination(row) {
+  if (row.denomination_id === null || row.denomination_id === undefined) return null;
+  return { denomination: row.denomination_text, id: Number(row.denomination_id), isActive: row.denomination_is_active };
+}
 
 /**
  * Transforma una fila del catálogo en la representación pública estable de un servicio.
  * La tarifa se conserva como texto decimal de PostgreSQL ("12.00") para no perder precisión.
+ * `unitLabel` compone la abreviatura de la base con la denominación opcional.
  *
- * @param {object} row - Fila con columnas del servicio, su unidad y su versión vigente.
- * @returns {object} Servicio con su unidad de medida y número de versión vigente.
+ * @param {object} row - Fila con columnas del servicio, su unidad, denominación y versión vigente.
+ * @returns {object} Servicio con su unidad de medida, denominación y número de versión vigente.
  */
 function toService(row) {
+  const unitDenomination = toServiceDenomination(row);
   return {
     code: row.code,
     createdAt: new Date(row.created_at).toISOString(),
@@ -40,6 +56,8 @@ function toService(row) {
     name: row.name,
     referenceRate: row.reference_rate,
     sortOrder: row.sort_order,
+    unitDenomination,
+    unitLabel: formatUnitLabel(row.unit_symbol, unitDenomination?.denomination),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
@@ -66,10 +84,11 @@ function toContainsPattern(value) {
  * @param {string} [options.search] - Texto a buscar en nombre o código.
  * @param {boolean} [options.isActive] - Filtra por estado.
  * @param {number} [options.measurementUnitId] - Filtra por unidad.
+ * @param {number} [options.unitDenominationId] - Filtra por denominación (útil para reasignar servicios).
  * @param {string} [options.kind] - Filtra por tipo de servicio.
  * @returns {Promise<Array<object>>} Hasta limit + 1 servicios.
  */
-export async function listServices({ cursor, isActive, kind, limit, measurementUnitId, search }) {
+export async function listServices({ cursor, isActive, kind, limit, measurementUnitId, search, unitDenominationId }) {
   const result = await query(
     `select ${SERVICE_COLUMNS}
      ${SERVICE_FROM}
@@ -78,6 +97,7 @@ export async function listServices({ cursor, isActive, kind, limit, measurementU
        and ($3::bigint is null or s.measurement_unit_id = $3)
        and ($4::public.service_kind is null or s.kind = $4)
        and ($5::integer is null or (s.sort_order, s.id) > ($5, $6::bigint))
+       and ($8::bigint is null or s.unit_denomination_id = $8)
      order by s.sort_order, s.id
      limit $7`,
     [
@@ -88,6 +108,7 @@ export async function listServices({ cursor, isActive, kind, limit, measurementU
       cursor?.[0] ?? null,
       cursor?.[1] ?? null,
       limit + 1,
+      unitDenominationId ?? null,
     ],
   );
   return result.rows.map(toService);
@@ -134,6 +155,7 @@ export async function lockServiceForUpdate(client, serviceId) {
  * @param {string|null} service.description - Descripción opcional.
  * @param {string} service.kind - Tipo de servicio.
  * @param {number} service.measurementUnitId - Unidad de medida.
+ * @param {number|null} service.unitDenominationId - Denominación opcional de esa unidad.
  * @param {string} service.referenceRate - Tarifa como texto decimal.
  * @param {string} service.currency - Moneda (USD).
  * @param {boolean} service.isActive - Estado inicial.
@@ -145,11 +167,12 @@ export async function insertServiceRecord(client, service) {
   const result = await client.query(
     `insert into public.services (
        code, name, description, kind, measurement_unit_id, reference_rate, currency_code, is_active, sort_order,
-       created_by, updated_by
-     ) values ($1, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $10)
+       created_by, updated_by, unit_denomination_id
+     ) values ($1, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $10, $11)
      returning id`,
     [service.code, service.name, service.description, service.kind, service.measurementUnitId,
-      service.referenceRate, service.currency, service.isActive, service.sortOrder, service.userId],
+      service.referenceRate, service.currency, service.isActive, service.sortOrder, service.userId,
+      service.unitDenominationId ?? null],
   );
   return Number(result.rows[0].id);
 }
@@ -169,10 +192,10 @@ export async function updateServiceRecord(client, serviceId, state, userId) {
   const result = await client.query(
     `update public.services
      set name = $2, description = $3, kind = $4, measurement_unit_id = $5, reference_rate = $6::numeric,
-         is_active = $7, sort_order = $8, updated_by = $9, updated_at = now()
+         is_active = $7, sort_order = $8, updated_by = $9, unit_denomination_id = $10, updated_at = now()
      where id = $1`,
     [serviceId, state.name, state.description, state.kind, state.measurementUnitId, state.referenceRate,
-      state.isActive, state.sortOrder, userId],
+      state.isActive, state.sortOrder, userId, state.unitDenominationId ?? null],
   );
   if (result.rowCount !== 1) throw new Error("service_catalog: el servicio bloqueado no se pudo actualizar.");
 }
@@ -195,8 +218,8 @@ export async function retireCurrentServiceVersion(client, serviceId) {
 }
 
 /**
- * Registra una versión vigente copiando el estado actual del servicio y de su unidad.
- * Copiar la unidad conserva su nombre y símbolo históricos aunque la unidad cambie después.
+ * Registra una versión vigente copiando el estado actual del servicio, de su unidad y de su
+ * denominación. La copia conserva nombres, símbolo y denominación históricos aunque cambien.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} version - Datos de la versión.
@@ -211,12 +234,14 @@ export async function insertServiceVersionSnapshot(client, { changeNote, service
   const result = await client.query(
     `insert into public.service_versions (
        service_id, version_number, code, name, description, kind, measurement_unit_id, unit_code, unit_name,
-       unit_symbol, unit_allows_decimals, reference_rate, currency_code, is_active, sort_order, change_note, changed_by
+       unit_symbol, unit_allows_decimals, reference_rate, currency_code, is_active, sort_order, change_note, changed_by,
+       unit_denomination_id, unit_denomination
      )
      select s.id, $2, s.code, s.name, s.description, s.kind, u.id, u.code, u.name, u.symbol, u.allows_decimals,
-       s.reference_rate, s.currency_code, s.is_active, s.sort_order, $3, $4
+       s.reference_rate, s.currency_code, s.is_active, s.sort_order, $3, $4, d.id, d.denomination
      from public.services s
      inner join public.measurement_units u on u.id = s.measurement_unit_id
+     left join public.measurement_unit_denominations d on d.id = s.unit_denomination_id
      where s.id = $1`,
     [serviceId, versionNumber, changeNote, userId],
   );

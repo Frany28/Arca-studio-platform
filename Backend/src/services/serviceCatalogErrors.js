@@ -11,6 +11,7 @@ export const SERVICE_VERSION_CONFLICT_MESSAGE =
   "Otro administrador modificó este servicio. Recarga los datos antes de guardar.";
 
 const UNIT_FOREIGN_KEYS = new Set(["fk_services_measurement_unit", "fk_service_versions_measurement_unit"]);
+const DENOMINATION_FOREIGN_KEYS = new Set(["fk_services_unit_denomination", "fk_service_versions_unit_denomination"]);
 const VERSION_UNIQUE_CONSTRAINTS = new Set(["uq_service_versions_current", "uq_service_versions_service_version"]);
 
 /**
@@ -36,6 +37,10 @@ export function translateServiceCatalogError(error) {
     case "23503":
       if (UNIT_FOREIGN_KEYS.has(error.constraint)) {
         return new ValidationError(undefined, { measurementUnitId: "La unidad de medida no existe." });
+      }
+      // La FK compuesta también falla cuando la denominación es de otra unidad base.
+      if (DENOMINATION_FOREIGN_KEYS.has(error.constraint)) {
+        return new ValidationError(undefined, { unitDenominationId: "La denominación no existe o no pertenece a la unidad de medida seleccionada." });
       }
       return new ConflictError("SERVICE_REFERENCE_CONFLICT", "Una referencia del servicio ya no está disponible.", error);
     case "23001":

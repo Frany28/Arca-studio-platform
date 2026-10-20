@@ -21,7 +21,7 @@ export const TURNKEY_COMPATIBLE_UNIT_CODES = Object.freeze(["square_meter"]);
 
 /** Campos editables que forman parte de cada versión del servicio. */
 export const SERVICE_EDITABLE_FIELDS = Object.freeze([
-  "name", "description", "kind", "measurementUnitId", "referenceRate", "isActive", "sortOrder",
+  "name", "description", "kind", "measurementUnitId", "unitDenominationId", "referenceRate", "isActive", "sortOrder",
 ]);
 
 /**
@@ -40,12 +40,13 @@ export function isUnitCompatibleWithKind(kind, unit) {
 
 /**
  * Combina el estado vigente de un servicio con los campos enviados en una edición.
- * Los campos omitidos conservan su valor; `description` admite null explícito para borrarla.
+ * Los campos omitidos conservan su valor; `description` y `unitDenominationId` admiten null
+ * explícito para borrarlos (sin denominación el servicio usa solo la unidad base).
  *
  * @param {object} current - Servicio vigente (forma pública del repositorio).
  * @param {object} changes - Campos editables validados.
  * @returns {{ name: string, description: string|null, kind: string, measurementUnitId: number,
- *   referenceRate: string, isActive: boolean, sortOrder: number }} Estado resultante.
+ *   unitDenominationId: number|null, referenceRate: string, isActive: boolean, sortOrder: number }} Estado resultante.
  */
 export function mergeServiceChanges(current, changes) {
   const currentState = {
@@ -56,6 +57,7 @@ export function mergeServiceChanges(current, changes) {
     name: current.name,
     referenceRate: current.referenceRate,
     sortOrder: current.sortOrder,
+    unitDenominationId: current.unitDenomination?.id ?? null,
   };
   const next = { ...currentState };
   for (const field of SERVICE_EDITABLE_FIELDS) {

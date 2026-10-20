@@ -9,6 +9,8 @@ const MAX_INTEGER = 2147483647;
 const RATE_FORMAT = QUOTE_DECIMAL_FORMATS.unitRate;
 
 const positiveId = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+// Denominación opcional de la unidad base; null la retira (el servicio usa solo la base).
+const unitDenominationId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional();
 const expectedVersion = z.number({ error: "Indica la versión vigente que estás editando." }).int().min(1);
 const serviceKind = z.enum([SERVICE_KINDS.INDIVIDUAL, SERVICE_KINDS.TURNKEY]);
 const serviceName = z.string().trim().min(1, "Es obligatorio.").max(150);
@@ -67,6 +69,7 @@ export const serviceListSchema = z.object({
     measurementUnitId: positiveId.optional(),
     search: z.string().trim().max(100).optional().transform((value) => value || undefined),
     status: z.enum(["active", "inactive"]).optional(),
+    unitDenominationId: positiveId.optional(),
   }).passthrough(),
 });
 
@@ -83,6 +86,7 @@ export const serviceCreateSchema = z.object({
     name: serviceName,
     referenceRate,
     sortOrder: sortOrder.optional().default(0),
+    unitDenominationId,
   }).strict(),
 });
 
@@ -99,8 +103,9 @@ export const serviceUpdateSchema = z.object({
     name: serviceName.optional(),
     referenceRate: referenceRate.optional(),
     sortOrder: sortOrder.optional(),
+    unitDenominationId,
   }).strict().refine(
-    (body) => ["description", "isActive", "kind", "measurementUnitId", "name", "referenceRate", "sortOrder"]
+    (body) => ["description", "isActive", "kind", "measurementUnitId", "name", "referenceRate", "sortOrder", "unitDenominationId"]
       .some((field) => body[field] !== undefined),
     { message: "Indica al menos un campo para modificar.", path: ["request"] },
   ),

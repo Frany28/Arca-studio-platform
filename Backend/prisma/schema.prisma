@@ -660,6 +660,8 @@ model users {
   services_created                                      services[]                 @relation("services_created_by")
   services_updated                                      services[]                 @relation("services_updated_by")
   service_versions_changed                              service_versions[]         @relation("service_versions_changed_by")
+  measurement_unit_denominations_created                measurement_unit_denominations[] @relation("measurement_unit_denominations_created_by")
+  measurement_unit_denominations_updated                measurement_unit_denominations[] @relation("measurement_unit_denominations_updated_by")
   clients                                               clients?                   @relation(fields: [client_id], references: [id], map: "fk_users_client")
   roles                                                 roles                      @relation(fields: [role_id], references: [id], map: "fk_users_role")
 
@@ -688,22 +690,51 @@ model user_registrations {
   @@index([expires_at], map: "idx_user_registrations_expires_at")
 }
 
-/// Unidades de medida configurables del catálogo (m², metro lineal, punto, proyecto...).
-/// Se desactivan con is_active; no se eliminan mientras un servicio o versión las referencie.
+/// Catálogo de unidades base (m², metro lineal, punto, proyecto...): código estable, nombre,
+/// abreviatura y decimales. Se desactivan con is_active; no se eliminan mientras estén referenciadas.
+/// Abreviaturas y nombres únicos por índices de expresión (uq_measurement_units_symbol_key con NFKC,
+/// uq_measurement_units_name_key) que Prisma no representa; viven en la migración.
 /// This table contains check constraints and requires additional setup for migrations.
 /// This model contains row level security and requires additional setup for migrations.
+/// This model contains an expression index which requires additional setup for migrations.
 model measurement_units {
-  id               BigInt             @id @default(autoincrement())
-  code             String             @unique(map: "uq_measurement_units_code") @db.VarChar(30)
-  name             String             @db.VarChar(80)
-  symbol           String             @db.VarChar(20)
-  allows_decimals  Boolean            @default(true)
-  is_active        Boolean            @default(true)
-  sort_order       Int                @default(0)
-  created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
-  services         services[]
-  service_versions service_versions[]
+  id                             BigInt                           @id @default(autoincrement())
+  code                           String                           @unique(map: "uq_measurement_units_code") @db.VarChar(30)
+  name                           String                           @db.VarChar(80)
+  symbol                         String                           @db.VarChar(20)
+  allows_decimals                Boolean                          @default(true)
+  is_active                      Boolean                          @default(true)
+  sort_order                     Int                              @default(0)
+  created_at                     DateTime                         @default(now()) @db.Timestamptz(6)
+  updated_at                     DateTime                         @default(now()) @db.Timestamptz(6)
+  services                       services[]
+  service_versions               service_versions[]
+  measurement_unit_denominations measurement_unit_denominations[]
+}
+
+/// Denominaciones personalizadas que comparten una unidad base (m² + "de construcción").
+/// Sin reglas propias: decimales y compatibilidad se leen de la base. Sin eliminación física; su
+/// unidad base no cambia (trigger measurement_unit_denominations_unit_immutable). Unicidad por base
+/// con índice de expresión (uq_measurement_unit_denominations_key, NFKC) definido en la migración.
+/// This table contains check constraints and requires additional setup for migrations.
+/// This model contains row level security and requires additional setup for migrations.
+/// This model contains an expression index which requires additional setup for migrations.
+model measurement_unit_denominations {
+  id                  BigInt             @id @default(autoincrement())
+  measurement_unit_id BigInt
+  denomination        String             @db.VarChar(80)
+  is_active           Boolean            @default(true)
+  created_by          BigInt?
+  updated_by          BigInt?
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  measurement_units   measurement_units  @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_measurement_unit_denominations_unit")
+  users_created_by    users?             @relation("measurement_unit_denominations_created_by", fields: [created_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_measurement_unit_denominations_created_by")
+  users_updated_by    users?             @relation("measurement_unit_denominations_updated_by", fields: [updated_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_measurement_unit_denominations_updated_by")
+  services            services[]
+  service_versions    service_versions[]
+
+  @@unique([id, measurement_unit_id], map: "uq_measurement_unit_denominations_id_unit")
 }
 
 /// Estado actual de cada servicio del tabulador; tarifas de referencia en USD con escala NUMERIC(14,2).
@@ -725,13 +756,17 @@ model services {
   updated_by          BigInt?
   created_at          DateTime           @default(now()) @db.Timestamptz(6)
   updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  /// Denominación opcional; la FK compuesta exige que pertenezca a measurement_unit_id.
+  unit_denomination_id BigInt?
   measurement_units   measurement_units  @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_measurement_unit")
+  measurement_unit_denominations measurement_unit_denominations? @relation(fields: [unit_denomination_id, measurement_unit_id], references: [id, measurement_unit_id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_unit_denomination")
   users_created_by    users?             @relation("services_created_by", fields: [created_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_created_by")
   users_updated_by    users?             @relation("services_updated_by", fields: [updated_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_updated_by")
   service_versions    service_versions[]
 
   @@index([sort_order, id], map: "services_catalog_order_idx")
   @@index([measurement_unit_id], map: "idx_services_measurement_unit_id")
+  @@index([unit_denomination_id], map: "idx_services_unit_denomination_id", where: raw("(unit_denomination_id IS NOT NULL)"))
 }
 
 /// Historial inmutable de servicios: copia completa del servicio y su unidad en cada versión.
@@ -759,12 +794,17 @@ model service_versions {
   changed_by           BigInt?
   is_current           Boolean           @default(true)
   created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  /// Copia histórica de la denominación usada (ambas NULL o ambas informadas).
+  unit_denomination_id BigInt?
+  unit_denomination    String?           @db.VarChar(80)
   services             services          @relation(fields: [service_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_service")
   measurement_units    measurement_units @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_measurement_unit")
+  measurement_unit_denominations measurement_unit_denominations? @relation(fields: [unit_denomination_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_unit_denomination")
   users                users?            @relation("service_versions_changed_by", fields: [changed_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_changed_by")
 
   @@unique([service_id, version_number], map: "uq_service_versions_service_version")
   @@index([measurement_unit_id], map: "idx_service_versions_measurement_unit_id")
+  @@index([unit_denomination_id], map: "idx_service_versions_unit_denomination_id", where: raw("(unit_denomination_id IS NOT NULL)"))
 }
 
 enum anchor_type {

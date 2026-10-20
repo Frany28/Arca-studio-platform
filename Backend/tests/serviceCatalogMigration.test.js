@@ -1,90 +1,48 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { QUOTE_DECIMAL_FORMATS } from "../src/domain/quoteTotals.js";
+import {
+  assertPrismaMatchesMigrations,
+  backendDirectory,
+  createTableBody as findCreateTableBody,
+  listMigrations,
+  readMigrationStatements as readNamedMigration,
+  sqlColumns,
+} from "./helpers/migrationSchema.js";
 
-const backendDirectory = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const migrationsDirectory = path.join(backendDirectory, "prisma", "migrations");
 const MIGRATION_NAME = "20261019120000_service_catalog";
 const CATALOG_TABLES = ["measurement_units", "services", "service_versions"];
-const PRISMA_SCALARS = new Set(["BigInt", "Boolean", "DateTime", "Decimal", "Int", "String", "service_kind"]);
 
 /**
  * Lee el SQL de la migración del catálogo sin comentarios para analizar solo sentencias.
  *
  * @returns {Promise<string>} SQL sin comentarios de línea.
  */
-async function readMigrationStatements() {
-  const raw = await readFile(path.join(migrationsDirectory, MIGRATION_NAME, "migration.sql"), "utf8");
-  return raw.replace(/--.*$/gm, "");
+function readMigrationStatements() {
+  return readNamedMigration(MIGRATION_NAME);
 }
 
 /**
- * Obtiene el cuerpo del CREATE TABLE de una tabla de la migración.
+ * Obtiene el cuerpo del CREATE TABLE de una tabla creada por esta migración.
  *
  * @param {string} sql - SQL sin comentarios.
  * @param {string} table - Tabla buscada.
  * @returns {string} Definiciones entre los paréntesis del CREATE TABLE.
  */
 function createTableBody(sql, table) {
-  const match = sql.match(new RegExp(`CREATE TABLE public\\.${table} \\(([\\s\\S]*?)\\n\\);`));
-  assert.ok(match, `Falta CREATE TABLE public.${table}`);
-  return match[1];
+  const body = findCreateTableBody(sql, table);
+  assert.ok(body, `Falta CREATE TABLE public.${table}`);
+  return body;
 }
 
-/**
- * Lista las columnas declaradas en un CREATE TABLE (excluye restricciones).
- *
- * @param {string} body - Cuerpo del CREATE TABLE.
- * @returns {Map<string, string>} Columna → definición SQL.
- */
-function sqlColumns(body) {
-  const columns = new Map();
-  for (const line of body.split("\n").map((value) => value.trim()).filter(Boolean)) {
-    if (/^(CONSTRAINT|FOREIGN|ON )/.test(line)) continue;
-    const [name, ...definition] = line.replace(/,$/, "").split(/\s+/);
-    columns.set(name, definition.join(" "));
-  }
-  return columns;
-}
-
-/**
- * Lista los campos escalares (columnas) de un modelo de schema.prisma.
- *
- * @param {string} schema - Contenido de schema.prisma.
- * @param {string} model - Modelo buscado.
- * @returns {Map<string, string>} Campo → definición Prisma.
- */
-function prismaColumns(schema, model) {
-  const match = schema.match(new RegExp(`^model ${model} \\{([\\s\\S]*?)^\\}`, "m"));
-  assert.ok(match, `Falta el modelo ${model}`);
-  const columns = new Map();
-  for (const line of match[1].split("\n").map((value) => value.trim())) {
-    const [name, type, ...rest] = line.split(/\s+/);
-    if (!name || name.startsWith("@@") || name.startsWith("//")) continue;
-    if (PRISMA_SCALARS.has(type?.replace(/\?$/, ""))) columns.set(name, `${type} ${rest.join(" ")}`);
-  }
-  return columns;
-}
-
-test("schema.prisma y la migración declaran las mismas columnas y nulabilidad", async () => {
-  const [sql, schema] = await Promise.all([
-    readMigrationStatements(),
-    readFile(path.join(backendDirectory, "prisma", "schema.prisma"), "utf8"),
-  ]);
-  for (const table of CATALOG_TABLES) {
-    const fromSql = sqlColumns(createTableBody(sql, table));
-    const fromPrisma = prismaColumns(schema, table);
-    assert.deepEqual([...fromPrisma.keys()].sort(), [...fromSql.keys()].sort(), table);
-    for (const [column, prismaDefinition] of fromPrisma) {
-      const isOptional = /^\S+\?/.test(prismaDefinition);
-      const sqlNotNull = /NOT NULL/.test(fromSql.get(column));
-      assert.equal(sqlNotNull, !isOptional, `${table}.${column}: nulabilidad distinta`);
-    }
-  }
+test("schema.prisma y el historial de migraciones declaran las mismas columnas y nulabilidad", async () => {
+  // Las columnas se acumulan a lo largo del historial: las añadidas por migraciones
+  // posteriores (por ejemplo, unit_denomination_id) no pertenecen a esta migración.
+  const schema = await readFile(path.join(backendDirectory, "prisma", "schema.prisma"), "utf8");
+  for (const table of CATALOG_TABLES) await assertPrismaMatchesMigrations(schema, table);
 });
 
 test("la tarifa usa la escala monetaria del motor de cálculos", async () => {
@@ -149,6 +107,6 @@ test("la migración no es destructiva: solo crea objetos nuevos y no toca datos"
 });
 
 test("la migración del catálogo se aplica después de las sesiones revocables", async () => {
-  const migrations = (await readdir(migrationsDirectory)).filter((name) => /^\d{14}_/.test(name)).sort();
+  const migrations = await listMigrations();
   assert.ok(migrations.indexOf(MIGRATION_NAME) > migrations.indexOf("20261015090000_user_sessions"));
 });
