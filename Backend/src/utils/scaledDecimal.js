@@ -92,6 +92,26 @@ export function parseScaledDecimal(value, { scale, maxIntegerDigits }) {
 }
 
 /**
+ * Traduce un código de análisis decimal al mensaje en español asignado al campo inválido.
+ * Incluye la precisión admitida para que el usuario pueda corregir el valor; lo comparten
+ * el motor de cotizaciones y los esquemas Zod para no redactar la misma regla dos veces.
+ *
+ * @param {string} errorCode - Código de DECIMAL_PARSE_ERRORS.
+ * @param {{ scale: number, maxIntegerDigits: number }} format - Precisión del campo.
+ * @returns {string} Mensaje para `fields`.
+ */
+export function describeDecimalParseError(errorCode, format) {
+  switch (errorCode) {
+    case DECIMAL_PARSE_ERRORS.REQUIRED: return "Es obligatorio.";
+    case DECIMAL_PARSE_ERRORS.NEGATIVE: return "No puede ser negativo.";
+    case DECIMAL_PARSE_ERRORS.TOO_MANY_DECIMALS: return `Admite como máximo ${format.scale} decimales.`;
+    case DECIMAL_PARSE_ERRORS.TOO_LARGE: return `Admite como máximo ${format.maxIntegerDigits} dígitos enteros.`;
+    case DECIMAL_PARSE_ERRORS.UNSAFE_NUMBER: return "Envía el valor como texto decimal para conservar la precisión.";
+    default: return "Debe ser un número decimal válido.";
+  }
+}
+
+/**
  * Divide dos enteros no negativos y redondea el cociente a la mitad hacia arriba.
  * Para valores positivos coincide con round() de PostgreSQL sobre NUMERIC (mitad alejándose
  * de cero), de modo que el resultado puede verificarse con restricciones CHECK equivalentes.

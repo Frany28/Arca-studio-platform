@@ -179,6 +179,31 @@ export async function query(text, params) {
 }
 
 /**
+ * Ejecuta una unidad de trabajo dentro de una transacción con un cliente dedicado del pool.
+ * Confirma solo si `work` termina sin errores; ante cualquier error revierte, libera el
+ * cliente y propaga el error original aunque falle el ROLLBACK. No reintenta escrituras.
+ *
+ * @template T
+ * @param {(client: import("pg").PoolClient) => Promise<T>} work - Operaciones que comparten la transacción.
+ * @returns {Promise<T>} Resultado devuelto por `work` tras el COMMIT.
+ * @throws {Error} El error de `work`, de BEGIN o de COMMIT.
+ */
+export async function withTransaction(work) {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await work(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Obtiene las estadísticas del pool de PostgreSQL para que el flujo llamador pueda continuar.
  * Centraliza esta decisión para mantener consistente la configuración del backend.
  *

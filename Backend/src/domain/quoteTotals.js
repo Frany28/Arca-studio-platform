@@ -1,6 +1,6 @@
 import { ValidationError } from "../errors/appError.js";
 import {
-  DECIMAL_PARSE_ERRORS,
+  describeDecimalParseError,
   divideRoundingHalfUp,
   formatScaledDecimal,
   parseScaledDecimal,
@@ -50,25 +50,6 @@ const INVALID_TOTALS_MESSAGE = "Los importes de la cotización no son válidos."
 const AMOUNT_LIMIT_MESSAGE = `Supera el importe máximo permitido (${formatScaledDecimal(MAX_AMOUNT, AMOUNT_FORMAT.scale)}).`;
 
 /**
- * Traduce un código de análisis decimal al mensaje que se asigna al campo correspondiente.
- * Incluye en el texto la precisión admitida para que el usuario pueda corregir el valor.
- *
- * @param {string} errorCode - Código de DECIMAL_PARSE_ERRORS.
- * @param {{ scale: number, maxIntegerDigits: number }} format - Precisión del campo.
- * @returns {string} Mensaje en español para `fields`.
- */
-function describeDecimalError(errorCode, format) {
-  switch (errorCode) {
-    case DECIMAL_PARSE_ERRORS.REQUIRED: return "Es obligatorio.";
-    case DECIMAL_PARSE_ERRORS.NEGATIVE: return "No puede ser negativo.";
-    case DECIMAL_PARSE_ERRORS.TOO_MANY_DECIMALS: return `Admite como máximo ${format.scale} decimales.`;
-    case DECIMAL_PARSE_ERRORS.TOO_LARGE: return `Admite como máximo ${format.maxIntegerDigits} dígitos enteros.`;
-    case DECIMAL_PARSE_ERRORS.UNSAFE_NUMBER: return "Envía el valor como texto decimal para conservar la precisión.";
-    default: return "Debe ser un número decimal válido.";
-  }
-}
-
-/**
  * Analiza un campo decimal y registra su error en `fields` cuando no es válido.
  * Centraliza la asociación entre ruta del campo, precisión y mensaje.
  *
@@ -81,7 +62,7 @@ function describeDecimalError(errorCode, format) {
 function readDecimalField(value, format, fieldPath, fields) {
   const parsed = parseScaledDecimal(value, format);
   if (parsed.error) {
-    fields[fieldPath] = describeDecimalError(parsed.error, format);
+    fields[fieldPath] = describeDecimalParseError(parsed.error, format);
     return null;
   }
   return parsed.value;
