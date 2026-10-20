@@ -50,7 +50,8 @@ export function createTableBody(sql, table) {
 export function sqlColumns(body) {
   const columns = new Map();
   for (const line of body.split("\n").map((value) => value.trim()).filter(Boolean)) {
-    if (/^(CONSTRAINT|FOREIGN|ON |REFERENCES)/.test(line)) continue;
+    // Restricciones, incluidas las que continúan en líneas propias (FOREIGN KEY, CHECK...).
+    if (/^(CONSTRAINT|FOREIGN|ON |REFERENCES|CHECK)/.test(line)) continue;
     const [name, ...definition] = line.replace(/,$/, "").split(/\s+/);
     columns.set(name, definition.join(" "));
   }

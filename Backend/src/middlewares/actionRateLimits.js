@@ -27,6 +27,7 @@ function positiveIntegerSetting(name, fallback) {
 export const ACTION_RATE_LIMITS = Object.freeze({
   adminProjectBulkAction: Object.freeze({ max: 60, windowMs: HOUR_MS }),
   adminProjectRequestDecision: Object.freeze({ max: 60, windowMs: HOUR_MS }),
+  adminMeasurementUnitWrite: Object.freeze({ max: 120, windowMs: HOUR_MS }),
   adminServiceCatalogWrite: Object.freeze({ max: 120, windowMs: HOUR_MS }),
   adminUserCreate: Object.freeze({ max: 20, windowMs: HOUR_MS }),
   adminUserNote: Object.freeze({ max: 120, windowMs: HOUR_MS }),
@@ -70,6 +71,7 @@ export const ownSessionRevokeRateLimit = createUserActionRateLimit("own-session-
 export const adminRateLimits = Object.freeze({
   projectBulkAction: createUserActionRateLimit("admin-project-bulk-action", ACTION_RATE_LIMITS.adminProjectBulkAction),
   projectRequestDecision: createUserActionRateLimit("admin-project-request-decision", ACTION_RATE_LIMITS.adminProjectRequestDecision),
+  measurementUnitWrite: createUserActionRateLimit("admin-measurement-unit-write", ACTION_RATE_LIMITS.adminMeasurementUnitWrite),
   serviceCatalogWrite: createUserActionRateLimit("admin-service-catalog-write", ACTION_RATE_LIMITS.adminServiceCatalogWrite),
   userCreate: createUserActionRateLimit("admin-user-create", ACTION_RATE_LIMITS.adminUserCreate),
   userNote: createUserActionRateLimit("admin-user-note", ACTION_RATE_LIMITS.adminUserNote),

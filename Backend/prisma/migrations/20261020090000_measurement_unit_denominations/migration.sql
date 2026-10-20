@@ -20,10 +20,17 @@
 BEGIN;
 
 -- 1. Consistencia del catálogo de unidades base.
+--
+-- Las claves de unicidad usan la intercalación integrada pg_c_utf8 (PostgreSQL 17+):
+-- lower() aplica las reglas Unicode de mayúsculas sea cual sea la intercalación de la base.
+-- Con la predeterminada, una base con locale C solo convierte ASCII ("Ó" seguiría en
+-- mayúscula) y la unicidad dependería del entorno. pg_c_utf8 no depende de ICU ni del SO.
 ALTER TABLE public.measurement_units
   ADD CONSTRAINT chk_measurement_units_symbol_format CHECK (symbol = btrim(symbol) AND char_length(symbol) <= 10);
-CREATE UNIQUE INDEX uq_measurement_units_symbol_key ON public.measurement_units (lower(normalize(symbol, NFKC)));
-CREATE UNIQUE INDEX uq_measurement_units_name_key ON public.measurement_units (lower(btrim(name)));
+CREATE UNIQUE INDEX uq_measurement_units_symbol_key
+  ON public.measurement_units (lower(normalize(symbol, NFKC) COLLATE pg_c_utf8));
+CREATE UNIQUE INDEX uq_measurement_units_name_key
+  ON public.measurement_units (lower(btrim(name) COLLATE pg_c_utf8));
 
 -- 2. Denominaciones personalizadas.
 CREATE TABLE public.measurement_unit_denominations (
@@ -54,7 +61,7 @@ CREATE TABLE public.measurement_unit_denominations (
 -- Sin duplicados equivalentes dentro de una misma unidad base. Cubre también el
 -- índice de la clave foránea hacia measurement_units (columna inicial).
 CREATE UNIQUE INDEX uq_measurement_unit_denominations_key
-  ON public.measurement_unit_denominations (measurement_unit_id, lower(normalize(denomination, NFKC)));
+  ON public.measurement_unit_denominations (measurement_unit_id, lower(normalize(denomination, NFKC) COLLATE pg_c_utf8));
 
 -- La unidad base de una denominación no cambia nunca.
 -- search_path vacío: la función no depende de objetos resolubles por nombre.

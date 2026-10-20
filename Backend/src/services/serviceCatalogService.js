@@ -89,10 +89,9 @@ async function assertAssignableUnit(client, { kind, measurementUnitId, requireAc
 }
 
 /**
- * Comprueba en la transacción que una denominación exista, esté activa y pertenezca a la
- * unidad base del servicio, y la bloquea con FOR SHARE hasta el COMMIT: así nadie puede
- * desactivarla o editarla (FOR UPDATE) mientras se asigna. La compatibilidad con el tipo de
- * servicio la decide la unidad base, no la denominación.
+ * Comprueba que una denominación exista, esté activa y sea de la unidad base del servicio, y
+ * la bloquea con FOR SHARE hasta el COMMIT para que nadie la desactive o edite mientras se
+ * asigna. La compatibilidad con el tipo de servicio la decide la unidad base.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la asignación.

@@ -13,6 +13,7 @@ import geoapifyRoutes from "./routes/geoapify.js";
 import projectRequestRoutes from "./routes/projectRequests.js";
 import projectRoutes from "./routes/projects.js";
 import routes from "./routes/index.js";
+import { measurementUnitDenominationRouter, measurementUnitRouter } from "./routes/measurementUnits.js";
 import serviceCatalogRoutes from "./routes/serviceCatalog.js";
 import supportRoutes from "./routes/support.js";
 import { normalizeError } from "./errors/appError.js";
@@ -29,8 +30,10 @@ app.use(sanitizePublicResponse);
 app.use(loadSession);
 app.use(requireTrustedOrigin);
 app.use("/api/auth", authRoutes);
-// Antes de /api/admin: el catálogo tiene su propio router con autenticación y rol admin.
+// Antes de /api/admin: el catálogo y las unidades tienen routers propios con autenticación y rol admin.
 app.use("/api/admin/services", serviceCatalogRoutes);
+app.use("/api/admin/measurement-units", measurementUnitRouter);
+app.use("/api/admin/measurement-unit-denominations", measurementUnitDenominationRouter);
 app.use("/api/admin", adminRoutes);
 app.use("/api/environment-comments", environmentCommentRoutes);
 app.use("/api/geoapify", geoapifyRoutes);

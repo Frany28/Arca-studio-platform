@@ -17,6 +17,7 @@ const SERVICE_FROM = `
 
 /**
  * Transforma la denominación opcional de un servicio en su forma pública.
+ * Devuelve null cuando el servicio usa solo la unidad base.
  *
  * @param {object} row - Fila del catálogo con las columnas de la denominación.
  * @returns {{ id: number, denomination: string, isActive: boolean }|null} Denominación o null.

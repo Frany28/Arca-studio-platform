@@ -81,6 +81,7 @@ async function assertActiveBaseUnit(client, measurementUnitId) {
 
 /**
  * Crea el error para una denominación que no puede cambiar porque la usan servicios activos.
+ * El mensaje indica la alternativa: crear otra denominación y reasignar esos servicios.
  *
  * @param {number} activeServiceCount - Servicios activos que la utilizan.
  * @returns {AppError} Error 409 MEASUREMENT_UNIT_IN_USE.

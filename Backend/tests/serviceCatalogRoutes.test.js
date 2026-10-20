@@ -1,64 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRateLimitQueryMock } from "./helpers/rateLimitQueryMock.js";
+import { startAdminRouterServer } from "./helpers/adminRouterServer.js";
 
 // El transporte simulado nunca consulta la base configurada ni requiere dotenv.
 process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/arca_unit_test";
 process.env.ROUTE_AUTH_DISABLED_FOR_TESTS = "false";
 const { pool } = await import("../src/config/db.js");
-const { default: express } = await import("express");
 const { default: serviceCatalogRouter } = await import("../src/routes/serviceCatalog.js");
-const { normalizeError } = await import("../src/errors/appError.js");
 
 const ADMIN = { id: 2, role: { code: "admin" } };
 const VALID_CREATE = { code: "ANTEPROYECTO", kind: "individual", measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
 
 /**
- * Levanta el router del catálogo en un puerto efímero con una sesión controlada por la prueba.
- * El pool queda sustituido: el contador de rate limit se emula y cualquier otra consulta se
- * registra y responde con `respond`.
+ * Levanta el router del catálogo y devuelve un cliente cuyas rutas son relativas a /api/admin/services.
  *
  * @param {import("node:test").TestContext} context - Contexto que cierra el servidor y restaura mocks.
  * @param {(sql: string) => object} [respond] - Respuesta a consultas que no son del rate limit.
  * @returns {Promise<{ send: Function, setUser: Function, queries: Array<string> }>} Cliente HTTP y estado.
  */
-async function startServer(context, respond = () => { throw new Error("No debe acceder a PostgreSQL"); }) {
-  let user = null;
-  const queries = [];
-  const rateLimitQueries = createRateLimitQueryMock();
-  const handle = async (sql, params) => {
-    const rateLimit = rateLimitQueries.handle(sql, params);
-    if (rateLimit) return rateLimit;
-    queries.push(String(sql));
-    return respond(String(sql));
-  };
-  context.mock.method(pool, "query", handle);
-  context.mock.method(pool, "connect", async () => ({ query: handle, release() {} }));
-
-  const app = express();
-  app.use(express.json());
-  app.use((req, _res, next) => {
-    req.session = { isAuthenticated: Boolean(user) };
-    req.user = user;
-    next();
-  });
-  app.use("/api/admin/services", serviceCatalogRouter);
-  app.use((error, _req, res, _next) => {
-    const normalized = normalizeError(error);
-    res.status(normalized.status).json({ code: normalized.code, message: normalized.publicMessage, fields: normalized.fields });
-  });
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise((resolve) => server.once("listening", resolve));
-  context.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
-
-  const send = async (method, path, body) => {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/services${path}`, {
-      method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
-    });
-    return { body: await response.json(), headers: response.headers, status: response.status };
-  };
-  return { queries, send, setUser: (value) => { user = value; } };
+async function startServer(context, respond) {
+  const server = await startAdminRouterServer(context, { pool, respond, routes: [["/api/admin/services", serviceCatalogRouter]] });
+  return { ...server, send: (method, path, body) => server.send(method, `/api/admin/services${path}`, body) };
 }
 
 const REQUESTS = [
@@ -147,5 +110,8 @@ test("el listado devuelve la página y el cursor siguiente con orden estable", a
   assert.deepEqual(response.body.services[0].measurementUnit, {
     allowsDecimals: true, code: "square_meter", id: 1, isActive: true, name: "Metro cuadrado", symbol: "m²",
   });
+  // Compatibilidad: sin denominación el servicio usa solo la base y la etiqueta es la abreviatura.
+  assert.equal(response.body.services[0].unitDenomination, null);
+  assert.equal(response.body.services[0].unitLabel, "m²");
   assert.deepEqual(JSON.parse(Buffer.from(response.body.nextCursor, "base64url").toString()), [2, "9"]);
 });
