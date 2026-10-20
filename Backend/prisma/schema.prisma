@@ -724,6 +724,10 @@ model measurement_unit_denominations {
   measurement_unit_id BigInt
   denomination        String             @db.VarChar(80)
   is_active           Boolean            @default(true)
+  /// Código público UNID-001… Columna generada (GENERATED ALWAYS AS … STORED) a partir del id,
+  /// definida en la migración 20261020150000; Prisma no representa columnas generadas y el
+  /// backend nunca la escribe (PostgreSQL lo rechaza).
+  public_code         String             @unique(map: "uq_measurement_unit_denominations_public_code") @db.VarChar(24)
   created_by          BigInt?
   updated_by          BigInt?
   created_at          DateTime           @default(now()) @db.Timestamptz(6)

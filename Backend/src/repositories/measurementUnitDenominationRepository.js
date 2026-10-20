@@ -2,7 +2,7 @@ import { query } from "../config/db.js";
 import { formatUnitLabel } from "../domain/measurementUnitLabel.js";
 
 const DENOMINATION_COLUMNS = `
-  d.id, d.denomination, d.is_active, d.created_at, d.updated_at,
+  d.id, d.public_code, d.denomination, d.is_active, d.created_at, d.updated_at,
   u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
   u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active, u.sort_order as unit_sort_order,
   (select count(*) from public.services s where s.unit_denomination_id = d.id and s.is_active)::int as active_service_count`;
@@ -12,8 +12,9 @@ const DENOMINATION_FROM = `
   inner join public.measurement_units u on u.id = d.measurement_unit_id`;
 
 /**
- * Transforma una fila de denominación en la representación pública estable, con su unidad
- * base, la etiqueta compuesta y el número de servicios activos que la utilizan.
+ * Transforma una fila de denominación en la representación pública estable, con su código
+ * público (UNID-001, generado por PostgreSQL), su unidad base, la etiqueta compuesta y el
+ * número de servicios activos que la utilizan.
  *
  * @param {object} row - Fila con columnas de la denominación y de su unidad base.
  * @returns {object} Denominación pública.
@@ -26,6 +27,7 @@ function toDenomination(row) {
     id: Number(row.id),
     isActive: row.is_active,
     label: formatUnitLabel(row.unit_symbol, row.denomination),
+    publicCode: row.public_code,
     measurementUnit: {
       allowsDecimals: row.unit_allows_decimals,
       code: row.unit_code,
@@ -53,7 +55,7 @@ function toContainsPattern(value) {
 /**
  * Lista denominaciones en orden estable (orden de la unidad base, texto, id) con cursor.
  * Pide un elemento adicional para que el servicio determine si existe otra página. Busca
- * literalmente en la denominación y en la abreviatura de la base, siempre con parámetros.
+ * literalmente en el código público, la denominación y la abreviatura de la base.
  *
  * @param {object} options - Filtros y paginación.
  * @param {Array<unknown>|null} options.cursor - [sortOrder, denominación, id] del último elemento visto.
@@ -69,7 +71,8 @@ export async function listDenominations({ cursor, isActive, limit, measurementUn
      ${DENOMINATION_FROM}
      where ($1::bigint is null or d.measurement_unit_id = $1)
        and ($2::boolean is null or d.is_active = $2)
-       and ($3::text is null or d.denomination ilike $3 escape '\\' or u.symbol ilike $3 escape '\\')
+       and ($3::text is null or d.public_code ilike $3 escape '\\' or d.denomination ilike $3 escape '\\'
+         or u.symbol ilike $3 escape '\\')
        and ($4::integer is null or (u.sort_order, d.denomination, d.id) > ($4, $5::text, $6::bigint))
      order by u.sort_order, d.denomination, d.id
      limit $7`,

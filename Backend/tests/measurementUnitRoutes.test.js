@@ -102,6 +102,32 @@ test("una denominación inexistente responde 404 en consulta, edición y estado,
   assert.ok(!server.queries.some((sql) => /update public\.measurement_unit_denominations/.test(sql)));
 });
 
+test("listado y detalle de denominaciones exponen publicCode y label para la tabla administrativa", async (context) => {
+  const row = {
+    active_service_count: 0, created_at: "2026-10-20T00:00:00.000Z", denomination: "de construcción", id: "1", is_active: true,
+    public_code: "UNID-001", unit_allows_decimals: true, unit_code: "square_meter", unit_id: "1", unit_is_active: true,
+    unit_name: "Metro cuadrado", unit_sort_order: 101, unit_symbol: "m²", updated_at: "2026-10-20T00:00:00.000Z",
+  };
+  const server = await startServer(context, (sql) => (sql.startsWith("select id from") ? { rows: [{ id: "1" }] } : { rows: [row] }));
+  server.setUser(ADMIN);
+  const list = await server.send("GET", `${DENOMINATIONS}?search=UNID-001`);
+  assert.equal(list.status, 200);
+  assert.deepEqual(
+    { id: list.body.unitDenominations[0].id, label: list.body.unitDenominations[0].label, publicCode: list.body.unitDenominations[0].publicCode },
+    { id: 1, label: "m² de construcción", publicCode: "UNID-001" },
+  );
+  const detail = await server.send("GET", `${DENOMINATIONS}/1`);
+  assert.equal(detail.body.unitDenomination.publicCode, "UNID-001");
+  // La búsqueda incluye el código público entre los campos consultados.
+  assert.ok(server.queries.some((sql) => /d\.public_code ilike \$3/.test(sql)));
+  // Enviar publicCode al crear o editar se rechaza antes de consultar PostgreSQL.
+  const queriesBefore = server.queries.length;
+  const create = await server.send("POST", DENOMINATIONS, { denomination: "de obra", measurementUnitId: 1, publicCode: "UNID-777" });
+  const update = await server.send("PATCH", `${DENOMINATIONS}/1`, { denomination: "de obra", publicCode: "UNID-777" });
+  assert.deepEqual([create.status, update.status], [400, 400]);
+  assert.equal(server.queries.length, queriesBefore);
+});
+
 test("el Dropdown recibe las unidades base con abreviatura y nombre completo, sin caché", async (context) => {
   const server = await startServer(context, () => ({ rows: [
     { allows_decimals: true, code: "square_meter", id: "1", is_active: true, name: "Metro cuadrado", sort_order: 1, symbol: "m²" },

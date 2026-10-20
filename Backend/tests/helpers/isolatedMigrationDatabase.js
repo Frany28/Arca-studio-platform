@@ -15,10 +15,12 @@ const migrationsDirectory = new URL("../../prisma/migrations/", import.meta.url)
  * @param {string} options.baseUrl - URL de un servidor local con permiso para crear bases.
  * @param {string} options.prefix - Prefijo del nombre de la base temporal.
  * @param {boolean} [options.createApiRoles] - Crea los roles de la API de Supabase.
+ * @param {string} [options.stopBefore] - Migración (y posteriores) que no se aplica, para preparar
+ *   datos previos y aplicarla después con applyMigration.
  * @returns {Promise<{ client: import("pg").Client, databaseUrl: string, drop: Function }>} Cliente
  *   conectado a la base migrada, su URL y la función que la elimina.
  */
-export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createApiRoles = false }) {
+export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createApiRoles = false, stopBefore }) {
   const base = new URL(baseUrl);
   assert.ok(LOCAL_HOSTS.includes(base.hostname), "La prueba rechaza hosts remotos.");
   const { default: pg } = await import("pg");
@@ -40,7 +42,7 @@ export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createA
   try {
     await client.connect();
     if (createApiRoles) await createSupabaseApiRoles(client);
-    await applyMigrationHistory(client);
+    await applyMigrationHistory(client, stopBefore);
   } catch (error) {
     await drop();
     throw error;
@@ -64,14 +66,30 @@ async function createSupabaseApiRoles(client) {
 }
 
 /**
- * Aplica en orden todas las migraciones de prisma/migrations sin usar la CLI de Prisma.
+ * Aplica una migración concreta de prisma/migrations sobre la base aislada.
  * Un valor de enum nuevo no puede usarse en la transacción que lo crea, así que el SQL se
  * ejecuta por tramos tras cada ADD VALUE.
  *
  * @param {import("pg").Client} client - Cliente de la base aislada.
+ * @param {string} migration - Carpeta de la migración.
  * @returns {Promise<void>}
  */
-async function applyMigrationHistory(client) {
+export async function applyMigration(client, migration) {
+  const sql = await readFile(new URL(`${migration}/migration.sql`, migrationsDirectory), "utf8");
+  for (const chunk of sql.split(/(?<=ADD VALUE[^;]*;)/i)) {
+    if (chunk.trim()) await client.query(chunk);
+  }
+}
+
+/**
+ * Aplica en orden las migraciones de prisma/migrations sin usar la CLI de Prisma, opcionalmente
+ * hasta antes de una migración dada.
+ *
+ * @param {import("pg").Client} client - Cliente de la base aislada.
+ * @param {string} [stopBefore] - Primera migración que no se aplica.
+ * @returns {Promise<void>}
+ */
+async function applyMigrationHistory(client, stopBefore) {
   // Tabla de control que Prisma crea antes de migrar; la migración D-2 revoca privilegios sobre ella.
   await client.query(`
     create table public._prisma_migrations (
@@ -80,11 +98,8 @@ async function applyMigrationHistory(client) {
       started_at timestamptz not null default now(), applied_steps_count integer not null default 0
     )
   `);
-  const migrations = (await readdir(migrationsDirectory)).filter((name) => /^\d{14}_/.test(name)).sort();
-  for (const migration of migrations) {
-    const sql = await readFile(new URL(`${migration}/migration.sql`, migrationsDirectory), "utf8");
-    for (const chunk of sql.split(/(?<=ADD VALUE[^;]*;)/i)) {
-      if (chunk.trim()) await client.query(chunk);
-    }
-  }
+  const migrations = (await readdir(migrationsDirectory))
+    .filter((name) => /^\d{14}_/.test(name) && (!stopBefore || name < stopBefore))
+    .sort();
+  for (const migration of migrations) await applyMigration(client, migration);
 }

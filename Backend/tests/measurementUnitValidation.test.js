@@ -58,6 +58,13 @@ test("denominaciones: alta normaliza el texto y exige una unidad base", () => {
   }
   assert.equal(denominationCreateSchema.safeParse({ body: { denomination: "x".repeat(80), measurementUnitId: 1 } }).success, true);
   assert.equal(denominationCreateSchema.safeParse({ body: { denomination: "x", measurementUnitId: 1, isActive: false } }).success, false);
+  // El código público lo genera PostgreSQL: ningún cliente puede enviarlo ni modificarlo.
+  for (const publicCode of ["UNID-001", "UNID-999999", null]) {
+    assert.equal(denominationCreateSchema.safeParse({ body: { denomination: "x", measurementUnitId: 1, publicCode } }).success, false);
+    assert.equal(denominationUpdateSchema.safeParse({ params: { denominationId: "1" }, body: { denomination: "x", publicCode } }).success, false);
+    assert.equal(denominationStatusSchema.safeParse({ params: { denominationId: "1" }, body: { isActive: true, publicCode } }).success, false);
+  }
+  assert.equal(denominationListSchema.safeParse({ query: { search: "UNID-001" } }).data.query.search, "UNID-001");
 });
 
 test("denominaciones: la edición no permite cambiar la unidad base; estado exige booleano", () => {
@@ -111,6 +118,8 @@ test("errores de PostgreSQL de unidades y servicios se traducen sin detalles int
     [translateMeasurementUnitError, pgError("23503", "fk_measurement_unit_denominations_updated_by"), ConflictError, "MEASUREMENT_UNIT_REFERENCE_CONFLICT"],
     [translateMeasurementUnitError, pgError("23001"), ConflictError, "MEASUREMENT_UNIT_REFERENCE_CONFLICT"],
     [translateMeasurementUnitError, pgError("55000"), ConflictError, "MEASUREMENT_UNIT_BASE_IMMUTABLE"],
+    [translateMeasurementUnitError, pgError("428C9"), ConflictError, "MEASUREMENT_UNIT_PUBLIC_CODE_IMMUTABLE"],
+    [translateMeasurementUnitError, pgError("23505", "uq_measurement_unit_denominations_public_code"), ConflictError, "MEASUREMENT_UNIT_CONFLICT"],
     [translateMeasurementUnitError, pgError("23514"), ValidationError, "VALIDATION_ERROR"],
     [translateMeasurementUnitError, pgError("40001"), ConflictError, "MEASUREMENT_UNIT_CONCURRENT_UPDATE"],
     [translateServiceCatalogError, pgError("23503", "fk_services_unit_denomination"), ValidationError, "VALIDATION_ERROR"],

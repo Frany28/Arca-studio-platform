@@ -265,7 +265,7 @@ Routers propios `src/routes/measurementUnits.js`, montados antes de `/admin`. Ex
 | --- | --- | --- |
 | GET `/admin/measurement-units` | includeInactive? `true|false` (default false) | 200 `{measurementUnits:MeasurementUnit[]}` en orden `sortOrder, id`; sin paginación (catálogo acotado) |
 | POST/PATCH/PUT/DELETE `/admin/measurement-units[/:id]` | — | 405 MEASUREMENT_UNIT_READ_ONLY con `Allow: GET` |
-| GET `/admin/measurement-unit-denominations` | cursor?, limit? 1–100 (default 25), measurementUnitId?, status? `active|inactive`, search? ≤100 (texto o abreviatura, literal) | 200 `{unitDenominations:UnitDenomination[],nextCursor}`; orden: base, texto, id |
+| GET `/admin/measurement-unit-denominations` | cursor?, limit? 1–100 (default 25), measurementUnitId?, status? `active|inactive`, search? ≤100 (código público, texto o abreviatura, literal) | 200 `{unitDenominations:UnitDenomination[],nextCursor}`; orden: base, texto, id |
 | GET `/admin/measurement-unit-denominations/:denominationId` | — | 200 `{unitDenomination}`; 404 MEASUREMENT_UNIT_DENOMINATION_NOT_FOUND |
 | POST `/admin/measurement-unit-denominations` | `{measurementUnitId,denomination}` | 201 `{message,unitDenomination}`; 400 VALIDATION_ERROR (base inexistente o inactiva, texto inválido); 409 MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS |
 | PATCH `/admin/measurement-unit-denominations/:denominationId` | `{denomination}` (la base no es editable) | 200 `{changed,message,unitDenomination}`; 404; 409 duplicado; 409 MEASUREMENT_UNIT_IN_USE si la usan servicios activos |
@@ -274,7 +274,7 @@ Routers propios `src/routes/measurementUnits.js`, montados antes de `/admin`. Ex
 
 `denomination`: se normaliza (NFC, sin espacios sobrantes ni dobles), 1–80 caracteres, sin caracteres de control. Dos denominaciones de la misma base son equivalentes si coinciden sin distinguir mayúsculas ni formas Unicode compatibles (NFKC); las tildes sí distinguen. Para cambiar una denominación en uso se crea otra y se reasignan los servicios (`GET /admin/services?unitDenominationId=`).
 
-MeasurementUnit: `{id,code,name,symbol,allowsDecimals,isActive,sortOrder}`. UnitDenomination: `{id,denomination,label:"m² de construcción",isActive,activeServiceCount,measurementUnit:{id,code,name,symbol,allowsDecimals,isActive,sortOrder},createdAt,updatedAt}`. `label` y `unitLabel` se componen con `formatUnitLabel(symbol, denomination)` (`src/domain/measurementUnitLabel.js`). Otros 409: MEASUREMENT_UNIT_REFERENCE_CONFLICT, MEASUREMENT_UNIT_BASE_IMMUTABLE, MEASUREMENT_UNIT_CONCURRENT_UPDATE.
+MeasurementUnit: `{id,code,name,symbol,allowsDecimals,isActive,sortOrder}`. UnitDenomination: `{id,publicCode:"UNID-001",denomination,label:"m² de construcción",isActive,activeServiceCount,measurementUnit:{id,code,name,symbol,allowsDecimals,isActive,sortOrder},createdAt,updatedAt}`. `publicCode` es el identificador visible (columna N.º de la tabla administrativa): `UNID-` más el id con al menos tres dígitos (`UNID-001`, `UNID-1000`), generado por PostgreSQL al crear, permanente aunque se edite o desactive la denominación y nunca aceptado en el cuerpo de las peticiones (400). No se usa para relaciones ni reglas: los servicios referencian el `id` interno. `label` y `unitLabel` se componen con `formatUnitLabel(symbol, denomination)` (`src/domain/measurementUnitLabel.js`). Otros 409: MEASUREMENT_UNIT_REFERENCE_CONFLICT, MEASUREMENT_UNIT_BASE_IMMUTABLE, MEASUREMENT_UNIT_CONCURRENT_UPDATE.
 
 ### Soporte y direcciones
 

@@ -37,6 +37,9 @@ export function translateMeasurementUnitError(error) {
       return new ValidationError("Los datos de la unidad de medida no cumplen las reglas del catálogo.");
     case "55000":
       return new ConflictError("MEASUREMENT_UNIT_BASE_IMMUTABLE", "La unidad base de una denominación no se puede modificar.", error);
+    case "428C9":
+      // public_code es una columna generada: PostgreSQL rechaza cualquier escritura explícita.
+      return new ConflictError("MEASUREMENT_UNIT_PUBLIC_CODE_IMMUTABLE", "El código de la unidad de medida se genera automáticamente y no se puede modificar.", error);
     case "40001":
     case "40P01":
       return new ConflictError("MEASUREMENT_UNIT_CONCURRENT_UPDATE", "La unidad de medida se está modificando en este momento. Inténtalo de nuevo.", error);

@@ -50,6 +50,7 @@ export const denominationListSchema = z.object({
 
 export const denominationDetailSchema = z.object({ params: denominationIdParams });
 
+// publicCode (UNID-001…) lo genera PostgreSQL: `.strict()` lo rechaza en el alta y la edición.
 export const denominationCreateSchema = z.object({
   body: z.object({
     denomination: denominationText,
