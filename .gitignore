@@ -1,1 +1,4 @@
 .vercel
+
+# Documentación Markdown solo local: no se publica en GitHub.
+*.md
