@@ -1,4 +1,21 @@
 .vercel
 
-# Documentación Markdown solo local: no se publica en GitHub.
+# Documentación Markdown: privada por defecto (el repositorio es público).
+# Solo se versionan los documentos técnicos de esta lista de permitidos, revisados
+# manualmente. Antes de añadir una excepción hay que revisar el contenido completo:
+# sin credenciales, identificadores de infraestructura, datos personales, informes de
+# trabajo ni información comercial o estratégica. No usar `git add -f` con Markdown.
 *.md
+!/README.md
+!/Backend/ARCHITECTURE.md
+!/docs/API_CONTRACT.md
+!/Frontend/DESIGN_SYSTEM.md
+!/Frontend/README.md
+!/Frontend/src/components/ui/Input/README.md
+!/Frontend/src/components/ui/NotificationsDrawer/README.md
+# Atribución de la licencia CC0 del recurso HDRI que la acompaña.
+!/Frontend/public/environments/LICENSE.md
+
+# Documentación privada: debe vivir fuera del repositorio; esta regla evita
+# publicarla por error si alguien la crea dentro.
+/ARCA_PRIVATE_DOCS/
