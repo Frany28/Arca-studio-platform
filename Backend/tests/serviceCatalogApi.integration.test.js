@@ -66,12 +66,11 @@ before(async () => {
       ($1, 'admin-a@arca.test', 'Admin', 'A', '!integration-login-disabled!'),
       ($1, 'admin-b@arca.test', 'Admin', 'B', '!integration-login-disabled!')
     returning id::int`, [role.id]);
-  const units = await rows(`
-    insert into public.measurement_units (code, name, symbol, allows_decimals, is_active, sort_order) values
-      ('square_meter', 'Metro cuadrado', 'm²', true, true, 1),
-      ('point', 'Punto', 'pto', false, true, 2),
-      ('legacy_unit', 'Unidad retirada', 'ret', true, false, 3)
-    returning id::int, code`);
+  // m² y punto vienen del catálogo que carga el historial de migraciones; solo se añade una
+  // unidad inactiva propia de la prueba.
+  await rows(`insert into public.measurement_units (code, name, symbol, allows_decimals, is_active, sort_order)
+    values ('legacy_unit', 'Unidad retirada', 'ret', true, false, 9999)`);
+  const units = await rows("select id::int, code from public.measurement_units where code in ('square_meter', 'point', 'legacy_unit')");
   const unitId = Object.fromEntries(units.map((unit) => [unit.code, unit.id]));
   ids = { adminA: admins[0].id, adminB: admins[1].id, legacy: unitId.legacy_unit, point: unitId.point, squareMeter: unitId.square_meter };
 
@@ -214,7 +213,7 @@ test("edición: cambiar a una unidad inactiva o a llave en mano con unidad incom
     payload: { expectedVersion: 1, kind: "turnkey", measurementUnitId: ids.squareMeter }, serviceId: service.id, user: { id: ids.adminA },
   });
   assert.deepEqual(moved.changedFields, ["kind", "measurementUnitId"]);
-  assert.deepEqual((await versionsOf(service.id)).map((v) => v.unit_symbol), ["pto", "m²"]);
+  assert.deepEqual((await versionsOf(service.id)).map((v) => v.unit_symbol), ["pt.", "m²"]);
 });
 
 test("listado: búsqueda literal, filtros y paginación por cursor en orden estable", { skip }, async () => {

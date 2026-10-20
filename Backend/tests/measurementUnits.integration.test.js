@@ -94,12 +94,36 @@ after(async () => {
   if (database) await database.drop();
 });
 
-test("carga inicial: 11 unidades base idempotentes con códigos estables y abreviaturas únicas", { skip }, async () => {
-  await database.client.query(await readFile(SEED, "utf8"));
+test("carga inicial: 48 unidades base idempotentes que no sobrescriben cambios administrativos", { skip }, async () => {
+  const snapshot = () => rows("select id, code, name, symbol, allows_decimals, is_active, sort_order from public.measurement_units order by id");
+  const firstLoad = await snapshot();
+  assert.equal(firstLoad.length, 48);
+  // Metro y metro lineal, y pieza y unidad, son filas distintas con símbolos propios.
+  const pairs = await rows("select code, symbol, allows_decimals from public.measurement_units where code in ('meter', 'linear_meter', 'piece', 'unit') order by code");
+  assert.deepEqual(pairs, [
+    { allows_decimals: true, code: "linear_meter", symbol: "m.l." },
+    { allows_decimals: true, code: "meter", symbol: "m" },
+    { allows_decimals: false, code: "piece", symbol: "pza." },
+    { allows_decimals: false, code: "unit", symbol: "und." },
+  ]);
   const loaded = await rows("select code, symbol, allows_decimals from public.measurement_units order by sort_order");
-  assert.equal(loaded.length, 11);
   assert.deepEqual(loaded[0], { allows_decimals: true, code: "square_meter", symbol: "m²" });
-  assert.deepEqual(loaded.map((unit) => unit.symbol), ["m²", "m.l.", "pt.", "und.", "proy.", "esp.", "hrs", "min", "sem.", "mes", "glb."]);
+  // Las 11 unidades originales conservan su símbolo.
+  const symbols = Object.fromEntries(loaded.map((unit) => [unit.code, unit.symbol]));
+  assert.deepEqual(
+    ["square_meter", "linear_meter", "point", "unit", "project", "space", "hour", "minute", "week", "month", "global"].map((code) => symbols[code]),
+    ["m²", "m.l.", "pt.", "und.", "proy.", "esp.", "hrs", "min", "sem.", "mes", "glb."],
+  );
+  // Segunda ejecución: no duplica ni modifica nada.
+  await database.client.query(await readFile(SEED, "utf8"));
+  assert.deepEqual(await snapshot(), firstLoad);
+  // Un cambio administrativo posterior (estado y orden) sobrevive a una nueva ejecución.
+  await rows("update public.measurement_units set is_active = false, sort_order = 999 where code = 'year'");
+  await database.client.query(await readFile(SEED, "utf8"));
+  const [year] = await rows("select is_active, sort_order from public.measurement_units where code = 'year'");
+  assert.deepEqual(year, { is_active: false, sort_order: 999 });
+  await rows("update public.measurement_units set is_active = true, sort_order = 606 where code = 'year'");
+  assert.equal((await snapshot()).length, 48);
   const insertUnit = (code, name, symbol) => rows("insert into public.measurement_units (code, name, symbol) values ($1, $2, $3)", [code, name, symbol]);
   await assert.rejects(insertUnit("square_meter_2", "Metro cuadrado bis", "m2"), { code: "23505", constraint: "uq_measurement_units_symbol_key" });
   await assert.rejects(insertUnit("point_2", "Punto bis", "PT."), { code: "23505", constraint: "uq_measurement_units_symbol_key" });
@@ -127,10 +151,35 @@ test("unidades base: solo activas por defecto e inactivas bajo petición explíc
   await rows("update public.measurement_units set is_active = false where code = 'minute'");
   const active = await units.getMeasurementUnits({});
   assert.ok(!active.measurementUnits.some((unit) => unit.code === "minute"));
-  assert.equal(active.measurementUnits.length, 10);
+  assert.equal(active.measurementUnits.length, 47);
   const all = await units.getMeasurementUnits({ includeInactive: true });
-  assert.equal(all.measurementUnits.length, 11);
-  assert.deepEqual(all.measurementUnits[0], { allowsDecimals: true, code: "square_meter", id: ids.units.square_meter, isActive: true, name: "Metro cuadrado", sortOrder: 1, symbol: "m²" });
+  assert.equal(all.measurementUnits.length, 48);
+  assert.deepEqual(all.measurementUnits[0], { allowsDecimals: true, code: "square_meter", id: ids.units.square_meter, isActive: true, name: "Metro cuadrado", sortOrder: 101, symbol: "m²" });
+  // El Dropdown recibe las 48 opciones en el orden de presentación por categorías.
+  assert.deepEqual(all.measurementUnits.map((unit) => unit.symbol), [
+    "m²", "cm²", "pie²", "ha", "km²",
+    "m.l.", "m", "mm", "cm", "km", "pulg.", "pie",
+    "m³", "cm³", "L", "gal",
+    "kg", "g", "t",
+    "und.", "pza.", "pt.", "jgo.", "par", "paq.", "caja", "saco", "rollo", "lote",
+    "hrs", "min", "día", "sem.", "mes", "año",
+    "h-h", "d-h",
+    "proy.", "esp.", "vis.", "inf.", "plano", "render", "glb.",
+    "kWh", "kW", "kVA", "TR",
+  ]);
+  const sortOrders = all.measurementUnits.map((unit) => unit.sortOrder);
+  assert.deepEqual(sortOrders, [...sortOrders].sort((a, b) => a - b));
+});
+
+test("tabulador 3.2: las unidades de sus 19 servicios existen y llave en mano sigue aceptando m²", { skip }, async () => {
+  const tabulatorCodes = ["square_meter", "linear_meter", "point", "project", "space", "month"];
+  const available = await rows("select code, is_active from public.measurement_units where code = any($1)", [tabulatorCodes]);
+  assert.deepEqual(available.map((unit) => unit.code).sort(), [...tabulatorCodes].sort());
+  assert.ok(available.every((unit) => unit.is_active));
+  const turnkey = await createService({ code: "LLAVE-TABULADOR", kind: "turnkey", referenceRate: "850.00" });
+  assert.equal(turnkey.measurementUnit.code, "square_meter");
+  await assert.rejects(createService({ code: "LLAVE-HECTAREA", kind: "turnkey", measurementUnitId: ids.units.hectare }),
+    (error) => error.code === "VALIDATION_ERROR" && /llave en mano/.test(error.fields.measurementUnitId));
 });
 
 test("denominaciones: creación, etiqueta, duplicados equivalentes y unidades base no válidas", { skip }, async () => {

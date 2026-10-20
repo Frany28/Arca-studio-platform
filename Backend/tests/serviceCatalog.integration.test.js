@@ -61,10 +61,8 @@ before(async () => {
     insert into public.users (role_id, email, first_name, last_name, password_hash)
     values ($1, 'catalogo@arca.test', 'Catálogo', 'Pruebas', '!integration-login-disabled!') returning id
   `, [role.rows[0].id]);
-  const unit = await query(`
-    insert into public.measurement_units (code, name, symbol, allows_decimals, sort_order)
-    values ('square_meter', 'Metro cuadrado', 'm²', true, 1) returning id
-  `);
+  // El historial de migraciones ya carga el catálogo de unidades base (incluido m²).
+  const unit = await query("select id from public.measurement_units where code = 'square_meter'");
   const service = await query(`
     insert into public.services (code, name, kind, measurement_unit_id, reference_rate, sort_order, created_by, updated_by)
     values ('ANTEPROYECTO', 'Anteproyecto arquitectónico', 'individual', $1, 12.00, 1, $2, $2) returning id

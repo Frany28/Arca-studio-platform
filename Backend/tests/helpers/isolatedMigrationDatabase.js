@@ -55,8 +55,10 @@ export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createA
  * @returns {Promise<void>}
  */
 async function createSupabaseApiRoles(client) {
+  // Los roles son globales del clúster: varias pruebas en paralelo pueden crearlos a la vez y
+  // el perdedor de la carrera recibe unique_violation en lugar de duplicate_object.
   for (const role of ["anon", "authenticated", "service_role"]) {
-    await client.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+    await client.query(`DO $$ BEGIN CREATE ROLE ${role} NOLOGIN; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END $$`);
   }
   await client.query("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role");
 }
