@@ -292,6 +292,108 @@ test("concurrencia: desactivar y asignar a la vez nunca deja un servicio activo 
   assert.equal(violations.total, 0);
 });
 
+/**
+ * Crea un servicio con denominación y lo desactiva, dejándolo en la versión 2, como punto de
+ * partida de las pruebas de reactivación.
+ *
+ * @param {string} code - Código del servicio.
+ * @param {string} unitCode - Código estable de la unidad base.
+ * @param {object} [denomination] - Denominación asignada, o ninguna.
+ * @returns {Promise<object>} Servicio inactivo.
+ */
+async function createInactiveService(code, unitCode, denomination) {
+  const service = await createService({ code, measurementUnitId: ids.units[unitCode], unitDenominationId: denomination?.id ?? null });
+  return (await catalog.changeServiceStatus({ payload: { changeNote: null, expectedVersion: 1, isActive: false }, serviceId: service.id, user: { id: ids.admin } })).service;
+}
+
+/**
+ * Reactiva un servicio con la ruta de estado del servicio real.
+ *
+ * @param {object} service - Servicio con su versión vigente.
+ * @returns {Promise<object>} Resultado de la edición.
+ */
+function reactivate(service) {
+  return catalog.changeServiceStatus({ payload: { changeNote: null, expectedVersion: service.currentVersion, isActive: true }, serviceId: service.id, user: { id: ids.admin } });
+}
+
+test("reactivación (M-1): con unidad y denominación activas se reactiva y crea una versión", { skip }, async () => {
+  const denomination = await createDenomination("drawing", "de detalle");
+  const service = await createInactiveService("REACT-OK", "drawing", denomination);
+  const result = await reactivate(service);
+  assert.equal(result.changed, true);
+  assert.equal(result.service.isActive, true);
+  assert.equal(result.service.unitLabel, "plano de detalle");
+  assert.deepEqual((await versionsOf(service.id)).map((v) => [v.version_number, v.unit_denomination, v.is_current]),
+    [[1, "de detalle", false], [2, "de detalle", false], [3, "de detalle", true]]);
+  // Sin denominación también se reactiva.
+  const plain = await createInactiveService("REACT-OK-BASE", "drawing");
+  assert.equal((await reactivate(plain)).service.isActive, true);
+});
+
+test("reactivación (M-1): una denominación inactiva impide reactivar sin modificar el servicio ni versionar", { skip }, async () => {
+  const denomination = await createDenomination("drawing", "de fachada");
+  const service = await createInactiveService("REACT-DEN-OFF", "drawing", denomination);
+  // Sin servicios activos la denominación se puede desactivar: es el escenario del hallazgo.
+  await units.changeDenominationStatus({ denominationId: denomination.id, payload: { isActive: false }, user: { id: ids.admin } });
+  const before = await versionsOf(service.id);
+  await assert.rejects(reactivate(service), (error) => error.code === "VALIDATION_ERROR" && error.fields.unitDenominationId === "La denominación está inactiva.");
+  // La edición general con isActive también pasa por la misma regla.
+  await assert.rejects(catalog.updateService({ payload: { expectedVersion: 2, isActive: true, referenceRate: "99.00" }, serviceId: service.id, user: { id: ids.admin } }),
+    (error) => error.fields?.unitDenominationId === "La denominación está inactiva.");
+  const after = await catalog.getService(service.id);
+  assert.equal(after.isActive, false);
+  assert.equal(after.referenceRate, "12.00");
+  assert.equal(after.currentVersion, 2);
+  assert.deepEqual(await versionsOf(service.id), before);
+  // Una versión esperada obsoleta sigue respondiendo primero 409, sin consultar la denominación.
+  await assert.rejects(catalog.changeServiceStatus({ payload: { changeNote: null, expectedVersion: 1, isActive: true }, serviceId: service.id, user: { id: ids.admin } }), { code: "SERVICE_VERSION_CONFLICT" });
+  // Reactivada la denominación, el servicio vuelve a poder reactivarse con la versión 3.
+  await units.changeDenominationStatus({ denominationId: denomination.id, payload: { isActive: true }, user: { id: ids.admin } });
+  assert.equal((await reactivate(after)).service.currentVersion, 3);
+  // Desactivar un servicio no exige que su denominación esté activa.
+  const other = await createInactiveService("REACT-DEN-OFF-2", "drawing", await createDenomination("drawing", "de corte"));
+  assert.equal(other.isActive, false);
+});
+
+test("reactivación (M-1): una unidad base inactiva impide reactivar, con y sin denominación", { skip }, async () => {
+  const denomination = await createDenomination("report", "de avance");
+  const withDenomination = await createInactiveService("REACT-UNIT-OFF", "report", denomination);
+  const withoutDenomination = await createInactiveService("REACT-UNIT-OFF-2", "report");
+  await rows("update public.measurement_units set is_active = false where code = 'report'");
+  try {
+    for (const service of [withDenomination, withoutDenomination]) {
+      await assert.rejects(reactivate(service), (error) => error.fields?.measurementUnitId === "La unidad de medida está inactiva.");
+      const current = await catalog.getService(service.id);
+      assert.equal(current.isActive, false);
+      assert.equal(current.currentVersion, 2);
+      assert.equal((await versionsOf(service.id)).length, 2);
+    }
+  } finally {
+    await rows("update public.measurement_units set is_active = true where code = 'report'");
+  }
+  assert.equal((await reactivate(withDenomination)).service.isActive, true);
+});
+
+test("reactivación (M-1): reactivar y desactivar la denominación a la vez nunca deja un servicio activo con ella inactiva", { skip }, async () => {
+  for (let round = 0; round < 8; round += 1) {
+    const target = await createDenomination("render", `de carrera ${round}`);
+    const service = await createInactiveService(`REACT-RACE-${round}`, "render", target);
+    const [deactivation, reactivation] = await Promise.allSettled([
+      units.changeDenominationStatus({ denominationId: target.id, payload: { isActive: false }, user: { id: ids.admin } }),
+      reactivate(service),
+    ]);
+    const outcome = [deactivation.status, reactivation.status].join("/");
+    if (outcome === "fulfilled/rejected") assert.equal(reactivation.reason.fields.unitDenominationId, "La denominación está inactiva.");
+    else if (outcome === "rejected/fulfilled") assert.equal(deactivation.reason.code, "MEASUREMENT_UNIT_IN_USE");
+    else assert.fail(`Resultado inesperado ${outcome}: ${deactivation.reason?.code ?? ""} ${reactivation.reason?.code ?? ""}`);
+    const versions = await versionsOf(service.id);
+    assert.equal(versions.length, reactivation.status === "fulfilled" ? 3 : 2);
+  }
+  const [violations] = await rows(`select count(*)::int total from public.services s
+    join public.measurement_unit_denominations d on d.id = s.unit_denomination_id where s.is_active and not d.is_active`);
+  assert.equal(violations.total, 0);
+});
+
 test("listado de denominaciones: filtros, búsqueda literal y paginación por cursor estable", { skip }, async () => {
   const all = (await units.getDenominationsPage({ limit: 100 })).unitDenominations;
   const seen = [];

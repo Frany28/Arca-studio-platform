@@ -64,8 +64,8 @@ export async function getService(serviceId) {
 
 /**
  * Comprueba en la transacción que una unidad pueda usarse con el tipo de servicio y la bloquea
- * con FOR SHARE hasta el COMMIT. Solo exige que esté activa al asignarla; un cambio de tipo con
- * la misma unidad verifica la compatibilidad aunque la unidad se haya desactivado después.
+ * con FOR SHARE hasta el COMMIT. Exige que esté activa al asignarla o al reactivar el servicio;
+ * un cambio de tipo con la misma unidad solo verifica la compatibilidad.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la asignación.
@@ -112,9 +112,9 @@ async function assertAssignableDenomination(client, { measurementUnitId, unitDen
 }
 
 /**
- * Valida los cambios de unidad, tipo o denominación de una edición antes de guardarla.
- * Un cambio de unidad base que conserva la denominación anterior se rechaza: la denominación
- * pertenece a la otra base y retirarla en silencio cambiaría la etiqueta visible del servicio.
+ * Valida unidad y denominación cuando cambian, cuando cambia el tipo o al reactivar el servicio
+ * (pudieron desactivarse mientras estuvo inactivo), bloqueándolas con FOR SHARE hasta el COMMIT.
+ * Cambiar la base conservando la denominación anterior se rechaza: pertenece a la otra base.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la edición.
@@ -127,15 +127,23 @@ async function assertAssignableDenomination(client, { measurementUnitId, unitDen
 async function assertServiceUnitChanges(client, { changedFields, next, payload }) {
   const unitChanged = changedFields.includes("measurementUnitId");
   const denominationChanged = changedFields.includes("unitDenominationId");
+  // Reactivar revalida aunque los ids no cambien. Si una desactivación de la denominación toma su
+  // bloqueo antes, la lectura posterior a FOR SHARE ya la ve inactiva y se rechaza; si la
+  // reactivación lo toma antes, la desactivación cuenta después este servicio activo (IN_USE).
+  const reactivating = changedFields.includes("isActive") && next.isActive;
   if (unitChanged && payload.unitDenominationId === undefined && next.unitDenominationId !== null) {
     throw new ValidationError(undefined, {
       unitDenominationId: "La denominación actual pertenece a otra unidad. Indica una denominación de la nueva unidad o null.",
     });
   }
-  if (unitChanged || changedFields.includes("kind")) {
-    await assertAssignableUnit(client, { kind: next.kind, measurementUnitId: next.measurementUnitId, requireActive: unitChanged });
+  if (unitChanged || reactivating || changedFields.includes("kind")) {
+    await assertAssignableUnit(client, {
+      kind: next.kind,
+      measurementUnitId: next.measurementUnitId,
+      requireActive: unitChanged || reactivating,
+    });
   }
-  if ((unitChanged || denominationChanged) && next.unitDenominationId !== null) {
+  if ((unitChanged || denominationChanged || reactivating) && next.unitDenominationId !== null) {
     await assertAssignableDenomination(client, { measurementUnitId: next.measurementUnitId, unitDenominationId: next.unitDenominationId });
   }
 }
