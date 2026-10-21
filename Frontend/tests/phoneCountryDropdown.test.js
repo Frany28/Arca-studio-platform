@@ -29,7 +29,8 @@ test("phone country options reuse the attached three-row dropdown pattern", asyn
   assert.match(options, /h-\[35px\] shrink-0/);
   assert.match(options, /INPUT_OPTIONS_VISIBLE_ROWS = 3/);
   assert.match(source, /left-\[-1px\][^"\n]*w-\[calc\(100%\+1px\)\]/);
-  assert.match(source, /after:left-\[-1px\][^"\n]*after:h-px/);
+  assert.match(source, /getInputOptionsAnchorDividerClassName\(isPhoneMenuOpen\)/);
+  assert.match(options, /after:left-\[-1px\][^"\n]*after:h-px/);
   assert.match(source, /grid-cols-\[20px_40px_minmax\(0,1fr\)\]/);
   assert.match(options, /gap-\[2px\][^"\n]*px-\[8px\]/);
   assert.match(source, /\{option\.abbreviation\}/);

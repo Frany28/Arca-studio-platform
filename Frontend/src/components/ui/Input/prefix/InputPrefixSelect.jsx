@@ -3,7 +3,7 @@ import clsx from "clsx";
 
 import { ChevronDownIcon } from "../InputIcons.jsx";
 import InputOptionsPanel from "../options/InputOptionsPanel.jsx";
-import { getInputOptionClassName } from "../options/inputOptionsConfig.js";
+import { getInputOptionClassName, getInputOptionsAnchorDividerClassName } from "../options/inputOptionsConfig.js";
 import useInputOptionsScroll from "../options/useInputOptionsScroll.js";
 import usePrefixSelect from "./usePrefixSelect.js";
 
@@ -46,8 +46,9 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
         aria-activedescendant={isOpen && activeIndex >= 0 ? optionId(activeIndex) : undefined}
         disabled={disabled}
         className={clsx(
-          "flex shrink-0 items-center gap-[4px] self-stretch rounded-l-[inherit] border-r border-[var(--color-neutral-200)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-primary-10)]",
+          "relative flex shrink-0 items-center gap-[4px] self-stretch rounded-l-[inherit] border-r border-[var(--color-neutral-200)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-primary-10)]",
           disabled ? "cursor-not-allowed" : "cursor-pointer",
+          getInputOptionsAnchorDividerClassName(isOpen, position?.placement),
           sizing.prefixSelect,
         )}
         onClick={select.toggle}
@@ -75,7 +76,10 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
             placement={position?.placement}
             className="fixed z-[var(--z-tooltip)]"
             // Oculto hasta medir el campo para no dibujarse un frame en el origen.
-            style={position ? { left: position.left, top: position.top, width: position.width } : { visibility: "hidden" }}
+            // Ancho según el contenido (abreviatura + nombre), nunca menor que el segmento.
+            style={position
+              ? { left: position.left, top: position.top, minWidth: position.minWidth, maxWidth: position.maxWidth, width: "max-content" }
+              : { visibility: "hidden" }}
           >
             {options.map((option, index) => (
               <div

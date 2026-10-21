@@ -505,6 +505,17 @@ for (const theme of ["light", "dark"]) {
     await phoneList.waitFor();
     const phone = await measureOptionsPanel(phoneList);
     assert.equal(await page.getByRole("scrollbar", { name: "Desplazar países" }).count(), 1);
+    // Relación del menú telefónico con su segmento: envoltorio del prefijo y divisor bajo él.
+    const phoneAnchor = await phoneList.evaluate((list) => {
+      const segment = list.parentElement.getBoundingClientRect();
+      const rect = list.getBoundingClientRect();
+      return {
+        dx: Math.round(rect.left - segment.left),
+        dy: Math.round(rect.top - segment.bottom),
+        extraWidth: Math.round(rect.width - segment.width),
+        divider: getComputedStyle(list.parentElement.firstElementChild, "::after").height,
+      };
+    });
 
     await page.goto(`${origin}/servicios-cotizaciones/unidades`);
     await page.getByText("UNID-001", { exact: true }).waitFor();
@@ -516,6 +527,27 @@ for (const theme of ["light", "dark"]) {
     const units = await measureOptionsPanel(unitList);
 
     assert.deepEqual(units, phone, "Carcasa, filas, tipografía, colores, scroll y altura idénticos");
+    // El menú de unidades es una extensión del segmento m², con el mismo anclaje que el teléfono;
+    // solo el ancho crece lo necesario para abreviatura y nombre, sin ocupar el campo completo.
+    const unitAnchor = await unitList.evaluate((list) => {
+      const trigger = document.querySelector('[data-measurement-unit-form] [role="combobox"]');
+      const segment = trigger.getBoundingClientRect();
+      const field = trigger.closest("[data-input-shell]").getBoundingClientRect();
+      const rect = list.getBoundingClientRect();
+      return {
+        dx: Math.round(rect.left - segment.left),
+        dy: Math.round(rect.top - segment.bottom),
+        extraWidth: Math.round(rect.width - segment.width),
+        divider: getComputedStyle(trigger, "::after").height,
+        narrowerThanField: rect.width < field.width,
+        fitsContent: [...list.querySelectorAll('[role="option"] span:last-child')].every((span) => span.scrollWidth <= span.clientWidth),
+      };
+    });
+    assert.deepEqual({ dx: unitAnchor.dx, dy: unitAnchor.dy, divider: unitAnchor.divider }, { dx: phoneAnchor.dx, dy: phoneAnchor.dy, divider: phoneAnchor.divider });
+    assert.equal(phoneAnchor.extraWidth, 1);
+    assert.ok(unitAnchor.extraWidth >= 1, "Nunca más estrecho que el segmento");
+    assert.equal(unitAnchor.narrowerThanField, true);
+    assert.equal(unitAnchor.fitsContent, true, "Los nombres completos caben sin recortarse");
     assert.equal(units.viewportHeight, 113);
     assert.equal(units.optionHeight, 35);
     assert.equal(units.borderTop, "0px");
@@ -570,22 +602,25 @@ for (const theme of ["light", "dark"]) {
       const rect = (element) => element.getBoundingClientRect();
       const dialogRect = rect(document.querySelector("[data-measurement-unit-form]"));
       const listRect = rect(document.querySelector('[role="listbox"]'));
+      const segment = rect(document.querySelector('[data-measurement-unit-form] [role="combobox"]'));
       const field = rect(document.querySelector("[data-measurement-unit-form] [data-input-shell]"));
       return {
         dialogInside: dialogRect.left >= 0 && dialogRect.right <= window.innerWidth,
-        listInside: listRect.top >= 0 && listRect.bottom <= window.innerHeight,
-        listAligned: Math.abs(listRect.left - field.left) < 1 && Math.abs(listRect.width - field.width) < 1,
+        listInside: listRect.top >= 0 && listRect.bottom <= window.innerHeight && listRect.right <= window.innerWidth,
+        // Extensión del segmento m² (no del campo): borde izquierdo y ancho mínimo del segmento.
+        listAnchored: Math.abs(listRect.left - (segment.left - 1)) < 0.5 && listRect.width >= segment.width + 0.5,
+        notFieldWidth: listRect.width < field.width - 1,
       };
     });
-    assert.deepEqual(geometry, { dialogInside: true, listInside: true, listAligned: true });
+    assert.deepEqual(geometry, { dialogInside: true, listInside: true, listAnchored: true, notFieldWidth: true });
 
     // Poco espacio vertical: el listado se reubica (abajo o arriba) sin salir del viewport ni
     // quedar por detrás del modal.
     await page.setViewportSize({ width: 1024, height: 360 });
     await page.waitForFunction(() => {
       const list = document.querySelector('[role="listbox"]')?.getBoundingClientRect();
-      const field = document.querySelector("[data-measurement-unit-form] [data-input-shell]")?.getBoundingClientRect();
-      return list && field && Math.abs(list.left - field.left) < 1 && list.top >= 0 && list.bottom <= window.innerHeight;
+      const segment = document.querySelector('[data-measurement-unit-form] [role="combobox"]')?.getBoundingClientRect();
+      return list && segment && Math.abs(list.left - (segment.left - 1)) < 0.5 && list.top >= 0 && list.bottom <= window.innerHeight;
     });
     const stacking = await page.evaluate(() => {
       const list = document.querySelector('[role="listbox"]');

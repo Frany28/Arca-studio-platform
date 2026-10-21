@@ -36,13 +36,17 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
   const panelHeight = getPrefixSelectPanelHeight(options.length);
 
-  // Mide el campo completo antes del paint y acompaña scroll y resize mientras está abierto.
+  // Mide el segmento selector (no el campo completo), como el envoltorio del prefijo telefónico,
+  // antes del paint, y acompaña scroll y resize mientras está abierto.
   useLayoutEffect(() => {
     if (!isOpen) return undefined;
     const updatePosition = () => {
-      const anchor = triggerRef.current?.closest("[data-input-shell]");
-      if (!anchor) return;
-      setPosition(getPrefixSelectPosition(anchor.getBoundingClientRect(), panelHeight, window.innerHeight));
+      if (!triggerRef.current) return;
+      setPosition(getPrefixSelectPosition(
+        triggerRef.current.getBoundingClientRect(),
+        panelHeight,
+        { width: window.innerWidth, height: window.innerHeight },
+      ));
     };
     updatePosition();
     window.addEventListener("resize", updatePosition);

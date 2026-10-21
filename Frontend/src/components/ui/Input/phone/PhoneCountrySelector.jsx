@@ -2,7 +2,7 @@ import clsx from "clsx";
 import Flag from "../../../Flag.jsx";
 import { ChevronDownIcon } from "../InputIcons.jsx";
 import InputOptionsPanel from "../options/InputOptionsPanel.jsx";
-import { getInputOptionClassName } from "../options/inputOptionsConfig.js";
+import { getInputOptionClassName, getInputOptionsAnchorDividerClassName } from "../options/inputOptionsConfig.js";
 import { getPhoneDigits } from "./phoneUtils.js";
 
 /**
@@ -36,7 +36,7 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
         className={clsx(
           "relative flex shrink-0 items-center gap-[8px] border-r border-[var(--color-neutral-200)]",
           disabled ? "cursor-not-allowed" : "cursor-text",
-          isPhoneMenuOpen && "after:pointer-events-none after:absolute after:bottom-0 after:left-[-1px] after:right-0 after:h-px after:bg-[var(--color-neutral-200)]",
+          getInputOptionsAnchorDividerClassName(isPhoneMenuOpen),
           sizing.phonePrefix,
         )}
         onMouseDown={handlePrefixMouseDown}

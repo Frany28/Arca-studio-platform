@@ -1,4 +1,8 @@
-import { INPUT_OPTIONS_PANEL_PADDING, getInputOptionsViewportHeight } from "../options/inputOptionsConfig.js";
+import {
+  INPUT_OPTIONS_ANCHOR_OFFSET,
+  INPUT_OPTIONS_PANEL_PADDING,
+  getInputOptionsViewportHeight,
+} from "../options/inputOptionsConfig.js";
 
 const VIEWPORT_MARGIN = 8;
 
@@ -14,23 +18,27 @@ export function getPrefixSelectPanelHeight(optionCount) {
 }
 
 /**
- * Sitúa el listado unido al borde inferior del campo, con su mismo ancho y bordes laterales.
- * Si no cabe debajo (por ejemplo, un modal al pie de un viewport móvil), se abre hacia arriba
- * unido al borde superior. Las coordenadas son de viewport porque el panel usa `position: fixed`.
+ * Sitúa el listado como extensión del segmento selector, con la misma relación que el selector
+ * telefónico: unido a su borde inferior, 1 px a su izquierda y con al menos su ancho + 1 px. El
+ * ancho final lo decide el contenido (abreviatura y nombre), limitado al viewport. Si no cabe
+ * debajo, se une al borde superior del segmento. Coordenadas de viewport: el panel usa
+ * `position: fixed` en un portal para no quedar recortado por modales con overflow.
  *
- * @param {{top: number, bottom: number, left: number, width: number}} anchorRect - Rectángulo del campo.
+ * @param {{top: number, bottom: number, left: number, width: number}} anchorRect - Rectángulo del segmento selector.
  * @param {number} panelHeight - Altura del panel.
- * @param {number} viewportHeight - Alto visible de la ventana.
- * @returns {{left: number, width: number, top: number, placement: "bottom"|"top"}} Posición del panel.
+ * @param {{width: number, height: number}} viewport - Dimensiones visibles de la ventana.
+ * @returns {{left: number, top: number, minWidth: number, maxWidth: number, placement: "bottom"|"top"}} Posición.
  */
-export function getPrefixSelectPosition(anchorRect, panelHeight, viewportHeight) {
-  const fitsBelow = anchorRect.bottom + panelHeight <= viewportHeight - VIEWPORT_MARGIN;
+export function getPrefixSelectPosition(anchorRect, panelHeight, viewport) {
+  const fitsBelow = anchorRect.bottom + panelHeight <= viewport.height - VIEWPORT_MARGIN;
   const fitsAbove = anchorRect.top - panelHeight >= VIEWPORT_MARGIN;
   const placement = fitsBelow || !fitsAbove ? "bottom" : "top";
+  const left = anchorRect.left - INPUT_OPTIONS_ANCHOR_OFFSET;
   return {
-    left: anchorRect.left,
-    width: anchorRect.width,
+    left,
     top: placement === "bottom" ? anchorRect.bottom : anchorRect.top - panelHeight,
+    minWidth: anchorRect.width + INPUT_OPTIONS_ANCHOR_OFFSET,
+    maxWidth: Math.max(anchorRect.width + INPUT_OPTIONS_ANCHOR_OFFSET, viewport.width - left - VIEWPORT_MARGIN),
     placement,
   };
 }

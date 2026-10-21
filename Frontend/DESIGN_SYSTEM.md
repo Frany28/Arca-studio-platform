@@ -521,8 +521,9 @@ Validación, capturas y diferencias respecto a Figma:
   backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.
 - El listado de abreviaturas comparte con el selector de país la carcasa, filas, ScrollBar y
   estados (`Input/options/`): tres filas de 35 px, Body/b4, `neutral-200` al seleccionar o con
-  hover y anillo `primary-10` con teclado. Ocupa el ancho del campo para mostrar abreviatura y
-  nombre, y se monta en portal para no quedar recortado por el modal.
+  hover y anillo `primary-10` con teclado. Se abre como extensión del segmento `m²` (mismo
+  anclaje y divisor que el prefijo telefónico) y solo se ensancha lo necesario para mostrar
+  abreviatura y nombre; se monta en portal para no quedar recortado por el modal.
 - El formulario reutiliza la variante `Prefix select` de `Input` (ver su README): abreviatura de
   la unidad base y texto en un campo, previsualización «Se mostrará como…», bloqueo del envío
   en curso y errores del servidor junto al campo sin perder lo escrito. En edición la unidad

@@ -114,9 +114,13 @@ test("selector de prefijo: tres filas como el telefónico, se abre hacia arriba 
   assert.match(getInputOptionClassName({ selected: false, highlighted: true, columns: "" }), /ring-2 ring-\[var\(--color-primary-10\)\]/);
   assert.doesNotMatch(getInputOptionClassName({ selected: false, disabled: true, columns: "" }), /hover:/);
   assert.equal(getPrefixSelectPanelHeight(1), 35 + 16);
-  const anchor = { top: 600, bottom: 640, left: 20, width: 368 };
-  assert.deepEqual(getPrefixSelectPosition(anchor, 168, 1000), { left: 20, width: 368, top: 640, placement: "bottom" });
-  assert.deepEqual(getPrefixSelectPosition(anchor, 168, 700), { left: 20, width: 368, top: 432, placement: "top" });
+  // Anclado al segmento selector (62 px) como el prefijo telefónico: 1 px a la izquierda, unido a
+  // su borde y con al menos su ancho + 1 px; el contenido decide el resto hasta el viewport.
+  const segment = { top: 600, bottom: 640, left: 20, width: 62 };
+  assert.deepEqual(getPrefixSelectPosition(segment, 129, { width: 1440, height: 1000 }), { left: 19, top: 640, minWidth: 63, maxWidth: 1413, placement: "bottom" });
+  assert.deepEqual(getPrefixSelectPosition(segment, 129, { width: 375, height: 700 }), { left: 19, top: 471, minWidth: 63, maxWidth: 348, placement: "top" });
+  // Un viewport mínimo nunca deja el panel más estrecho que el segmento.
+  assert.equal(getPrefixSelectPosition({ ...segment, left: 300 }, 129, { width: 320, height: 1000 }).maxWidth, 63);
   const options = [{ label: "m²", description: "Metro cuadrado" }, { label: "m.l.", description: "Metro lineal" }, { label: "hrs", description: "Hora" }];
   assert.equal(findPrefixOptionIndex(options, "m", 0), 1);
   assert.equal(findPrefixOptionIndex(options, "m", 1), 0);

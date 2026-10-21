@@ -8,6 +8,26 @@ export const INPUT_OPTIONS_VISIBLE_ROWS = 3;
 // Padding vertical del panel (py-[8px]) que rodea el área desplazable.
 export const INPUT_OPTIONS_PANEL_PADDING = 16;
 
+// Relación entre el segmento selector y su listado: el panel empieza 1 px a la izquierda del
+// segmento (cubre su borde) y mide al menos el segmento + 1 px, como el selector telefónico
+// (`absolute left-[-1px] top-full w-[calc(100%+1px)]` sobre su envoltorio).
+export const INPUT_OPTIONS_ANCHOR_OFFSET = 1;
+
+/**
+ * Divisor de 1 px bajo el segmento selector mientras su listado está abierto: une visualmente
+ * el segmento con el panel, que no dibuja borde en ese lado. El segmento debe ser `relative`.
+ *
+ * @param {boolean} open - Listado abierto.
+ * @param {"bottom"|"top"} [placement="bottom"] - Lado del segmento al que se une el panel.
+ * @returns {string|false} Clases del pseudoelemento divisor.
+ */
+export function getInputOptionsAnchorDividerClassName(open, placement = "bottom") {
+  return open && clsx(
+    "after:pointer-events-none after:absolute after:left-[-1px] after:right-0 after:h-px after:bg-[var(--color-neutral-200)]",
+    placement === "top" ? "after:top-0" : "after:bottom-0",
+  );
+}
+
 /**
  * Altura del área desplazable del listado: los resultados cortos conservan su altura natural y
  * los largos muestran tres filas; viewport y ScrollBar comparten exactamente esta medida.

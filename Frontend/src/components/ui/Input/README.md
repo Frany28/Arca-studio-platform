@@ -36,9 +36,12 @@ borde separador, sin su lógica de país.
   fondo, bordes y radios, ScrollBar del sistema y estados (seleccionada y hover en
   `neutral-200`, foco de teclado con anillo `primary-10`). Como el foco permanece en el
   disparador, la opción activa por teclado dibuja ese anillo; el puntero solo aplica hover.
-- A diferencia del teléfono, se monta en portal con `position: fixed` (los modales recortan su
-  contenido) y ocupa el ancho del campo completo para mostrar abreviatura y descripción; si no
-  cabe debajo se abre hacia arriba, unido al borde superior.
+- Se ancla al segmento del prefijo con la misma relación que el teléfono
+  (`INPUT_OPTIONS_ANCHOR_OFFSET`): unido a su borde inferior, 1 px a su izquierda, con el
+  divisor compartido `getInputOptionsAnchorDividerClassName` y al menos el ancho del segmento
+  + 1 px. El ancho crece solo según el contenido (abreviatura y nombre), limitado al viewport;
+  nunca ocupa el campo de texto completo. Se monta en portal con `position: fixed` porque los
+  modales recortan su contenido, y si no cabe debajo se une al borde superior del segmento.
 
 ## Contratos sensibles
 
