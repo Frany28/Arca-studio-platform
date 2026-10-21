@@ -18,6 +18,9 @@ const AdminProjectsPage = lazy(() => import("./pages/admin-projects/AdminProject
 const AdminFilesPage = lazy(
   () => import("./pages/admin-files/AdminFilesPage.jsx"),
 );
+const AdminServicesQuotesPage = lazy(
+  () => import("./pages/admin-services-quotes/AdminServicesQuotesPage.jsx"),
+);
 const CreateAccount = lazy(() => import("./pages/auth/CreateAccount.jsx"));
 const CreatePassword = lazy(() => import("./pages/auth/CreatePassword.jsx"));
 const EmptyArchitectDashboardExample = lazy(
@@ -111,6 +114,11 @@ createRoot(document.getElementById("root")).render(
               <Route path="/archivos" element={<AdminFilesPage />} />
               <Route path="/usuarios" element={<AdminUsersPage />} />
               <Route path="/gestion-proyectos" element={<AdminProjectsPage />} />
+              {/* Las subrutas del módulo conservan el elemento activo del riel. */}
+              <Route
+                path="/servicios-cotizaciones/*"
+                element={<AdminServicesQuotesPage />}
+              />
               <Route
                 path="/usuarios-vacio"
                 element={<AdminUsersPage empty />}

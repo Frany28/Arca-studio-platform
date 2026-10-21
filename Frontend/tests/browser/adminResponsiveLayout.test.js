@@ -9,7 +9,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 
-const ADMIN_PAGES = ["/dashboard-arquitecto", "/usuarios", "/archivos"];
+const ADMIN_PAGES = ["/dashboard-arquitecto", "/usuarios", "/archivos", "/servicios-cotizaciones"];
 const CHECKPOINT_WIDTHS = [320, 375, 430, 768, 1023, 1024, 1279, 1280, 1440, 1920];
 const PROJECT = {
   id: 30,
@@ -121,6 +121,7 @@ async function openAdminPage(context, path, width, { theme = "light" } = {}) {
     "/dashboard-arquitecto": "Apto. Noventa y Uno",
     "/usuarios": USERS[9].name,
     "/archivos": "Última carga",
+    "/servicios-cotizaciones": "Módulo en desarrollo",
   }[path];
   await page.getByText(readyText, { exact: true }).first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   // Las medidas dependen de las métricas reales de Inter, no de la fuente de respaldo.

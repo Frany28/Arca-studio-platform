@@ -1,6 +1,9 @@
 import { getProjectPath } from "./projectRoutes.js";
 import { selectRecentProjects } from "./recentProjects.js";
 
+/** Ruta base del módulo administrativo de servicios y cotizaciones; sus subrutas cuelgan de ella. */
+export const SERVICES_QUOTES_PATH = "/servicios-cotizaciones";
+
 /**
  * Adapta los proyectos recientes a accesos laterales con ruta por slug.
  * La selección excluye archivados y limita a tres; proyectos públicos añaden icono window.
@@ -104,6 +107,13 @@ export function createUserSideNavigationItems(projects = [], roleCode = "client"
         icon: "history",
         wrapperHeight: "44px",
         to: "/historial",
+      },
+      {
+        id: "services-quotes",
+        label: "Servicios y cotizaciones",
+        icon: "services-quotes",
+        wrapperHeight: "44px",
+        to: SERVICES_QUOTES_PATH,
       },
       {
         id: "settings",

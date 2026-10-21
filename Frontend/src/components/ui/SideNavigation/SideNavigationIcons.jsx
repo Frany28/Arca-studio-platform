@@ -5,6 +5,7 @@ import {
   ElementPlus,
   Grid2,
   People,
+  TaskSquare,
 } from "iconsax-react";
 
 export function SidebarRightIcon({ className }) {
@@ -327,6 +328,7 @@ export function SideNavigationItemIcon({ icon, className = "size-5 shrink-0" }) 
     projects: Buildings2,
     files: DocumentText,
     history: Clock,
+    "services-quotes": TaskSquare,
   };
   const AdminIcon = adminIcons[icon];
 

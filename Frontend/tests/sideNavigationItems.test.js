@@ -33,11 +33,11 @@ test("admin navigation follows the dedicated management design", () => {
 
   assert.deepEqual(
     items.map(({ id }) => id),
-    ["dashboard", "users", "projects", "files", "history", "settings"],
+    ["dashboard", "users", "projects", "files", "history", "services-quotes", "settings"],
   );
   assert.deepEqual(
     items.map(({ label }) => label),
-    ["Dashboard", "Usuarios", "Proyectos", "Archivos", "Historial", "Configuraciones"],
+    ["Dashboard", "Usuarios", "Proyectos", "Archivos", "Historial", "Servicios y cotizaciones", "Configuraciones"],
   );
   assert.equal(items.some(({ id }) => id.startsWith("project-")), false);
 });
@@ -51,7 +51,7 @@ test("admin navigation does not receive recent project shortcuts", () => {
 
   assert.deepEqual(
     items.map(({ id }) => id),
-    ["dashboard", "users", "projects", "files", "history", "settings"],
+    ["dashboard", "users", "projects", "files", "history", "services-quotes", "settings"],
   );
 });
 

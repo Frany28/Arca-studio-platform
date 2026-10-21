@@ -47,6 +47,8 @@ const PAGE_CASES = [
   { path: "/dashboard-arquitecto", role: "admin", destination: "/archivos", item: "Archivos" },
   { path: "/usuarios", role: "admin", destination: "/archivos", item: "Archivos" },
   { path: "/archivos", role: "admin", destination: "/usuarios", item: "Usuarios" },
+  { path: "/archivos", role: "admin", destination: "/servicios-cotizaciones", item: "Servicios y cotizaciones" },
+  { path: "/servicios-cotizaciones", role: "admin", destination: "/archivos", item: "Archivos" },
 ];
 
 let browser;
