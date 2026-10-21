@@ -1,8 +1,9 @@
-/* Renderiza campos de entrada reutilizables con variantes de texto, teléfono, búsqueda, contraseña y tags. */
+/* Renderiza campos de entrada reutilizables con variantes de texto, teléfono, prefijo seleccionable, búsqueda, contraseña y tags. */
 import { useId, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import usePhoneInput from "./phone/usePhoneInput.js";
 import PhoneCountrySelector from "./phone/PhoneCountrySelector.jsx";
+import InputPrefixSelect from "./prefix/InputPrefixSelect.jsx";
 import useInputTags from "./tags/useInputTags.js";
 import InputTagGroup from "./tags/InputTagGroup.jsx";
 import Label from "../Label/Label.jsx";
@@ -61,6 +62,12 @@ function hasTextValue(value) {
  * @param {boolean} props.required Obligatoriedad visual y nativa; conserva true por defecto.
  * @param {boolean} props.disabled Bloqueo efectivo, también activado por state="Disabled".
  * @param {boolean} [props.showDisabledTags=false] Conserva las etiquetas informativas en Tags bloqueados.
+ * @param {Array<{id: string|number, label: string, description?: string}>} [props.prefixOptions]
+ * Opciones del selector de la variante "Prefix select"; `label` es el texto visible del prefijo.
+ * @param {string|number|null} [props.prefixValue] Opción seleccionada del prefijo (controlada).
+ * @param {(option: Object) => void} [props.onPrefixChange] Recibe la opción de prefijo elegida.
+ * @param {string} [props.prefixAriaLabel] Nombre accesible del selector de prefijo.
+ * @param {boolean} [props.prefixDisabled=false] Bloquea solo el prefijo y deja editable el texto.
  * @returns {import("react").ReactElement} Campo accesible con sus adornos y ayudas.
  */
 function Input({
@@ -88,6 +95,11 @@ function Input({
   countryCode = "US",
   countryPrefix = "+1",
   phoneOptions = PHONE_COUNTRY_OPTIONS,
+  prefixOptions = [],
+  prefixValue = null,
+  onPrefixChange,
+  prefixAriaLabel = "Prefijo",
+  prefixDisabled = false,
   tags = [],
   tagOptions = INPUT_TAG_DEFAULT_ITEMS,
   tagGroupAriaLabel,
@@ -282,9 +294,31 @@ function Input({
     .join(" ") || undefined;
   const resolvedAriaInvalid =
     ariaInvalid ?? (resolvedState === "Error" ? true : undefined);
+  // Teléfono y prefijo seleccionable comparten la estructura de selector + campo nativo.
+  const leadingSelector = resolvedType === "Phone number" ? (
+    <PhoneCountrySelector
+      inputId={inputId}
+      disabled={isDisabled}
+      sizing={sizing}
+      stateStyles={stateStyles}
+      phone={phone}
+    />
+  ) : resolvedType === "Prefix select" ? (
+    <InputPrefixSelect
+      inputId={inputId}
+      options={prefixOptions}
+      value={prefixValue}
+      ariaLabel={prefixAriaLabel}
+      disabled={isDisabled || prefixDisabled}
+      sizing={sizing}
+      stateStyles={stateStyles}
+      onChange={onPrefixChange}
+    />
+  ) : null;
 
   const content = (
     <div
+      data-input-shell
       className={clsx(
         "flex w-full items-center rounded-[var(--radius-2)] transition-[border-color,box-shadow,background-color] duration-150",
         resolvedType === "Phone number" ? "overflow-visible" : "overflow-hidden",
@@ -301,20 +335,14 @@ function Input({
       }}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {resolvedType === "Phone number" ? (
+      {leadingSelector ? (
         <div
           className={clsx(
             "flex min-w-0 flex-1 items-center rounded-[inherit]",
             stateStyles.contentBorder,
           )}
         >
-          <PhoneCountrySelector
-            inputId={inputId}
-            disabled={isDisabled}
-            sizing={sizing}
-            stateStyles={stateStyles}
-            phone={phone}
-          />
+          {leadingSelector}
           <div className={clsx("flex min-w-0 flex-1 items-center gap-[8px]", sizing.field)}>
             <input
               ref={resolvedInputRef}

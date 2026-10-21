@@ -1,0 +1,56 @@
+// Límite del texto de una denominación según docs/API_CONTRACT.md (1–80 caracteres).
+export const DENOMINATION_MAX_LENGTH = 80;
+
+/**
+ * Normaliza el texto como lo hace el backend antes de guardarlo (NFC, sin espacios exteriores
+ * ni dobles), para validar y previsualizar exactamente lo que se enviará.
+ *
+ * @param {string} value - Texto escrito por el usuario.
+ * @returns {string} Texto normalizado.
+ */
+export function normalizeDenominationText(value) {
+  return String(value ?? "").normalize("NFC").trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Valida la denominación en el cliente con las mismas reglas del contrato; el backend sigue
+ * siendo la fuente de verdad (duplicados equivalentes, base inactiva).
+ *
+ * @param {string} value - Texto escrito por el usuario.
+ * @returns {string} Mensaje de error, o cadena vacía si es válido.
+ */
+export function validateDenominationText(value) {
+  const text = normalizeDenominationText(value);
+  if (!text) return "Escribe el nombre de la unidad.";
+  if (text.length > DENOMINATION_MAX_LENGTH) return `Admite como máximo ${DENOMINATION_MAX_LENGTH} caracteres.`;
+  if (/\p{Cc}/u.test(text)) return "No admite caracteres de control.";
+  return "";
+}
+
+/**
+ * Previsualiza la etiqueta que compondrá la API (`m²` + `de construcción`). Solo es una ayuda
+ * visual: la tabla siempre muestra el `label` devuelto por el backend.
+ *
+ * @param {string} symbol - Abreviatura de la unidad base.
+ * @param {string} denomination - Texto escrito.
+ * @returns {string} Etiqueta resultante, o cadena vacía si falta alguna parte.
+ */
+export function previewUnitLabel(symbol, denomination) {
+  const text = normalizeDenominationText(denomination);
+  return symbol && text ? `${symbol} ${text}` : "";
+}
+
+/**
+ * Convierte las unidades base del API en opciones del selector: el disparador muestra solo la
+ * abreviatura (m², m.l., hrs…) y el listado añade el nombre completo para distinguirlas.
+ *
+ * @param {Array<{id: number, symbol: string, name: string}>} units - Unidades base activas.
+ * @returns {Array<{id: number, label: string, description: string}>} Opciones del Input.
+ */
+export function toBaseUnitOptions(units) {
+  return (Array.isArray(units) ? units : []).map((unit) => ({
+    id: unit.id,
+    label: unit.symbol,
+    description: unit.name,
+  }));
+}

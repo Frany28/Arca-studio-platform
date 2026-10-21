@@ -45,9 +45,12 @@ function resolveBadgeProps(theme, variation, size) {
 }
 
 // Resuelve la apariencia final del badge y renderiza solo los elementos de la variante activa.
+// `truncate` (opcional, false por defecto) limita el badge al ancho disponible con elipsis y
+// conserva el texto completo en el DOM y en `title`, para etiquetas largas dentro de tablas.
 function Badge({
   className,
   label = "Label",
+  truncate = false,
   theme = "Brand 1",
   variation = "Simple",
   size = "S",
@@ -79,8 +82,10 @@ function Badge({
         isSimple && sizing.simple,
         isDot && sizing.dot,
         isFlagAvatar && sizing.flagAvatar,
+        truncate && "min-w-0 max-w-full",
         className,
       )}
+      title={truncate && typeof label === "string" ? label : undefined}
       {...props}
     >
       {isFlagAvatar ? (
@@ -103,7 +108,7 @@ function Badge({
         </span>
       ) : null}
 
-      <span className={clsx("inline-flex items-center whitespace-nowrap", sizing.text, visual.content)}>
+      <span className={clsx(truncate ? "block min-w-0 truncate" : "inline-flex items-center whitespace-nowrap", sizing.text, visual.content)}>
         {label}
       </span>
 

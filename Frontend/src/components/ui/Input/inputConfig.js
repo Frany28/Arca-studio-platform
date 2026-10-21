@@ -21,6 +21,7 @@ export const INPUT_SIZE_STYLES = {
     field: "min-h-9 pl-[12px] pr-[8px] py-[8px]",
     shell: "min-h-9",
     phonePrefix: "min-h-9 px-[12px] py-[8px]",
+    prefixSelect: "min-h-9 pl-[12px] pr-[8px] py-[8px]",
     paymentBadge: "h-5 w-[28.75px] text-[10px]",
     tagSize: "S",
   },
@@ -28,6 +29,8 @@ export const INPUT_SIZE_STYLES = {
     field: "min-h-10 px-[12px] py-[8px]",
     shell: "min-h-10",
     phonePrefix: "min-h-10 px-[12px] py-[8px]",
+    // Figma 5790:360030: 12 px a la izquierda y 8 px junto a la flecha.
+    prefixSelect: "min-h-10 pl-[12px] pr-[8px] py-[8px]",
     paymentBadge: "h-6 w-[34.5px] text-[10px]",
     tagSize: "S",
   },
@@ -35,6 +38,7 @@ export const INPUT_SIZE_STYLES = {
     field: "min-h-11 px-[12px] py-[12px]",
     shell: "min-h-11",
     phonePrefix: "min-h-11 px-[12px] py-[12px]",
+    prefixSelect: "min-h-11 pl-[12px] pr-[8px] py-[12px]",
     paymentBadge: "h-6 w-[34.5px] text-[10px]",
     tagSize: "S",
   },
@@ -127,6 +131,11 @@ export const INPUT_TYPES = {
   "Phone number": {
     inputType: "tel",
     placeholder: "(444) 1234-5678",
+  },
+  // Texto libre precedido por un selector de prefijo (abreviatura de una unidad de medida, etc.).
+  "Prefix select": {
+    inputType: "text",
+    placeholder: "Texto de prueba",
   },
   "Search bar": {
     inputType: "search",

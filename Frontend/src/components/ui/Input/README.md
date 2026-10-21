@@ -13,6 +13,24 @@ La API pública continúa en `Input.jsx`. El valor está controlado cuando
 | `tags/tagUtils.js` | Normalización, creación e identidad inicial de tags. |
 | `tags/useInputTags.js` | Selección, sugerencias, deduplicación, teclado y coordinación de foco/scroll. |
 | `tags/InputTagGroup.jsx` | Tags, avatares y sugerencias inline o en overlay. |
+| `prefix/prefixSelectPosition.js` | Altura, posición y búsqueda por letras del listado de prefijos, sin DOM. |
+| `prefix/usePrefixSelect.js` | Apertura, opción activa, teclado de listbox y cierre del selector de prefijo. |
+| `prefix/InputPrefixSelect.jsx` | DOM, estilos y accesibilidad del selector de prefijo y su listado en portal. |
+
+## Variante "Prefix select"
+
+Texto libre precedido por un selector (Figma `5790:360030`, “Nueva unidad de medida”):
+`prefixOptions` (`{ id, label, description? }`), `prefixValue` controlado, `onPrefixChange`,
+`prefixAriaLabel` y `prefixDisabled` (bloquea solo el prefijo, por ejemplo cuando la unidad
+base no es editable). Comparte con el teléfono la estructura selector + campo nativo y el
+borde separador, sin su lógica de país.
+
+- El disparador es un `combobox` con `aria-activedescendant`: el foco permanece en él, así
+  que el ciclo de Tab de `useDialogKeyboard` no se rompe. Flechas, Home/End, Enter/Espacio,
+  búsqueda por letras, Tab y Escape; Escape no se propaga al diálogo contenedor.
+- El listado se monta en portal con `position: fixed`, unido al borde inferior del campo
+  completo y con su mismo ancho; si no cabe debajo se abre hacia arriba. Muestra hasta cuatro
+  filas de 35 px (como `DropdownMenu`) y desplaza el resto.
 
 ## Contratos sensibles
 
