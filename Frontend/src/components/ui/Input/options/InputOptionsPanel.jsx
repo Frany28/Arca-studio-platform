@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import clsx from "clsx";
 
 import ScrollBar from "../../ScrollBar/ScrollBar.jsx";
-import { getInputOptionsScrollbarReserve, getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
+import { getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
 
 /**
  * Carcasa compartida de los listados unidos a un selector del Input (prefijo telefónico y
@@ -23,8 +23,6 @@ import { getInputOptionsScrollbarReserve, getInputOptionsViewportHeight } from "
  * @param {string} [props.scrollbarLabel] - Nombre accesible del ScrollBar.
  * @param {boolean} [props.hideScrollbar=false] - Omite el ScrollBar del sistema y su reserva lateral;
  * el desplazamiento queda en el scroll nativo oculto del área.
- * @param {"default"|"thin"} [props.scrollbarSize="default"] - Tamaño del ScrollBar; "thin" (thumb de
- * 4 px y zona de arrastre de 12 px) para listados compactos, y el área reserva solo ese track.
  * @param {boolean} props.disabled - Bloquea el ScrollBar.
  * @param {"bottom"|"top"} [props.placement="bottom"] - Lado del campo al que se une el panel.
  * @param {number} [props.maxViewportHeight] - Límite del área de opciones cuando el espacio
@@ -37,7 +35,7 @@ import { getInputOptionsScrollbarReserve, getInputOptionsViewportHeight } from "
  */
 const InputOptionsPanel = forwardRef(function InputOptionsPanel({
   ariaLabel, children, className, disabled, hideScrollbar = false, id, metrics, onScrollPositionChange, onViewportScroll, optionCount,
-  maxViewportHeight, placement = "bottom", scrollbarLabel, scrollbarSize = "default", style, viewportRef,
+  maxViewportHeight, placement = "bottom", scrollbarLabel, style, viewportRef,
 }, ref) {
   const naturalHeight = getInputOptionsViewportHeight(optionCount);
   const viewportHeight = maxViewportHeight ? Math.min(naturalHeight, maxViewportHeight) : naturalHeight;
@@ -56,8 +54,12 @@ const InputOptionsPanel = forwardRef(function InputOptionsPanel({
     >
       <div
         ref={viewportRef}
-        className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        style={{ maxHeight: viewportHeight, paddingRight: hideScrollbar ? 0 : getInputOptionsScrollbarReserve(scrollbarSize) }}
+        className={clsx(
+          "flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+          // Reserva lateral para el ScrollBar del sistema (16 px de track menos el padding del panel).
+          !hideScrollbar && "pr-[12px]",
+        )}
+        style={{ maxHeight: viewportHeight }}
         onScroll={onViewportScroll}
       >
         {children}
@@ -70,7 +72,6 @@ const InputOptionsPanel = forwardRef(function InputOptionsPanel({
           interactive={!disabled}
           onPositionChange={onScrollPositionChange}
           aria-label={scrollbarLabel}
-          size={scrollbarSize}
           className="absolute right-0 top-[8px]"
           trackContainerClassName="bg-transparent"
         />

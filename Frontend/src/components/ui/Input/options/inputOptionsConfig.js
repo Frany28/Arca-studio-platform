@@ -1,7 +1,5 @@
 import clsx from "clsx";
 
-import { getScrollBarSize } from "../../ScrollBar/scrollBarConfig.js";
-
 // Patrón de listado unido a un selector del Input (prefijo telefónico y prefijo seleccionable):
 // hasta tres filas de 35 px con dos gaps de 4 px visibles a la vez (113 px de área desplazable).
 export const INPUT_OPTION_ROW_HEIGHT = 35;
@@ -11,21 +9,6 @@ export const INPUT_OPTIONS_VISIBLE_ROWS = 3;
 export const INPUT_OPTIONS_PANEL_PADDING = 16;
 // Borde del panel en su lado libre (el lado unido al campo no dibuja borde).
 export const INPUT_OPTIONS_PANEL_BORDER = 1;
-// Padding horizontal del panel (px-[4px]); el ScrollBar se sitúa sobre el borde derecho.
-export const INPUT_OPTIONS_PANEL_INLINE_PADDING = 4;
-
-/**
- * Espacio que el área de opciones reserva a su derecha para el ScrollBar del panel: el track
- * (zona de arrastre) menos el padding del panel. Las filas, y por tanto su fondo seleccionado,
- * terminan donde empieza la zona de arrastre y nunca quedan bajo ella; el thumb queda centrado
- * en el track, con la misma separación de 4 px respecto a las filas en ambos tamaños.
- *
- * @param {"default"|"thin"} [size="default"] - Tamaño del ScrollBar del panel.
- * @returns {number} Padding derecho del área de opciones en píxeles (12 por defecto, 8 en "thin").
- */
-export function getInputOptionsScrollbarReserve(size) {
-  return getScrollBarSize(size).track - INPUT_OPTIONS_PANEL_INLINE_PADDING;
-}
 
 // Relación entre el segmento selector y su listado: el panel empieza 1 px a la izquierda del
 // segmento (cubre su borde) y mide al menos el segmento + 1 px, como el selector telefónico

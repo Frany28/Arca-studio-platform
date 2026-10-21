@@ -1,10 +1,7 @@
 /* Renderiza un scrollbar visual o interactivo y sincroniza su posición mediante callbacks. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { SCROLL_BAR_DEFAULT_PROPS, getScrollBarSize } from "./scrollBarConfig.js";
-
-// Padding del track en el eje de desplazamiento: el recorrido del thumb descuenta ambos extremos.
-const MAIN_AXIS_PADDING = 4;
+import { SCROLL_BAR_DEFAULT_PROPS } from "./scrollBarConfig.js";
 
 // Limita valores numéricos al rango permitido del scrollbar.
 function clamp(value, min = 0, max = 1) {
@@ -23,18 +20,16 @@ function ScrollBar({
   orientation = SCROLL_BAR_DEFAULT_PROPS.orientation,
   interactive = SCROLL_BAR_DEFAULT_PROPS.interactive,
   minThumbSize = SCROLL_BAR_DEFAULT_PROPS.minThumbSize,
-  size = SCROLL_BAR_DEFAULT_PROPS.size,
   onPositionChange,
   ...props
 }) {
   const trackRef = useRef(null);
   const [dragOffset, setDragOffset] = useState(null);
   const isHorizontal = orientation === "horizontal";
-  const thickness = getScrollBarSize(size);
   const resolvedLength = clamp(length);
   const resolvedPosition = clamp(position);
   const trackLength = isHorizontal ? width : height;
-  const innerLength = Math.max(trackLength - MAIN_AXIS_PADDING * 2, 0);
+  const innerLength = Math.max(trackLength - 8, 0);
   const thumbLength = Math.min(
     innerLength,
     Math.max(innerLength * resolvedLength, minThumbSize),
@@ -110,13 +105,13 @@ function ScrollBar({
     >
       <div
         className={clsx(
-          "flex items-start rounded-[var(--radius-2)] bg-[var(--color-neutral-100)]",
+          "flex items-start rounded-[var(--radius-2)] bg-[var(--color-neutral-100)] p-[4px]",
           trackContainerClassName,
         )}
         style={
           isHorizontal
-            ? { height: `${thickness.track}px`, width: `${width}px`, padding: `${thickness.crossPadding}px ${MAIN_AXIS_PADDING}px` }
-            : { height: `${height}px`, width: `${thickness.track}px`, padding: `${MAIN_AXIS_PADDING}px ${thickness.crossPadding}px` }
+            ? { height: "16px", width: `${width}px` }
+            : { height: `${height}px`, width: "16px" }
         }
       >
         <div
@@ -138,14 +133,14 @@ function ScrollBar({
             className={clsx(
               "absolute rounded-[999px] bg-[var(--color-neutral-300)] duration-150",
               isHorizontal
-                ? "top-1/2 -translate-y-1/2 transition-[left,width]"
-                : "left-1/2 -translate-x-1/2 transition-[top,height]",
+                ? "top-1/2 h-[8px] -translate-y-1/2 transition-[left,width]"
+                : "left-1/2 w-[8px] -translate-x-1/2 transition-[top,height]",
               interactive && "cursor-grab active:cursor-grabbing",
             )}
             style={
               isHorizontal
-                ? { left: `${thumbPosition}px`, width: `${thumbLength}px`, height: `${thickness.thumb}px` }
-                : { top: `${thumbPosition}px`, height: `${thumbLength}px`, width: `${thickness.thumb}px` }
+                ? { left: `${thumbPosition}px`, width: `${thumbLength}px` }
+                : { top: `${thumbPosition}px`, height: `${thumbLength}px` }
             }
           />
         </div>
