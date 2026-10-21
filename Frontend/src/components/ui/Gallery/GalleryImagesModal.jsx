@@ -245,11 +245,14 @@ export default function GalleryImagesModal({
           />
         </header>
 
-        <div className="relative min-h-0 w-full flex-1 overflow-hidden">
+        {/* Sin overflow-hidden: el ScrollBar se sitúa en el padding derecho de la sección y este
+            contenedor lo recortaba. El área desplazable ya recorta las imágenes y la sección el modal. */}
+        <div className="relative min-h-0 w-full flex-1">
           <div
             ref={viewportRef}
             className={clsx(
-              "h-full overflow-y-auto",
+              // Con padding de 12px el track (16px) invadiría 4px de las imágenes: se les reservan.
+              "h-full overflow-y-auto max-[640px]:pr-[4px] max-[520px]:pr-0",
               "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
             )}
             onScroll={syncScrollState}
