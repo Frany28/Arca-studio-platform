@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Add, SearchNormal1 } from "iconsax-react";
 
 import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
@@ -14,15 +13,13 @@ import { useMeasurementUnitBaseOptions } from "./hooks/useMeasurementUnitBaseOpt
 import { useMeasurementUnitDenominations } from "./hooks/useMeasurementUnitDenominations.js";
 import { canEditBaseUnit } from "./utils/measurementUnitPresentation.js";
 
-const EMPTY_SELECTION = new Set();
 // Filas aproximadas del skeleton antes de conocer la página (Figma muestra cinco).
 const SKELETON_ROWS = 5;
 
 /**
  * Pestaña «Unidades» del módulo Servicios y cotizaciones (Figma 5771:487550 y 5790:359521):
- * búsqueda en la API, tabla con selección, alta, edición, activación y desactivación, y
- * paginación Anterior/Siguiente por cursor. La selección pertenece a la página visible y se
- * reinicia al cambiar de página, de búsqueda o al recargar (derivada de `pageKey`).
+ * búsqueda en la API, tabla sin selección de filas con acciones individuales (alta, edición,
+ * activación y desactivación) y paginación Anterior/Siguiente por cursor.
  *
  * @returns {import("react").ReactElement} Panel de unidades de medida.
  */
@@ -38,36 +35,9 @@ function MeasurementUnitsPanel() {
   const baseUnits = useMeasurementUnitBaseOptions({
     enabled: openForm?.mode === "create" || (openForm?.mode === "edit" && canEditBaseUnit(openForm.denomination)),
   });
-  const [selection, setSelection] = useState({ key: list.pageKey, ids: EMPTY_SELECTION });
-  const selectedIds = selection.key === list.pageKey ? selection.ids : EMPTY_SELECTION;
   const { items, loading, error, pagination, search } = list;
-  const selectedCount = items.reduce((count, item) => count + (selectedIds.has(String(item.id)) ? 1 : 0), 0);
   const actionsDisabled = actions.status.submitting;
   const feedback = actions.feedback.value;
-
-  /**
-   * Alterna una fila de la página visible.
-   *
-   * @param {number} id - Denominación.
-   * @returns {void}
-   */
-  function toggleRow(id) {
-    const next = new Set(selectedIds);
-    const key = String(id);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setSelection({ key: list.pageKey, ids: next });
-  }
-
-  /**
-   * Selecciona toda la página visible o la deselecciona si ya lo estaba.
-   *
-   * @returns {void}
-   */
-  function toggleAll() {
-    const allSelected = items.length > 0 && selectedCount === items.length;
-    setSelection({ key: list.pageKey, ids: allSelected ? new Set() : new Set(items.map((item) => String(item.id))) });
-  }
 
   let content;
   if (loading) {
@@ -91,10 +61,7 @@ function MeasurementUnitsPanel() {
     content = (
       <MeasurementUnitsTable
         items={items}
-        selectedIds={selectedIds}
         actionsDisabled={actionsDisabled}
-        onToggle={toggleRow}
-        onToggleAll={toggleAll}
         onEdit={actions.form.openEdit}
         onStatusChange={actions.status.request}
       />
@@ -159,8 +126,7 @@ function MeasurementUnitsPanel() {
       {content}
 
       {!loading && !error && (items.length || pagination.hasPrevious) ? (
-        <footer className="flex flex-wrap items-center justify-between gap-[12px]" aria-label="Selección y paginación de unidades">
-          <span className="text-heading-8 text-[var(--color-text-300)]" aria-live="polite">{selectedCount} de {items.length} seleccionados</span>
+        <footer className="flex justify-end">
           <nav className="flex items-center gap-[8px]" aria-label="Paginación de unidades">
             <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasPrevious} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
             <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasNext} onClick={pagination.next}>Siguiente pág.</Button>

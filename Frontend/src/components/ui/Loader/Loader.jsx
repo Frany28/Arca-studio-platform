@@ -273,14 +273,13 @@ function AdminUserTableSkeleton() {
   );
 }
 
-// Tabla de unidades de medida (Figma 5771:487550): selección, código, etiqueta y acciones.
+// Tabla de unidades de medida (Figma 5771:487550, sin selección): código, etiqueta y acciones.
 function MeasurementUnitTableSkeleton({ rows }) {
   return (
     <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
       <SkeletonBlock className="h-[49px] w-full rounded-none" />
       {Array.from({ length: rows }, (_, rowIndex) => (
-        <div key={rowIndex} className="grid h-[68px] grid-cols-[16px_minmax(72px,106px)_minmax(0,1fr)_72px] items-center gap-[16px] border-b border-[var(--color-neutral-200)] px-[16px] last:border-b-0 sm:gap-[32px]">
-          <SkeletonBlock className="size-[16px] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="muted" />
+        <div key={rowIndex} className="grid h-[68px] grid-cols-[minmax(72px,106px)_minmax(0,1fr)_72px] items-center gap-[16px] border-b border-[var(--color-neutral-200)] px-[24px] last:border-b-0 sm:gap-[48px]">
           <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
           <SkeletonBlock className="h-[20px] w-[160px] max-w-full rounded-[var(--radius-full)]" delay={rowIndex * 35 + 30} />
           <SkeletonBlock className="h-[20px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 45} tone="muted" />

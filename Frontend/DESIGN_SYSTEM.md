@@ -515,8 +515,10 @@ Validación, capturas y diferencias respecto a Figma:
   recorrido por cursor), porque el contrato no ofrece totales; «Cotizaciones totales» muestra
   «—» con texto accesible hasta que exista su fuente. Nunca se muestran cifras de Figma.
 - Unidades: búsqueda en la API (debounce de 300 ms, cada lectura aborta la anterior), diez
-  filas por página, Anterior/Siguiente por cursor sin totales ni números de página, selección
-  limitada a la página recibida. Las etiquetas usan `Badge` `Brand 2` con `truncate`.
+  filas por página, Anterior/Siguiente por cursor sin totales ni números de página. La tabla
+  no tiene selección de filas (sin checkbox ni contador): columnas N°, Unidad y Acciones, con
+  «Unidad» ocupando el ancho libre; las operaciones son individuales por fila (editar y el menú
+  «Más opciones»). Las etiquetas usan `Badge` `Brand 2` con `truncate`.
   Editar y Desactivar se bloquean con el motivo visible cuando `activeServiceCount > 0`; el
   backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.
 - El listado de abreviaturas comparte con el selector de país la carcasa, filas, ScrollBar y

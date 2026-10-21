@@ -259,7 +259,7 @@ test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enla
   assert.equal(backend.requests.some((request) => /quotes|cotizacion/.test(request.path)), false);
 });
 
-test("tabla: código público y etiqueta de la API, estado inactivo con texto y contador de selección", async (context) => {
+test("tabla: sin selección de filas; código público, etiqueta de la API, estado inactivo y columnas alineadas", async (context) => {
   const backend = createBackend([
     denomination(1, 1, "de construcción"),
     denomination(2, 1, "a intervenir", { isActive: false }),
@@ -268,7 +268,7 @@ test("tabla: código público y etiqueta de la API, estado inactivo con texto y 
   const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
   await page.getByText("UNID-001", { exact: true }).waitFor();
   assert.deepEqual(await rowCodes(page), ["UNID-001", "UNID-002", "UNID-003"]);
-  assert.deepEqual(await page.locator("thead th").allInnerTexts(), ["", "N°", "Unidad", "Acciones"]);
+  assert.deepEqual(await page.locator("thead th").allInnerTexts(), ["N°", "Unidad", "Acciones"]);
   await page.getByText("m² de construcción", { exact: true }).waitFor();
   const inactiveRow = page.locator("tbody tr", { hasText: "UNID-002" });
   assert.equal(await inactiveRow.getByText("Inactiva", { exact: true }).count(), 1);
@@ -276,12 +276,35 @@ test("tabla: código público y etiqueta de la API, estado inactivo con texto y 
   const inUseEdit = page.getByRole("button", { name: /Editar UNID-003 .*En uso por 2 servicios activos/ });
   assert.equal(await inUseEdit.isDisabled(), true);
 
-  const footer = page.getByLabel("Selección y paginación de unidades");
-  await footer.getByText("0 de 3 seleccionados").waitFor();
-  await page.getByRole("checkbox", { name: "Seleccionar UNID-001" }).click();
-  await footer.getByText("1 de 3 seleccionados").waitFor();
-  await page.getByRole("checkbox", { name: "Seleccionar todas las unidades visibles" }).click();
-  await footer.getByText("3 de 3 seleccionados").waitFor();
+  // Sin selección: ni casillas (cabecera o filas), ni contador, ni filas marcadas como seleccionadas.
+  assert.equal(await page.getByRole("checkbox").count(), 0);
+  assert.equal(await page.getByText(/seleccionad[oa]s?/i).count(), 0);
+  assert.equal(await page.locator("tbody tr[data-selected]").count(), 0);
+  // El menú de acciones por fila se conserva.
+  await page.getByRole("button", { name: "Más opciones para UNID-001" }).click();
+  await page.getByRole("menuitem", { name: "Desactivar" }).waitFor();
+  await page.keyboard.press("Escape");
+
+  // Columnas alineadas: cada celda empieza y termina como su encabezado, N° arranca en el borde
+  // de la tabla (sin hueco de la antigua columna de selección) y «Unidad» absorbe el ancho libre.
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    const columns = await page.evaluate(() => {
+      const table = document.querySelector("table").getBoundingClientRect();
+      const headers = [...document.querySelectorAll("thead th")].map((cell) => cell.getBoundingClientRect());
+      const rows = [...document.querySelectorAll("tbody tr")].map((row) => [...row.children].map((cell) => cell.getBoundingClientRect()));
+      return {
+        firstAtEdge: Math.abs(headers[0].left - table.left) < 0.5,
+        lastAtEdge: Math.abs(headers.at(-1).right - table.right) < 0.5,
+        aligned: rows.every((cells) => cells.length === headers.length
+          && cells.every((cell, index) => Math.abs(cell.left - headers[index].left) < 0.5 && Math.abs(cell.width - headers[index].width) < 0.5)),
+        widths: headers.map((cell) => Math.round(cell.width)),
+      };
+    });
+    assert.deepEqual({ firstAtEdge: columns.firstAtEdge, lastAtEdge: columns.lastAtEdge, aligned: columns.aligned }, { firstAtEdge: true, lastAtEdge: true, aligned: true }, `${width} px: ${JSON.stringify(columns)}`);
+    assert.deepEqual([columns.widths[0], columns.widths[2]], [154, 128], `${width} px: N° y Acciones conservan su ancho`);
+    assert.ok(columns.widths[1] >= 230, `${width} px: «Unidad» ocupa el resto (${columns.widths[1]} px)`);
+  }
   assert.equal(await page.getByRole("button", { name: "Anterior" }).isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
 });
@@ -313,26 +336,23 @@ test("búsqueda: debounce, una sola petición por pausa, respuestas obsoletas de
   assert.equal(await search.inputValue(), "");
 });
 
-test("paginación por cursor: Siguiente usa nextCursor, Anterior vuelve y la selección se reinicia", async (context) => {
+test("paginación por cursor: Siguiente usa nextCursor y Anterior vuelve a la primera página", async (context) => {
   const items = Array.from({ length: 13 }, (_, index) => denomination(index + 1, 1, `variante ${String(index + 1).padStart(2, "0")}`));
   const backend = createBackend(items);
   const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
   await page.getByText("UNID-010", { exact: true }).waitFor();
   assert.equal((await rowCodes(page)).length, 10);
-  await page.getByRole("checkbox", { name: "Seleccionar UNID-001" }).click();
-  await page.getByText("1 de 10 seleccionados").waitFor();
-
   await page.getByRole("button", { name: "Siguiente pág." }).click();
   await page.getByText("UNID-013", { exact: true }).waitFor();
   assert.deepEqual(await rowCodes(page), ["UNID-011", "UNID-012", "UNID-013"]);
-  await page.getByText("0 de 3 seleccionados").waitFor();
   assert.equal(new URLSearchParams(denominationGets(backend).at(-1).search).get("cursor"), "10");
   assert.equal(await page.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
 
   await page.getByRole("button", { name: "Anterior" }).click();
   await page.getByText("UNID-001", { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "Anterior" }).isDisabled(), true);
-  await page.getByText("0 de 10 seleccionados").waitFor();
+  assert.equal((await rowCodes(page)).length, 10);
+  assert.equal(await page.getByRole("checkbox").count(), 0);
 });
 
 test("alta: selector de abreviaturas desde la API, teclado, un único envío y código devuelto por el backend", async (context) => {
@@ -604,7 +624,7 @@ test("estados: carga, vacío con acción, error recuperable y 403 comprensible",
   delete backend.failures["GET /api/admin/measurement-unit-denominations"];
   await page.getByRole("button", { name: "Reintentar" }).click();
   await page.getByText("Aún no hay unidades de medida", { exact: true }).waitFor();
-  assert.equal(await page.getByLabel("Selección y paginación de unidades").count(), 0);
+  assert.equal(await page.getByRole("navigation", { name: "Paginación de unidades" }).count(), 0);
   await page.getByRole("button", { name: "Añadir unidad" }).last().click();
   await page.getByRole("dialog", { name: "Nueva unidad de medida" }).waitFor();
   await page.keyboard.press("Escape");
@@ -949,7 +969,10 @@ test("táctil (móvil): arrastrar el dedo desplaza las 48 unidades sin barra, si
   // El gesto no es un toque: el menú sigue abierto y la selección no cambia.
   assert.equal(await combobox.getAttribute("aria-expanded"), "true");
   assert.equal(await combobox.textContent(), "u1");
-  // Un toque sobre una unidad que no era visible al abrir la selecciona.
+  // Un toque sobre una unidad que no era visible al abrir la selecciona: antes se arrastra hasta
+  // dejar atrás las tres primeras filas (35 px + 4 px de gap cada una).
+  await touchDrag(page, { x: box.x + box.width / 2, y: box.y + box.height - 10 }, -90);
+  await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop >= 3 * 39);
   const target = await listbox.evaluate((list) => {
     const area = list.firstElementChild.getBoundingClientRect();
     return [...list.querySelectorAll('[role="option"]')].slice(3).find((option) => {

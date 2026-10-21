@@ -3,7 +3,6 @@ import { ArrowSwapVertical, Edit2, Filter, MinusCirlce, TickCircle } from "icons
 import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
-import Checkbox from "../../../../components/ui/Checkbox/Checkbox.jsx";
 import { getInUseReason } from "../utils/measurementUnitPresentation.js";
 
 /**
@@ -38,35 +37,28 @@ function getStatusActions(denomination) {
 }
 
 /**
- * Tabla administrativa de unidades de medida (Figma 5771:487550): selección, código público,
- * etiqueta compuesta por la API y acciones. Solo presenta filas reales; las inactivas lo
- * indican con texto además del color. Desplaza horizontalmente dentro de su propio contenedor.
+ * Tabla administrativa de unidades de medida (Figma 5771:487550, sin selección de filas):
+ * código público, etiqueta compuesta por la API y acciones individuales. Solo presenta filas
+ * reales; las inactivas lo indican con texto además del color. Desplaza horizontalmente dentro
+ * de su propio contenedor.
  *
- * @param {Object} props - Filas, selección y callbacks.
+ * @param {Object} props - Filas y callbacks.
  * @param {Array<Object>} props.items - Denominaciones de la página visible.
- * @param {Set<string>} props.selectedIds - Identificadores seleccionados.
  * @param {boolean} props.actionsDisabled - Bloquea acciones mientras hay una mutación en curso.
- * @param {() => void} props.onToggleAll - Selecciona o deselecciona la página visible.
- * @param {(id: number) => void} props.onToggle - Alterna una fila.
  * @param {(item: Object) => void} props.onEdit - Abre la edición.
  * @param {(item: Object, isActive: boolean) => void} props.onStatusChange - Solicita un cambio de estado.
  * @returns {import("react").ReactElement} Tabla.
  */
-function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange, onToggle, onToggleAll, selectedIds }) {
-  const selectedCount = items.reduce((count, item) => count + (selectedIds.has(String(item.id)) ? 1 : 0), 0);
-  const headerChecked = selectedCount === 0 ? "No" : selectedCount === items.length ? "Yes" : "Indeterminate";
-
+function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange }) {
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
       <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[560px] table-fixed border-collapse text-left">
+        <table className="w-full min-w-[512px] table-fixed border-collapse text-left">
           <caption className="sr-only">Unidades de medida</caption>
-          <colgroup><col className="w-[48px]" /><col className="w-[154px]" /><col /><col className="w-[128px]" /></colgroup>
+          {/* Sin columna de selección: «Unidad» absorbe el ancho libre; N° y Acciones conservan el suyo. */}
+          <colgroup><col className="w-[154px]" /><col /><col className="w-[128px]" /></colgroup>
           <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
             <tr className="text-heading-8 h-[49px]">
-              <th scope="col" className="p-[16px]">
-                <Checkbox size="S" checked={headerChecked} interactive={items.length > 0} aria-label="Seleccionar todas las unidades visibles" onCheckedChange={onToggleAll} />
-              </th>
               <th scope="col" className="px-[24px] py-[16px]"><HeaderLabel>N°</HeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px]"><HeaderLabel filter>Unidad</HeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px] text-right">Acciones</th>
@@ -74,17 +66,9 @@ function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange,
           </thead>
           <tbody>
             {items.map((item) => {
-              const isSelected = selectedIds.has(String(item.id));
               const inUseReason = getInUseReason(item);
               return (
-                <tr
-                  key={item.id}
-                  className={`h-[68px] transition-colors duration-150 ${isSelected ? "bg-[var(--color-neutral-300)]" : "bg-[var(--color-neutral-100)]"}`}
-                  data-selected={isSelected ? "true" : undefined}
-                >
-                  <td className="p-[16px]">
-                    <Checkbox size="S" checked={isSelected ? "Yes" : "No"} aria-label={`Seleccionar ${item.publicCode}`} onCheckedChange={() => onToggle(item.id)} />
-                  </td>
+                <tr key={item.id} className="h-[68px] bg-[var(--color-neutral-100)]">
                   <th scope="row" className="text-heading-8 truncate px-[24px] py-[16px] font-medium text-[var(--color-text-300)]">{item.publicCode}</th>
                   <td className="px-[24px] py-[16px]">
                     <div className="flex min-w-0 items-center gap-[8px]">
