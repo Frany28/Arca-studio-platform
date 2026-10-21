@@ -75,8 +75,6 @@ export async function getService(serviceId) {
  * @returns {Promise<void>}
  * @throws {ValidationError} Si la unidad no existe, está inactiva o es incompatible con el tipo.
  */
-
-
 async function assertAssignableUnit(client, { kind, measurementUnitId, requireActive }) {
   const unit = await findMeasurementUnitById(measurementUnitId, { executor: client, lockForShare: true });
   if (!unit) throw new ValidationError(undefined, { measurementUnitId: "La unidad de medida no existe." });
