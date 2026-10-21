@@ -1066,6 +1066,140 @@ test("posicionamiento: con poco alto el listado acompaña al segmento sin salir 
   assert.ok(await optionsScrollTop(page) > before);
 });
 
+/**
+ * Mide las proporciones horizontales del listado de abreviaturas abierto: panel, segmento m²,
+ * filas, texto de cada abreviatura, zona de arrastre del ScrollBar (track) y su thumb visible.
+ *
+ * @param {import("playwright").Page} page - Página con el listado abierto.
+ * @returns {Promise<Object>} Medidas reales redondeadas a décimas.
+ */
+function measureDropdownProportions(page) {
+  return page.evaluate(() => {
+    const tenth = (value) => Math.round(value * 10) / 10;
+    const listbox = document.querySelector('[role="listbox"]');
+    const list = listbox.getBoundingClientRect();
+    const segment = document.querySelector("[data-measurement-unit-form] [role=combobox]").getBoundingClientRect();
+    const track = listbox.querySelector('[role="scrollbar"]').getBoundingClientRect();
+    const thumb = listbox.querySelector('[role="scrollbar"] > div').getBoundingClientRect();
+    const rows = [...listbox.querySelectorAll('[role="option"]')].map((option) => {
+      const row = option.getBoundingClientRect();
+      const label = option.querySelector("span:last-child") ?? option;
+      const text = label.getBoundingClientRect();
+      return {
+        symbol: option.textContent,
+        rowRight: tenth(row.right),
+        textLeftInset: tenth(text.left - row.left),
+        textRightInset: tenth(row.right - text.right),
+        clipped: label.scrollWidth > label.clientWidth + 0.5,
+      };
+    });
+    return {
+      listWidth: tenth(list.width),
+      listRight: tenth(list.right),
+      segmentWidth: tenth(segment.width),
+      viewportWidth: window.innerWidth,
+      track: { left: tenth(track.left), right: tenth(track.right), width: tenth(track.width) },
+      thumb: { left: tenth(thumb.left), width: tenth(thumb.width) },
+      rows,
+    };
+  });
+}
+
+/**
+ * Comprueba la composición compacta: thumb de 4 px centrado en una zona de arrastre de 12 px al
+ * borde derecho, filas que terminan donde empieza esa zona (sin tapar texto ni selección),
+ * abreviaturas alineadas a la izquierda con el padding de 8 px y sin recortarse.
+ *
+ * @param {Object} layout - Resultado de measureDropdownProportions.
+ * @param {string} label - Contexto para los mensajes.
+ * @returns {void}
+ */
+function assertCompactProportions(layout, label) {
+  const detail = `${label}: ${JSON.stringify(layout)}`;
+  assert.equal(layout.thumb.width, 4, `Thumb fino de 4 px. ${detail}`);
+  assert.equal(layout.track.width, 12, `Zona de arrastre de 12 px. ${detail}`);
+  assert.ok(Math.abs(layout.thumb.left - (layout.track.left + 4)) < 0.6, `Thumb centrado en su zona. ${detail}`);
+  assert.ok(layout.track.right <= layout.listRight + 0.5 && layout.listRight - layout.track.right <= 1.5, `ScrollBar al borde derecho del panel. ${detail}`);
+  for (const row of layout.rows) {
+    assert.ok(row.rowRight <= layout.track.left + 0.5, `La fila ${row.symbol} no queda bajo el ScrollBar. ${detail}`);
+    assert.ok(layout.thumb.left - row.rowRight >= 3.5, `Separación fila-thumb en ${row.symbol}. ${detail}`);
+    assert.equal(row.textLeftInset, 8, `${row.symbol} alineado a la izquierda. ${detail}`);
+    assert.ok(row.textRightInset >= 7.5, `${row.symbol} conserva su padding derecho. ${detail}`);
+    assert.equal(row.clipped, false, `${row.symbol} sin recortar. ${detail}`);
+  }
+  assert.ok(layout.listRight <= layout.viewportWidth, `Sin desborde horizontal. ${detail}`);
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`proporciones (${theme}): listado compacto con ScrollBar fino en 375–1440 px sin cambiar el modal`, async (context) => {
+    const backend = createBackend([denomination(1, 1, "de construcción")]);
+    backend.baseUnits = FORTY_EIGHT_UNITS;
+    const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme, viewport: { width: 1440, height: 1000 } });
+    await page.getByText("UNID-001", { exact: true }).waitFor();
+    for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000]]) {
+      const size = `${width}x${height}`;
+      await page.setViewportSize({ width, height });
+      await page.getByRole("button", { name: "Añadir unidad" }).click();
+      const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+      await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
+      const reference = await measureFloatingDropdown(page);
+      const combobox = dialog.getByRole("combobox");
+      await combobox.click();
+      const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+      await listbox.waitFor();
+      const scrollbar = page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" });
+      await scrollbar.waitFor();
+
+      const layout = await measureDropdownProportions(page);
+      assertCompactProportions(layout, size);
+      // Abreviaturas cortas: el panel no crece más allá del segmento m² (+1 px de anclaje).
+      assert.ok(Math.abs(layout.listWidth - (layout.segmentWidth + 1)) < 0.6, `${size}: ancho compacto. ${JSON.stringify(layout)}`);
+      const open = await measureFloatingDropdown(page);
+      assertModalUnchanged(reference, open, `${size} abierto`);
+      assert.deepEqual({ onTop: open.onTop, anchored: open.anchored, insideViewport: open.insideViewport }, { onTop: true, anchored: true, insideViewport: true }, `${size}: ${JSON.stringify(open)}`);
+
+      // La zona de arrastre es todo el track: pulsar 3 px a la izquierda del thumb visible
+      // (fuera de sus 4 px) y arrastrar desplaza el listado.
+      const before = await optionsScrollTop(page);
+      const grabX = layout.thumb.left - 3;
+      const thumbBox = await scrollbar.locator("> div").boundingBox();
+      const grabY = thumbBox.y + thumbBox.height / 2;
+      await page.mouse.move(grabX, grabY);
+      await page.mouse.down();
+      await page.mouse.move(grabX, grabY + 30, { steps: 6 });
+      await page.mouse.up();
+      assert.ok(await optionsScrollTop(page) > before, `${size}: el arrastre fuera del thumb visible desplaza el listado`);
+      assert.equal(await listbox.isVisible(), true);
+
+      await page.keyboard.press("Escape");
+      await listbox.waitFor({ state: "detached" });
+      await dialog.getByRole("button", { name: "Cancelar" }).click();
+      await dialog.waitFor({ state: "detached" });
+    }
+  });
+}
+
+test("proporciones: una abreviatura larga ensancha el panel lo justo, sin recorte ni solape con el ScrollBar", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  backend.baseUnits = [
+    ...FORTY_EIGHT_UNITS.slice(0, 6),
+    { id: 400, code: "density", name: "Kilogramo por metro cúbico", symbol: "kg/m³·día", allowsDecimals: true, isActive: true, sortOrder: 99 },
+  ];
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width: 375, height: 812 } });
+  await page.getByText("UNID-001", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Añadir unidad" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
+  await dialog.getByRole("combobox").click();
+  await page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" }).waitFor();
+  const layout = await measureDropdownProportions(page);
+  assertCompactProportions(layout, "375x812 abreviatura larga");
+  const longRow = layout.rows.find((row) => row.symbol === "kg/m³·día");
+  assert.ok(layout.listWidth > layout.segmentWidth + 1, `El panel crece por el contenido. ${JSON.stringify(layout)}`);
+  // Ajustado al contenido: la fila más larga solo conserva su padding de 8 px.
+  assert.ok(longRow.textRightInset < 8.6, `Sin ancho sobrante. ${JSON.stringify(layout)}`);
+});
+
 test("scroll: el ScrollBar del selector telefónico sigue arrastrándose (sin regresión)", async (context) => {
   const backend = createBackend([]);
   const page = await openModule(context, backend, { path: "/usuarios" });

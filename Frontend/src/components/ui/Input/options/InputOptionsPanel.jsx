@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import clsx from "clsx";
 
 import ScrollBar from "../../ScrollBar/ScrollBar.jsx";
-import { getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
+import { getInputOptionsScrollbarReserve, getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
 
 /**
  * Carcasa compartida de los listados unidos a un selector del Input (prefijo telefónico y
@@ -19,6 +19,8 @@ import { getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
  * @param {Function} props.onViewportScroll - Actualiza las métricas tras el scroll nativo.
  * @param {Function} props.onScrollPositionChange - Desplaza el área desde el ScrollBar.
  * @param {string} props.scrollbarLabel - Nombre accesible del ScrollBar.
+ * @param {"default"|"thin"} [props.scrollbarSize="default"] - Tamaño del ScrollBar; "thin" (thumb de
+ * 4 px y zona de arrastre de 12 px) para listados compactos, y el área reserva solo ese track.
  * @param {boolean} props.disabled - Bloquea el ScrollBar.
  * @param {"bottom"|"top"} [props.placement="bottom"] - Lado del campo al que se une el panel.
  * @param {number} [props.maxViewportHeight] - Límite del área de opciones cuando el espacio
@@ -31,7 +33,7 @@ import { getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
  */
 const InputOptionsPanel = forwardRef(function InputOptionsPanel({
   ariaLabel, children, className, disabled, id, metrics, onScrollPositionChange, onViewportScroll, optionCount,
-  maxViewportHeight, placement = "bottom", scrollbarLabel, style, viewportRef,
+  maxViewportHeight, placement = "bottom", scrollbarLabel, scrollbarSize = "default", style, viewportRef,
 }, ref) {
   const naturalHeight = getInputOptionsViewportHeight(optionCount);
   const viewportHeight = maxViewportHeight ? Math.min(naturalHeight, maxViewportHeight) : naturalHeight;
@@ -50,8 +52,8 @@ const InputOptionsPanel = forwardRef(function InputOptionsPanel({
     >
       <div
         ref={viewportRef}
-        className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain pr-[12px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        style={{ maxHeight: viewportHeight }}
+        className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        style={{ maxHeight: viewportHeight, paddingRight: getInputOptionsScrollbarReserve(scrollbarSize) }}
         onScroll={onViewportScroll}
       >
         {children}
@@ -64,6 +66,7 @@ const InputOptionsPanel = forwardRef(function InputOptionsPanel({
           interactive={!disabled}
           onPositionChange={onScrollPositionChange}
           aria-label={scrollbarLabel}
+          size={scrollbarSize}
           className="absolute right-0 top-[8px]"
           trackContainerClassName="bg-transparent"
         />

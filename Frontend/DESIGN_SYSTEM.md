@@ -525,6 +525,10 @@ Validación, capturas y diferencias respecto a Figma:
   anclaje y divisor que el prefijo telefónico) y solo se ensancha lo necesario para mostrar
   la abreviatura (`m²`, `cm²`, `hrs`…). El nombre completo no se muestra: queda en el nombre
   accesible de cada opción. Se monta en portal para no quedar recortado por el modal.
+- Proporción compacta: el ScrollBar del listado es fino (`size="thin"`: thumb de 4 px y zona de
+  arrastre de 12 px). El ScrollBar estándar de 16 px ocupaba un cuarto del panel de ≈60 px y
+  estrechaba las filas. El ancho es el del segmento + 1 px o, si una abreviatura es más larga,
+  el de su contenido (8 px de padding por lado, 4 px del panel y 8 px reservados al track).
 - El listado es flotante: abrirlo no cambia la altura del modal ni desplaza los botones. Puede
   cubrir temporalmente parte del formulario o del footer, siempre por encima de ellos, sin
   recortarse y con todas sus opciones accesibles (scroll, ScrollBar y teclado). No se reserva

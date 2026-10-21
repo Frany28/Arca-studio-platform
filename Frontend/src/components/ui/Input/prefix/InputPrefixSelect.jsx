@@ -72,6 +72,9 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
             onViewportScroll={optionsScroll.handleScroll}
             onScrollPositionChange={optionsScroll.handlePositionChange}
             scrollbarLabel={`Desplazar ${ariaLabel.toLocaleLowerCase("es")}`}
+            // El listado solo muestra abreviaturas (≈60 px): el ScrollBar estándar de 16 px
+            // ocupaba un cuarto del panel; el fino deja 4 px visibles y 12 px de arrastre.
+            scrollbarSize="thin"
             disabled={disabled}
             placement={position?.placement}
             maxViewportHeight={position?.viewportMaxHeight}

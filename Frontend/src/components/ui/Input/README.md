@@ -49,6 +49,12 @@ borde separador, sin su lógica de país.
   fondo, bordes y radios, ScrollBar del sistema y estados (seleccionada y hover en
   `neutral-200`, foco de teclado con anillo `primary-10`). Como el foco permanece en el
   disparador, la opción activa por teclado dibuja ese anillo; el puntero solo aplica hover.
+- Diferencia deliberada con el teléfono: como el listado solo muestra abreviaturas (≈60 px de
+  ancho), usa `ScrollBar` `size="thin"` (`scrollbarSize` de `InputOptionsPanel`): thumb visible de
+  4 px centrado en una zona de arrastre de 12 px al borde derecho. El área de opciones reserva
+  solo ese track (`getInputOptionsScrollbarReserve`, 8 px más el padding de 4 px del panel), así
+  que las filas y su fondo seleccionado terminan donde empieza la zona de arrastre, con 4 px
+  hasta el thumb. El teléfono conserva el tamaño por defecto (16 px de track, thumb de 8 px).
 - Se ancla al segmento del prefijo con la misma relación que el teléfono
   (`INPUT_OPTIONS_ANCHOR_OFFSET`): unido a su borde inferior, 1 px a su izquierda, con el
   divisor compartido `getInputOptionsAnchorDividerClassName` y al menos el ancho del segmento
