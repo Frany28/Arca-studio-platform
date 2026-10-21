@@ -13,6 +13,7 @@ import {
   getScrollTopToRevealOption,
   getPrefixSelectPanelHeight,
   getPrefixSelectPosition,
+  resolvePrefixSelectLayout,
 } from "../src/components/ui/Input/prefix/prefixSelectPosition.js";
 import { getMeasurementUnitErrorFeedback } from "../src/pages/admin-services-quotes/measurement-units/utils/measurementUnitErrors.js";
 import {
@@ -105,7 +106,7 @@ test("errores: 400 por campo, duplicado sobre el texto, 401/403/404/429 comprens
 });
 
 test("selector de prefijo: tres filas como el telefónico, se abre hacia arriba si no cabe y busca por letras", () => {
-  assert.equal(getPrefixSelectPanelHeight(48), 3 * 35 + 2 * 4 + 16);
+  assert.equal(getPrefixSelectPanelHeight(48), 3 * 35 + 2 * 4 + 16 + 1);
   assert.equal(getInputOptionsViewportHeight(48), 113, "Misma área desplazable que el selector telefónico");
   assert.equal(getInputOptionsViewportHeight(2), 74);
   const row = getInputOptionClassName({ selected: true, columns: "grid-cols-[48px_minmax(0,1fr)]" });
@@ -114,7 +115,7 @@ test("selector de prefijo: tres filas como el telefónico, se abre hacia arriba 
   assert.doesNotMatch(row, /hover:/, "La opción seleccionada no cambia con hover");
   assert.match(getInputOptionClassName({ selected: false, highlighted: true, columns: "" }), /ring-2 ring-\[var\(--color-primary-10\)\]/);
   assert.doesNotMatch(getInputOptionClassName({ selected: false, disabled: true, columns: "" }), /hover:/);
-  assert.equal(getPrefixSelectPanelHeight(1), 35 + 16);
+  assert.equal(getPrefixSelectPanelHeight(1), 35 + 16 + 1);
   // Anclado al segmento selector (62 px) como el prefijo telefónico: 1 px a la izquierda, unido a
   // su borde y con al menos su ancho + 1 px; el contenido decide el resto hasta el viewport.
   const segment = { top: 600, bottom: 640, left: 20, width: 62 };
@@ -127,6 +128,43 @@ test("selector de prefijo: tres filas como el telefónico, se abre hacia arriba 
   assert.equal(findPrefixOptionIndex(options, "m", 1), 0);
   assert.equal(findPrefixOptionIndex(options, "ho", -1), 2);
   assert.equal(findPrefixOptionIndex(options, "z", 0), -1);
+});
+
+test("selector de prefijo: se abre dentro de su límite, hacia arriba o reservando solo el espacio que falta", () => {
+  const segment = { top: 400, bottom: 440, left: 20, width: 62 };
+  const viewport = { width: 1440, height: 1000 };
+  const panelHeight = getPrefixSelectPanelHeight(48);
+  assert.equal(panelHeight, 113 + 16 + 1, "Área de tres filas, padding y borde libre");
+
+  // Cabe debajo del segmento dentro del límite: se abre debajo y no reserva nada.
+  const below = resolvePrefixSelectLayout({ segment, panelHeight, viewport, boundary: { top: 300, bottom: 700 } });
+  assert.deepEqual([below.placement, below.reserve, below.top, below.viewportMaxHeight], ["bottom", 0, 440, 113]);
+
+  // No cabe debajo, pero sí encima: se abre hacia arriba, unido al borde superior del segmento.
+  const above = resolvePrefixSelectLayout({ segment, panelHeight, viewport, boundary: { top: 100, bottom: 480 } });
+  assert.deepEqual([above.placement, above.reserve, above.top], ["top", 0, 400 - 130]);
+
+  // Modal compacto (44 px libres debajo, 83 encima): reserva exactamente lo que falta.
+  const modal = { top: 317, bottom: 484 };
+  const reserved = resolvePrefixSelectLayout({ segment, panelHeight, viewport, boundary: modal });
+  assert.deepEqual([reserved.placement, reserved.reserve], ["bottom", 130 - 44]);
+  // Con la reserva aplicada (el límite creció), la medida es estable: no se realimenta.
+  const grown = { top: modal.top, bottom: modal.bottom + reserved.reserve };
+  assert.equal(resolvePrefixSelectLayout({ segment, panelHeight, viewport, boundary: grown, reserved: reserved.reserve }).reserve, reserved.reserve);
+
+  // Viewport muy bajo: el área de opciones se ajusta al espacio visible (al menos una fila).
+  const short = resolvePrefixSelectLayout({ segment, panelHeight, viewport: { width: 1024, height: 520 }, boundary: modal });
+  assert.equal(short.viewportMaxHeight, 520 - 8 - 440 - 17);
+  // Sin espacio debajo pero con espacio encima: se abre hacia arriba con su altura completa.
+  const flipped = resolvePrefixSelectLayout({ segment, panelHeight, viewport: { width: 1024, height: 450 } });
+  assert.deepEqual([flipped.placement, flipped.viewportMaxHeight], ["top", 113]);
+  // Sin espacio suficiente en ningún lado: reduce el área al hueco visible (72 px − 17 de chrome).
+  const cramped = resolvePrefixSelectLayout({ segment: { top: 80, bottom: 120, left: 20, width: 62 }, panelHeight, viewport: { width: 375, height: 200 } });
+  assert.deepEqual([cramped.placement, cramped.viewportMaxHeight], ["bottom", 55]);
+
+  // Sin límite: conserva el comportamiento anterior basado solo en el viewport, sin reservar.
+  const free = resolvePrefixSelectLayout({ segment, panelHeight, viewport });
+  assert.deepEqual([free.placement, free.reserve, free.left, free.minWidth], ["bottom", 0, 19, 63]);
 });
 
 test("selector de prefijo: revelar la opción activa solo ajusta el listado lo mínimo necesario", () => {

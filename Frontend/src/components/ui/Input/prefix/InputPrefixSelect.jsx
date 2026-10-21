@@ -23,10 +23,12 @@ import usePrefixSelect from "./usePrefixSelect.js";
  * @param {Object} props.sizing - Estilos de tamaño del Input.
  * @param {Object} props.stateStyles - Estilos del estado visual del Input.
  * @param {(option: Object) => void} [props.onChange] - Recibe la opción elegida.
+ * @param {(height: number) => void} [props.onReserveChange] - Alto a reservar bajo el campo cuando
+ * el listado no cabe en su límite (`data-input-options-boundary`).
  * @returns {import("react").ReactElement} Disparador y, abierto, el listado en portal.
  */
-export default function InputPrefixSelect({ inputId, options, value, ariaLabel, disabled, sizing, stateStyles, onChange }) {
-  const select = usePrefixSelect({ options, value, disabled, onChange });
+export default function InputPrefixSelect({ inputId, options, value, ariaLabel, disabled, sizing, stateStyles, onChange, onReserveChange }) {
+  const select = usePrefixSelect({ options, value, disabled, onChange, onReserveChange });
   const { activeIndex, highlightedIndex, isOpen, listboxRef, position, selectedOption, triggerRef } = select;
   const optionsScroll = useInputOptionsScroll({ open: isOpen, optionCount: options.length, disabled });
   const listboxId = `${inputId}-prefix-options`;
@@ -74,6 +76,7 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
             scrollbarLabel={`Desplazar ${ariaLabel.toLocaleLowerCase("es")}`}
             disabled={disabled}
             placement={position?.placement}
+            maxViewportHeight={position?.viewportMaxHeight}
             className="fixed z-[var(--z-tooltip)]"
             // Oculto hasta medir el campo para no dibujarse un frame en el origen.
             // Ancho según el contenido (la abreviatura más larga), nunca menor que el segmento.

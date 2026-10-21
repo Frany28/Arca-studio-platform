@@ -135,6 +135,9 @@ function Input({
   const tagGroupId = `${inputId}-tags`;
   const internalInputRef = useRef(null);
   const resolvedInputRef = inputRef ?? internalInputRef;
+  // Alto que el listado de "Prefix select" pide reservar bajo el campo cuando no cabe en su
+  // límite (`data-input-options-boundary`): desplaza el contenido posterior en lugar de taparlo.
+  const [reservedOptionsSpace, setReservedOptionsSpace] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -313,6 +316,7 @@ function Input({
       sizing={sizing}
       stateStyles={stateStyles}
       onChange={onPrefixChange}
+      onReserveChange={setReservedOptionsSpace}
     />
   ) : null;
 
@@ -538,6 +542,11 @@ function Input({
           className="w-full"
           role={resolvedState === "Error" ? "alert" : undefined}
         />
+      ) : null}
+
+      {resolvedType === "Prefix select" && reservedOptionsSpace > 0 ? (
+        // Espacio que ocupa el listado abierto; no es contenido ni recibe interacción.
+        <div aria-hidden="true" data-input-options-reserve className="pointer-events-none w-full shrink-0" style={{ height: reservedOptionsSpace }} />
       ) : null}
 
       {showPasswordStrength ? (

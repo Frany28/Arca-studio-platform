@@ -21,6 +21,8 @@ import { getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
  * @param {string} props.scrollbarLabel - Nombre accesible del ScrollBar.
  * @param {boolean} props.disabled - Bloquea el ScrollBar.
  * @param {"bottom"|"top"} [props.placement="bottom"] - Lado del campo al que se une el panel.
+ * @param {number} [props.maxViewportHeight] - Límite del área de opciones cuando el espacio
+ * disponible es menor que sus tres filas (pantallas bajas); por defecto, la altura natural.
  * @param {string} [props.className] - Posicionamiento propio del selector.
  * @param {Object} [props.style] - Posición calculada (por ejemplo, en portal).
  * @param {import("react").ReactNode} props.children - Opciones.
@@ -29,9 +31,10 @@ import { getInputOptionsViewportHeight } from "./inputOptionsConfig.js";
  */
 const InputOptionsPanel = forwardRef(function InputOptionsPanel({
   ariaLabel, children, className, disabled, id, metrics, onScrollPositionChange, onViewportScroll, optionCount,
-  placement = "bottom", scrollbarLabel, style, viewportRef,
+  maxViewportHeight, placement = "bottom", scrollbarLabel, style, viewportRef,
 }, ref) {
-  const viewportHeight = getInputOptionsViewportHeight(optionCount);
+  const naturalHeight = getInputOptionsViewportHeight(optionCount);
+  const viewportHeight = maxViewportHeight ? Math.min(naturalHeight, maxViewportHeight) : naturalHeight;
   return (
     <div
       ref={ref}

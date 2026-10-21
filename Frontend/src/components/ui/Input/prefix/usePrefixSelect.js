@@ -3,8 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   findPrefixOptionIndex,
   getPrefixSelectPanelHeight,
-  getPrefixSelectPosition,
   getScrollTopToRevealOption,
+  resolvePrefixSelectLayout,
 } from "./prefixSelectPosition.js";
 
 // Tiempo durante el que las letras escritas se acumulan en una misma búsqueda por teclado.
@@ -21,9 +21,11 @@ const TYPEAHEAD_RESET_MS = 600;
  * @param {string|number|null} params.value - Identificador seleccionado.
  * @param {boolean} params.disabled - Bloquea apertura y selección.
  * @param {(option: Object) => void} [params.onChange] - Recibe la opción elegida.
+ * @param {(height: number) => void} [params.onReserveChange] - Recibe el alto que el Input debe
+ * reservar bajo el campo para que el listado no tape el contenido posterior (0 al cerrar).
  * @returns {Object} Estado, refs y manejadores del disparador y del listado.
  */
-export default function usePrefixSelect({ options, value, disabled, onChange }) {
+export default function usePrefixSelect({ options, value, disabled, onChange, onReserveChange }) {
   const triggerRef = useRef(null);
   const listboxRef = useRef(null);
   const typeaheadRef = useRef({ query: "", timeoutId: 0 });
@@ -36,18 +38,34 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
   const selectedIndex = options.findIndex((option) => String(option.id) === String(value));
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
   const panelHeight = getPrefixSelectPanelHeight(options.length);
+  // Espacio reservado bajo el campo cuando el listado no cabe en su límite; el callback se lee
+  // desde una ref para no reiniciar la medición en cada render del consumidor.
+  const reservedRef = useRef(0);
+  const onReserveChangeRef = useRef(onReserveChange);
+  useEffect(() => {
+    onReserveChangeRef.current = onReserveChange;
+  });
 
   // Mide el segmento selector (no el campo completo), como el envoltorio del prefijo telefónico,
-  // antes del paint, y acompaña scroll y resize mientras está abierto.
+  // y el límite opcional del contenido antes del paint; acompaña resize, el scroll de los
+  // contenedores y los cambios de tamaño del límite (contenido del modal) mientras está abierto.
   useLayoutEffect(() => {
     if (!isOpen) return undefined;
+    const boundaryElement = triggerRef.current?.closest("[data-input-options-boundary]") ?? null;
     const updatePosition = () => {
       if (!triggerRef.current) return;
-      setPosition(getPrefixSelectPosition(
-        triggerRef.current.getBoundingClientRect(),
+      const layout = resolvePrefixSelectLayout({
+        segment: triggerRef.current.getBoundingClientRect(),
         panelHeight,
-        { width: window.innerWidth, height: window.innerHeight },
-      ));
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        boundary: boundaryElement?.getBoundingClientRect() ?? null,
+        reserved: reservedRef.current,
+      });
+      if (layout.reserve !== reservedRef.current) {
+        reservedRef.current = layout.reserve;
+        onReserveChangeRef.current?.(layout.reserve);
+      }
+      setPosition(layout);
     };
     // El scroll del propio listado (arrastre del ScrollBar, rueda, teclado) no mueve el segmento:
     // recalcular la posición en ese caso solo provocaba renders durante el desplazamiento.
@@ -55,12 +73,23 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
       if (listboxRef.current?.contains(event.target)) return;
       updatePosition();
     };
+    // Reservar espacio hace crecer el modal (y lo recentra): el observador recoloca el panel.
+    const resizeObserver = boundaryElement && typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(updatePosition)
+      : null;
+    resizeObserver?.observe(boundaryElement);
     updatePosition();
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updateOnAncestorScroll, true);
     return () => {
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updateOnAncestorScroll, true);
+      // Al cerrar se libera el espacio reservado y el formulario recupera su tamaño.
+      if (reservedRef.current !== 0) {
+        reservedRef.current = 0;
+        onReserveChangeRef.current?.(0);
+      }
     };
   }, [isOpen, panelHeight]);
 

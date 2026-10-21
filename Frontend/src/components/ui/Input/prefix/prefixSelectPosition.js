@@ -1,20 +1,23 @@
 import {
   INPUT_OPTIONS_ANCHOR_OFFSET,
+  INPUT_OPTIONS_PANEL_BORDER,
   INPUT_OPTIONS_PANEL_PADDING,
   getInputOptionsViewportHeight,
 } from "../options/inputOptionsConfig.js";
 
 const VIEWPORT_MARGIN = 8;
+// Altura del panel que no pertenece al área de opciones: padding vertical y borde libre.
+const PANEL_CHROME = INPUT_OPTIONS_PANEL_PADDING + INPUT_OPTIONS_PANEL_BORDER;
 
 /**
  * Altura total del panel: el área de tres filas compartida con el selector telefónico más su
- * padding vertical; los catálogos cortos conservan su altura natural.
+ * padding vertical y su borde libre; los catálogos cortos conservan su altura natural.
  *
  * @param {number} optionCount - Opciones disponibles.
- * @returns {number} Altura del panel en píxeles, padding incluido.
+ * @returns {number} Altura del panel en píxeles, padding y borde incluidos.
  */
 export function getPrefixSelectPanelHeight(optionCount) {
-  return getInputOptionsViewportHeight(optionCount) + INPUT_OPTIONS_PANEL_PADDING;
+  return getInputOptionsViewportHeight(optionCount) + PANEL_CHROME;
 }
 
 /**
@@ -40,6 +43,64 @@ export function getPrefixSelectPosition(anchorRect, panelHeight, viewport) {
     minWidth: anchorRect.width + INPUT_OPTIONS_ANCHOR_OFFSET,
     maxWidth: Math.max(anchorRect.width + INPUT_OPTIONS_ANCHOR_OFFSET, viewport.width - left - VIEWPORT_MARGIN),
     placement,
+  };
+}
+
+/**
+ * Resuelve dónde y con qué altura abrir el listado respetando, además del viewport, un límite
+ * opcional (`data-input-options-boundary`, por ejemplo el contenido de un modal cuyo borde
+ * inferior es el footer de acciones):
+ *
+ * 1. Si cabe debajo del segmento dentro del límite, se abre debajo sin reservar espacio.
+ * 2. Si no, pero cabe encima dentro del límite, se abre hacia arriba.
+ * 3. Si no cabe en ningún lado, se abre debajo y se reserva bajo el campo exactamente el alto
+ *    que falta, de modo que el contenido posterior (las acciones) se desplace y no quede tapado.
+ *
+ * El espacio ya reservado se descuenta del límite para que la medida no se realimente. Por último
+ * el área de opciones se limita al espacio del viewport (pantallas muy bajas), con al menos una fila.
+ *
+ * @param {Object} params - Medidas en coordenadas de viewport.
+ * @param {{top: number, bottom: number, left: number, width: number}} params.segment - Segmento selector.
+ * @param {number} params.panelHeight - Altura natural del panel (padding incluido).
+ * @param {{width: number, height: number}} params.viewport - Ventana visible.
+ * @param {{top: number, bottom: number}|null} [params.boundary] - Límite del contenido, si existe.
+ * @param {number} [params.reserved=0] - Espacio reservado actualmente por el propio selector.
+ * @returns {{left: number, top: number, minWidth: number, maxWidth: number, placement: "bottom"|"top",
+ * reserve: number, viewportMaxHeight: number}} Posición, espacio a reservar y altura del área de opciones.
+ */
+export function resolvePrefixSelectLayout({ segment, panelHeight, viewport, boundary = null, reserved = 0 }) {
+  let placement = "bottom";
+  let reserve = 0;
+
+  if (boundary) {
+    const spaceBelow = boundary.bottom - reserved - segment.bottom;
+    const spaceAbove = segment.top - boundary.top;
+    if (panelHeight > spaceBelow) {
+      if (panelHeight <= spaceAbove) placement = "top";
+      else reserve = Math.ceil(panelHeight - spaceBelow);
+    }
+  } else {
+    placement = getPrefixSelectPosition(segment, panelHeight, viewport).placement;
+  }
+
+  const naturalViewportHeight = panelHeight - PANEL_CHROME;
+  const viewportSpace = placement === "bottom"
+    ? viewport.height - VIEWPORT_MARGIN - segment.bottom
+    : segment.top - VIEWPORT_MARGIN;
+  const viewportMaxHeight = Math.max(
+    Math.min(naturalViewportHeight, viewportSpace - PANEL_CHROME),
+    getInputOptionsViewportHeight(1),
+  );
+  const left = segment.left - INPUT_OPTIONS_ANCHOR_OFFSET;
+
+  return {
+    left,
+    top: placement === "bottom" ? segment.bottom : segment.top - (viewportMaxHeight + PANEL_CHROME),
+    minWidth: segment.width + INPUT_OPTIONS_ANCHOR_OFFSET,
+    maxWidth: Math.max(segment.width + INPUT_OPTIONS_ANCHOR_OFFSET, viewport.width - left - VIEWPORT_MARGIN),
+    placement,
+    reserve,
+    viewportMaxHeight,
   };
 }
 

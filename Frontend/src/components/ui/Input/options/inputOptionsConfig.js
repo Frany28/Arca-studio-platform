@@ -7,6 +7,8 @@ export const INPUT_OPTION_GAP = 4;
 export const INPUT_OPTIONS_VISIBLE_ROWS = 3;
 // Padding vertical del panel (py-[8px]) que rodea el área desplazable.
 export const INPUT_OPTIONS_PANEL_PADDING = 16;
+// Borde del panel en su lado libre (el lado unido al campo no dibuja borde).
+export const INPUT_OPTIONS_PANEL_BORDER = 1;
 
 // Relación entre el segmento selector y su listado: el panel empieza 1 px a la izquierda del
 // segmento (cubre su borde) y mide al menos el segmento + 1 px, como el selector telefónico

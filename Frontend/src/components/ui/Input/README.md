@@ -28,6 +28,14 @@ Texto libre precedido por un selector (Figma `5790:360030`, “Nueva unidad de m
 base no es editable). Comparte con el teléfono la estructura selector + campo nativo y el
 borde separador, sin su lógica de país.
 
+- Límite opcional: un contenedor con `data-input-options-boundary` (en «Nueva unidad de medida»,
+  el formulario, cuyo borde inferior es el footer de acciones) acota el listado. Si cabe debajo
+  del segmento se abre debajo; si no, pero cabe encima, hacia arriba; si no cabe en ningún lado,
+  el Input reserva bajo el campo (`data-input-options-reserve`, `aria-hidden`) exactamente el alto
+  que falta, así que las acciones se desplazan en lugar de quedar tapadas, y lo libera al cerrar.
+  El área de opciones se limita además al alto del viewport (al menos una fila). Se recalcula con
+  resize, con el scroll de los contenedores y con un `ResizeObserver` del límite; la reserva propia
+  se descuenta para que la medida no se realimente. Sin límite, el comportamiento no cambia.
 - El scroll del listado es del usuario: la opción activa solo se revela (ajustando el área del
   listado, sin `scrollIntoView`) cuando cambia por apertura o teclado, y el listener de scroll
   que recoloca el panel ignora el scroll del propio listado. Recolocar o revelar en cada scroll

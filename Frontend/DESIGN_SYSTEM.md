@@ -525,6 +525,10 @@ Validación, capturas y diferencias respecto a Figma:
   anclaje y divisor que el prefijo telefónico) y solo se ensancha lo necesario para mostrar
   la abreviatura (`m²`, `cm²`, `hrs`…). El nombre completo no se muestra: queda en el nombre
   accesible de cada opción. Se monta en portal para no quedar recortado por el modal.
+- El formulario del modal es el límite del listado (`data-input-options-boundary`): como el
+  menú de tres filas no cabe en el espacio libre del modal compacto, al abrirlo se reserva bajo
+  el campo exactamente el alto que falta. Los botones bajan, el menú termina justo en el footer
+  y nunca lo tapa; al cerrar, el modal recupera su altura.
 - El formulario reutiliza la variante `Prefix select` de `Input` (ver su README): abreviatura de
   la unidad base y texto en un campo, previsualización «Se mostrará como…», bloqueo del envío
   en curso y errores del servidor junto al campo sin perder lo escrito. En edición la unidad
