@@ -20,10 +20,11 @@ test("phone country options reuse the attached three-row dropdown pattern", asyn
   assert.match(source, /getInputOptionClassName\(/);
   assert.match(hook, /useInputOptionsScroll\(/);
   assert.match(source, /left-\[-1px\] top-full/);
-  assert.match(panel, /style=\{\{ maxHeight: viewportHeight, paddingRight: getInputOptionsScrollbarReserve\(scrollbarSize\) \}\}/);
-  // El teléfono conserva el ScrollBar estándar: solo el prefijo seleccionable usa el fino.
+  assert.match(panel, /style=\{\{ maxHeight: viewportHeight, paddingRight: hideScrollbar \? 0 : getInputOptionsScrollbarReserve\(scrollbarSize\) \}\}/);
+  // El teléfono conserva el ScrollBar estándar visible: solo el prefijo seleccionable lo oculta.
   assert.match(panel, /scrollbarSize = "default"/);
-  assert.doesNotMatch(source, /scrollbarSize=/);
+  assert.match(panel, /hideScrollbar = false/);
+  assert.doesNotMatch(source, /scrollbarSize=|hideScrollbar/);
   assert.match(panel, /height=\{viewportHeight\}/);
   assert.match(panel, /overflow-y-auto/);
   assert.match(panel, /\[scrollbar-width:none\]/);

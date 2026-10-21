@@ -4,13 +4,12 @@ import clsx from "clsx";
 import { ChevronDownIcon } from "../InputIcons.jsx";
 import InputOptionsPanel from "../options/InputOptionsPanel.jsx";
 import { getInputOptionClassName, getInputOptionsAnchorDividerClassName } from "../options/inputOptionsConfig.js";
-import useInputOptionsScroll from "../options/useInputOptionsScroll.js";
 import usePrefixSelect from "./usePrefixSelect.js";
 
 /**
  * Selector de prefijo del Input (variante "Prefix select"): abreviatura visible con flecha a
  * la izquierda del campo, separada por un borde como el prefijo telefónico. Su listado comparte
- * con el selector telefónico la carcasa, las filas, el ScrollBar y los estados, muestra solo las
+ * con el selector telefónico la carcasa, las filas y los estados (sin ScrollBar visible), muestra solo las
  * abreviaturas (la descripción va en el nombre accesible) y se monta en portal como extensión
  * del segmento del prefijo para no quedar recortado por modales o tablas con overflow.
  *
@@ -28,7 +27,6 @@ import usePrefixSelect from "./usePrefixSelect.js";
 export default function InputPrefixSelect({ inputId, options, value, ariaLabel, disabled, sizing, stateStyles, onChange }) {
   const select = usePrefixSelect({ options, value, disabled, onChange });
   const { activeIndex, highlightedIndex, isOpen, listboxRef, position, selectedOption, triggerRef } = select;
-  const optionsScroll = useInputOptionsScroll({ open: isOpen, optionCount: options.length, disabled });
   const listboxId = `${inputId}-prefix-options`;
   const optionId = (index) => `${inputId}-prefix-option-${index}`;
   const selectedLabel = selectedOption?.label ?? "";
@@ -67,14 +65,10 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
             id={listboxId}
             ariaLabel={ariaLabel}
             optionCount={options.length}
-            viewportRef={optionsScroll.scrollRef}
-            metrics={optionsScroll.metrics}
-            onViewportScroll={optionsScroll.handleScroll}
-            onScrollPositionChange={optionsScroll.handlePositionChange}
-            scrollbarLabel={`Desplazar ${ariaLabel.toLocaleLowerCase("es")}`}
-            // El listado solo muestra abreviaturas (≈60 px): el ScrollBar estándar de 16 px
-            // ocupaba un cuarto del panel; el fino deja 4 px visibles y 12 px de arrastre.
-            scrollbarSize="thin"
+            // El listado solo muestra abreviaturas (≈60 px): incluso un ScrollBar fino comprimía
+            // las filas. Sin barra visible, el área conserva su scroll nativo (rueda, touchpad,
+            // gestos) y usePrefixSelect revela la opción activa al navegar con teclado.
+            hideScrollbar
             disabled={disabled}
             placement={position?.placement}
             maxViewportHeight={position?.viewportMaxHeight}

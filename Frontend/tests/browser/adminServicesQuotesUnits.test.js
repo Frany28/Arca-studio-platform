@@ -157,11 +157,11 @@ function createBackend(initial) {
  *
  * @param {import("node:test").TestContext} context - Prueba propietaria.
  * @param {Object} backend - Backend de createBackend.
- * @param {Object} [options] - Viewport y tema.
+ * @param {Object} [options] - Viewport, tema y soporte táctil (`hasTouch`, para gestos con el dedo).
  * @returns {Promise<import("playwright").Page>} Página.
  */
-async function openModule(context, backend, { path = "/servicios-cotizaciones", theme = "light", viewport = { width: 1440, height: 1000 } } = {}) {
-  const browserContext = await browser.newContext({ viewport });
+async function openModule(context, backend, { path = "/servicios-cotizaciones", theme = "light", viewport = { width: 1440, height: 1000 }, hasTouch = false } = {}) {
+  const browserContext = await browser.newContext({ viewport, hasTouch });
   const page = applyBrowserTimeouts(await browserContext.newPage());
   await page.addInitScript((value) => localStorage.setItem("arca-theme", value), theme);
   const errors = [];
@@ -705,8 +705,9 @@ for (const theme of ["light", "dark"]) {
     assert.equal(units.viewportHeight, 113);
     assert.equal(units.optionHeight, 35);
     assert.equal(units.borderTop, "0px");
-    // El listado de unidades usa el mismo ScrollBar del sistema y conserva las 6 unidades simuladas.
-    assert.equal(await page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" }).count(), 1);
+    // Diferencia deliberada: el listado de unidades no muestra ScrollBar (el telefónico sí) y
+    // conserva las 6 unidades simuladas.
+    assert.equal(await page.getByRole("scrollbar").count(), 0);
     assert.equal(await unitList.getByRole("option").count(), BASE_UNITS.length);
     // Abreviatura y descripción en cada opción.
     assert.deepEqual(await unitList.getByRole("option").allTextContents(), BASE_UNITS.map((unit) => unit.symbol));
@@ -774,8 +775,72 @@ async function dragScrollThumb(page, name, deltaY) {
   await page.mouse.up();
 }
 
+/**
+ * Describe cómo se desplaza el listado de abreviaturas abierto: barras visibles (ScrollBar del
+ * sistema y barra nativa), overflow del área, espacio lateral reservado y filas completamente
+ * visibles. Sirve para comprobar que no hay barra pero el área sigue siendo desplazable.
+ *
+ * @param {import("playwright").Page} page - Página con el listado abierto.
+ * @returns {Promise<Object>} Estado real del área desplazable.
+ */
+function measureHiddenScroll(page) {
+  return page.getByRole("listbox").evaluate((list) => {
+    const area = list.firstElementChild;
+    const style = getComputedStyle(area);
+    const visible = area.getBoundingClientRect();
+    return {
+      systemScrollbars: list.querySelectorAll('[role="scrollbar"]').length,
+      nativeScrollbarWidth: area.offsetWidth - area.clientWidth,
+      scrollbarWidth: style.scrollbarWidth,
+      overflowY: style.overflowY,
+      paddingRight: style.paddingRight,
+      scrollable: area.scrollHeight > area.clientHeight,
+      fullyVisibleRows: [...list.querySelectorAll('[role="option"]')].filter((option) => {
+        const rect = option.getBoundingClientRect();
+        return rect.top >= visible.top - 0.5 && rect.bottom <= visible.bottom + 0.5;
+      }).length,
+    };
+  });
+}
+
+/**
+ * Indica si la opción activa por teclado (aria-activedescendant del disparador) queda
+ * completamente dentro del área visible del listado.
+ *
+ * @param {import("playwright").Locator} combobox - Disparador del selector.
+ * @returns {Promise<boolean>} Opción activa visible.
+ */
+function isActiveOptionVisible(combobox) {
+  return combobox.evaluate((trigger) => {
+    const option = document.getElementById(trigger.getAttribute("aria-activedescendant"));
+    const area = document.querySelector('[role="listbox"]').firstElementChild.getBoundingClientRect();
+    const rect = option.getBoundingClientRect();
+    return rect.top >= area.top - 0.5 && rect.bottom <= area.bottom + 0.5;
+  });
+}
+
+/**
+ * Arrastra un dedo sobre la página con eventos táctiles reales del navegador (touchStart, diez
+ * touchMove y touchEnd). Requiere un contexto creado con `hasTouch`: sin él el navegador
+ * descarta los gestos táctiles incluso en un contenedor desplazable sin código propio.
+ *
+ * @param {import("playwright").Page} page - Página de un contexto con `hasTouch: true`.
+ * @param {{x: number, y: number}} point - Punto donde se apoya el dedo.
+ * @param {number} distance - Recorrido vertical del dedo; negativo desplaza el contenido hacia abajo.
+ * @returns {Promise<void>}
+ */
+async function touchDrag(page, point, distance) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+  for (let step = 1; step <= 10; step += 1) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: point.x, y: point.y + (distance * step) / 10 }] });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+}
+
 for (const [label, viewport, theme] of [["escritorio claro", { width: 1440, height: 1000 }, "light"], ["móvil oscuro", { width: 375, height: 812 }, "dark"]]) {
-  test(`scroll (${label}): arrastrar el ScrollBar, rueda y teclado desplazan las 48 unidades sin cerrar el menú`, async (context) => {
+  test(`scroll (${label}): sin barra visible, rueda, touchpad y teclado recorren las 48 unidades`, async (context) => {
     const backend = createBackend([denomination(1, 1, "de construcción")]);
     backend.baseUnits = FORTY_EIGHT_UNITS;
     const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme, viewport });
@@ -787,63 +852,71 @@ for (const [label, viewport, theme] of [["escritorio claro", { width: 1440, heig
     await combobox.click();
     const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
     await listbox.waitFor();
-    const scrollbarName = "Desplazar abreviatura de la unidad base";
 
-    // Hay opciones fuera del área visible y solo se muestran las abreviaturas.
-    const overflow = await listbox.evaluate((list) => {
-      const area = list.firstElementChild;
-      const bottom = area.getBoundingClientRect().bottom;
-      return { hidden: [...area.querySelectorAll('[role="option"]')].filter((option) => option.getBoundingClientRect().top >= bottom).length, scrollable: area.scrollHeight > area.clientHeight };
+    // Sin barra visible (ni ScrollBar del sistema ni nativa), pero con overflow desplazable,
+    // tres filas visibles y las 48 unidades disponibles; solo se muestran las abreviaturas.
+    assert.deepEqual(await measureHiddenScroll(page), {
+      systemScrollbars: 0, nativeScrollbarWidth: 0, scrollbarWidth: "none", overflowY: "auto",
+      paddingRight: "0px", scrollable: true, fullyVisibleRows: 3,
     });
-    assert.ok(overflow.scrollable && overflow.hidden > 40, JSON.stringify(overflow));
+    assert.equal(await page.getByRole("scrollbar").count(), 0);
+    assert.equal(await listbox.getByRole("option").count(), 48);
     assert.equal(await listbox.getByRole("option").first().textContent(), "u1");
 
-    // Arrastrar hacia abajo aumenta scrollTop; hacia arriba lo reduce; el menú sigue abierto.
-    await dragScrollThumb(page, scrollbarName, 40);
-    const afterDown = await optionsScrollTop(page);
-    assert.ok(afterDown > 300, `El arrastre hacia abajo debe desplazar el listado (scrollTop=${afterDown})`);
-    assert.equal(await listbox.isVisible(), true);
-    await dragScrollThumb(page, scrollbarName, -20);
-    const afterUp = await optionsScrollTop(page);
-    assert.ok(afterUp < afterDown && afterUp > 0, `El arrastre hacia arriba debe reducir scrollTop (0 < ${afterUp} < ${afterDown})`);
-    assert.equal(await listbox.isVisible(), true);
-    assert.equal(await combobox.getAttribute("aria-expanded"), "true");
-    // El ScrollBar refleja la posición real del listado.
-    assert.ok(Number(await page.getByRole("scrollbar", { name: scrollbarName }).getAttribute("aria-valuenow")) > 0);
+    // Rueda del ratón, deltas pequeños como un touchpad y rueda hacia arriba.
+    const box = await listbox.boundingBox();
+    await page.mouse.move(box.x + 16, box.y + 30);
+    await page.mouse.wheel(0, 120);
+    await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop > 0);
+    const afterWheel = await optionsScrollTop(page);
+    for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, 10);
+    await page.waitForFunction((start) => document.querySelector('[role="listbox"]').firstElementChild.scrollTop >= start + 50, afterWheel);
+    const afterTouchpad = await optionsScrollTop(page);
+    await page.mouse.wheel(0, -60);
+    await page.waitForFunction((start) => document.querySelector('[role="listbox"]').firstElementChild.scrollTop < start, afterTouchpad);
+    assert.equal(await combobox.getAttribute("aria-expanded"), "true", "Desplazar no cierra el menú");
 
-    // Seleccionar una opción que solo era visible tras desplazarse.
-    const target = listbox.getByRole("option").filter({ hasText: /^u(1[2-9]|2\d)$/ }).first();
-    const targetSymbol = await target.textContent();
-    await target.click();
+    // Ratón: seleccionar una unidad que no era visible al abrir (después de u3).
+    const hiddenAtOpen = await listbox.evaluate((list) => {
+      const area = list.firstElementChild.getBoundingClientRect();
+      return [...list.querySelectorAll('[role="option"]')].slice(3).find((option) => {
+        const rect = option.getBoundingClientRect();
+        return rect.top >= area.top - 0.5 && rect.bottom <= area.bottom + 0.5;
+      })?.textContent;
+    });
+    assert.ok(hiddenAtOpen, "Tras desplazar hay opciones antes ocultas a la vista");
+    await listbox.getByRole("option").filter({ hasText: new RegExp(`^${hiddenAtOpen}$`) }).click();
     await listbox.waitFor({ state: "detached" });
-    assert.equal(await combobox.textContent(), targetSymbol);
+    assert.equal(await combobox.textContent(), hiddenAtOpen);
 
-    // Rueda del ratón (y deltas pequeños, como un panel táctil).
+    // Teclado: la opción activa siempre queda dentro del área visible.
     await combobox.click();
     await listbox.waitFor();
-    const startWheel = await optionsScrollTop(page);
-    const listBox = await listbox.boundingBox();
-    await page.mouse.move(listBox.x + 16, listBox.y + 30);
-    await page.mouse.wheel(0, 120);
-    for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, 10);
-    await page.waitForFunction((start) => document.querySelector('[role="listbox"]').firstElementChild.scrollTop >= start + 150, startWheel);
-
-    // Teclado: End lleva a la última opción aunque el puntero esté sobre el listado, Home a la
-    // primera, y Enter selecciona la activa; Escape cierra sin cerrar el modal.
-    await combobox.focus();
+    assert.equal(await isActiveOptionVisible(combobox), true, "Al abrir se revela la seleccionada");
+    const selectedIndex = Number((await combobox.getAttribute("aria-activedescendant")).match(/-prefix-option-(\d+)$/)[1]);
+    await page.keyboard.press("ArrowDown");
+    assert.match(await combobox.getAttribute("aria-activedescendant"), new RegExp(`-prefix-option-${selectedIndex + 1}$`));
+    await page.keyboard.press("ArrowUp");
+    assert.match(await combobox.getAttribute("aria-activedescendant"), new RegExp(`-prefix-option-${selectedIndex}$`));
     await page.keyboard.press("End");
     await page.waitForFunction(() => {
       const area = document.querySelector('[role="listbox"]').firstElementChild;
       return area.scrollTop + area.clientHeight >= area.scrollHeight - 1;
     });
     assert.match(await combobox.getAttribute("aria-activedescendant"), /-prefix-option-47$/);
+    assert.equal(await isActiveOptionVisible(combobox), true, "End revela la última");
     await page.keyboard.press("Home");
     await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop === 0);
     assert.match(await combobox.getAttribute("aria-activedescendant"), /-prefix-option-0$/);
-    await page.keyboard.press("ArrowDown");
+    // Bajar hasta u6, que no cabe entre las tres primeras filas: el área la acompaña.
+    for (let step = 0; step < 5; step += 1) {
+      await page.keyboard.press("ArrowDown");
+      assert.equal(await isActiveOptionVisible(combobox), true, `ArrowDown ${step + 1} mantiene visible la activa`);
+    }
+    assert.ok(await optionsScrollTop(page) > 0, "La navegación desplazó el área");
     await page.keyboard.press("Enter");
     await listbox.waitFor({ state: "detached" });
-    assert.equal(await combobox.textContent(), "u2");
+    assert.equal(await combobox.textContent(), "u6");
     assert.equal(await combobox.evaluate((element) => element === document.activeElement), true, "El foco vuelve al disparador");
     await page.keyboard.press("ArrowDown");
     await listbox.waitFor();
@@ -852,6 +925,43 @@ for (const [label, viewport, theme] of [["escritorio claro", { width: 1440, heig
     assert.equal(await dialog.isVisible(), true);
   });
 }
+
+test("táctil (móvil): arrastrar el dedo desplaza las 48 unidades sin barra, sin cerrar ni seleccionar", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  backend.baseUnits = FORTY_EIGHT_UNITS;
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width: 375, height: 812 }, hasTouch: true });
+  await page.getByText("UNID-001", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Añadir unidad" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
+  const combobox = dialog.getByRole("combobox");
+  await combobox.click();
+  const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+  await listbox.waitFor();
+  assert.equal((await measureHiddenScroll(page)).systemScrollbars, 0);
+  const box = await listbox.boundingBox();
+  // Arrastrar hacia arriba desplaza hacia abajo; después, hacia abajo vuelve atrás.
+  await touchDrag(page, { x: box.x + box.width / 2, y: box.y + box.height - 20 }, -60);
+  await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop > 0);
+  const afterUp = await optionsScrollTop(page);
+  await touchDrag(page, { x: box.x + box.width / 2, y: box.y + 20 }, 40);
+  await page.waitForFunction((start) => document.querySelector('[role="listbox"]').firstElementChild.scrollTop < start, afterUp);
+  // El gesto no es un toque: el menú sigue abierto y la selección no cambia.
+  assert.equal(await combobox.getAttribute("aria-expanded"), "true");
+  assert.equal(await combobox.textContent(), "u1");
+  // Un toque sobre una unidad que no era visible al abrir la selecciona.
+  const target = await listbox.evaluate((list) => {
+    const area = list.firstElementChild.getBoundingClientRect();
+    return [...list.querySelectorAll('[role="option"]')].slice(3).find((option) => {
+      const rect = option.getBoundingClientRect();
+      return rect.top >= area.top - 0.5 && rect.bottom <= area.bottom + 0.5;
+    })?.textContent;
+  });
+  assert.ok(target, "Tras el gesto hay unidades antes ocultas a la vista");
+  await listbox.getByRole("option").filter({ hasText: new RegExp(`^${target}$`) }).tap();
+  await listbox.waitFor({ state: "detached" });
+  assert.equal(await combobox.textContent(), target);
+});
 
 /**
  * Mide el modal «Nueva unidad de medida» y su footer, y, si el listado está abierto, su relación
@@ -1060,15 +1170,17 @@ test("posicionamiento: con poco alto el listado acompaña al segmento sin salir 
   });
   layout = await measureFloatingDropdown(page);
   assert.deepEqual({ insideViewport: layout.insideViewport, anchored: layout.anchored }, { insideViewport: true, anchored: true }, `Tras desplazar el modal: ${JSON.stringify(layout)}`);
-  // El ScrollBar del listado sigue arrastrándose en este espacio reducido.
+  // Sin barra visible, la rueda sigue desplazando el listado en este espacio reducido.
   const before = await optionsScrollTop(page);
-  await dragScrollThumb(page, "Desplazar abreviatura de la unidad base", 20);
-  assert.ok(await optionsScrollTop(page) > before);
+  const listBox = await listbox.boundingBox();
+  await page.mouse.move(listBox.x + listBox.width / 2, listBox.y + listBox.height / 2);
+  await page.mouse.wheel(0, 60);
+  await page.waitForFunction((start) => document.querySelector('[role="listbox"]').firstElementChild.scrollTop > start, before);
 });
 
 /**
  * Mide las proporciones horizontales del listado de abreviaturas abierto: panel, segmento m²,
- * filas, texto de cada abreviatura, zona de arrastre del ScrollBar (track) y su thumb visible.
+ * ancho interior disponible para las filas y texto de cada abreviatura.
  *
  * @param {import("playwright").Page} page - Página con el listado abierto.
  * @returns {Promise<Object>} Medidas reales redondeadas a décimas.
@@ -1078,15 +1190,15 @@ function measureDropdownProportions(page) {
     const tenth = (value) => Math.round(value * 10) / 10;
     const listbox = document.querySelector('[role="listbox"]');
     const list = listbox.getBoundingClientRect();
+    const listStyle = getComputedStyle(listbox);
     const segment = document.querySelector("[data-measurement-unit-form] [role=combobox]").getBoundingClientRect();
-    const track = listbox.querySelector('[role="scrollbar"]').getBoundingClientRect();
-    const thumb = listbox.querySelector('[role="scrollbar"] > div').getBoundingClientRect();
     const rows = [...listbox.querySelectorAll('[role="option"]')].map((option) => {
       const row = option.getBoundingClientRect();
       const label = option.querySelector("span:last-child") ?? option;
       const text = label.getBoundingClientRect();
       return {
         symbol: option.textContent,
+        rowLeft: tenth(row.left),
         rowRight: tenth(row.right),
         textLeftInset: tenth(text.left - row.left),
         textRightInset: tenth(row.right - text.right),
@@ -1095,20 +1207,22 @@ function measureDropdownProportions(page) {
     });
     return {
       listWidth: tenth(list.width),
+      listLeft: tenth(list.left),
       listRight: tenth(list.right),
+      innerLeft: tenth(list.left + parseFloat(listStyle.borderLeftWidth) + parseFloat(listStyle.paddingLeft)),
+      innerRight: tenth(list.right - parseFloat(listStyle.borderRightWidth) - parseFloat(listStyle.paddingRight)),
       segmentWidth: tenth(segment.width),
       viewportWidth: window.innerWidth,
-      track: { left: tenth(track.left), right: tenth(track.right), width: tenth(track.width) },
-      thumb: { left: tenth(thumb.left), width: tenth(thumb.width) },
+      systemScrollbars: listbox.querySelectorAll('[role="scrollbar"]').length,
       rows,
     };
   });
 }
 
 /**
- * Comprueba la composición compacta: thumb de 4 px centrado en una zona de arrastre de 12 px al
- * borde derecho, filas que terminan donde empieza esa zona (sin tapar texto ni selección),
- * abreviaturas alineadas a la izquierda con el padding de 8 px y sin recortarse.
+ * Comprueba la composición compacta sin barra: las filas ocupan todo el ancho interior del
+ * panel (no queda hueco reservado para un scrollbar), las abreviaturas se alinean a la izquierda
+ * con el padding de 8 px, no se recortan y el panel no desborda el viewport.
  *
  * @param {Object} layout - Resultado de measureDropdownProportions.
  * @param {string} label - Contexto para los mensajes.
@@ -1116,22 +1230,18 @@ function measureDropdownProportions(page) {
  */
 function assertCompactProportions(layout, label) {
   const detail = `${label}: ${JSON.stringify(layout)}`;
-  assert.equal(layout.thumb.width, 4, `Thumb fino de 4 px. ${detail}`);
-  assert.equal(layout.track.width, 12, `Zona de arrastre de 12 px. ${detail}`);
-  assert.ok(Math.abs(layout.thumb.left - (layout.track.left + 4)) < 0.6, `Thumb centrado en su zona. ${detail}`);
-  assert.ok(layout.track.right <= layout.listRight + 0.5 && layout.listRight - layout.track.right <= 1.5, `ScrollBar al borde derecho del panel. ${detail}`);
+  assert.equal(layout.systemScrollbars, 0, `Sin ScrollBar visible. ${detail}`);
   for (const row of layout.rows) {
-    assert.ok(row.rowRight <= layout.track.left + 0.5, `La fila ${row.symbol} no queda bajo el ScrollBar. ${detail}`);
-    assert.ok(layout.thumb.left - row.rowRight >= 3.5, `Separación fila-thumb en ${row.symbol}. ${detail}`);
+    assert.ok(Math.abs(row.rowLeft - layout.innerLeft) < 0.6 && Math.abs(row.rowRight - layout.innerRight) < 0.6, `La fila ${row.symbol} ocupa todo el ancho interior. ${detail}`);
     assert.equal(row.textLeftInset, 8, `${row.symbol} alineado a la izquierda. ${detail}`);
     assert.ok(row.textRightInset >= 7.5, `${row.symbol} conserva su padding derecho. ${detail}`);
     assert.equal(row.clipped, false, `${row.symbol} sin recortar. ${detail}`);
   }
-  assert.ok(layout.listRight <= layout.viewportWidth, `Sin desborde horizontal. ${detail}`);
+  assert.ok(layout.listLeft >= 0 && layout.listRight <= layout.viewportWidth, `Sin desborde horizontal. ${detail}`);
 }
 
 for (const theme of ["light", "dark"]) {
-  test(`proporciones (${theme}): listado compacto con ScrollBar fino en 375–1440 px sin cambiar el modal`, async (context) => {
+  test(`proporciones (${theme}): listado compacto sin barra visible en 375–1440 px sin cambiar el modal`, async (context) => {
     const backend = createBackend([denomination(1, 1, "de construcción")]);
     backend.baseUnits = FORTY_EIGHT_UNITS;
     const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme, viewport: { width: 1440, height: 1000 } });
@@ -1147,8 +1257,6 @@ for (const theme of ["light", "dark"]) {
       await combobox.click();
       const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
       await listbox.waitFor();
-      const scrollbar = page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" });
-      await scrollbar.waitFor();
 
       const layout = await measureDropdownProportions(page);
       assertCompactProportions(layout, size);
@@ -1156,30 +1264,29 @@ for (const theme of ["light", "dark"]) {
       assert.ok(Math.abs(layout.listWidth - (layout.segmentWidth + 1)) < 0.6, `${size}: ancho compacto. ${JSON.stringify(layout)}`);
       const open = await measureFloatingDropdown(page);
       assertModalUnchanged(reference, open, `${size} abierto`);
-      assert.deepEqual({ onTop: open.onTop, anchored: open.anchored, insideViewport: open.insideViewport }, { onTop: true, anchored: true, insideViewport: true }, `${size}: ${JSON.stringify(open)}`);
+      assert.deepEqual(
+        { onTop: open.onTop, anchored: open.anchored, insideViewport: open.insideViewport, optionsAreaHeight: open.optionsAreaHeight },
+        { onTop: true, anchored: true, insideViewport: true, optionsAreaHeight: 113 },
+        `${size}: tres filas visibles, por encima y unido al segmento m². ${JSON.stringify(open)}`,
+      );
+      assert.equal((await measureHiddenScroll(page)).fullyVisibleRows, 3, `${size}: tres símbolos visibles`);
 
-      // La zona de arrastre es todo el track: pulsar 3 px a la izquierda del thumb visible
-      // (fuera de sus 4 px) y arrastrar desplaza el listado.
-      const before = await optionsScrollTop(page);
-      const grabX = layout.thumb.left - 3;
-      const thumbBox = await scrollbar.locator("> div").boundingBox();
-      const grabY = thumbBox.y + thumbBox.height / 2;
-      await page.mouse.move(grabX, grabY);
-      await page.mouse.down();
-      await page.mouse.move(grabX, grabY + 30, { steps: 6 });
-      await page.mouse.up();
-      assert.ok(await optionsScrollTop(page) > before, `${size}: el arrastre fuera del thumb visible desplaza el listado`);
-      assert.equal(await listbox.isVisible(), true);
+      // Sin barra, la rueda sigue desplazando el listado en este ancho.
+      const box = await listbox.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + 30);
+      await page.mouse.wheel(0, 80);
+      await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop > 0);
 
       await page.keyboard.press("Escape");
       await listbox.waitFor({ state: "detached" });
+      assertModalUnchanged(reference, await measureFloatingDropdown(page), `${size} tras cerrar`);
       await dialog.getByRole("button", { name: "Cancelar" }).click();
       await dialog.waitFor({ state: "detached" });
     }
   });
 }
 
-test("proporciones: una abreviatura larga ensancha el panel lo justo, sin recorte ni solape con el ScrollBar", async (context) => {
+test("proporciones: una abreviatura larga ensancha el panel lo justo, sin recorte ni barra", async (context) => {
   const backend = createBackend([denomination(1, 1, "de construcción")]);
   backend.baseUnits = [
     ...FORTY_EIGHT_UNITS.slice(0, 6),
@@ -1191,7 +1298,7 @@ test("proporciones: una abreviatura larga ensancha el panel lo justo, sin recort
   const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
   await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
   await dialog.getByRole("combobox").click();
-  await page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" }).waitFor();
+  await page.getByRole("listbox", { name: "Abreviatura de la unidad base" }).waitFor();
   const layout = await measureDropdownProportions(page);
   assertCompactProportions(layout, "375x812 abreviatura larga");
   const longRow = layout.rows.find((row) => row.symbol === "kg/m³·día");

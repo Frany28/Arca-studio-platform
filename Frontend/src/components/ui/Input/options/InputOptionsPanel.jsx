@@ -9,16 +9,20 @@ import { getInputOptionsScrollbarReserve, getInputOptionsViewportHeight } from "
  * prefijo seleccionable): borde `neutral-200` sin borde en el lado unido al campo, radio de
  * 12 px en el lado libre, fondo `neutral-100`, padding de 4/8 px y área de tres filas con el
  * scroll nativo oculto y el ScrollBar del sistema. La posición la decide cada selector.
+ * Con `hideScrollbar` el área conserva su scroll nativo (rueda, touchpad, gestos y teclado)
+ * con la barra nativa oculta, sin ScrollBar del sistema ni espacio reservado para él.
  *
  * @param {Object} props - Contenido, scroll y presentación.
  * @param {string} props.id - Identificador del listbox.
  * @param {string} props.ariaLabel - Nombre accesible del listbox.
  * @param {number} props.optionCount - Opciones visibles, para la altura del viewport.
- * @param {import("react").Ref} props.viewportRef - Ref del área desplazable (useInputOptionsScroll).
- * @param {{length: number, position: number}} props.metrics - Métricas del ScrollBar.
- * @param {Function} props.onViewportScroll - Actualiza las métricas tras el scroll nativo.
- * @param {Function} props.onScrollPositionChange - Desplaza el área desde el ScrollBar.
- * @param {string} props.scrollbarLabel - Nombre accesible del ScrollBar.
+ * @param {import("react").Ref} [props.viewportRef] - Ref del área desplazable (useInputOptionsScroll).
+ * @param {{length: number, position: number}} [props.metrics] - Métricas del ScrollBar (no se usan con `hideScrollbar`).
+ * @param {Function} [props.onViewportScroll] - Actualiza las métricas tras el scroll nativo.
+ * @param {Function} [props.onScrollPositionChange] - Desplaza el área desde el ScrollBar.
+ * @param {string} [props.scrollbarLabel] - Nombre accesible del ScrollBar.
+ * @param {boolean} [props.hideScrollbar=false] - Omite el ScrollBar del sistema y su reserva lateral;
+ * el desplazamiento queda en el scroll nativo oculto del área.
  * @param {"default"|"thin"} [props.scrollbarSize="default"] - Tamaño del ScrollBar; "thin" (thumb de
  * 4 px y zona de arrastre de 12 px) para listados compactos, y el área reserva solo ese track.
  * @param {boolean} props.disabled - Bloquea el ScrollBar.
@@ -32,7 +36,7 @@ import { getInputOptionsScrollbarReserve, getInputOptionsViewportHeight } from "
  * @returns {import("react").ReactElement} Listbox con su ScrollBar.
  */
 const InputOptionsPanel = forwardRef(function InputOptionsPanel({
-  ariaLabel, children, className, disabled, id, metrics, onScrollPositionChange, onViewportScroll, optionCount,
+  ariaLabel, children, className, disabled, hideScrollbar = false, id, metrics, onScrollPositionChange, onViewportScroll, optionCount,
   maxViewportHeight, placement = "bottom", scrollbarLabel, scrollbarSize = "default", style, viewportRef,
 }, ref) {
   const naturalHeight = getInputOptionsViewportHeight(optionCount);
@@ -53,12 +57,12 @@ const InputOptionsPanel = forwardRef(function InputOptionsPanel({
       <div
         ref={viewportRef}
         className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        style={{ maxHeight: viewportHeight, paddingRight: getInputOptionsScrollbarReserve(scrollbarSize) }}
+        style={{ maxHeight: viewportHeight, paddingRight: hideScrollbar ? 0 : getInputOptionsScrollbarReserve(scrollbarSize) }}
         onScroll={onViewportScroll}
       >
         {children}
       </div>
-      {metrics.length < 1 ? (
+      {!hideScrollbar && metrics.length < 1 ? (
         <ScrollBar
           height={viewportHeight}
           length={metrics.length}
