@@ -13,7 +13,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  * No hay totales en el contrato: la navegación solo conoce si existe una página siguiente.
  *
  * @returns {Object} Filas, estado de carga y error, búsqueda, paginación, recarga, reemplazo de
- * una fila editada y `pageKey`, que identifica la página visible para reiniciar la selección.
+ * una fila editada y `pageKey`, que cambia con cada página recibida para reiniciar la selección.
  */
 export function useMeasurementUnitDenominations() {
   const [items, setItems] = useState([]);
@@ -25,6 +25,9 @@ export function useMeasurementUnitDenominations() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestKey, setRequestKey] = useState(0);
+  // Cuenta las lecturas completadas: identifica cada página recibida (también al volver a una
+  // ya visitada), de modo que la selección de una página anterior nunca reaparece.
+  const [loadSequence, setLoadSequence] = useState(0);
 
   // La búsqueda escrita se aplica sin espacios exteriores tras la pausa; al aplicarla se
   // descartan los cursores, porque pertenecen a la búsqueda anterior. La ref evita reiniciar
@@ -60,6 +63,7 @@ export function useMeasurementUnitDenominations() {
       if (controller.signal.aborted) return;
       setItems(payload?.unitDenominations || []);
       setNextCursor(payload?.nextCursor || null);
+      setLoadSequence((value) => value + 1);
     }).catch((requestError) => {
       if (requestError?.name === "AbortError" || controller.signal.aborted) return;
       setError(requestError?.message || "No se pudieron cargar las unidades de medida.");
@@ -116,7 +120,7 @@ export function useMeasurementUnitDenominations() {
     error,
     items,
     loading,
-    pageKey: `${appliedSearch}|${pageIndex}|${requestKey}`,
+    pageKey: loadSequence,
     search: {
       applied: appliedSearch,
       query,

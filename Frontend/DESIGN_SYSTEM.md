@@ -499,6 +499,31 @@ a una intervención independiente de la validación del contrato del riel.
 Validación, capturas y diferencias respecto a Figma:
 [`docs/ADMIN_PROJECTS_PHASE1_VALIDATION.md`](../docs/ADMIN_PROJECTS_PHASE1_VALIDATION.md).
 
+### Servicios y cotizaciones
+
+- Referencia: Figma `5790:339391` (contenedor), `5771:487550` (Unidades, escritorio),
+  `5790:359521`/`5790:360030` (modal «Nueva unidad de medida») y `5767:342204` (menú de
+  acciones). Ruta administrativa `/servicios-cotizaciones/*`; `AdminServicesQuotesPage` resuelve
+  las subrutas `cotizaciones`, `tabulador` y `unidades`. La raíz y las subrutas desconocidas
+  redirigen (con `replace`) a `unidades`. La pestaña activa se deriva de la URL
+  (`utils/servicesQuotesTabs.js`), así que Atrás/Adelante y los enlaces directos funcionan.
+- Las pestañas usan `HorizontalTabMenu` `Underlined` con icono y texto dentro de `TabPanel`.
+  El icono `document-normal` no existe en iconsax-react 0.0.8: se usa el SVG de Figma sin
+  modificar como máscara (`assets/icons/document-normal.svg`), patrón ya usado en
+  `AdminRequestEvaluation`.
+- Los indicadores de servicios se derivan de la colección real (`GET /admin/services`
+  recorrido por cursor), porque el contrato no ofrece totales; «Cotizaciones totales» muestra
+  «—» con texto accesible hasta que exista su fuente. Nunca se muestran cifras de Figma.
+- Unidades: búsqueda en la API (debounce de 300 ms, cada lectura aborta la anterior), diez
+  filas por página, Anterior/Siguiente por cursor sin totales ni números de página, selección
+  limitada a la página recibida. Las etiquetas usan `Badge` `Brand 2` con `truncate`.
+  Editar y Desactivar se bloquean con el motivo visible cuando `activeServiceCount > 0`; el
+  backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.
+- El formulario reutiliza la variante `Prefix select` de `Input` (ver su README): abreviatura de
+  la unidad base y texto en un campo, previsualización «Se mostrará como…», bloqueo del envío
+  en curso y errores del servidor junto al campo sin perder lo escrito. En edición la unidad
+  base se muestra bloqueada. Tabulador y Cotizaciones conservan un `EmptyState` provisional.
+
 ### Dashboard administrativo móvil
 
 El dashboard administrativo sigue Figma `3727:678728` por debajo de 768 px; tablet y escritorio conservan su presentación. `pages/admin-dashboard/utils/adminDashboardMobilePresentation.js` centraliza los tamaños móviles de botones (44 px de icono, 41 px de texto) y tags (Body/b3, 25 px).

@@ -25,6 +25,8 @@ const TOGGLE_NAME = /^(Contraer|Expandir) navegación lateral$/;
 const EMPTY_COLLECTION = { nextCursor: null };
 const API_FIXTURES = {
   "/api/projects": { ...EMPTY_COLLECTION, projects: [] },
+  "/api/admin/services": { ...EMPTY_COLLECTION, services: [] },
+  "/api/admin/measurement-unit-denominations": { ...EMPTY_COLLECTION, unitDenominations: [] },
   "/api/project-requests": { ...EMPTY_COLLECTION, projectRequests: [] },
   "/api/project-requests/review-queue": { ...EMPTY_COLLECTION, projectRequests: [] },
   "/api/environment-comments": { ...EMPTY_COLLECTION, comments: [] },
@@ -47,7 +49,7 @@ const PAGE_CASES = [
   { path: "/dashboard-arquitecto", role: "admin", destination: "/archivos", item: "Archivos" },
   { path: "/usuarios", role: "admin", destination: "/archivos", item: "Archivos" },
   { path: "/archivos", role: "admin", destination: "/usuarios", item: "Usuarios" },
-  { path: "/archivos", role: "admin", destination: "/servicios-cotizaciones", item: "Servicios y cotizaciones" },
+  { path: "/archivos", role: "admin", destination: "/servicios-cotizaciones/unidades", item: "Servicios y cotizaciones" },
   { path: "/servicios-cotizaciones", role: "admin", destination: "/archivos", item: "Archivos" },
 ];
 

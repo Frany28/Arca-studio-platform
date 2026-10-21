@@ -45,9 +45,11 @@ test("servicios y cotizaciones: ruta protegida para admin, con subrutas y vista 
   assert.match(icons, /TaskSquare,\s*\} from "iconsax-react"/);
   assert.match(icons, /"services-quotes": TaskSquare/);
 
-  // Vista provisional: shell compartido, elemento activo propio y sin datos simulados ni API.
+  // Contenedor: shell compartido con el destino del riel activo en todas las subrutas, que se
+  // resuelven dentro de la página sin declarar rutas adicionales en main.jsx.
   assert.match(page, /<InternalDashboardLayout[\s\S]*activeItemId="services-quotes"/);
   assert.match(page, /Servicios y cotizaciones/);
-  assert.match(page, /Módulo en desarrollo/);
-  assert.doesNotMatch(page, /api\.|fetch\(|UNID-|referenceRate/);
+  assert.match(page, /<Routes>[\s\S]*path="cotizaciones"[\s\S]*path="tabulador\/\*"[\s\S]*path="unidades"/);
+  // Las pestañas provisionales no inventan datos.
+  assert.doesNotMatch(page, /fetch\(|UNID-\d|referenceRate/);
 });

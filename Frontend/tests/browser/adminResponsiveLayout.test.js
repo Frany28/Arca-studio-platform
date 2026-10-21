@@ -37,6 +37,8 @@ const REQUEST_ASSIGNEES = [
 ];
 const PAYLOADS = {
   "/api/projects": { projects: [PROJECT], nextCursor: null },
+  "/api/admin/services": { services: [], nextCursor: null },
+  "/api/admin/measurement-unit-denominations": { unitDenominations: [], nextCursor: null },
   "/api/project-requests/review-queue": { projectRequests: [], nextCursor: null },
   "/api/environment-comments": { comments: [], nextCursor: null },
   "/api/admin/assignees": { assignees: [{ id: 2, name: "Diego Jiménez" }, ...REQUEST_ASSIGNEES] },
@@ -121,7 +123,7 @@ async function openAdminPage(context, path, width, { theme = "light" } = {}) {
     "/dashboard-arquitecto": "Apto. Noventa y Uno",
     "/usuarios": USERS[9].name,
     "/archivos": "Última carga",
-    "/servicios-cotizaciones": "Módulo en desarrollo",
+    "/servicios-cotizaciones": "Aún no hay unidades de medida",
   }[path];
   await page.getByText(readyText, { exact: true }).first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   // Las medidas dependen de las métricas reales de Inter, no de la fuente de respaldo.

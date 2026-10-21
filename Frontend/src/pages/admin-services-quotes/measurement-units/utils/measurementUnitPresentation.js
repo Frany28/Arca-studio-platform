@@ -41,6 +41,19 @@ export function previewUnitLabel(symbol, denomination) {
 }
 
 /**
+ * Explica por qué una acción no está disponible: una denominación usada por servicios activos
+ * no se edita ni se desactiva (regla del backend, 409 MEASUREMENT_UNIT_IN_USE).
+ *
+ * @param {Object} denomination - Denominación con `activeServiceCount`.
+ * @returns {string} Motivo, o cadena vacía si la acción está disponible.
+ */
+export function getInUseReason(denomination) {
+  const count = denomination?.activeServiceCount || 0;
+  if (count <= 0) return "";
+  return `En uso por ${count} servicio${count === 1 ? "" : "s"} activo${count === 1 ? "" : "s"}`;
+}
+
+/**
  * Convierte las unidades base del API en opciones del selector: el disparador muestra solo la
  * abreviatura (m², m.l., hrs…) y el listado añade el nombre completo para distinguirlas.
  *

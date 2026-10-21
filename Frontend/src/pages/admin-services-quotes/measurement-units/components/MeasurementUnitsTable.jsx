@@ -4,6 +4,7 @@ import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import Checkbox from "../../../../components/ui/Checkbox/Checkbox.jsx";
+import { getInUseReason } from "../utils/measurementUnitPresentation.js";
 
 /**
  * Encabezado de columna con el icono decorativo de Figma (orden o filtro), como en la tabla
@@ -22,19 +23,6 @@ function HeaderLabel({ children, filter = false }) {
       <Icon size="16" variant="Linear" color="currentColor" aria-hidden="true" />
     </span>
   );
-}
-
-/**
- * Explica por qué una acción no está disponible: una denominación usada por servicios activos
- * no se edita ni se desactiva (regla del backend, 409 MEASUREMENT_UNIT_IN_USE).
- *
- * @param {Object} denomination - Fila de la tabla.
- * @returns {string} Motivo, o cadena vacía si la acción está disponible.
- */
-export function getInUseReason(denomination) {
-  const count = denomination?.activeServiceCount || 0;
-  if (count <= 0) return "";
-  return `En uso por ${count} servicio${count === 1 ? "" : "s"} activo${count === 1 ? "" : "s"}`;
 }
 
 /**
