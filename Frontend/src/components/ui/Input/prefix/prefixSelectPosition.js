@@ -1,21 +1,16 @@
-// Cuatro filas visibles de 35 px con tres gaps de 4 px y 8 px de padding vertical por lado,
-// el mismo máximo de filas que el patrón de DropdownMenu del sistema.
-export const PREFIX_SELECT_ROW_HEIGHT = 35;
-export const PREFIX_SELECT_VISIBLE_ROWS = 4;
-const ROW_GAP = 4;
-const VERTICAL_PADDING = 16;
+import { INPUT_OPTIONS_PANEL_PADDING, getInputOptionsViewportHeight } from "../options/inputOptionsConfig.js";
+
 const VIEWPORT_MARGIN = 8;
 
 /**
- * Calcula la altura máxima del listado según cuántas opciones existen, para que los catálogos
- * cortos conserven su altura natural y los largos desplacen dentro del panel.
+ * Altura total del panel: el área de tres filas compartida con el selector telefónico más su
+ * padding vertical; los catálogos cortos conservan su altura natural.
  *
  * @param {number} optionCount - Opciones disponibles.
- * @returns {number} Altura máxima del panel en píxeles, padding incluido.
+ * @returns {number} Altura del panel en píxeles, padding incluido.
  */
 export function getPrefixSelectPanelHeight(optionCount) {
-  const rows = Math.min(Math.max(optionCount, 1), PREFIX_SELECT_VISIBLE_ROWS);
-  return rows * PREFIX_SELECT_ROW_HEIGHT + (rows - 1) * ROW_GAP + VERTICAL_PADDING;
+  return getInputOptionsViewportHeight(optionCount) + INPUT_OPTIONS_PANEL_PADDING;
 }
 
 /**
@@ -24,7 +19,7 @@ export function getPrefixSelectPanelHeight(optionCount) {
  * unido al borde superior. Las coordenadas son de viewport porque el panel usa `position: fixed`.
  *
  * @param {{top: number, bottom: number, left: number, width: number}} anchorRect - Rectángulo del campo.
- * @param {number} panelHeight - Altura máxima del panel.
+ * @param {number} panelHeight - Altura del panel.
  * @param {number} viewportHeight - Alto visible de la ventana.
  * @returns {{left: number, width: number, top: number, placement: "bottom"|"top"}} Posición del panel.
  */

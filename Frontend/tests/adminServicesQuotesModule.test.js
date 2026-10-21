@@ -5,6 +5,10 @@ import test from "node:test";
 import { measurementUnitsApi } from "../src/api/measurementUnitsApi.js";
 import { serviceCatalogApi } from "../src/api/serviceCatalogApi.js";
 import {
+  getInputOptionClassName,
+  getInputOptionsViewportHeight,
+} from "../src/components/ui/Input/options/inputOptionsConfig.js";
+import {
   findPrefixOptionIndex,
   getPrefixSelectPanelHeight,
   getPrefixSelectPosition,
@@ -99,8 +103,16 @@ test("errores: 400 por campo, duplicado sobre el texto, 401/403/404/429 comprens
   assert.equal(getMeasurementUnitErrorFeedback({ status: 500, message: "Internal Server Error" }, "No se pudo crear la unidad.").message, "No se pudo crear la unidad.");
 });
 
-test("selector de prefijo: hasta cuatro filas, se abre hacia arriba si no cabe y busca por letras", () => {
-  assert.equal(getPrefixSelectPanelHeight(48), 4 * 35 + 3 * 4 + 16);
+test("selector de prefijo: tres filas como el telefónico, se abre hacia arriba si no cabe y busca por letras", () => {
+  assert.equal(getPrefixSelectPanelHeight(48), 3 * 35 + 2 * 4 + 16);
+  assert.equal(getInputOptionsViewportHeight(48), 113, "Misma área desplazable que el selector telefónico");
+  assert.equal(getInputOptionsViewportHeight(2), 74);
+  const row = getInputOptionClassName({ selected: true, columns: "grid-cols-[48px_minmax(0,1fr)]" });
+  assert.match(row, /h-\[35px\]/);
+  assert.match(row, /bg-\[var\(--color-neutral-200\)\]/);
+  assert.doesNotMatch(row, /hover:/, "La opción seleccionada no cambia con hover");
+  assert.match(getInputOptionClassName({ selected: false, highlighted: true, columns: "" }), /ring-2 ring-\[var\(--color-primary-10\)\]/);
+  assert.doesNotMatch(getInputOptionClassName({ selected: false, disabled: true, columns: "" }), /hover:/);
   assert.equal(getPrefixSelectPanelHeight(1), 35 + 16);
   const anchor = { top: 600, bottom: 640, left: 20, width: 368 };
   assert.deepEqual(getPrefixSelectPosition(anchor, 168, 1000), { left: 20, width: 368, top: 640, placement: "bottom" });

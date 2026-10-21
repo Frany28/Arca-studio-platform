@@ -13,6 +13,9 @@ La API pública continúa en `Input.jsx`. El valor está controlado cuando
 | `tags/tagUtils.js` | Normalización, creación e identidad inicial de tags. |
 | `tags/useInputTags.js` | Selección, sugerencias, deduplicación, teclado y coordinación de foco/scroll. |
 | `tags/InputTagGroup.jsx` | Tags, avatares y sugerencias inline o en overlay. |
+| `options/inputOptionsConfig.js` | Filas de 35 px, tres filas visibles y clases de estado (seleccionada, hover, foco) compartidas por los listados del Input. |
+| `options/useInputOptionsScroll.js` | Métricas del ScrollBar sincronizadas con el scroll nativo oculto del listado. |
+| `options/InputOptionsPanel.jsx` | Carcasa del listado unido al campo (borde, radio, padding, viewport y ScrollBar) usada por teléfono y prefijo. |
 | `prefix/prefixSelectPosition.js` | Altura, posición y búsqueda por letras del listado de prefijos, sin DOM. |
 | `prefix/usePrefixSelect.js` | Apertura, opción activa, teclado de listbox y cierre del selector de prefijo. |
 | `prefix/InputPrefixSelect.jsx` | DOM, estilos y accesibilidad del selector de prefijo y su listado en portal. |
@@ -28,9 +31,14 @@ borde separador, sin su lógica de país.
 - El disparador es un `combobox` con `aria-activedescendant`: el foco permanece en él, así
   que el ciclo de Tab de `useDialogKeyboard` no se rompe. Flechas, Home/End, Enter/Espacio,
   búsqueda por letras, Tab y Escape; Escape no se propaga al diálogo contenedor.
-- El listado se monta en portal con `position: fixed`, unido al borde inferior del campo
-  completo y con su mismo ancho; si no cabe debajo se abre hacia arriba. Muestra hasta cuatro
-  filas de 35 px (como `DropdownMenu`) y desplaza el resto.
+- El listado comparte con el selector telefónico `InputOptionsPanel`, `getInputOptionClassName`
+  y `useInputOptionsScroll`: mismas filas de 35 px, tres visibles (113 px), tipografía Body/b4,
+  fondo, bordes y radios, ScrollBar del sistema y estados (seleccionada y hover en
+  `neutral-200`, foco de teclado con anillo `primary-10`). Como el foco permanece en el
+  disparador, la opción activa por teclado dibuja ese anillo; el puntero solo aplica hover.
+- A diferencia del teléfono, se monta en portal con `position: fixed` (los modales recortan su
+  contenido) y ocupa el ancho del campo completo para mostrar abreviatura y descripción; si no
+  cabe debajo se abre hacia arriba, unido al borde superior.
 
 ## Contratos sensibles
 

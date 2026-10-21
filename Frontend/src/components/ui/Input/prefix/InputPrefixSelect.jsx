@@ -2,12 +2,17 @@ import { createPortal } from "react-dom";
 import clsx from "clsx";
 
 import { ChevronDownIcon } from "../InputIcons.jsx";
+import InputOptionsPanel from "../options/InputOptionsPanel.jsx";
+import { getInputOptionClassName } from "../options/inputOptionsConfig.js";
+import useInputOptionsScroll from "../options/useInputOptionsScroll.js";
 import usePrefixSelect from "./usePrefixSelect.js";
 
 /**
  * Selector de prefijo del Input (variante "Prefix select"): abreviatura visible con flecha a
- * la izquierda del campo, separada por un borde como el prefijo telefónico. El listado se monta
- * en portal unido al campo completo, para no quedar recortado por modales o tablas con overflow.
+ * la izquierda del campo, separada por un borde como el prefijo telefónico. Su listado comparte
+ * con el selector telefónico la carcasa, las filas, el ScrollBar y los estados; se monta en
+ * portal unido al campo completo (ancho suficiente para la descripción) para no quedar recortado
+ * por modales o tablas con overflow.
  *
  * @param {Object} props - Opciones, selección y presentación.
  * @param {string} props.inputId - Identificador del campo nativo, base de los ids del listado.
@@ -22,7 +27,8 @@ import usePrefixSelect from "./usePrefixSelect.js";
  */
 export default function InputPrefixSelect({ inputId, options, value, ariaLabel, disabled, sizing, stateStyles, onChange }) {
   const select = usePrefixSelect({ options, value, disabled, onChange });
-  const { activeIndex, isOpen, listboxRef, position, selectedOption, triggerRef } = select;
+  const { activeIndex, highlightedIndex, isOpen, listboxRef, position, selectedOption, triggerRef } = select;
+  const optionsScroll = useInputOptionsScroll({ open: isOpen, optionCount: options.length, disabled });
   const listboxId = `${inputId}-prefix-options`;
   const optionId = (index) => `${inputId}-prefix-option-${index}`;
   const selectedLabel = selectedOption?.label ?? "";
@@ -50,49 +56,52 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
         <span className={clsx("text-body-3 whitespace-nowrap", disabled ? stateStyles.prefix : "text-[var(--color-text-300)]")}>
           {selectedLabel}
         </span>
-        <ChevronDownIcon className={clsx("size-5 transition-transform duration-150", isOpen && "rotate-180", stateStyles.trailingIcon)} />
+        <ChevronDownIcon className={clsx("size-5", stateStyles.trailingIcon)} />
       </button>
 
       {isOpen && typeof document !== "undefined"
         ? createPortal(
-          <div
+          <InputOptionsPanel
             ref={listboxRef}
             id={listboxId}
-            role="listbox"
-            aria-label={ariaLabel}
-            className={clsx(
-              "fixed z-[var(--z-tooltip)] flex flex-col gap-[4px] overflow-y-auto overscroll-contain border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] px-[4px] py-[8px] shadow-[var(--shadow-e2)] [scrollbar-color:var(--color-neutral-400)_transparent] [scrollbar-width:thin]",
-              position?.placement === "top" ? "rounded-t-[12px] border-b-0" : "rounded-b-[12px] border-t-0",
-            )}
+            ariaLabel={ariaLabel}
+            optionCount={options.length}
+            viewportRef={optionsScroll.scrollRef}
+            metrics={optionsScroll.metrics}
+            onViewportScroll={optionsScroll.handleScroll}
+            onScrollPositionChange={optionsScroll.handlePositionChange}
+            scrollbarLabel={`Desplazar ${ariaLabel.toLocaleLowerCase("es")}`}
+            disabled={disabled}
+            placement={position?.placement}
+            className="fixed z-[var(--z-tooltip)]"
             // Oculto hasta medir el campo para no dibujarse un frame en el origen.
-            style={position ? { left: position.left, top: position.top, width: position.width, maxHeight: select.panelHeight } : { visibility: "hidden" }}
+            style={position ? { left: position.left, top: position.top, width: position.width } : { visibility: "hidden" }}
           >
-            {options.map((option, index) => {
-              const isSelected = String(option.id) === String(value);
-              return (
-                <div
-                  key={option.id}
-                  id={optionId(index)}
-                  role="option"
-                  aria-selected={isSelected}
-                  data-option-index={index}
-                  className={clsx(
-                    "grid h-[35px] shrink-0 cursor-pointer grid-cols-[56px_minmax(0,1fr)] items-center gap-[8px] rounded-[8px] px-[8px] transition-colors",
-                    isSelected || index === activeIndex ? "bg-[var(--color-neutral-200)]" : "hover:bg-[var(--color-neutral-200)]",
-                  )}
-                  // Conserva el foco en el disparador para que el diálogo contenedor no lo pierda.
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => select.handleOptionHover(index)}
-                  onClick={() => select.handleOptionSelect(index)}
-                >
-                  <span className="text-body-4 whitespace-nowrap text-[var(--color-text-300)]">{option.label}</span>
-                  {option.description ? (
-                    <span className="text-body-4 truncate text-[var(--color-text-200)]" title={option.description}>{option.description}</span>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>,
+            {options.map((option, index) => (
+              <div
+                key={option.id}
+                id={optionId(index)}
+                role="option"
+                aria-selected={String(option.id) === String(value)}
+                data-option-index={index}
+                className={getInputOptionClassName({
+                  selected: String(option.id) === String(value),
+                  disabled,
+                  highlighted: index === highlightedIndex,
+                  columns: "grid-cols-[48px_minmax(0,1fr)]",
+                })}
+                // Conserva el foco en el disparador para que el diálogo contenedor no lo pierda.
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => select.handleOptionHover(index)}
+                onClick={() => select.handleOptionSelect(index)}
+              >
+                <span className="text-body-4 whitespace-nowrap text-[var(--color-text-300)]">{option.label}</span>
+                {option.description ? (
+                  <span className="text-body-4 min-w-0 truncate text-[var(--color-text-200)]" title={option.description}>{option.description}</span>
+                ) : null}
+              </div>
+            ))}
+          </InputOptionsPanel>,
           document.body,
         )
         : null}

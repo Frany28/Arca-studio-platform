@@ -28,6 +28,9 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
   const typeaheadRef = useRef({ query: "", timeoutId: 0 });
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  // El anillo de foco solo acompaña a la navegación por teclado; con el puntero basta el hover,
+  // igual que en el selector telefónico, cuyo foco real se mueve a la opción.
+  const [keyboardActive, setKeyboardActive] = useState(false);
   const [position, setPosition] = useState(null);
   const selectedIndex = options.findIndex((option) => String(option.id) === String(value));
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : null;
@@ -79,9 +82,10 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
    *
    * @returns {void}
    */
-  function open() {
+  function open({ fromKeyboard = false } = {}) {
     if (disabled || options.length === 0) return;
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setKeyboardActive(fromKeyboard);
     setIsOpen(true);
   }
 
@@ -113,8 +117,10 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
     // Con varias letras se busca desde la opción actual (incluida); con una, desde la siguiente.
     const fromIndex = typeahead.query.length > 1 ? activeIndex - 1 : activeIndex;
     const nextIndex = findPrefixOptionIndex(options, typeahead.query, fromIndex);
-    if (nextIndex >= 0) setActiveIndex(nextIndex);
-    if (!isOpen && nextIndex >= 0) setIsOpen(true);
+    if (nextIndex < 0) return;
+    setActiveIndex(nextIndex);
+    setKeyboardActive(true);
+    if (!isOpen) setIsOpen(true);
   }
 
   /**
@@ -131,7 +137,7 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
     if (!isOpen) {
       if (["ArrowDown", "ArrowUp", "Enter", " "].includes(key)) {
         event.preventDefault();
-        open();
+        open({ fromKeyboard: true });
       } else if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
         handleTypeahead(key);
       }
@@ -147,9 +153,11 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
     } else if (key === "ArrowDown" || key === "ArrowUp") {
       event.preventDefault();
       const step = key === "ArrowDown" ? 1 : -1;
+      setKeyboardActive(true);
       setActiveIndex((index) => (index + step + options.length) % options.length);
     } else if (key === "Home" || key === "End") {
       event.preventDefault();
+      setKeyboardActive(true);
       setActiveIndex(key === "Home" ? 0 : options.length - 1);
     } else if (key === "Enter" || key === " ") {
       event.preventDefault();
@@ -168,7 +176,11 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
     selectedOption,
     triggerRef,
     handleKeyDown,
-    handleOptionHover: setActiveIndex,
+    handleOptionHover: (index) => {
+      setKeyboardActive(false);
+      setActiveIndex(index);
+    },
+    highlightedIndex: keyboardActive ? activeIndex : -1,
     handleOptionSelect: select,
     toggle: () => (isOpen ? setIsOpen(false) : open()),
   };

@@ -12,19 +12,26 @@ test("phone country options reuse the attached three-row dropdown pattern", asyn
     new URL("../src/components/ui/Input/phone/usePhoneInput.js", import.meta.url),
     "utf8",
   );
+  // Carcasa, filas y scroll del listado son compartidos con el selector de prefijo del Input.
+  const panel = await readFile(new URL("../src/components/ui/Input/options/InputOptionsPanel.jsx", import.meta.url), "utf8");
+  const options = await readFile(new URL("../src/components/ui/Input/options/inputOptionsConfig.js", import.meta.url), "utf8");
 
+  assert.match(source, /<InputOptionsPanel/);
+  assert.match(source, /getInputOptionClassName\(/);
+  assert.match(hook, /useInputOptionsScroll\(/);
   assert.match(source, /left-\[-1px\] top-full/);
-  assert.match(source, /style=\{\{ maxHeight: optionsViewportHeight \}\}/);
-  assert.match(source, /height=\{optionsViewportHeight\}/);
-  assert.match(source, /overflow-y-auto/);
-  assert.match(source, /\[scrollbar-width:none\]/);
-  assert.match(source, /border-t-0/);
-  assert.match(source, /rounded-b-\[12px\]/);
-  assert.match(source, /h-\[35px\] shrink-0/);
+  assert.match(panel, /style=\{\{ maxHeight: viewportHeight \}\}/);
+  assert.match(panel, /height=\{viewportHeight\}/);
+  assert.match(panel, /overflow-y-auto/);
+  assert.match(panel, /\[scrollbar-width:none\]/);
+  assert.match(panel, /border-t-0/);
+  assert.match(panel, /rounded-b-\[12px\]/);
+  assert.match(options, /h-\[35px\] shrink-0/);
+  assert.match(options, /INPUT_OPTIONS_VISIBLE_ROWS = 3/);
   assert.match(source, /left-\[-1px\][^"\n]*w-\[calc\(100%\+1px\)\]/);
   assert.match(source, /after:left-\[-1px\][^"\n]*after:h-px/);
   assert.match(source, /grid-cols-\[20px_40px_minmax\(0,1fr\)\]/);
-  assert.match(source, /gap-\[2px\][^"\n]*px-\[8px\]/);
+  assert.match(options, /gap-\[2px\][^"\n]*px-\[8px\]/);
   assert.match(source, /\{option\.abbreviation\}/);
   assert.match(source, /aria-haspopup="listbox"/);
   assert.match(source, /aria-label="Buscar código de país por prefijo; el signo más es fijo"/);
@@ -43,8 +50,8 @@ test("phone country options reuse the attached three-row dropdown pattern", asyn
   assert.match(source, /onClick=\{\(\) => handlePhoneOptionSelection\(option\)\}/);
   assert.doesNotMatch(source, /aria-label="Código de país"/);
   assert.doesNotMatch(source, /text="Mostrar países"/);
-  assert.match(source, /<ScrollBar/);
-  assert.match(source, /aria-label="Desplazar países"/);
+  assert.match(panel, /<ScrollBar/);
+  assert.match(source, /scrollbarLabel="Desplazar países"/);
   assert.match(hook, /event\.key === "Escape"/);
   assert.doesNotMatch(source, /top-\[calc\(100%_-_1px\)\]/);
 });

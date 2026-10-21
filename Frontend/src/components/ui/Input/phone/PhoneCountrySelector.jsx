@@ -1,7 +1,8 @@
 import clsx from "clsx";
 import Flag from "../../../Flag.jsx";
-import ScrollBar from "../../ScrollBar/ScrollBar.jsx";
 import { ChevronDownIcon } from "../InputIcons.jsx";
+import InputOptionsPanel from "../options/InputOptionsPanel.jsx";
+import { getInputOptionClassName } from "../options/inputOptionsConfig.js";
 import { getPhoneDigits } from "./phoneUtils.js";
 
 /**
@@ -18,21 +19,14 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
     isPhoneMenuOpen,
     phoneMenuRef,
     phonePrefixInputRef,
-    phoneOptionsScrollRef,
-    phoneScrollMetrics,
+    optionsScroll,
     handlePrefixMouseDown,
     handlePrefixChange,
     handlePrefixKeyDown,
-    handleScrollPositionChange,
     handlePrefixFocus,
     handleToggleMenu,
-    handleOptionsScroll,
     handlePhoneOptionSelection,
   } = phone;
-  // Tres filas de 35 px con dos gaps de 4 px: 113 px. Los resultados cortos
-  // conservan su altura natural; viewport y ScrollBar comparten la misma medida.
-  const visibleOptionCount = Math.min(filteredPhoneOptions.length || 1, 3);
-  const optionsViewportHeight = visibleOptionCount * 35 + (visibleOptionCount - 1) * 4;
   return (
     <div
       ref={phoneMenuRef}
@@ -87,75 +81,58 @@ export default function PhoneCountrySelector({ inputId, disabled, sizing, stateS
       </div>
 
       {isPhoneMenuOpen ? (
-        <div
+        // Unido al borde inferior del campo, con su borde izquierdo y el ancho del selector
+        // (tres filas de 35 px, scroll nativo oculto y ScrollBar compartidos).
+        <InputOptionsPanel
           id={`${inputId}-phone-options`}
-          role="listbox"
-          aria-label="Países y códigos telefónicos"
-          className="absolute left-[-1px] top-full z-20 w-[calc(100%+1px)] min-w-0 rounded-b-[12px] border border-[var(--color-neutral-200)] border-t-0 bg-[var(--color-neutral-100)] px-[4px] py-[8px]"
+          ariaLabel="Países y códigos telefónicos"
+          optionCount={filteredPhoneOptions.length}
+          viewportRef={optionsScroll.scrollRef}
+          metrics={optionsScroll.metrics}
+          onViewportScroll={optionsScroll.handleScroll}
+          onScrollPositionChange={optionsScroll.handlePositionChange}
+          scrollbarLabel="Desplazar países"
+          disabled={disabled}
+          className="absolute left-[-1px] top-full z-20 w-[calc(100%+1px)]"
         >
-          <div
-            ref={phoneOptionsScrollRef}
-            className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto overscroll-contain pr-[12px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            style={{ maxHeight: optionsViewportHeight }}
-            onScroll={handleOptionsScroll}
-          >
-          {filteredPhoneOptions.map((option) => (
-            <button
-              key={`${option.countryCode}-${option.dialCode}`}
-              type="button"
-              role="option"
-              disabled={disabled}
-              aria-selected={
-                option.countryCode === resolvedPhoneOption.countryCode &&
-                option.dialCode === resolvedPhoneOption.dialCode
-              }
-              className={clsx(
-                "grid h-[35px] shrink-0 grid-cols-[20px_40px_minmax(0,1fr)] items-center gap-[2px] rounded-[8px] px-[8px] text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
-                option.countryCode === resolvedPhoneOption.countryCode &&
-                  option.dialCode === resolvedPhoneOption.dialCode
-                  ? "bg-[var(--color-neutral-200)]"
-                  : !disabled && "hover:bg-[var(--color-neutral-200)]",
-                disabled && "cursor-not-allowed",
-              )}
-              onClick={() => handlePhoneOptionSelection(option)}
-            >
-              <Flag
-                countryCode={option.countryCode}
-                size="20px"
-                title={option.label}
-                useSvg
-                loading="lazy"
-              />
-              <span className="text-body-4 whitespace-nowrap text-[var(--color-text-300)]">
-                {option.dialCode}
-              </span>
-              <span
-                className="text-body-4 min-w-0 truncate text-[var(--color-text-200)]"
-                title={option.label}
+          {filteredPhoneOptions.map((option) => {
+            const selected = option.countryCode === resolvedPhoneOption.countryCode
+              && option.dialCode === resolvedPhoneOption.dialCode;
+            return (
+              <button
+                key={`${option.countryCode}-${option.dialCode}`}
+                type="button"
+                role="option"
+                disabled={disabled}
+                aria-selected={selected}
+                className={getInputOptionClassName({ selected, disabled, columns: "grid-cols-[20px_40px_minmax(0,1fr)]" })}
+                onClick={() => handlePhoneOptionSelection(option)}
               >
-                {option.abbreviation}
-              </span>
-            </button>
-          ))}
+                <Flag
+                  countryCode={option.countryCode}
+                  size="20px"
+                  title={option.label}
+                  useSvg
+                  loading="lazy"
+                />
+                <span className="text-body-4 whitespace-nowrap text-[var(--color-text-300)]">
+                  {option.dialCode}
+                </span>
+                <span
+                  className="text-body-4 min-w-0 truncate text-[var(--color-text-200)]"
+                  title={option.label}
+                >
+                  {option.abbreviation}
+                </span>
+              </button>
+            );
+          })}
           {filteredPhoneOptions.length === 0 ? (
             <div className="flex h-[35px] shrink-0 items-center px-[8px] text-body-4 text-[var(--color-text-100)]">
               Sin coincidencias
             </div>
           ) : null}
-          </div>
-          {phoneScrollMetrics.length < 1 ? (
-            <ScrollBar
-              height={optionsViewportHeight}
-              length={phoneScrollMetrics.length}
-              position={phoneScrollMetrics.position}
-              interactive={!disabled}
-              onPositionChange={handleScrollPositionChange}
-              aria-label="Desplazar países"
-              className="absolute right-0 top-[8px]"
-              trackContainerClassName="bg-transparent"
-            />
-          ) : null}
-        </div>
+        </InputOptionsPanel>
       ) : null}
     </div>
   );

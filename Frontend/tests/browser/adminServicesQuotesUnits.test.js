@@ -104,6 +104,9 @@ function createBackend(initial) {
     if (failure) return json(route, failure.status, failure.body);
     if (path === "/api/admin/services") return json(route, 200, { services: SERVICES, nextCursor: null });
     if (path === "/api/admin/measurement-units") return json(route, 200, { measurementUnits: BASE_UNITS });
+    // Gestión de usuarios: solo para abrir el selector telefónico de referencia del modal «Nuevo usuario».
+    if (path === "/api/admin/users") return json(route, 200, { users: [], nextCursor: null, metrics: { total: 0, active: 0, suspended: 0, disabled: 0 } });
+    if (path === "/api/admin/roles") return json(route, 200, { roles: [{ id: 1, code: "client", name: "Cliente" }] });
 
     if (path === "/api/admin/measurement-unit-denominations" && method === "GET") {
       const search = (url.searchParams.get("search") || "").toLowerCase();
@@ -459,6 +462,85 @@ test("estados: carga, vacío con acción, error recuperable y 403 comprensible",
   await dialog.getByText("No tienes permisos para gestionar unidades de medida.").waitFor();
 });
 
+/**
+ * Mide la presentación de un listado unido a un selector del Input y de su primera opción.
+ *
+ * @param {import("playwright").Locator} listbox - Listado abierto.
+ * @returns {Promise<Object>} Estilos calculados comparables entre selectores.
+ */
+function measureOptionsPanel(listbox) {
+  return listbox.evaluate((panel) => {
+    const style = getComputedStyle(panel);
+    const viewport = panel.firstElementChild;
+    const option = panel.querySelector('[role="option"]');
+    const optionStyle = getComputedStyle(option);
+    return {
+      background: style.backgroundColor,
+      borderColor: style.borderLeftColor,
+      borderTop: style.borderTopWidth,
+      boxShadow: style.boxShadow,
+      optionFont: `${optionStyle.fontSize}/${optionStyle.lineHeight}`,
+      optionGap: optionStyle.columnGap,
+      optionHeight: option.getBoundingClientRect().height,
+      optionPadding: `${optionStyle.paddingLeft} ${optionStyle.paddingRight}`,
+      optionRadius: optionStyle.borderTopLeftRadius,
+      padding: `${style.paddingTop} ${style.paddingRight} ${style.paddingBottom} ${style.paddingLeft}`,
+      radius: `${style.borderBottomLeftRadius} ${style.borderBottomRightRadius}`,
+      scrollbarHidden: getComputedStyle(viewport).scrollbarWidth,
+      selectedBackground: getComputedStyle(panel.querySelector('[aria-selected="true"]')).backgroundColor,
+      viewportHeight: viewport.getBoundingClientRect().height,
+    };
+  });
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`consistencia (${theme}): el listado de unidades replica el del selector telefónico`, async (context) => {
+    const backend = createBackend([denomination(1, 1, "de construcción")]);
+    const page = await openModule(context, backend, { path: "/usuarios", theme });
+    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+    const phoneDialog = page.getByRole("dialog", { name: "Nuevo usuario" });
+    await phoneDialog.waitFor();
+    await phoneDialog.getByRole("combobox", { name: /Buscar código de país/ }).first().focus();
+    const phoneList = page.getByRole("listbox", { name: "Países y códigos telefónicos" });
+    await phoneList.waitFor();
+    const phone = await measureOptionsPanel(phoneList);
+    assert.equal(await page.getByRole("scrollbar", { name: "Desplazar países" }).count(), 1);
+
+    await page.goto(`${origin}/servicios-cotizaciones/unidades`);
+    await page.getByText("UNID-001", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Añadir unidad" }).click();
+    await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("m²"));
+    await page.getByRole("dialog", { name: "Nueva unidad de medida" }).getByRole("combobox").click();
+    const unitList = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+    await unitList.waitFor();
+    const units = await measureOptionsPanel(unitList);
+
+    assert.deepEqual(units, phone, "Carcasa, filas, tipografía, colores, scroll y altura idénticos");
+    assert.equal(units.viewportHeight, 113);
+    assert.equal(units.optionHeight, 35);
+    assert.equal(units.borderTop, "0px");
+    // El listado de unidades usa el mismo ScrollBar del sistema y conserva las 6 unidades simuladas.
+    assert.equal(await page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" }).count(), 1);
+    assert.equal(await unitList.getByRole("option").count(), BASE_UNITS.length);
+    // Abreviatura y descripción en cada opción.
+    assert.equal(await unitList.getByRole("option").first().textContent(), "m²Metro cuadrado");
+
+    // Teclado: anillo primary-10 en la opción activa, como el foco visible del telefónico; el
+    // puntero solo aplica hover y retira el anillo.
+    await page.keyboard.press("ArrowDown");
+    const ring = await unitList.getByRole("option").nth(1).evaluate((option) => getComputedStyle(option).boxShadow);
+    assert.notEqual(ring, "none");
+    await unitList.getByRole("option").nth(2).hover();
+    assert.equal(await unitList.getByRole("option").nth(1).evaluate((option) => getComputedStyle(option).boxShadow), "none");
+    // Desplazarse hasta la última opción mueve también el ScrollBar.
+    await page.keyboard.press("End");
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector('[role="listbox"]').firstElementChild;
+      return viewport.scrollTop > 0;
+    });
+  });
+}
+
 for (const theme of ["light", "dark"]) {
   test(`responsive (${theme}): sin desborde de página; tabla, modal y listado dentro del viewport`, async (context) => {
     const backend = createBackend([denomination(1, 1, "de recorrido comercial con un nombre bastante largo para probar el truncado")]);
@@ -496,5 +578,21 @@ for (const theme of ["light", "dark"]) {
       };
     });
     assert.deepEqual(geometry, { dialogInside: true, listInside: true, listAligned: true });
+
+    // Poco espacio vertical: el listado se reubica (abajo o arriba) sin salir del viewport ni
+    // quedar por detrás del modal.
+    await page.setViewportSize({ width: 1024, height: 360 });
+    await page.waitForFunction(() => {
+      const list = document.querySelector('[role="listbox"]')?.getBoundingClientRect();
+      const field = document.querySelector("[data-measurement-unit-form] [data-input-shell]")?.getBoundingClientRect();
+      return list && field && Math.abs(list.left - field.left) < 1 && list.top >= 0 && list.bottom <= window.innerHeight;
+    });
+    const stacking = await page.evaluate(() => {
+      const list = document.querySelector('[role="listbox"]');
+      const rect = list.getBoundingClientRect();
+      const topElement = document.elementFromPoint(rect.left + rect.width / 2, rect.top + 20);
+      return list.contains(topElement);
+    });
+    assert.equal(stacking, true, "El listado queda por encima del modal y su overlay");
   });
 }

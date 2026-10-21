@@ -1,19 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatPhoneNumber, getPhoneDigits, normalizeDialCode } from "./phoneUtils.js";
-
-/**
- * Lee tamaño y desplazamiento reales del listado para su scrollbar personalizado.
- * @param {HTMLElement|null} element Contenedor desplazable, si está montado.
- * @returns {{length: number, position: number}} Proporciones visibles y recorridas.
- */
-function getVerticalScrollMetrics(element) {
-  if (!element) return { length: 1, position: 0 };
-  const maxScroll = Math.max(element.scrollHeight - element.clientHeight, 0);
-  return {
-    length: Math.min(element.clientHeight / Math.max(element.scrollHeight, 1), 1),
-    position: maxScroll > 0 ? element.scrollTop / maxScroll : 0,
-  };
-}
+import useInputOptionsScroll from "../options/useInputOptionsScroll.js";
 
 /**
  * Coordina país, prefijo, menú y formato de la variante telefónica.
@@ -50,8 +37,6 @@ export default function usePhoneInput({
   );
   const phoneMenuRef = useRef(null);
   const phonePrefixInputRef = useRef(null);
-  const phoneOptionsScrollRef = useRef(null);
-  const [phoneScrollMetrics, setPhoneScrollMetrics] = useState({ length: 1, position: 0 });
   const resolvedPhoneOption = selectedPhoneOption ?? phoneOptions[0];
   const normalizedPhonePrefix = normalizeDialCode(phonePrefixValue);
   const filteredPhoneOptions =
@@ -64,14 +49,13 @@ export default function usePhoneInput({
           return optionDigits.startsWith(prefixDigits);
         })
       : phoneOptions;
-  // La medición espera al montaje del listado; el frame se cancela al cerrar o desmontar.
-  useEffect(() => {
-    if (!isPhoneMenuOpen) return undefined;
-    const frameId = window.requestAnimationFrame(() => {
-      setPhoneScrollMetrics(getVerticalScrollMetrics(phoneOptionsScrollRef.current));
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [filteredPhoneOptions.length, isPhoneMenuOpen]);
+  // Scroll del listado con el ScrollBar compartido por los selectores del Input; mide al montar
+  // el listado y al filtrar, y cancela su frame al cerrar o desmontar.
+  const optionsScroll = useInputOptionsScroll({
+    open: isPhoneMenuOpen,
+    optionCount: filteredPhoneOptions.length,
+    disabled,
+  });
 
   // Los listeners conservan mousedown y Escape y se retiran al cerrar o desmontar.
   useEffect(() => {
@@ -172,20 +156,6 @@ export default function usePhoneInput({
     handlePhoneOptionSelection(firstVisibleOption);
   };
 
-  /**
-   * Desplaza el contenedor y actualiza las métricas del scrollbar desde el DOM.
-   * @param {number} nextPosition Posición relativa solicitada por el scrollbar.
-   * @returns {void}
-   */
-  const handleScrollPositionChange = (nextPosition) => {
-    if (disabled) return;
-    const container = phoneOptionsScrollRef.current;
-    if (!container) return;
-    const maxScroll = Math.max(container.scrollHeight - container.clientHeight, 0);
-    container.scrollTop = maxScroll * nextPosition;
-    setPhoneScrollMetrics(getVerticalScrollMetrics(container));
-  };
-
   /** Abre el menú al enfocar el campo de prefijo. */
   const handlePrefixFocus = () => {
     if (!disabled) setIsPhoneMenuOpen(true);
@@ -195,14 +165,6 @@ export default function usePhoneInput({
   const handleToggleMenu = () => {
     if (!disabled) setIsPhoneMenuOpen((current) => !current);
   };
-
-  /**
-   * Lee las métricas del contenedor tras su desplazamiento nativo.
-   * @param {object} event Evento de scroll del listado.
-   * @returns {void}
-   */
-  const handleOptionsScroll = (event) =>
-    setPhoneScrollMetrics(getVerticalScrollMetrics(event.currentTarget));
 
   /**
    * Formatea el número antes de notificar al consumidor y modifica el mismo evento.
@@ -227,15 +189,12 @@ export default function usePhoneInput({
     isPhoneMenuOpen,
     phoneMenuRef,
     phonePrefixInputRef,
-    phoneOptionsScrollRef,
-    phoneScrollMetrics,
+    optionsScroll,
     handlePrefixMouseDown,
     handlePrefixChange,
     handlePrefixKeyDown,
-    handleScrollPositionChange,
     handlePrefixFocus,
     handleToggleMenu,
-    handleOptionsScroll,
     handlePhoneOptionSelection,
     handleChange,
   };
