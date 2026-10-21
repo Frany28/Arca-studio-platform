@@ -20,7 +20,7 @@ export function getPrefixSelectPanelHeight(optionCount) {
 /**
  * Sitúa el listado como extensión del segmento selector, con la misma relación que el selector
  * telefónico: unido a su borde inferior, 1 px a su izquierda y con al menos su ancho + 1 px. El
- * ancho final lo decide el contenido (abreviatura y nombre), limitado al viewport. Si no cabe
+ * ancho final lo decide el contenido (la abreviatura más larga), limitado al viewport. Si no cabe
  * debajo, se une al borde superior del segmento. Coordenadas de viewport: el panel usa
  * `position: fixed` en un portal para no quedar recortado por modales con overflow.
  *

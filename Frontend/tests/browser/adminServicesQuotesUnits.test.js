@@ -322,7 +322,12 @@ test("alta: selector de abreviaturas desde la API, teclado, un único envío y c
   const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
   await listbox.waitFor();
   assert.equal(await listbox.getByRole("option").count(), BASE_UNITS.length);
-  assert.equal(await listbox.getByRole("option", { selected: true }).textContent(), "m²Metro cuadrado");
+  // Solo la abreviatura es visible; el nombre completo queda en el nombre accesible.
+  const selectedOption = listbox.getByRole("option", { selected: true });
+  assert.equal(await selectedOption.textContent(), "m²");
+  assert.equal(await selectedOption.getAttribute("aria-label"), "m², Metro cuadrado");
+  assert.equal(await listbox.getByRole("option", { name: "m.l., Metro lineal" }).count(), 1);
+  assert.equal(await listbox.getByText("Metro cuadrado").count(), 0, "La descripción no se muestra");
   await page.keyboard.press("Escape");
   await listbox.waitFor({ state: "detached" });
   assert.equal(await dialog.isVisible(), true);
@@ -555,7 +560,9 @@ for (const theme of ["light", "dark"]) {
     assert.equal(await page.getByRole("scrollbar", { name: "Desplazar abreviatura de la unidad base" }).count(), 1);
     assert.equal(await unitList.getByRole("option").count(), BASE_UNITS.length);
     // Abreviatura y descripción en cada opción.
-    assert.equal(await unitList.getByRole("option").first().textContent(), "m²Metro cuadrado");
+    assert.deepEqual(await unitList.getByRole("option").allTextContents(), BASE_UNITS.map((unit) => unit.symbol));
+    // Compacto: proporcional a la abreviatura más larga, no a nombres completos.
+    assert.ok(unitAnchor.extraWidth <= 40, `Demasiado ancho para solo abreviaturas (+${unitAnchor.extraWidth} px)`);
 
     // Teclado: anillo primary-10 en la opción activa, como el foco visible del telefónico; el
     // puntero solo aplica hover y retira el anillo.

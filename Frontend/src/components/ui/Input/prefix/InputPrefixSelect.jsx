@@ -10,9 +10,9 @@ import usePrefixSelect from "./usePrefixSelect.js";
 /**
  * Selector de prefijo del Input (variante "Prefix select"): abreviatura visible con flecha a
  * la izquierda del campo, separada por un borde como el prefijo telefónico. Su listado comparte
- * con el selector telefónico la carcasa, las filas, el ScrollBar y los estados; se monta en
- * portal unido al campo completo (ancho suficiente para la descripción) para no quedar recortado
- * por modales o tablas con overflow.
+ * con el selector telefónico la carcasa, las filas, el ScrollBar y los estados, muestra solo las
+ * abreviaturas (la descripción va en el nombre accesible) y se monta en portal como extensión
+ * del segmento del prefijo para no quedar recortado por modales o tablas con overflow.
  *
  * @param {Object} props - Opciones, selección y presentación.
  * @param {string} props.inputId - Identificador del campo nativo, base de los ids del listado.
@@ -76,7 +76,7 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
             placement={position?.placement}
             className="fixed z-[var(--z-tooltip)]"
             // Oculto hasta medir el campo para no dibujarse un frame en el origen.
-            // Ancho según el contenido (abreviatura + nombre), nunca menor que el segmento.
+            // Ancho según el contenido (la abreviatura más larga), nunca menor que el segmento.
             style={position
               ? { left: position.left, top: position.top, minWidth: position.minWidth, maxWidth: position.maxWidth, width: "max-content" }
               : { visibility: "hidden" }}
@@ -88,11 +88,14 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
                 role="option"
                 aria-selected={String(option.id) === String(value)}
                 data-option-index={index}
+                // Solo se ve la abreviatura; el nombre completo queda en el nombre accesible para
+                // distinguir símbolos parecidos (m / m.l., pie / pie²) sin mostrarlo.
+                aria-label={option.description ? `${option.label}, ${option.description}` : undefined}
                 className={getInputOptionClassName({
                   selected: String(option.id) === String(value),
                   disabled,
                   highlighted: index === highlightedIndex,
-                  columns: "grid-cols-[48px_minmax(0,1fr)]",
+                  columns: "grid-cols-[minmax(0,1fr)]",
                 })}
                 // Conserva el foco en el disparador para que el diálogo contenedor no lo pierda.
                 onMouseDown={(event) => event.preventDefault()}
@@ -100,9 +103,6 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
                 onClick={() => select.handleOptionSelect(index)}
               >
                 <span className="text-body-4 whitespace-nowrap text-[var(--color-text-300)]">{option.label}</span>
-                {option.description ? (
-                  <span className="text-body-4 min-w-0 truncate text-[var(--color-text-200)]" title={option.description}>{option.description}</span>
-                ) : null}
               </div>
             ))}
           </InputOptionsPanel>,

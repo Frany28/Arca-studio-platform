@@ -39,8 +39,10 @@ borde separador, sin su lógica de país.
 - Se ancla al segmento del prefijo con la misma relación que el teléfono
   (`INPUT_OPTIONS_ANCHOR_OFFSET`): unido a su borde inferior, 1 px a su izquierda, con el
   divisor compartido `getInputOptionsAnchorDividerClassName` y al menos el ancho del segmento
-  + 1 px. El ancho crece solo según el contenido (abreviatura y nombre), limitado al viewport;
-  nunca ocupa el campo de texto completo. Se monta en portal con `position: fixed` porque los
+  + 1 px. Las opciones muestran solo `label` (la abreviatura); `description` (el nombre
+  completo) se expone en el nombre accesible de cada opción y del disparador, sin mostrarse.
+  El ancho se ajusta a la abreviatura más larga, limitado al viewport; nunca ocupa el campo de
+  texto completo. Se monta en portal con `position: fixed` porque los
   modales recortan su contenido, y si no cabe debajo se une al borde superior del segmento.
 
 ## Contratos sensibles
