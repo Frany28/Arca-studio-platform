@@ -99,7 +99,12 @@ export default function InputPrefixSelect({ inputId, options, value, ariaLabel, 
                 })}
                 // Conserva el foco en el disparador para que el diálogo contenedor no lo pierda.
                 onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => select.handleOptionHover(index)}
+                // Solo un movimiento real del puntero cambia la opción activa: al desplazar el
+                // listado con teclado o rueda, el contenido pasa bajo un puntero quieto y el
+                // navegador emite mouseenter sintéticos que robarían la opción de teclado.
+                onMouseMove={(event) => {
+                  if ((event.movementX || event.movementY) && index !== activeIndex) select.handleOptionHover(index);
+                }}
                 onClick={() => select.handleOptionSelect(index)}
               >
                 <span className="text-body-4 whitespace-nowrap text-[var(--color-text-300)]">{option.label}</span>

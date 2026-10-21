@@ -44,6 +44,23 @@ export function getPrefixSelectPosition(anchorRect, panelHeight, viewport) {
 }
 
 /**
+ * Calcula el `scrollTop` mínimo del área desplazable para que una opción quede completamente
+ * visible («nearest»): no se mueve si ya lo está, sube si queda por encima y baja si queda por
+ * debajo. Solo afecta al listado, a diferencia de `scrollIntoView`, que desplaza también los
+ * contenedores ancestros (modal o página).
+ *
+ * @param {{top: number, bottom: number}} viewportRect - Rectángulo visible del área desplazable.
+ * @param {number} scrollTop - Desplazamiento actual del área.
+ * @param {{top: number, bottom: number}} optionRect - Rectángulo de la opción.
+ * @returns {number} Nuevo `scrollTop`.
+ */
+export function getScrollTopToRevealOption(viewportRect, scrollTop, optionRect) {
+  if (optionRect.top < viewportRect.top) return scrollTop - (viewportRect.top - optionRect.top);
+  if (optionRect.bottom > viewportRect.bottom) return scrollTop + (optionRect.bottom - viewportRect.bottom);
+  return scrollTop;
+}
+
+/**
  * Busca la siguiente opción cuyo texto visible o descripción empieza por lo escrito, empezando
  * después de la opción activa para que repetir una letra recorra las coincidencias.
  *

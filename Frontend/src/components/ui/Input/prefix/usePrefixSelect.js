@@ -4,6 +4,7 @@ import {
   findPrefixOptionIndex,
   getPrefixSelectPanelHeight,
   getPrefixSelectPosition,
+  getScrollTopToRevealOption,
 } from "./prefixSelectPosition.js";
 
 // Tiempo durante el que las letras escritas se acumulan en una misma búsqueda por teclado.
@@ -48,12 +49,18 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
         { width: window.innerWidth, height: window.innerHeight },
       ));
     };
+    // El scroll del propio listado (arrastre del ScrollBar, rueda, teclado) no mueve el segmento:
+    // recalcular la posición en ese caso solo provocaba renders durante el desplazamiento.
+    const updateOnAncestorScroll = (event) => {
+      if (listboxRef.current?.contains(event.target)) return;
+      updatePosition();
+    };
     updatePosition();
     window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("scroll", updateOnAncestorScroll, true);
     return () => {
       window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("scroll", updateOnAncestorScroll, true);
     };
   }, [isOpen, panelHeight]);
 
@@ -68,13 +75,19 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
     return () => document.removeEventListener("pointerdown", closeOnOutsidePress, true);
   }, [isOpen]);
 
-  // Mantiene visible la opción activa dentro del área desplazable del panel.
+  // Mantiene visible la opción activa al abrir y al navegar con teclado. Depende solo de la opción
+  // activa: si dependiera de la posición, cada scroll del usuario (que la recalculaba) devolvía
+  // el listado a esa opción y el ScrollBar y la rueda quedaban bloqueados. Ajusta únicamente el
+  // área desplazable del listado; scrollIntoView también desplazaría el modal o la página.
   useEffect(() => {
     if (!isOpen || activeIndex < 0) return;
-    listboxRef.current
-      ?.querySelector(`[data-option-index="${activeIndex}"]`)
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [activeIndex, isOpen, position]);
+    const viewport = listboxRef.current?.firstElementChild;
+    const option = viewport?.querySelector(`[data-option-index="${activeIndex}"]`);
+    if (!viewport || !option) return;
+    viewport.scrollTo({
+      top: getScrollTopToRevealOption(viewport.getBoundingClientRect(), viewport.scrollTop, option.getBoundingClientRect()),
+    });
+  }, [activeIndex, isOpen]);
 
   useEffect(() => () => window.clearTimeout(typeaheadRef.current.timeoutId), []);
 

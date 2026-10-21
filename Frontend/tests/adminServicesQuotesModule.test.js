@@ -10,6 +10,7 @@ import {
 } from "../src/components/ui/Input/options/inputOptionsConfig.js";
 import {
   findPrefixOptionIndex,
+  getScrollTopToRevealOption,
   getPrefixSelectPanelHeight,
   getPrefixSelectPosition,
 } from "../src/components/ui/Input/prefix/prefixSelectPosition.js";
@@ -126,6 +127,15 @@ test("selector de prefijo: tres filas como el telefónico, se abre hacia arriba 
   assert.equal(findPrefixOptionIndex(options, "m", 1), 0);
   assert.equal(findPrefixOptionIndex(options, "ho", -1), 2);
   assert.equal(findPrefixOptionIndex(options, "z", 0), -1);
+});
+
+test("selector de prefijo: revelar la opción activa solo ajusta el listado lo mínimo necesario", () => {
+  const viewport = { top: 100, bottom: 213 };
+  // Ya visible: el desplazamiento del usuario se respeta.
+  assert.equal(getScrollTopToRevealOption(viewport, 780, { top: 140, bottom: 175 }), 780);
+  // Por debajo: baja justo lo que sobresale; por encima: sube justo lo que falta.
+  assert.equal(getScrollTopToRevealOption(viewport, 0, { top: 230, bottom: 265 }), 52);
+  assert.equal(getScrollTopToRevealOption(viewport, 400, { top: 60, bottom: 95 }), 360);
 });
 
 test("API de unidades: rutas, consultas sin valores vacíos y cuerpos del contrato (sin publicCode)", async (context) => {

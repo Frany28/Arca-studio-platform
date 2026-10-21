@@ -85,6 +85,8 @@ function createBackend(initial) {
     failures: {},
     delays: {},
     pageSize: null,
+    // Catálogo base servido; las pruebas de scroll lo amplían a 48 unidades como el seed.
+    baseUnits: BASE_UNITS,
   };
   const json = (route, status, body) => route.fulfill({ status, json: body });
 
@@ -103,7 +105,7 @@ function createBackend(initial) {
     if (path === "/api/projects") return json(route, 200, { projects: [], nextCursor: null });
     if (failure) return json(route, failure.status, failure.body);
     if (path === "/api/admin/services") return json(route, 200, { services: SERVICES, nextCursor: null });
-    if (path === "/api/admin/measurement-units") return json(route, 200, { measurementUnits: BASE_UNITS });
+    if (path === "/api/admin/measurement-units") return json(route, 200, { measurementUnits: state.baseUnits });
     // Gestión de usuarios: solo para abrir el selector telefónico de referencia del modal «Nuevo usuario».
     if (path === "/api/admin/users") return json(route, 200, { users: [], nextCursor: null, metrics: { total: 0, active: 0, suspended: 0, disabled: 0 } });
     if (path === "/api/admin/roles") return json(route, 200, { roles: [{ id: 1, code: "client", name: "Cliente" }] });
@@ -579,6 +581,146 @@ for (const theme of ["light", "dark"]) {
     });
   });
 }
+
+// 48 unidades base como el catálogo aprobado: muchas quedan fuera de las tres filas visibles.
+const FORTY_EIGHT_UNITS = Array.from({ length: 48 }, (_, index) => ({
+  id: 100 + index,
+  code: `unit_${index}`,
+  name: `Unidad de prueba ${index + 1}`,
+  symbol: `u${index + 1}`,
+  allowsDecimals: true,
+  isActive: true,
+  sortOrder: index + 1,
+}));
+
+/**
+ * Lee el desplazamiento del área de opciones del listado abierto.
+ *
+ * @param {import("playwright").Page} page - Página con un listado abierto.
+ * @returns {Promise<number>} scrollTop del área desplazable.
+ */
+function optionsScrollTop(page) {
+  return page.getByRole("listbox").evaluate((list) => list.firstElementChild.scrollTop);
+}
+
+/**
+ * Arrastra el thumb del ScrollBar con el ratón real (pointerdown, pointermove, pointerup).
+ *
+ * @param {import("playwright").Page} page - Página con un listado abierto.
+ * @param {string} name - Nombre accesible del ScrollBar.
+ * @param {number} deltaY - Desplazamiento vertical del puntero.
+ * @returns {Promise<void>}
+ */
+async function dragScrollThumb(page, name, deltaY) {
+  const thumb = page.getByRole("scrollbar", { name }).locator("div").first();
+  // El thumb anima `top` (150 ms): se espera a que su posición se estabilice antes de agarrarlo.
+  let box = await thumb.boundingBox();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await page.waitForTimeout(50);
+    const next = await thumb.boundingBox();
+    if (Math.abs(next.y - box.y) < 0.5) break;
+    box = next;
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + deltaY, { steps: 8 });
+  await page.mouse.up();
+}
+
+for (const [label, viewport, theme] of [["escritorio claro", { width: 1440, height: 1000 }, "light"], ["móvil oscuro", { width: 375, height: 812 }, "dark"]]) {
+  test(`scroll (${label}): arrastrar el ScrollBar, rueda y teclado desplazan las 48 unidades sin cerrar el menú`, async (context) => {
+    const backend = createBackend([denomination(1, 1, "de construcción")]);
+    backend.baseUnits = FORTY_EIGHT_UNITS;
+    const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme, viewport });
+    await page.getByText("UNID-001", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Añadir unidad" }).click();
+    const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+    await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
+    const combobox = dialog.getByRole("combobox");
+    await combobox.click();
+    const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+    await listbox.waitFor();
+    const scrollbarName = "Desplazar abreviatura de la unidad base";
+
+    // Hay opciones fuera del área visible y solo se muestran las abreviaturas.
+    const overflow = await listbox.evaluate((list) => {
+      const area = list.firstElementChild;
+      const bottom = area.getBoundingClientRect().bottom;
+      return { hidden: [...area.querySelectorAll('[role="option"]')].filter((option) => option.getBoundingClientRect().top >= bottom).length, scrollable: area.scrollHeight > area.clientHeight };
+    });
+    assert.ok(overflow.scrollable && overflow.hidden > 40, JSON.stringify(overflow));
+    assert.equal(await listbox.getByRole("option").first().textContent(), "u1");
+
+    // Arrastrar hacia abajo aumenta scrollTop; hacia arriba lo reduce; el menú sigue abierto.
+    await dragScrollThumb(page, scrollbarName, 40);
+    const afterDown = await optionsScrollTop(page);
+    assert.ok(afterDown > 300, `El arrastre hacia abajo debe desplazar el listado (scrollTop=${afterDown})`);
+    assert.equal(await listbox.isVisible(), true);
+    await dragScrollThumb(page, scrollbarName, -20);
+    const afterUp = await optionsScrollTop(page);
+    assert.ok(afterUp < afterDown && afterUp > 0, `El arrastre hacia arriba debe reducir scrollTop (0 < ${afterUp} < ${afterDown})`);
+    assert.equal(await listbox.isVisible(), true);
+    assert.equal(await combobox.getAttribute("aria-expanded"), "true");
+    // El ScrollBar refleja la posición real del listado.
+    assert.ok(Number(await page.getByRole("scrollbar", { name: scrollbarName }).getAttribute("aria-valuenow")) > 0);
+
+    // Seleccionar una opción que solo era visible tras desplazarse.
+    const target = listbox.getByRole("option").filter({ hasText: /^u(1[2-9]|2\d)$/ }).first();
+    const targetSymbol = await target.textContent();
+    await target.click();
+    await listbox.waitFor({ state: "detached" });
+    assert.equal(await combobox.textContent(), targetSymbol);
+
+    // Rueda del ratón (y deltas pequeños, como un panel táctil).
+    await combobox.click();
+    await listbox.waitFor();
+    const startWheel = await optionsScrollTop(page);
+    const listBox = await listbox.boundingBox();
+    await page.mouse.move(listBox.x + 16, listBox.y + 30);
+    await page.mouse.wheel(0, 120);
+    for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, 10);
+    await page.waitForFunction((start) => document.querySelector('[role="listbox"]').firstElementChild.scrollTop >= start + 150, startWheel);
+
+    // Teclado: End lleva a la última opción aunque el puntero esté sobre el listado, Home a la
+    // primera, y Enter selecciona la activa; Escape cierra sin cerrar el modal.
+    await combobox.focus();
+    await page.keyboard.press("End");
+    await page.waitForFunction(() => {
+      const area = document.querySelector('[role="listbox"]').firstElementChild;
+      return area.scrollTop + area.clientHeight >= area.scrollHeight - 1;
+    });
+    assert.match(await combobox.getAttribute("aria-activedescendant"), /-prefix-option-47$/);
+    await page.keyboard.press("Home");
+    await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop === 0);
+    assert.match(await combobox.getAttribute("aria-activedescendant"), /-prefix-option-0$/);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await listbox.waitFor({ state: "detached" });
+    assert.equal(await combobox.textContent(), "u2");
+    assert.equal(await combobox.evaluate((element) => element === document.activeElement), true, "El foco vuelve al disparador");
+    await page.keyboard.press("ArrowDown");
+    await listbox.waitFor();
+    await page.keyboard.press("Escape");
+    await listbox.waitFor({ state: "detached" });
+    assert.equal(await dialog.isVisible(), true);
+  });
+}
+
+test("scroll: el ScrollBar del selector telefónico sigue arrastrándose (sin regresión)", async (context) => {
+  const backend = createBackend([]);
+  const page = await openModule(context, backend, { path: "/usuarios" });
+  await page.getByRole("button", { name: "Nuevo", exact: true }).click();
+  const phoneDialog = page.getByRole("dialog", { name: "Nuevo usuario" });
+  await phoneDialog.waitFor();
+  await phoneDialog.getByRole("combobox", { name: /Buscar código de país/ }).first().focus();
+  await page.getByRole("listbox", { name: "Países y códigos telefónicos" }).waitFor();
+  await dragScrollThumb(page, "Desplazar países", 40);
+  const afterDown = await optionsScrollTop(page);
+  assert.ok(afterDown > 100, `scrollTop=${afterDown}`);
+  await dragScrollThumb(page, "Desplazar países", -20);
+  assert.ok(await optionsScrollTop(page) < afterDown);
+  assert.equal(await page.getByRole("listbox", { name: "Países y códigos telefónicos" }).isVisible(), true);
+});
 
 for (const theme of ["light", "dark"]) {
   test(`responsive (${theme}): sin desborde de página; tabla, modal y listado dentro del viewport`, async (context) => {

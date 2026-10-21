@@ -28,6 +28,12 @@ Texto libre precedido por un selector (Figma `5790:360030`, “Nueva unidad de m
 base no es editable). Comparte con el teléfono la estructura selector + campo nativo y el
 borde separador, sin su lógica de país.
 
+- El scroll del listado es del usuario: la opción activa solo se revela (ajustando el área del
+  listado, sin `scrollIntoView`) cuando cambia por apertura o teclado, y el listener de scroll
+  que recoloca el panel ignora el scroll del propio listado. Recolocar o revelar en cada scroll
+  devolvía el listado a la opción activa y bloqueaba el arrastre del ScrollBar y la rueda. El
+  hover solo cambia la opción activa con movimiento real del puntero, no cuando el contenido
+  se desplaza bajo un puntero quieto.
 - El disparador es un `combobox` con `aria-activedescendant`: el foco permanece en él, así
   que el ciclo de Tab de `useDialogKeyboard` no se rompe. Flechas, Home/End, Enter/Espacio,
   búsqueda por letras, Tab y Escape; Escape no se propaga al diálogo contenedor.
