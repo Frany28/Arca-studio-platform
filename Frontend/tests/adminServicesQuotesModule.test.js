@@ -17,10 +17,12 @@ import {
 } from "../src/components/ui/Input/prefix/prefixSelectPosition.js";
 import { getMeasurementUnitErrorFeedback } from "../src/pages/admin-services-quotes/measurement-units/utils/measurementUnitErrors.js";
 import {
+  canEditBaseUnit,
   getInUseReason,
   normalizeDenominationText,
   previewUnitLabel,
   toBaseUnitOptions,
+  toEditBaseUnitOptions,
   validateDenominationText,
 } from "../src/pages/admin-services-quotes/measurement-units/utils/measurementUnitPresentation.js";
 import {
@@ -84,6 +86,18 @@ test("presentación: normaliza y valida como el contrato y previsualiza la etiqu
   assert.equal(getInUseReason({ activeServiceCount: 3 }), "En uso por 3 servicios activos");
 });
 
+test("presentación: la base solo es editable con el indicador explícito y conserva la base actual", () => {
+  assert.equal(canEditBaseUnit({ baseUnitEditable: true }), true);
+  for (const denomination of [{ baseUnitEditable: false }, {}, null, { baseUnitEditable: "true" }]) {
+    assert.equal(canEditBaseUnit(denomination), false, JSON.stringify(denomination));
+  }
+  const catalog = [{ id: 1, label: "m²", description: "Metro cuadrado" }, { id: 2, label: "m.l.", description: "Metro lineal" }];
+  assert.equal(toEditBaseUnitOptions(catalog, { id: 2, symbol: "m.l.", name: "Metro lineal" }), catalog);
+  // Una base inactiva (fuera del catálogo activo) se añade al inicio para conservar el símbolo.
+  assert.deepEqual(toEditBaseUnitOptions(catalog, { id: 9, symbol: "min", name: "Minuto" }).map((option) => option.label), ["min", "m²", "m.l."]);
+  assert.deepEqual(toEditBaseUnitOptions(null, { id: 9, symbol: "min", name: "Minuto" }), [{ id: 9, label: "min", description: "Minuto" }]);
+});
+
 test("errores: 400 por campo, duplicado sobre el texto, 401/403/404/429 comprensibles y 409 del backend", () => {
   const validation = getMeasurementUnitErrorFeedback({ status: 400, code: "VALIDATION_ERROR", message: "Los datos enviados no son válidos.", fields: { "body.measurementUnitId": "La unidad de medida está inactiva." } }, "x");
   assert.deepEqual(validation.fieldErrors, { measurementUnitId: "La unidad de medida está inactiva." });
@@ -95,6 +109,12 @@ test("errores: 400 por campo, duplicado sobre el texto, 401/403/404/429 comprens
   const inUse = getMeasurementUnitErrorFeedback({ status: 409, code: "MEASUREMENT_UNIT_IN_USE", message: "La denominación está asignada a 2 servicio(s) activo(s)." }, "x");
   assert.equal(inUse.message, "La denominación está asignada a 2 servicio(s) activo(s).");
   assert.deepEqual(inUse.fieldErrors, {});
+  assert.equal(inUse.baseUnitLocked, false);
+
+  // La base en uso se señala sobre la abreviatura y bloquea el selector, sin recargar ni cerrar.
+  const baseInUse = getMeasurementUnitErrorFeedback({ status: 409, code: "MEASUREMENT_UNIT_BASE_IN_USE", message: "La unidad base no se puede cambiar." }, "x");
+  assert.deepEqual([baseInUse.fieldErrors, baseInUse.baseUnitLocked, baseInUse.shouldReload, baseInUse.message],
+    [{ measurementUnitId: "La unidad base no se puede cambiar." }, true, false, "La unidad base no se puede cambiar."]);
 
   assert.match(getMeasurementUnitErrorFeedback({ status: 401, code: "UNAUTHENTICATED", message: "Sesión requerida." }, "x").message, /sesión expiró/);
   assert.match(getMeasurementUnitErrorFeedback({ status: 403, code: "FORBIDDEN", message: "No" }, "x").message, /permisos/);
@@ -183,6 +203,7 @@ test("API de unidades: rutas, consultas sin valores vacíos y cuerpos del contra
   await measurementUnitsApi.listDenominations({ limit: 10, search: "" });
   await measurementUnitsApi.createDenomination({ denomination: "de construcción", measurementUnitId: 1 });
   await measurementUnitsApi.updateDenomination({ denomination: "de obra", denominationId: 7 });
+  await measurementUnitsApi.updateDenomination({ denomination: "de obra", denominationId: 7, measurementUnitId: 2 });
   await measurementUnitsApi.changeDenominationStatus({ denominationId: 7, isActive: false });
 
   assert.deepEqual(calls.map(({ url, init }) => [init.method || "GET", url.replace(/^.*\/api/, "")]), [
@@ -191,11 +212,13 @@ test("API de unidades: rutas, consultas sin valores vacíos y cuerpos del contra
     ["GET", "/admin/measurement-unit-denominations?limit=10"],
     ["POST", "/admin/measurement-unit-denominations"],
     ["PATCH", "/admin/measurement-unit-denominations/7"],
+    ["PATCH", "/admin/measurement-unit-denominations/7"],
     ["PATCH", "/admin/measurement-unit-denominations/7/status"],
   ]);
   assert.deepEqual(JSON.parse(calls[3].init.body), { denomination: "de construcción", measurementUnitId: 1 });
   assert.deepEqual(JSON.parse(calls[4].init.body), { denomination: "de obra" });
-  assert.deepEqual(JSON.parse(calls[5].init.body), { isActive: false });
+  assert.deepEqual(JSON.parse(calls[5].init.body), { denomination: "de obra", measurementUnitId: 2 });
+  assert.deepEqual(JSON.parse(calls[6].init.body), { isActive: false });
   assert.ok(calls.every(({ init }) => init.credentials === "include"));
 });
 

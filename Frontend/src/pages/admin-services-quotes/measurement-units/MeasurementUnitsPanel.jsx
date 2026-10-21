@@ -12,6 +12,7 @@ import MeasurementUnitsTable from "./components/MeasurementUnitsTable.jsx";
 import { useMeasurementUnitActions } from "./hooks/useMeasurementUnitActions.js";
 import { useMeasurementUnitBaseOptions } from "./hooks/useMeasurementUnitBaseOptions.js";
 import { useMeasurementUnitDenominations } from "./hooks/useMeasurementUnitDenominations.js";
+import { canEditBaseUnit } from "./utils/measurementUnitPresentation.js";
 
 const EMPTY_SELECTION = new Set();
 // Filas aproximadas del skeleton antes de conocer la página (Figma muestra cinco).
@@ -32,7 +33,11 @@ function MeasurementUnitsPanel() {
     reloadFromStart: list.reloadFromStart,
     replaceItem: list.replaceItem,
   });
-  const baseUnits = useMeasurementUnitBaseOptions({ enabled: actions.form.value?.mode === "create" });
+  const openForm = actions.form.value;
+  // El catálogo de bases se pide para el alta y para editar una unidad cuya base puede cambiar.
+  const baseUnits = useMeasurementUnitBaseOptions({
+    enabled: openForm?.mode === "create" || (openForm?.mode === "edit" && canEditBaseUnit(openForm.denomination)),
+  });
   const [selection, setSelection] = useState({ key: list.pageKey, ids: EMPTY_SELECTION });
   const selectedIds = selection.key === list.pageKey ? selection.ids : EMPTY_SELECTION;
   const { items, loading, error, pagination, search } = list;

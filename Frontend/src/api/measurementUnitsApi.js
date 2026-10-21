@@ -65,16 +65,18 @@ export const measurementUnitsApi = {
   },
 
   /**
-   * Cambia el texto de una denominación; la unidad base no es editable.
+   * Cambia el texto de una denominación y, si se indica, su unidad base. El backend solo acepta
+   * otra base mientras ningún servicio ni versión la referencie (409 MEASUREMENT_UNIT_BASE_IN_USE).
    *
-   * @param {Object} params - Identificador y nuevo texto.
+   * @param {Object} params - Identificador, nuevo texto y base opcional.
    * @param {number} params.denominationId - Denominación editada.
    * @param {string} params.denomination - Nuevo texto.
+   * @param {number} [params.measurementUnitId] - Nueva unidad base; se omite si no cambia.
    * @returns {Promise<{changed: boolean, message: string, unitDenomination: Object}>} Resultado.
    */
-  updateDenomination({ denomination, denominationId }) {
+  updateDenomination({ denomination, denominationId, measurementUnitId }) {
     return apiRequest(`/admin/measurement-unit-denominations/${encodeURIComponent(denominationId)}`, {
-      body: JSON.stringify({ denomination }),
+      body: JSON.stringify(measurementUnitId === undefined ? { denomination } : { denomination, measurementUnitId }),
       method: "PATCH",
     });
   },

@@ -67,10 +67,15 @@ test("denominaciones: alta normaliza el texto y exige una unidad base", () => {
   assert.equal(denominationListSchema.safeParse({ query: { search: "UNID-001" } }).data.query.search, "UNID-001");
 });
 
-test("denominaciones: la edición no permite cambiar la unidad base; estado exige booleano", () => {
+test("denominaciones: la edición admite una unidad base opcional; estado exige booleano", () => {
   const params = { denominationId: "7" };
   assert.deepEqual(denominationUpdateSchema.safeParse({ params, body: { denomination: "de obra" } }).data, { params: { denominationId: 7 }, body: { denomination: "de obra" } });
-  assert.equal(denominationUpdateSchema.safeParse({ params, body: { denomination: "de obra", measurementUnitId: 2 } }).success, false);
+  assert.deepEqual(denominationUpdateSchema.safeParse({ params, body: { denomination: "de obra", measurementUnitId: "2" } }).data.body, { denomination: "de obra", measurementUnitId: 2 });
+  for (const measurementUnitId of [0, -1, 1.5, "x", null]) {
+    assert.deepEqual(errorPaths(denominationUpdateSchema.safeParse({ params, body: { denomination: "de obra", measurementUnitId } })), ["body.measurementUnitId"], String(measurementUnitId));
+  }
+  // La base no basta por sí sola: el texto sigue siendo obligatorio.
+  assert.deepEqual(errorPaths(denominationUpdateSchema.safeParse({ params, body: { measurementUnitId: 2 } })), ["body.denomination"]);
   assert.deepEqual(errorPaths(denominationUpdateSchema.safeParse({ params, body: {} })), ["body.denomination"]);
   assert.equal(denominationStatusSchema.safeParse({ params, body: { isActive: false } }).success, true);
   assert.deepEqual(errorPaths(denominationStatusSchema.safeParse({ params, body: { isActive: "false" } })), ["body.isActive"]);
@@ -117,7 +122,7 @@ test("errores de PostgreSQL de unidades y servicios se traducen sin detalles int
     [translateMeasurementUnitError, pgError("23503", "fk_measurement_unit_denominations_unit"), ValidationError, "VALIDATION_ERROR"],
     [translateMeasurementUnitError, pgError("23503", "fk_measurement_unit_denominations_updated_by"), ConflictError, "MEASUREMENT_UNIT_REFERENCE_CONFLICT"],
     [translateMeasurementUnitError, pgError("23001"), ConflictError, "MEASUREMENT_UNIT_REFERENCE_CONFLICT"],
-    [translateMeasurementUnitError, pgError("55000"), ConflictError, "MEASUREMENT_UNIT_BASE_IMMUTABLE"],
+    [translateMeasurementUnitError, pgError("55000"), ConflictError, "MEASUREMENT_UNIT_BASE_IN_USE"],
     [translateMeasurementUnitError, pgError("428C9"), ConflictError, "MEASUREMENT_UNIT_PUBLIC_CODE_IMMUTABLE"],
     [translateMeasurementUnitError, pgError("23505", "uq_measurement_unit_denominations_public_code"), ConflictError, "MEASUREMENT_UNIT_CONFLICT"],
     [translateMeasurementUnitError, pgError("23514"), ValidationError, "VALIDATION_ERROR"],

@@ -714,7 +714,8 @@ model measurement_units {
 
 /// Denominaciones personalizadas que comparten una unidad base (m² + "de construcción").
 /// Sin reglas propias: decimales y compatibilidad se leen de la base. Sin eliminación física; su
-/// unidad base no cambia (trigger measurement_unit_denominations_unit_immutable). Unicidad por base
+/// unidad base solo cambia sin servicios ni versiones que la referencien (trigger
+/// measurement_unit_denominations_unit_immutable). Unicidad por base
 /// con índice de expresión (uq_measurement_unit_denominations_key, NFKC) definido en la migración.
 /// This table contains check constraints and requires additional setup for migrations.
 /// This model contains row level security and requires additional setup for migrations.

@@ -53,6 +53,34 @@ export function getInUseReason(denomination) {
   return `En uso por ${count} servicio${count === 1 ? "" : "s"} activo${count === 1 ? "" : "s"}`;
 }
 
+// Motivo visible cuando la abreviatura de una unidad existente está bloqueada en la edición.
+export const BASE_UNIT_LOCKED_REASON = "La abreviatura no se puede cambiar porque esta unidad ya se usa en servicios o en su historial.";
+
+/**
+ * Indica si la edición puede ofrecer otra unidad base. Solo se habilita con el indicador
+ * explícito del backend (`baseUnitEditable`); sin él se bloquea, que es lo seguro.
+ *
+ * @param {Object|null} denomination - Denominación leída de la API.
+ * @returns {boolean} true si el selector de abreviaturas puede habilitarse.
+ */
+export function canEditBaseUnit(denomination) {
+  return denomination?.baseUnitEditable === true;
+}
+
+/**
+ * Opciones del selector al editar: el catálogo de bases activas y, si la base actual ya no
+ * figura en él (inactiva), también la actual al inicio, para conservar el símbolo mostrado.
+ *
+ * @param {Array<{id: number, label: string, description: string}>} options - Catálogo activo.
+ * @param {{id: number, symbol: string, name: string}} currentUnit - Base actual de la denominación.
+ * @returns {Array<{id: number, label: string, description: string}>} Opciones del Input.
+ */
+export function toEditBaseUnitOptions(options, currentUnit) {
+  const catalog = Array.isArray(options) ? options : [];
+  if (catalog.some((option) => option.id === currentUnit.id)) return catalog;
+  return [{ id: currentUnit.id, label: currentUnit.symbol, description: currentUnit.name }, ...catalog];
+}
+
 /**
  * Convierte las unidades base del API en opciones del selector: el disparador muestra solo la
  * abreviatura (m², m.l., hrs…) y el listado añade el nombre completo para distinguirlas.

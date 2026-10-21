@@ -5,9 +5,12 @@ import Input from "../../../../components/ui/Input/Input.jsx";
 import Modal, { ModalCloseButton } from "../../../../components/ui/Modal/Modal.jsx";
 import { useDialogKeyboard } from "../../../../hooks/useDialogKeyboard.js";
 import {
+  BASE_UNIT_LOCKED_REASON,
   DENOMINATION_MAX_LENGTH,
+  canEditBaseUnit,
   normalizeDenominationText,
   previewUnitLabel,
+  toEditBaseUnitOptions,
   validateDenominationText,
 } from "../utils/measurementUnitPresentation.js";
 
@@ -19,18 +22,19 @@ const COPY = {
 
 /**
  * Formulario «Nueva unidad de medida» (Figma 5790:360030): abreviatura de la unidad base y
- * texto de la denominación en un mismo campo, con Cancelar y Crear. En edición la unidad base
- * se muestra bloqueada, porque el backend no permite cambiarla. Conserva lo escrito ante un
- * error, lo señala junto al campo y bloquea el envío mientras la petición está en curso.
+ * texto de la denominación en un mismo campo, con Cancelar y Crear. En edición la abreviatura
+ * solo se habilita si el backend indica `baseUnitEditable` (sin servicios ni historial) y solo se
+ * envía si cambia. Conserva lo escrito ante un error, lo señala junto al campo y bloquea el envío
+ * mientras la petición está en curso.
  *
  * @param {Object} props - Modo, datos y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
  * @param {Object|null} props.denomination - Denominación editada (modo edit).
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: Function}} props.baseUnits
- * Catálogo de unidades base para el alta.
+ * Catálogo de unidades base para el alta y para editar una unidad cuya base puede cambiar.
  * @param {() => void} props.onClose - Cierra sin guardar.
- * @param {(values: Object) => Promise<{ok: boolean, message?: string, fieldErrors?: Object}>} props.onSubmit
- * Envía los valores normalizados y devuelve el resultado.
+ * @param {(values: Object) => Promise<{ok: boolean, message?: string, fieldErrors?: Object, baseUnitLocked?: boolean}>} props.onSubmit
+ * Envía los valores normalizados y devuelve el resultado; `baseUnitLocked` bloquea la abreviatura.
  * @returns {import("react").ReactElement} Modal en portal.
  */
 function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSubmit }) {
@@ -41,15 +45,22 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
   const [fieldError, setFieldError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Un 409 MEASUREMENT_UNIT_BASE_IN_USE demuestra que la base dejó de ser editable tras la lectura.
+  const [baseLockedByServer, setBaseLockedByServer] = useState(false);
 
-  // En edición solo se presenta la base de la denominación (puede estar ya inactiva y no
-  // figurar en el catálogo activo); en el alta se ofrece el catálogo completo de la API.
-  const prefixOptions = useMemo(() => (editing
-    ? [{ id: denomination.measurementUnit.id, label: denomination.measurementUnit.symbol, description: denomination.measurementUnit.name }]
-    : baseUnits.options), [baseUnits.options, denomination, editing]);
+  const originalUnitId = denomination?.measurementUnit?.id ?? null;
+  const baseEditable = editing && canEditBaseUnit(denomination) && !baseLockedByServer;
+  const needsCatalog = !editing || baseEditable;
+  const catalogPending = needsCatalog && (baseUnits.loading || Boolean(baseUnits.error) || baseUnits.options.length === 0);
+  // En edición la base actual siempre figura (puede estar inactiva y no estar en el catálogo).
+  const prefixOptions = useMemo(() => {
+    if (!editing) return baseUnits.options;
+    return toEditBaseUnitOptions(baseEditable ? baseUnits.options : [], denomination.measurementUnit);
+  }, [baseEditable, baseUnits.options, denomination, editing]);
   const unitId = selectedUnitId ?? prefixOptions[0]?.id ?? null;
   const selectedOption = prefixOptions.find((option) => option.id === unitId);
-  const catalogUnavailable = !editing && (baseUnits.loading || Boolean(baseUnits.error) || prefixOptions.length === 0);
+  // Solo el alta depende del catálogo para enviar; la edición puede guardar el texto sin él.
+  const catalogUnavailable = !editing && catalogPending;
   const labelPreview = previewUnitLabel(selectedOption?.label, text);
 
   useDialogKeyboard({
@@ -78,19 +89,24 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
     setSubmitting(true);
     setSubmitError("");
     const denominationText = normalizeDenominationText(text);
+    const baseChanged = editing && unitId !== originalUnitId;
     const result = await onSubmit(editing
-      ? { denomination: denominationText }
+      ? { denomination: denominationText, ...(baseChanged ? { measurementUnitId: unitId } : {}) }
       : { denomination: denominationText, measurementUnitId: unitId });
     if (result?.ok) return;
     setSubmitting(false);
+    if (result?.baseUnitLocked) {
+      setBaseLockedByServer(true);
+      setSelectedUnitId(originalUnitId);
+    }
     const fieldMessage = result?.fieldErrors?.denomination || result?.fieldErrors?.measurementUnitId || "";
     setFieldError(fieldMessage);
     if (!fieldMessage) setSubmitError(result?.message || "");
   }
 
   const hint = fieldError
-    || (!editing && baseUnits.error ? baseUnits.error : "")
-    || (!editing && baseUnits.loading ? "Cargando unidades base..." : "")
+    || (needsCatalog && baseUnits.error ? baseUnits.error : "")
+    || (needsCatalog && baseUnits.loading ? "Cargando unidades base..." : "")
     || (labelPreview ? `Se mostrará como «${labelPreview}».` : "")
     || `Máximo ${DENOMINATION_MAX_LENGTH} caracteres.`;
 
@@ -129,7 +145,7 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
             prefixOptions={prefixOptions}
             prefixValue={unitId}
             prefixAriaLabel="Abreviatura de la unidad base"
-            prefixDisabled={editing || catalogUnavailable}
+            prefixDisabled={editing ? !baseEditable || catalogPending : catalogUnavailable}
             onPrefixChange={(option) => {
               setSelectedUnitId(option.id);
               setFieldError("");
@@ -145,10 +161,12 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
           />
           {editing ? (
             <p className="text-body-4 m-0 text-[var(--color-text-100)]">
-              {denomination.publicCode} · La unidad base no se puede cambiar.
+              {denomination.publicCode} · {baseEditable
+                ? "Puedes cambiar la abreviatura mientras ningún servicio use esta unidad."
+                : BASE_UNIT_LOCKED_REASON}
             </p>
           ) : null}
-          {baseUnits.error && !editing ? (
+          {baseUnits.error && needsCatalog ? (
             <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} onClick={baseUnits.retry}>
               Reintentar carga de unidades base
             </Button>

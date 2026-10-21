@@ -13,8 +13,8 @@ const STATUS_MESSAGES = {
 const FORM_FIELDS = ["denomination", "measurementUnitId"];
 
 /**
- * Extrae los errores por campo de un VALIDATION_ERROR (`fields["body.denomination"]`) y del
- * duplicado 409, que se señala sobre el texto porque es lo que el usuario debe cambiar.
+ * Extrae los errores por campo de un VALIDATION_ERROR (`fields["body.denomination"]`) y de los
+ * 409 propios de un campo: el duplicado se señala sobre el texto y la base en uso sobre la abreviatura.
  *
  * @param {Object} error - Error normalizado por apiRequest (status, code, fields, message).
  * @returns {{denomination?: string, measurementUnitId?: string}} Errores por campo del formulario.
@@ -22,6 +22,9 @@ const FORM_FIELDS = ["denomination", "measurementUnitId"];
 function getFieldErrors(error) {
   if (error?.code === "MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS") {
     return { denomination: error.message };
+  }
+  if (error?.code === "MEASUREMENT_UNIT_BASE_IN_USE") {
+    return { measurementUnitId: error.message };
   }
   const fieldErrors = {};
   for (const [path, message] of Object.entries(error?.fields || {})) {
@@ -34,11 +37,12 @@ function getFieldErrors(error) {
 /**
  * Traduce un error de la API de unidades a la retroalimentación de la interfaz, sin exponer
  * detalles técnicos. Los 401 también notifican la expiración global de sesión desde apiRequest;
- * los 404 piden recargar porque el registro ya no está en la página visible.
+ * los 404 piden recargar porque el registro ya no está en la página visible, y BASE_IN_USE
+ * indica que la base quedó bloqueada (otro servicio empezó a usar la unidad).
  *
  * @param {Object} error - Error lanzado por measurementUnitsApi.
  * @param {string} fallback - Mensaje para errores sin texto útil.
- * @returns {{message: string, fieldErrors: Object, shouldReload: boolean}} Retroalimentación.
+ * @returns {{message: string, fieldErrors: Object, shouldReload: boolean, baseUnitLocked: boolean}} Retroalimentación.
  */
 export function getMeasurementUnitErrorFeedback(error, fallback) {
   const fieldErrors = getFieldErrors(error);
@@ -47,6 +51,7 @@ export function getMeasurementUnitErrorFeedback(error, fallback) {
       ? "Revisa los datos marcados."
       : getUserFacingErrorMessage(error, fallback));
   return {
+    baseUnitLocked: error?.code === "MEASUREMENT_UNIT_BASE_IN_USE",
     fieldErrors,
     message,
     shouldReload: error?.status === 404,

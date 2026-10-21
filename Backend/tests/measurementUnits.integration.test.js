@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import { after, before, test } from "node:test";
+
+import pg from "pg";
 
 import { createIsolatedMigrationDatabase } from "./helpers/isolatedMigrationDatabase.js";
 
@@ -394,6 +397,246 @@ test("reactivación (M-1): reactivar y desactivar la denominación a la vez nunc
   assert.equal(violations.total, 0);
 });
 
+/**
+ * Cambia la unidad base de una denominación (conservando su texto) con el servicio real.
+ *
+ * @param {object} denomination - Denominación leída.
+ * @param {string} unitCode - Código estable de la nueva unidad base.
+ * @returns {Promise<{ unitDenomination: object, changed: boolean }>} Resultado de la edición.
+ */
+function changeBase(denomination, unitCode) {
+  return units.updateDenomination({
+    denominationId: denomination.id,
+    payload: { denomination: denomination.denomination, measurementUnitId: ids.units[unitCode] ?? unitCode },
+    user: { id: ids.admin },
+  });
+}
+
+/**
+ * Abre una conexión propia a la base aislada para sostener una transacción concurrente.
+ *
+ * @returns {Promise<import("pg").Client>} Cliente conectado; quien lo abre debe cerrarlo.
+ */
+async function openClient() {
+  const client = new pg.Client({ connectionString: database.databaseUrl, ssl: false });
+  await client.connect();
+  return client;
+}
+
+/**
+ * Convierte una promesa en su resultado de allSettled sin dejar rechazos sin manejar mientras
+ * la prueba confirma la transacción que la mantiene en espera.
+ *
+ * @param {Promise<unknown>} promise - Operación concurrente.
+ * @returns {Promise<PromiseSettledResult<unknown>>} Resultado.
+ */
+function settle(promise) {
+  return promise.then((value) => ({ status: "fulfilled", value }), (reason) => ({ status: "rejected", reason }));
+}
+
+/**
+ * Espera hasta que otra sesión de la base aislada esté bloqueada esperando un lock de fila, para
+ * garantizar el orden de las operaciones en las pruebas de concurrencia.
+ *
+ * @returns {Promise<void>}
+ * @throws {Error} Si nadie espera un bloqueo en 5 segundos.
+ */
+async function waitForLockWait() {
+  for (let attempt = 0; attempt < 250; attempt += 1) {
+    const [{ waiting }] = await rows("select count(*)::int waiting from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'");
+    if (waiting > 0) return;
+    await delay(20);
+  }
+  throw new Error("Ninguna sesión llegó a esperar el bloqueo.");
+}
+
+/**
+ * Inserta por SQL directo, en la transacción del cliente dado, un servicio con su versión vigente
+ * que referencian la denominación, como lo haría cualquier escritor ajeno a la API.
+ *
+ * @param {import("pg").Client} client - Cliente con la transacción abierta.
+ * @param {{ code: string, unitCode: string, denomination: object }} service - Datos del servicio.
+ * @returns {Promise<void>}
+ */
+async function insertReferencingService(client, { code, denomination, unitCode }) {
+  const inserted = await client.query(`insert into public.services
+    (code, name, kind, measurement_unit_id, unit_denomination_id, reference_rate, created_by, updated_by)
+    values ($1, 'Servicio SQL', 'individual', $2, $3, 5, $4, $4) returning id`, [code, ids.units[unitCode], denomination.id, ids.admin]);
+  await insertVersionReference(client, { denomination, isCurrent: true, serviceId: inserted.rows[0].id, versionNumber: 1 });
+}
+
+/**
+ * Inserta por SQL directo una versión que referencia la denominación copiando el servicio y su
+ * unidad, en la transacción del cliente dado.
+ *
+ * @param {import("pg").Client} client - Cliente con la transacción abierta.
+ * @param {{ denomination: object, isCurrent: boolean, serviceId: number, versionNumber: number }} version - Datos.
+ * @returns {Promise<void>}
+ */
+async function insertVersionReference(client, { denomination, isCurrent, serviceId, versionNumber }) {
+  await client.query(`insert into public.service_versions (
+      service_id, version_number, code, name, description, kind, measurement_unit_id, unit_code, unit_name, unit_symbol,
+      unit_allows_decimals, unit_denomination_id, unit_denomination, reference_rate, currency_code, is_active, sort_order, changed_by, is_current)
+    select s.id, $2, s.code, s.name, s.description, s.kind, u.id, u.code, u.name, u.symbol, u.allows_decimals, $3, $4,
+      s.reference_rate, s.currency_code, s.is_active, s.sort_order, $5, $6
+    from public.services s join public.measurement_units u on u.id = s.measurement_unit_id where s.id = $1`,
+  [serviceId, versionNumber, denomination.id, denomination.denomination, ids.admin, isCurrent]);
+}
+
+test("unidad base: sin referencias cambia conservando id, código público, texto y estado", { skip }, async () => {
+  const target = await createDenomination("visit", "de inspección técnica");
+  assert.equal(target.baseUnitEditable, true);
+  const same = await changeBase(target, "visit");
+  assert.equal(same.changed, false);
+  const moved = await changeBase(target, "lot");
+  assert.equal(moved.changed, true);
+  assert.deepEqual(
+    [moved.unitDenomination.id, moved.unitDenomination.publicCode, moved.unitDenomination.label, moved.unitDenomination.measurementUnit.code],
+    [target.id, target.publicCode, "lote de inspección técnica", "lot"],
+  );
+  assert.deepEqual([moved.unitDenomination.isActive, moved.unitDenomination.baseUnitEditable], [true, true]);
+  // Texto y base en la misma edición.
+  const both = await units.updateDenomination({ denominationId: target.id, payload: { denomination: "de inspección final", measurementUnitId: ids.units.visit }, user: { id: ids.admin } });
+  assert.equal(both.unitDenomination.label, "vis. de inspección final");
+  // Una denominación inactiva también puede cambiar de base y sigue inactiva.
+  await units.changeDenominationStatus({ denominationId: target.id, payload: { isActive: false }, user: { id: ids.admin } });
+  const inactive = await changeBase(both.unitDenomination, "lot");
+  assert.deepEqual([inactive.unitDenomination.isActive, inactive.unitDenomination.measurementUnit.code], [false, "lot"]);
+  // SQL directo: sin referencias el trigger lo permite y public_code no cambia.
+  await rows("update public.measurement_unit_denominations set measurement_unit_id = $1 where id = $2", [ids.units.visit, target.id]);
+  const [stored] = await rows("select public_code, measurement_unit_id::int from public.measurement_unit_denominations where id = $1", [target.id]);
+  assert.deepEqual(stored, { measurement_unit_id: ids.units.visit, public_code: target.publicCode });
+});
+
+test("unidad base: un servicio activo, inactivo o solo una versión histórica impiden cambiarla (409)", { skip }, async () => {
+  const active = await createDenomination("box", "de embalaje");
+  await createService({ code: "CAJA-ACTIVA", measurementUnitId: ids.units.box, unitDenominationId: active.id });
+  const inactive = await createDenomination("box", "de archivo");
+  const inactiveService = await createInactiveService("CAJA-INACTIVA", "box", inactive);
+  const historic = await createDenomination("box", "de muestras");
+  const historicService = await createService({ code: "CAJA-HISTORICA", measurementUnitId: ids.units.box, unitDenominationId: historic.id });
+  await catalog.updateService({ payload: { expectedVersion: 1, unitDenominationId: null }, serviceId: historicService.id, user: { id: ids.admin } });
+  assert.equal((await catalog.getServicesPage({ unitDenominationId: historic.id })).services.length, 0);
+
+  for (const [denomination, service] of [[active, null], [inactive, inactiveService], [historic, historicService]]) {
+    const current = await units.getDenomination(denomination.id);
+    assert.equal(current.baseUnitEditable, false, denomination.denomination);
+    const versions = service ? await versionsOf(service.id) : null;
+    await assert.rejects(changeBase(current, "bag"), { code: "MEASUREMENT_UNIT_BASE_IN_USE", status: 409 }, denomination.denomination);
+    assert.deepEqual(await units.getDenomination(denomination.id), current);
+    if (service) assert.deepEqual(await versionsOf(service.id), versions);
+    // PostgreSQL impone la misma regla ante SQL directo.
+    await assert.rejects(rows("update public.measurement_unit_denominations set measurement_unit_id = $1 where id = $2", [ids.units.bag, denomination.id]), { code: "55000" });
+  }
+  // Con servicios activos, cambiar texto y base responde primero el uso por servicios activos.
+  await assert.rejects(units.updateDenomination({ denominationId: active.id, payload: { denomination: "de embalaje fino", measurementUnitId: ids.units.bag }, user: { id: ids.admin } }),
+    { code: "MEASUREMENT_UNIT_IN_USE" });
+  // Con un servicio inactivo el texto sí se edita, pero la base no.
+  assert.equal((await units.updateDenomination({ denominationId: inactive.id, payload: { denomination: "de archivo muerto" }, user: { id: ids.admin } })).changed, true);
+});
+
+test("unidad base: la nueva base inexistente o inactiva responde 400 y un duplicado en destino 409", { skip }, async () => {
+  const target = await createDenomination("bag", "de cemento");
+  await assert.rejects(changeBase(target, 999999), (error) => error.code === "VALIDATION_ERROR" && error.fields.measurementUnitId === "La unidad de medida no existe.");
+  await rows("update public.measurement_units set is_active = false where code = 'roll'");
+  try {
+    await assert.rejects(changeBase(target, "roll"), (error) => error.code === "VALIDATION_ERROR" && error.fields.measurementUnitId === "La unidad de medida está inactiva.");
+  } finally {
+    await rows("update public.measurement_units set is_active = true where code = 'roll'");
+  }
+  await createDenomination("package", "De Cemento");
+  await assert.rejects(changeBase(target, "package"), { code: "MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS", status: 409 });
+  assert.deepEqual(await units.getDenomination(target.id), target);
+});
+
+test("concurrencia (base primero): una asignación en espera falla y PostgreSQL rechaza la referencia por SQL", { skip }, async () => {
+  const holder = await openClient();
+  const writer = await openClient();
+  try {
+    for (const assignWithApi of [true, false]) {
+      const target = await createDenomination("pair", assignWithApi ? "de guantes" : "de botas");
+      await holder.query("begin");
+      await holder.query("update public.measurement_unit_denominations set measurement_unit_id = $1 where id = $2", [ids.units.set, target.id]);
+      let assignment;
+      if (assignWithApi) {
+        assignment = settle(createService({ code: "PAR-ESPERA", measurementUnitId: ids.units.pair, unitDenominationId: target.id }));
+      } else {
+        await writer.query("begin");
+        assignment = settle(insertReferencingService(writer, { code: "PAR-SQL", denomination: target, unitCode: "pair" }));
+      }
+      await waitForLockWait();
+      await holder.query("commit");
+      const result = await assignment;
+      assert.equal(result.status, "rejected");
+      if (assignWithApi) assert.match(result.reason.fields.unitDenominationId, /no pertenece/);
+      else {
+        assert.deepEqual([result.reason.code, result.reason.constraint], ["23503", "fk_services_unit_denomination"]);
+        await writer.query("rollback");
+      }
+      assert.equal((await units.getDenomination(target.id)).measurementUnit.code, "set");
+    }
+  } finally {
+    await holder.end();
+    await writer.end();
+  }
+});
+
+test("concurrencia (referencia primero): un cambio de base en espera ve la referencia confirmada y falla", { skip }, async () => {
+  const holder = await openClient();
+  const writer = await openClient();
+  try {
+    const [carrier] = await rows("select id::int from public.services where code = 'CAJA-ACTIVA'");
+    const scenarios = [
+      ["servicio, cambio por la API", "de herrajes", true, false],
+      ["servicio, UPDATE directo contra el trigger", "de bisagras", false, false],
+      ["solo versión histórica, cambio por la API", "de tornillos", true, true],
+      ["solo versión histórica, UPDATE directo contra el trigger", "de clavos", false, true],
+    ];
+    for (const [label, text, changeWithApi, versionOnly] of scenarios) {
+      const target = await createDenomination("box", text);
+      await holder.query("begin");
+      if (versionOnly) {
+        const [{ next }] = await rows("select max(version_number)::int + 1 next from public.service_versions where service_id = $1", [carrier.id]);
+        await insertVersionReference(holder, { denomination: target, isCurrent: false, serviceId: carrier.id, versionNumber: next });
+      } else {
+        await insertReferencingService(holder, { code: `CAJA-${target.id}`, denomination: target, unitCode: "box" });
+      }
+      const change = changeWithApi
+        ? settle(changeBase(target, "bag"))
+        : settle(writer.query("update public.measurement_unit_denominations set measurement_unit_id = $1 where id = $2", [ids.units.bag, target.id]));
+      await waitForLockWait();
+      await holder.query("commit");
+      const result = await change;
+      assert.equal(result.status, "rejected", label);
+      assert.equal(result.reason.code, changeWithApi ? "MEASUREMENT_UNIT_BASE_IN_USE" : "55000", label);
+      assert.equal((await units.getDenomination(target.id)).measurementUnit.code, "box", label);
+    }
+  } finally {
+    await holder.end();
+    await writer.end();
+  }
+});
+
+test("concurrencia: cambiar la base y asignar a la vez nunca deja referencias de otra base", { skip }, async () => {
+  for (let round = 0; round < 6; round += 1) {
+    const target = await createDenomination("package", `de carrera de base ${round}`);
+    const [change, assignment] = await Promise.allSettled([
+      changeBase(target, "lot"),
+      createService({ code: `PAQUETE-${round}`, measurementUnitId: ids.units.package, unitDenominationId: target.id }),
+    ]);
+    const outcome = [change.status, assignment.status].join("/");
+    if (outcome === "fulfilled/rejected") assert.match(assignment.reason.fields.unitDenominationId, /no pertenece/);
+    else if (outcome === "rejected/fulfilled") assert.equal(change.reason.code, "MEASUREMENT_UNIT_BASE_IN_USE");
+    else assert.fail(`Resultado inesperado ${outcome}: ${change.reason?.code ?? ""} ${assignment.reason?.code ?? ""}`);
+  }
+  const [mismatch] = await rows(`select
+    (select count(*) from public.services s join public.measurement_unit_denominations d on d.id = s.unit_denomination_id
+      where s.measurement_unit_id <> d.measurement_unit_id)::int services,
+    (select count(*) from public.service_versions v join public.measurement_unit_denominations d on d.id = v.unit_denomination_id
+      where v.measurement_unit_id <> d.measurement_unit_id)::int versions`);
+  assert.deepEqual(mismatch, { services: 0, versions: 0 });
+});
+
 test("listado de denominaciones: filtros, búsqueda literal y paginación por cursor estable", { skip }, async () => {
   const all = (await units.getDenominationsPage({ limit: 100 })).unitDenominations;
   const seen = [];
@@ -414,7 +657,8 @@ test("listado de denominaciones: filtros, búsqueda literal y paginación por cu
   assert.ok((await units.getDenominationsPage({ search: "m.l." })).unitDenominations.every((item) => item.measurementUnit.symbol === "m.l."));
 });
 
-test("integridad: base inmutable, sin borrados de referencias y texto normalizado en PostgreSQL", { skip }, async () => {
+test("integridad: base fija con historial, sin borrados de referencias y texto normalizado en PostgreSQL", { skip }, async () => {
+  // «de construcción» solo conserva referencias en versiones de LLAVE-PREMIUM.
   const [denomination] = await rows("select id::int from public.measurement_unit_denominations where denomination = 'de construcción' and measurement_unit_id = $1", [ids.units.square_meter]);
   await assert.rejects(rows("update public.measurement_unit_denominations set measurement_unit_id = $1 where id = $2", [ids.units.global, denomination.id]), { code: "55000" });
   await assert.rejects(rows("delete from public.measurement_unit_denominations where id = $1", [denomination.id]), { code: "23001" });

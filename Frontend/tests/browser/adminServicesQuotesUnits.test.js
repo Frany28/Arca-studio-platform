@@ -19,6 +19,9 @@ const BASE_UNITS = [
   { id: 22, code: "piece", name: "Pieza", symbol: "pza.", allowsDecimals: false, isActive: true, sortOrder: 502 },
 ];
 const SERVICES = [{ id: 1, isActive: true }, { id: 2, isActive: true }, { id: 3, isActive: false }];
+const BASE_IN_USE_MESSAGE = "La unidad base no se puede cambiar porque la denominación ya se usa en servicios o en su historial. Crea otra denominación con la unidad deseada.";
+const BASE_LOCKED_NOTE = "UNID-001 · La abreviatura no se puede cambiar porque esta unidad ya se usa en servicios o en su historial.";
+const EDITABLE_NOTE = "UNID-001 · Puedes cambiar la abreviatura mientras ningún servicio use esta unidad.";
 
 let browser;
 let server;
@@ -63,6 +66,7 @@ function denomination(id, unitId, text, overrides = {}) {
     label: `${unit.symbol} ${text}`,
     isActive: true,
     activeServiceCount: 0,
+    baseUnitEditable: true,
     measurementUnit: unit,
     createdAt: "2026-10-20T00:00:00.000Z",
     updatedAt: "2026-10-20T00:00:00.000Z",
@@ -72,7 +76,8 @@ function denomination(id, unitId, text, overrides = {}) {
 
 /**
  * Backend simulado: aplica búsqueda literal y paginación por cursor sobre un arreglo en memoria,
- * crea, edita y cambia estado como el contrato, y permite inyectar fallos por operación.
+ * crea, edita (texto y, si `baseUnitEditable`, unidad base) y cambia estado como el contrato, y
+ * permite inyectar fallos por operación.
  *
  * @param {Array<Object>} initial - Denominaciones iniciales.
  * @returns {Object} Estado, registro de peticiones y manejador de rutas.
@@ -130,7 +135,13 @@ function createBackend(initial) {
       const item = state.items.find((candidate) => candidate.id === Number(match[1]));
       if (!item) return json(route, 404, { code: "MEASUREMENT_UNIT_DENOMINATION_NOT_FOUND", message: "La denominación seleccionada no existe." });
       if (match[2]) item.isActive = body.isActive;
-      else Object.assign(item, { denomination: body.denomination, label: `${item.measurementUnit.symbol} ${body.denomination}` });
+      else {
+        if (body.measurementUnitId !== undefined && body.measurementUnitId !== item.measurementUnit.id) {
+          if (!item.baseUnitEditable) return json(route, 409, { code: "MEASUREMENT_UNIT_BASE_IN_USE", message: BASE_IN_USE_MESSAGE });
+          item.measurementUnit = state.baseUnits.find((unit) => unit.id === body.measurementUnitId);
+        }
+        Object.assign(item, { denomination: body.denomination, label: `${item.measurementUnit.symbol} ${body.denomination}` });
+      }
       return json(route, 200, { changed: true, message: "Unidad de medida actualizada correctamente.", unitDenomination: { ...item } });
     }
     state.requests.push({ unexpected: true, method, path });
@@ -383,23 +394,143 @@ test("alta: un duplicado 409 marca el campo, conserva lo escrito y no cierra el 
   await dialog.waitFor({ state: "detached" });
 });
 
-test("edición: abreviatura bloqueada, PATCH solo con el texto y fila actualizada con la respuesta", async (context) => {
-  const backend = createBackend([denomination(1, 1, "de construcción")]);
-  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+/**
+ * Abre la edición de UNID-001 desde la tabla.
+ *
+ * @param {import("playwright").Page} page - Página del módulo.
+ * @returns {Promise<import("playwright").Locator>} Diálogo de edición.
+ */
+async function openEditDialog(page) {
   await page.getByRole("button", { name: /Editar UNID-001/ }).click();
   const dialog = page.getByRole("dialog", { name: "Editar unidad de medida" });
   await dialog.waitFor();
-  assert.equal(await dialog.getByRole("combobox").isDisabled(), true);
-  await dialog.getByText("UNID-001 · La unidad base no se puede cambiar.").waitFor();
+  return dialog;
+}
+
+/**
+ * Espera a que el selector de abreviaturas del formulario se habilite (catálogo cargado).
+ *
+ * @param {import("playwright").Page} page - Página del módulo.
+ * @returns {Promise<void>}
+ */
+async function waitForEnabledBaseSelector(page) {
+  await page.waitForFunction(() => document.querySelector('[data-measurement-unit-form] [role="combobox"]')?.disabled === false);
+}
+
+const baseUnitGets = (backend) => backend.requests.filter((request) => request.path === "/api/admin/measurement-units");
+
+test("edición: sin referencias la abreviatura se cambia, se previsualiza y solo se envía si cambia", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+  const dialog = await openEditDialog(page);
+  const combobox = dialog.getByRole("combobox", { name: /Abreviatura de la unidad base/ });
+  // El catálogo se pide al abrir y la base actual sigue seleccionada.
+  await waitForEnabledBaseSelector(page);
+  assert.equal(baseUnitGets(backend).length, 1);
+  assert.equal((await combobox.textContent()).startsWith("m²"), true);
+  await dialog.getByText(EDITABLE_NOTE).waitFor();
+  await dialog.getByText("Se mostrará como «m² de construcción».").waitFor();
+
+  await combobox.click();
+  const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+  assert.equal(await listbox.getByRole("option").count(), BASE_UNITS.length);
+  await listbox.getByRole("option", { name: "m.l., Metro lineal" }).click();
+  await dialog.getByText("Se mostrará como «m.l. de construcción».").waitFor();
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText("m.l. de construcción", { exact: true }).waitFor();
+  await page.getByText("UNID-001", { exact: true }).waitFor();
+  const patches = () => backend.requests.filter((request) => request.method === "PATCH");
+  assert.equal(patches()[0].path, "/api/admin/measurement-unit-denominations/1");
+  assert.deepEqual(patches()[0].body, { denomination: "de construcción", measurementUnitId: 6 });
+
+  // Sin tocar la abreviatura, el PATCH solo lleva el texto.
+  const again = await openEditDialog(page);
+  await waitForEnabledBaseSelector(page);
+  assert.equal((await again.getByRole("combobox").textContent()).startsWith("m.l."), true);
+  await again.getByRole("textbox", { name: "Nombre de la unidad" }).fill("de obra nueva");
+  await again.getByRole("button", { name: "Guardar" }).click();
+  await again.waitFor({ state: "detached" });
+  await page.getByText("m.l. de obra nueva", { exact: true }).waitFor();
+  assert.deepEqual(patches()[1].body, { denomination: "de obra nueva" });
+  // El catálogo base se conserva entre aperturas.
+  assert.equal(baseUnitGets(backend).length, 1);
+});
+
+test("edición: con referencias la abreviatura queda bloqueada con su motivo y el texto se sigue editando", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción", { baseUnitEditable: false })]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+  const dialog = await openEditDialog(page);
+  const combobox = dialog.getByRole("combobox", { name: /Abreviatura de la unidad base/ });
+  assert.equal(await combobox.isDisabled(), true);
+  assert.equal((await combobox.textContent()).startsWith("m²"), true);
+  await dialog.getByText(BASE_LOCKED_NOTE).waitFor();
+  // Sin base editable no hace falta el catálogo.
+  assert.equal(baseUnitGets(backend).length, 0);
   const text = dialog.getByRole("textbox", { name: "Nombre de la unidad" });
   assert.equal(await text.inputValue(), "de construcción");
   await text.fill("de obra nueva");
+  await dialog.getByText("Se mostrará como «m² de obra nueva».").waitFor();
   await dialog.getByRole("button", { name: "Guardar" }).click();
   await dialog.waitFor({ state: "detached" });
   await page.getByText("m² de obra nueva", { exact: true }).waitFor();
-  const patch = backend.requests.find((request) => request.method === "PATCH");
-  assert.equal(patch.path, "/api/admin/measurement-unit-denominations/1");
-  assert.deepEqual(patch.body, { denomination: "de obra nueva" });
+  assert.deepEqual(backend.requests.find((request) => request.method === "PATCH").body, { denomination: "de obra nueva" });
+});
+
+test("edición: un 409 de base en uso marca la abreviatura, la bloquea, recarga la tabla y conserva el texto", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+  await page.getByText("UNID-001", { exact: true }).waitFor();
+  const listLoads = denominationGets(backend).length;
+  const dialog = await openEditDialog(page);
+  await waitForEnabledBaseSelector(page);
+  // Otro administrador asignó la unidad a un servicio después de la lectura.
+  backend.items[0].baseUnitEditable = false;
+  const combobox = dialog.getByRole("combobox", { name: /Abreviatura de la unidad base/ });
+  await combobox.click();
+  await page.getByRole("listbox", { name: "Abreviatura de la unidad base" }).getByRole("option", { name: "hrs, Hora" }).click();
+  const text = dialog.getByRole("textbox", { name: "Nombre de la unidad" });
+  await text.fill("de obra");
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+
+  await dialog.getByText(BASE_IN_USE_MESSAGE).waitFor();
+  assert.equal(await dialog.isVisible(), true);
+  assert.equal(await text.inputValue(), "de obra");
+  assert.equal(await text.getAttribute("aria-invalid"), "true");
+  assert.equal(await combobox.isDisabled(), true);
+  assert.equal((await combobox.textContent()).startsWith("m²"), true, "Vuelve a la base actual");
+  for (let attempt = 0; attempt < 100 && denominationGets(backend).length <= listLoads; attempt += 1) await page.waitForTimeout(20);
+  assert.ok(denominationGets(backend).length > listLoads, "La tabla se recarga para reflejar el nuevo uso");
+
+  // Al escribir desaparece el error y se explica el bloqueo; guardar envía solo el texto.
+  await text.fill("de obra final");
+  await dialog.getByText(BASE_LOCKED_NOTE).waitFor();
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText("m² de obra final", { exact: true }).waitFor();
+  const patches = backend.requests.filter((request) => request.method === "PATCH");
+  assert.deepEqual(patches.map((request) => request.body), [
+    { denomination: "de obra", measurementUnitId: 20 },
+    { denomination: "de obra final" },
+  ]);
+});
+
+test("edición responsive: en móvil y tema oscuro el selector editable cabe y abre dentro del viewport", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme: "dark", viewport: { width: 375, height: 720 } });
+  const dialog = await openEditDialog(page);
+  await waitForEnabledBaseSelector(page);
+  const box = await dialog.boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 375, `Diálogo dentro del viewport: ${JSON.stringify(box)}`);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+  await dialog.getByText(EDITABLE_NOTE).waitFor();
+  await dialog.getByRole("combobox", { name: /Abreviatura de la unidad base/ }).click();
+  const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+  await listbox.waitFor();
+  const panel = await listbox.boundingBox();
+  assert.ok(panel.x >= 0 && panel.x + panel.width <= 375 && panel.y + panel.height <= 720, `Listado dentro del viewport: ${JSON.stringify(panel)}`);
+  await listbox.getByRole("option", { name: "m³, Metro cúbico" }).click();
+  await dialog.getByText("Se mostrará como «m³ de construcción».").waitFor();
 });
 
 test("estado: desactivar y activar con confirmación; los errores 409 y 429 se comunican con el aviso", async (context) => {

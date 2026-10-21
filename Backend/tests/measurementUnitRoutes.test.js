@@ -59,7 +59,8 @@ test("datos inválidos responden 400 antes de consultar PostgreSQL", async (cont
   for (const [method, path, body, field] of [
     ["POST", DENOMINATIONS, { denomination: "   ", measurementUnitId: 1 }, "body.denomination"],
     ["POST", DENOMINATIONS, { denomination: "de obra" }, "body.measurementUnitId"],
-    ["PATCH", `${DENOMINATIONS}/1`, { denomination: "de obra", measurementUnitId: 2 }, "body"],
+    ["PATCH", `${DENOMINATIONS}/1`, { denomination: "de obra", measurementUnitId: 0 }, "body.measurementUnitId"],
+    ["PATCH", `${DENOMINATIONS}/1`, { denomination: "de obra", isActive: false }, "body"],
     ["PATCH", `${DENOMINATIONS}/1/status`, { isActive: "no" }, "body.isActive"],
     ["GET", `${DENOMINATIONS}?status=deleted`, undefined, "query.status"],
     ["GET", `${UNITS}?includeInactive=yes`, undefined, "query.includeInactive"],
@@ -100,6 +101,63 @@ test("una denominación inexistente responde 404 en consulta, edición y estado,
   }
   assert.ok(server.queries.includes("rollback"));
   assert.ok(!server.queries.some((sql) => /update public\.measurement_unit_denominations/.test(sql)));
+});
+
+/**
+ * Simula PostgreSQL para editar la base de la denominación 1 (m², UNID-001): responde al
+ * bloqueo, a la lectura, al recuento de referencias, a la unidad nueva y al UPDATE.
+ *
+ * @param {{ references: { service_count: number, version_count: number }, unit: object|null }} scenario - Datos simulados.
+ * @returns {(sql: string) => object} Respuesta por consulta.
+ */
+function baseChangeResponder({ references, unit }) {
+  const row = {
+    active_service_count: 0, base_unit_editable: references.service_count + references.version_count === 0,
+    created_at: "2026-10-20T00:00:00.000Z", denomination: "de construcción", id: "1", is_active: true, public_code: "UNID-001",
+    unit_allows_decimals: true, unit_code: "square_meter", unit_id: "1", unit_is_active: true, unit_name: "Metro cuadrado",
+    unit_sort_order: 101, unit_symbol: "m²", updated_at: "2026-10-20T00:00:00.000Z",
+  };
+  return (sql) => {
+    if (/^(begin|commit|rollback)/.test(sql)) return { rows: [] };
+    if (sql.startsWith("select id from")) return { rows: [{ id: "1" }] };
+    if (/select \(select count\(\*\) from public\.services/.test(sql)) return { rows: [references] };
+    if (/from public\.measurement_units\s+where id = \$1\s+for share/.test(sql)) return { rows: unit ? [unit] : [] };
+    if (sql.startsWith("update")) {
+      Object.assign(row, { unit_code: unit.code, unit_id: unit.id, unit_name: unit.name, unit_symbol: unit.symbol });
+      return { rowCount: 1, rows: [] };
+    }
+    return { rows: [row] };
+  };
+}
+
+test("cambiar la base: 200 sin referencias conservando publicCode, 409 con referencias y 400 con base inactiva", async (context) => {
+  const linearMeter = { allows_decimals: true, code: "linear_meter", id: "2", is_active: true, name: "Metro lineal", sort_order: 102, symbol: "m.l." };
+  const body = { denomination: "de construcción", measurementUnitId: 2 };
+
+  const free = await startServer(context, baseChangeResponder({ references: { service_count: 0, version_count: 0 }, unit: linearMeter }));
+  free.setUser(ADMIN);
+  const changed = await free.send("PATCH", `${DENOMINATIONS}/1`, body);
+  assert.equal(changed.status, 200);
+  assert.deepEqual(
+    [changed.body.changed, changed.body.unitDenomination.label, changed.body.unitDenomination.publicCode, changed.body.unitDenomination.measurementUnit.id],
+    [true, "m.l. de construcción", "UNID-001", 2],
+  );
+  assert.ok(free.queries.some((sql) => /measurement_unit_id = \$4/.test(sql)));
+
+  for (const references of [{ service_count: 1, version_count: 1 }, { service_count: 0, version_count: 3 }]) {
+    const used = await startServer(context, baseChangeResponder({ references, unit: linearMeter }));
+    used.setUser(ADMIN);
+    const rejected = await used.send("PATCH", `${DENOMINATIONS}/1`, body);
+    assert.deepEqual([rejected.status, rejected.body.code], [409, "MEASUREMENT_UNIT_BASE_IN_USE"], JSON.stringify(references));
+    assert.ok(used.queries.includes("rollback"));
+    assert.ok(!used.queries.some((sql) => sql.startsWith("update")));
+  }
+
+  const inactive = await startServer(context, baseChangeResponder({ references: { service_count: 0, version_count: 0 }, unit: { ...linearMeter, is_active: false } }));
+  inactive.setUser(ADMIN);
+  const invalid = await inactive.send("PATCH", `${DENOMINATIONS}/1`, body);
+  assert.deepEqual([invalid.status, invalid.body.fields], [400, { measurementUnitId: "La unidad de medida está inactiva." }]);
+  assert.ok(!inactive.queries.some((sql) => sql.startsWith("update")));
 });
 
 test("listado y detalle de denominaciones exponen publicCode y label para la tabla administrativa", async (context) => {

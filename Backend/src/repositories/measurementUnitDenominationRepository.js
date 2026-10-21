@@ -5,7 +5,9 @@ const DENOMINATION_COLUMNS = `
   d.id, d.public_code, d.denomination, d.is_active, d.created_at, d.updated_at,
   u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
   u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active, u.sort_order as unit_sort_order,
-  (select count(*) from public.services s where s.unit_denomination_id = d.id and s.is_active)::int as active_service_count`;
+  (select count(*) from public.services s where s.unit_denomination_id = d.id and s.is_active)::int as active_service_count,
+  (not exists (select 1 from public.services s where s.unit_denomination_id = d.id)
+    and not exists (select 1 from public.service_versions v where v.unit_denomination_id = d.id)) as base_unit_editable`;
 
 const DENOMINATION_FROM = `
   from public.measurement_unit_denominations d
@@ -13,8 +15,8 @@ const DENOMINATION_FROM = `
 
 /**
  * Transforma una fila de denominación en la representación pública estable, con su código
- * público (UNID-001, generado por PostgreSQL), su unidad base, la etiqueta compuesta y el
- * número de servicios activos que la utilizan.
+ * público (UNID-001, generado por PostgreSQL), su unidad base, la etiqueta compuesta, los servicios
+ * activos que la usan y si su base puede cambiar (sin servicios ni versiones que la referencien).
  *
  * @param {object} row - Fila con columnas de la denominación y de su unidad base.
  * @returns {object} Denominación pública.
@@ -22,6 +24,7 @@ const DENOMINATION_FROM = `
 function toDenomination(row) {
   return {
     activeServiceCount: row.active_service_count,
+    baseUnitEditable: row.base_unit_editable,
     createdAt: new Date(row.created_at).toISOString(),
     denomination: row.denomination,
     id: Number(row.id),
@@ -145,22 +148,39 @@ export async function insertDenomination(client, { denomination, measurementUnit
 }
 
 /**
- * Actualiza el texto y/o el estado de una denominación y registra al responsable y la fecha.
- * Nunca modifica la unidad base (además lo impide un trigger en PostgreSQL).
+ * Cuenta las referencias de una denominación en servicios (de cualquier estado) y en versiones
+ * históricas. Se llama tras bloquearla FOR UPDATE para ver las referencias ya confirmadas.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {number} denominationId - Identificador de la denominación.
- * @param {{ denomination: string, isActive: boolean }} state - Estado completo resultante.
+ * @returns {Promise<{ serviceCount: number, versionCount: number }>} Referencias encontradas.
+ */
+export async function countDenominationReferences(client, denominationId) {
+  const result = await client.query(
+    `select (select count(*) from public.services where unit_denomination_id = $1)::int as service_count,
+       (select count(*) from public.service_versions where unit_denomination_id = $1)::int as version_count`,
+    [denominationId],
+  );
+  return { serviceCount: result.rows[0].service_count, versionCount: result.rows[0].version_count };
+}
+
+/**
+ * Actualiza el texto, el estado y la unidad base de una denominación y registra al responsable.
+ * El trigger de PostgreSQL rechaza el cambio de base si existen servicios o versiones que la usen.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {number} denominationId - Identificador de la denominación.
+ * @param {{ denomination: string, isActive: boolean, measurementUnitId: number }} state - Estado completo resultante.
  * @param {number} userId - Administrador responsable.
  * @returns {Promise<void>}
  * @throws {Error} Si la fila no existe (no debería ocurrir tras el bloqueo).
  */
-export async function updateDenominationRecord(client, denominationId, { denomination, isActive }, userId) {
+export async function updateDenominationRecord(client, denominationId, { denomination, isActive, measurementUnitId }, userId) {
   const result = await client.query(
     `update public.measurement_unit_denominations
-     set denomination = $2, is_active = $3, updated_by = $4, updated_at = now()
+     set denomination = $2, is_active = $3, measurement_unit_id = $4, updated_by = $5, updated_at = now()
      where id = $1`,
-    [denominationId, denomination, isActive, userId],
+    [denominationId, denomination, isActive, measurementUnitId, userId],
   );
   if (result.rowCount !== 1) throw new Error("measurement_units: la denominación bloqueada no se pudo actualizar.");
 }

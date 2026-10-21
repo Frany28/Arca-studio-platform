@@ -36,18 +36,20 @@ export function useMeasurementUnitActions({ reload, reloadFromStart, replaceItem
 
   /**
    * Envía el formulario abierto. Un error se devuelve al formulario (que conserva lo escrito y
-   * marca los campos); un éxito cierra el formulario y actualiza el listado.
+   * marca los campos); un éxito cierra el formulario y actualiza el listado. Si la base quedó
+   * bloqueada entre la lectura y el guardado, se recarga la página para reflejar el nuevo uso.
    *
-   * @param {{measurementUnitId: number, denomination: string}} values - Valores normalizados.
-   * @returns {Promise<{ok: true}|{ok: false, message: string, fieldErrors: Object}>} Resultado.
+   * @param {{measurementUnitId?: number, denomination: string}} values - Valores normalizados; en
+   * la edición `measurementUnitId` solo llega si el usuario cambió la base.
+   * @returns {Promise<{ok: true}|{ok: false, message: string, fieldErrors: Object, baseUnitLocked: boolean}>} Resultado.
    */
   async function submitForm(values) {
-    if (!form || busyRef.current) return { ok: false, fieldErrors: {}, message: "" };
+    if (!form || busyRef.current) return { ok: false, baseUnitLocked: false, fieldErrors: {}, message: "" };
     busyRef.current = true;
     const editing = form.mode === "edit";
     try {
       const response = editing
-        ? await api.measurementUnits.updateDenomination({ denomination: values.denomination, denominationId: form.denomination.id })
+        ? await api.measurementUnits.updateDenomination({ ...values, denominationId: form.denomination.id })
         : await api.measurementUnits.createDenomination(values);
       const saved = response?.unitDenomination;
       setForm(null);
@@ -65,8 +67,11 @@ export function useMeasurementUnitActions({ reload, reloadFromStart, replaceItem
         setForm(null);
         reload();
         notify("danger", "No se pudo guardar", result.message);
+      } else if (result.baseUnitLocked) {
+        // El formulario sigue abierto; la fila recargada ya no ofrecerá cambiar la base.
+        reload();
       }
-      return { ok: false, fieldErrors: result.fieldErrors, message: result.message };
+      return { ok: false, baseUnitLocked: result.baseUnitLocked, fieldErrors: result.fieldErrors, message: result.message };
     } finally {
       busyRef.current = false;
     }

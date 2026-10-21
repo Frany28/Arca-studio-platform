@@ -531,8 +531,11 @@ Validación, capturas y diferencias respecto a Figma:
   y nunca lo tapa; al cerrar, el modal recupera su altura.
 - El formulario reutiliza la variante `Prefix select` de `Input` (ver su README): abreviatura de
   la unidad base y texto en un campo, previsualización «Se mostrará como…», bloqueo del envío
-  en curso y errores del servidor junto al campo sin perder lo escrito. En edición la unidad
-  base se muestra bloqueada. Tabulador y Cotizaciones conservan un `EmptyState` provisional.
+  en curso y errores del servidor junto al campo sin perder lo escrito. En edición la abreviatura
+  solo se habilita si la API devuelve `baseUnitEditable: true` (sin servicios ni historial) y solo
+  se envía si cambia; si no, queda bloqueada con el motivo bajo el campo, y un 409
+  `MEASUREMENT_UNIT_BASE_IN_USE` la vuelve a bloquear conservando el texto. Tabulador y
+  Cotizaciones conservan un `EmptyState` provisional.
 
 ### Dashboard administrativo móvil
 

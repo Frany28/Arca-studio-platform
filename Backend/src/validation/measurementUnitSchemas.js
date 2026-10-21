@@ -58,10 +58,11 @@ export const denominationCreateSchema = z.object({
   }).strict(),
 });
 
-// La unidad base no es editable: `.strict()` rechaza measurementUnitId en la edición.
+// La unidad base es opcional en la edición: el servicio solo la cambia si la denominación no tiene
+// servicios ni versiones que la referencien. publicCode sigue rechazado por `.strict()`.
 export const denominationUpdateSchema = z.object({
   params: denominationIdParams,
-  body: z.object({ denomination: denominationText }).strict(),
+  body: z.object({ denomination: denominationText, measurementUnitId: positiveId.optional() }).strict(),
 });
 
 export const denominationStatusSchema = z.object({
