@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 
@@ -29,7 +30,7 @@ let origin;
 
 before(async () => {
   server = await createServer({
-    root: fileURLToPath(new URL("../../", import.meta.url)),
+    root: fileURLToPath(new URL("../../", import.meta.url)), cacheDir: getBrowserTestCacheDir(import.meta.url),
     configFile: false,
     envDir: false,
     plugins: [react(), tailwindcss()],
@@ -173,6 +174,23 @@ async function openModule(context, backend, { path = "/servicios-cotizaciones", 
   });
   await page.goto(`${origin}${path}`);
   return page;
+}
+
+/**
+ * Abre «Nuevo usuario» desde /usuarios para comparar con su selector telefónico. La primera
+ * visita a la ruta compila en frío su grafo de módulos en el servidor Vite del archivo, así que
+ * el botón se espera con el límite de navegación; la interacción conserva el límite corto.
+ *
+ * @param {import("playwright").Page} page - Página recién abierta en /usuarios.
+ * @returns {Promise<import("playwright").Locator>} Diálogo «Nuevo usuario» visible.
+ */
+async function openNewUserDialog(page) {
+  const newUser = page.getByRole("button", { name: "Nuevo", exact: true });
+  await newUser.waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+  await newUser.click();
+  const dialog = page.getByRole("dialog", { name: "Nuevo usuario" });
+  await dialog.waitFor();
+  return dialog;
 }
 
 const rowCodes = (page) => page.locator("tbody tr th[scope=row]").allTextContents();
@@ -635,9 +653,7 @@ for (const theme of ["light", "dark"]) {
   test(`consistencia (${theme}): el listado de unidades replica el del selector telefónico`, async (context) => {
     const backend = createBackend([denomination(1, 1, "de construcción")]);
     const page = await openModule(context, backend, { path: "/usuarios", theme });
-    await page.getByRole("button", { name: "Nuevo", exact: true }).click();
-    const phoneDialog = page.getByRole("dialog", { name: "Nuevo usuario" });
-    await phoneDialog.waitFor();
+    const phoneDialog = await openNewUserDialog(page);
     await phoneDialog.getByRole("combobox", { name: /Buscar código de país/ }).first().focus();
     const phoneList = page.getByRole("listbox", { name: "Países y códigos telefónicos" });
     await phoneList.waitFor();
@@ -838,123 +854,212 @@ for (const [label, viewport, theme] of [["escritorio claro", { width: 1440, heig
 }
 
 /**
- * Mide el listado abierto frente al modal, su footer de acciones, el segmento m² y el viewport,
- * y comprueba con elementFromPoint que los botones del footer siguen accesibles.
+ * Mide el modal «Nueva unidad de medida» y su footer, y, si el listado está abierto, su relación
+ * con el segmento m² y con el viewport. Para comprobar que el listado flota por encima sin
+ * recortarse muestrea con elementFromPoint sus esquinas interiores y su centro: si el modal, su
+ * footer u otro ancestro lo taparan o recortaran, esos puntos no pertenecerían al listado.
  *
- * @param {import("playwright").Page} page - Página con el formulario y el listado abiertos.
- * @returns {Promise<Object>} Relaciones geométricas reales.
+ * @param {import("playwright").Page} page - Página con el formulario abierto.
+ * @returns {Promise<Object>} Geometría real del modal, de sus acciones y del listado.
  */
-function measureDropdownLayout(page) {
+function measureFloatingDropdown(page) {
   return page.evaluate(() => {
+    const round = (rect) => ({ top: Math.round(rect.top), left: Math.round(rect.left), width: Math.round(rect.width), height: Math.round(rect.height) });
     const dialog = document.querySelector("[data-measurement-unit-form]");
-    const footer = dialog.querySelector("footer");
-    const list = document.querySelector('[role="listbox"]').getBoundingClientRect();
+    const buttons = [...dialog.querySelector("footer").querySelectorAll("button")];
+    const closed = {
+      dialog: round(dialog.getBoundingClientRect()),
+      buttons: buttons.map((button) => round(button.getBoundingClientRect())),
+      reserve: Boolean(document.querySelector("[data-input-options-reserve]")),
+      buttonsReachable: buttons.every((button) => {
+        const rect = button.getBoundingClientRect();
+        return button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      }),
+    };
+    const listbox = document.querySelector('[role="listbox"]');
+    if (!listbox) return closed;
+    const list = listbox.getBoundingClientRect();
     const segment = dialog.querySelector('[role="combobox"]').getBoundingClientRect();
-    const dialogRect = dialog.getBoundingClientRect();
-    const footerRect = footer.getBoundingClientRect();
-    const buttonsReachable = [...footer.querySelectorAll("button")].every((button) => {
-      const rect = button.getBoundingClientRect();
-      return button.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
-    });
+    // Puntos medios de cada borde (2 px hacia dentro) y centro: las esquinas son redondeadas y el
+    // hit testing respeta border-radius, así que un punto en ellas no pertenece al panel.
+    const inset = 2;
+    const centerX = (list.left + list.right) / 2;
+    const centerY = (list.top + list.bottom) / 2;
+    const samples = [
+      [centerX, list.top + inset], [centerX, list.bottom - inset],
+      [list.left + inset, centerY], [list.right - inset, centerY], [centerX, centerY],
+    ];
+    const describe = (element) => (element ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}.${String(element.className).slice(0, 60)}` : "ninguno");
+    const covered = samples
+      .map(([x, y]) => ({ x: Math.round(x), y: Math.round(y), hit: document.elementFromPoint(x, y) }))
+      .filter((sample) => !listbox.contains(sample.hit))
+      .map((sample) => ({ x: sample.x, y: sample.y, hit: describe(sample.hit) }));
+    const footer = dialog.querySelector("footer").getBoundingClientRect();
     return {
-      insideDialog: list.top >= dialogRect.top - 0.5 && list.bottom <= dialogRect.bottom + 0.5,
-      insideViewport: list.top >= 0 && list.bottom <= window.innerHeight + 0.5 && list.right <= window.innerWidth,
-      clearOfFooter: list.bottom <= footerRect.top + 0.5 || list.top >= footerRect.bottom - 0.5,
+      ...closed,
+      list: round(list),
+      optionsAreaHeight: Math.round(listbox.firstElementChild.clientHeight),
+      onTop: covered.length === 0,
+      covered,
+      insideViewport: list.top >= 0 && list.left >= 0 && list.bottom <= window.innerHeight + 0.5 && list.right <= window.innerWidth + 0.5,
       anchored: Math.abs(list.left - (segment.left - 1)) < 0.5
         && (Math.abs(list.top - segment.bottom) < 0.5 || Math.abs(list.bottom - segment.top) < 0.5),
-      buttonsReachable,
-      placement: Math.abs(list.top - segment.bottom) < 0.5 ? "bottom" : "top",
-      dialogHeight: Math.round(dialogRect.height),
-      gapToFooter: Math.round(footerRect.top - list.bottom),
+      // Solo informativo: se admite que el listado flotante cubra temporalmente el footer.
+      coversFooter: list.bottom > footer.top && list.top < footer.bottom,
     };
   });
 }
 
+/**
+ * Comprueba que el modal y sus acciones conservan exactamente su geometría de referencia (sin
+ * crecer ni desplazarse) y que no existe ningún espaciador de reserva.
+ *
+ * @param {Object} reference - Medida con el listado cerrado.
+ * @param {Object} current - Medida a comparar.
+ * @param {string} label - Contexto para el mensaje de error.
+ * @returns {void}
+ */
+function assertModalUnchanged(reference, current, label) {
+  const detail = `${label}: ${JSON.stringify({ reference, current })}`;
+  assert.deepEqual(current.dialog, reference.dialog, `El modal no cambia de tamaño ni de posición. ${detail}`);
+  assert.deepEqual(current.buttons, reference.buttons, `Los botones no se desplazan. ${detail}`);
+  assert.equal(current.reserve, false, `No se reserva espacio bajo el campo. ${detail}`);
+}
+
 for (const theme of ["light", "dark"]) {
-  test(`posicionamiento (${theme}): el listado se abre dentro del modal sin tapar las acciones en 375–1440 px`, async (context) => {
+  test(`posicionamiento (${theme}): el listado flota sobre el modal sin cambiar su altura ni mover las acciones en 375–1440 px`, async (context) => {
     const backend = createBackend([denomination(1, 1, "de construcción")]);
     backend.baseUnits = FORTY_EIGHT_UNITS;
     const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme, viewport: { width: 1440, height: 1000 } });
     await page.getByText("UNID-001", { exact: true }).waitFor();
     for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000]]) {
+      const size = `${width}x${height}`;
       await page.setViewportSize({ width, height });
       await page.getByRole("button", { name: "Añadir unidad" }).click();
       const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
       await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
-      const closedHeight = Math.round((await dialog.boundingBox()).height);
+      const reference = await measureFloatingDropdown(page);
+      assert.equal(reference.buttonsReachable, true, `${size}: acciones accesibles antes de abrir`);
+
       const combobox = dialog.getByRole("combobox");
       await combobox.click();
       const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
       await listbox.waitFor();
-      // Espera a que el modal haya crecido y el panel se haya recolocado tras la reserva.
-      await page.waitForFunction(() => {
-        const list = document.querySelector('[role="listbox"]')?.getBoundingClientRect();
-        const footer = document.querySelector("[data-measurement-unit-form] footer")?.getBoundingClientRect();
-        return list && footer && list.bottom <= footer.top + 0.5;
-      });
-      const layout = await measureDropdownLayout(page);
+      const open = await measureFloatingDropdown(page);
+      assertModalUnchanged(reference, open, `${size} abierto`);
       assert.deepEqual(
-        { insideDialog: layout.insideDialog, insideViewport: layout.insideViewport, clearOfFooter: layout.clearOfFooter, anchored: layout.anchored, buttonsReachable: layout.buttonsReachable },
-        { insideDialog: true, insideViewport: true, clearOfFooter: true, anchored: true, buttonsReachable: true },
-        `${width}x${height}: ${JSON.stringify(layout)}`,
+        { onTop: open.onTop, insideViewport: open.insideViewport, anchored: open.anchored, optionsAreaHeight: open.optionsAreaHeight },
+        { onTop: true, insideViewport: true, anchored: true, optionsAreaHeight: 113 },
+        `${size}: el listado flota completo, por encima y unido al segmento m². ${JSON.stringify(open)}`,
       );
-      // Solo se reserva el espacio que falta: el listado termina justo en el footer, sin huecos.
-      assert.equal(layout.gapToFooter, 0, `${width}x${height}: hueco innecesario de ${layout.gapToFooter} px`);
-      assert.ok(layout.dialogHeight > closedHeight, "El modal crece para contener el listado");
-      // El listado sigue siendo utilizable: scroll con la rueda y selección.
+
+      // Todas las opciones siguen accesibles: la rueda desplaza el listado y End alcanza la
+      // última, que queda visible y por encima de cualquier contenido del modal.
       const box = await listbox.boundingBox();
       await page.mouse.move(box.x + 16, box.y + 30);
       await page.mouse.wheel(0, 120);
       await page.waitForFunction(() => document.querySelector('[role="listbox"]').firstElementChild.scrollTop > 0);
-      // Escape cierra el listado (no el modal) y el modal recupera su altura.
+      await combobox.focus();
+      await page.keyboard.press("End");
+      const last = listbox.getByRole("option").last();
+      await page.waitForFunction(() => {
+        const area = document.querySelector('[role="listbox"]').firstElementChild;
+        return area.scrollTop + area.clientHeight >= area.scrollHeight - 1;
+      });
+      assert.equal(await last.evaluate((option) => {
+        const rect = option.getBoundingClientRect();
+        return option.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+      }), true, `${size}: la última opción es alcanzable`);
+      assertModalUnchanged(reference, await measureFloatingDropdown(page), `${size} tras desplazar`);
+
+      // Escape cierra el listado (no el modal): las acciones vuelven a estar accesibles.
       await page.keyboard.press("Escape");
       await listbox.waitFor({ state: "detached" });
-      await page.waitForFunction((expected) => Math.round(document.querySelector("[data-measurement-unit-form]").getBoundingClientRect().height) === expected, closedHeight);
       assert.equal(await dialog.isVisible(), true);
-      // Un clic fuera también cierra y libera el espacio.
+      const afterEscape = await measureFloatingDropdown(page);
+      assertModalUnchanged(reference, afterEscape, `${size} tras Escape`);
+      assert.equal(afterEscape.buttonsReachable, true, `${size}: acciones accesibles tras Escape`);
+
+      // Un clic fuera también cierra. Quita además el foco del campo, cuyo borde enfocado mide
+      // 2 px más: se compara de nuevo con el campo enfocado (sin abrir) para aislar el listado.
       await combobox.click();
       await listbox.waitFor();
       await dialog.getByRole("heading", { name: "Nueva unidad de medida" }).click();
       await listbox.waitFor({ state: "detached" });
-      // Al perder el foco, el campo deja su borde enfocado de 2 px: se admite esa diferencia.
-      await page.waitForFunction((expected) => !document.querySelector("[data-input-options-reserve]")
-        && Math.abs(Math.round(document.querySelector("[data-measurement-unit-form]").getBoundingClientRect().height) - expected) <= 2, closedHeight);
-      await page.keyboard.press("Escape");
+      assert.equal((await measureFloatingDropdown(page)).buttonsReachable, true, `${size}: acciones accesibles tras clic exterior`);
+      await combobox.focus();
+      assert.equal(await listbox.count(), 0, "Enfocar el disparador no abre el listado");
+      assertModalUnchanged(reference, await measureFloatingDropdown(page), `${size} tras clic exterior`);
+
+      // Cancelar funciona con normalidad después de haber usado el listado.
+      await dialog.getByRole("button", { name: "Cancelar" }).click();
       await dialog.waitFor({ state: "detached" });
     }
   });
 }
 
-test("posicionamiento: con poco alto el modal desplaza su contenido y el listado lo acompaña sin salir del viewport", async (context) => {
+test("posicionamiento: tras cerrar el listado flotante, Crear valida y envía con normalidad", async (context) => {
+  // Catálogo por defecto: el backend simulado resuelve la unidad enviada en BASE_UNITS.
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width: 1024, height: 768 } });
+  await page.getByText("UNID-001", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Añadir unidad" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("m²"));
+  const combobox = dialog.getByRole("combobox");
+  const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+
+  // Cerrado con Escape: Crear recibe el clic y valida el nombre vacío.
+  await combobox.click();
+  await listbox.waitFor();
+  await page.keyboard.press("Escape");
+  await listbox.waitFor({ state: "detached" });
+  await dialog.getByRole("button", { name: "Crear" }).click();
+  await dialog.getByText("Escribe el nombre de la unidad.").waitFor();
+
+  // Cerrado al seleccionar con el puntero: Crear envía la unidad elegida una sola vez.
+  await combobox.click();
+  await listbox.waitFor();
+  await listbox.getByRole("option", { name: "hrs, Hora" }).click();
+  await listbox.waitFor({ state: "detached" });
+  await dialog.getByRole("textbox", { name: "Nombre de la unidad" }).fill("de prueba");
+  await dialog.getByRole("button", { name: "Crear" }).click();
+  await dialog.waitFor({ state: "detached" });
+  const posts = backend.requests.filter((request) => request.method === "POST");
+  assert.deepEqual(posts.map((request) => request.body), [{ denomination: "de prueba", measurementUnitId: 20 }]);
+});
+
+test("posicionamiento: con poco alto el listado acompaña al segmento sin salir del viewport ni cambiar el modal", async (context) => {
   const backend = createBackend([denomination(1, 1, "de construcción")]);
   backend.baseUnits = FORTY_EIGHT_UNITS;
-  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width: 1024, height: 300 } });
+  // 250 px: el modal (242 px de contenido) supera su máximo (100dvh − 32 px) y el formulario
+  // desplaza por sí mismo; abrir el listado no lo altera.
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width: 1024, height: 250 } });
   await page.getByText("UNID-001", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Añadir unidad" }).click();
   const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
   await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("u1"));
+  const reference = await measureFloatingDropdown(page);
   await dialog.getByRole("combobox").click();
   const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
   await listbox.waitFor();
-  await page.waitForTimeout(150);
-  let layout = await measureDropdownLayout(page);
-  assert.equal(layout.insideViewport, true, JSON.stringify(layout));
-  assert.equal(layout.anchored, true, JSON.stringify(layout));
+  let layout = await measureFloatingDropdown(page);
+  assertModalUnchanged(reference, layout, "1024x250 abierto");
+  assert.deepEqual({ insideViewport: layout.insideViewport, anchored: layout.anchored, onTop: layout.onTop }, { insideViewport: true, anchored: true, onTop: true }, JSON.stringify(layout));
   // El modal está limitado al viewport: su formulario desplaza y el listado sigue al segmento.
   const scrolled = await page.evaluate(() => {
     const form = document.querySelector("#measurement-unit-form");
-    const before = form.scrollTop;
     form.scrollTop = form.scrollHeight;
-    return { before, after: form.scrollTop, scrollable: form.scrollHeight > form.clientHeight };
+    return { scrollable: form.scrollHeight > form.clientHeight, scrollTop: form.scrollTop };
   });
-  assert.equal(scrolled.scrollable, true, "Con 300 px de alto el formulario debe desplazarse");
+  assert.equal(scrolled.scrollable, true, "Con 250 px de alto el formulario debe desplazarse");
   await page.waitForFunction(() => {
     const list = document.querySelector('[role="listbox"]')?.getBoundingClientRect();
     const segment = document.querySelector("[data-measurement-unit-form] [role=combobox]").getBoundingClientRect();
     return list && (Math.abs(list.top - segment.bottom) < 0.5 || Math.abs(list.bottom - segment.top) < 0.5);
   });
-  layout = await measureDropdownLayout(page);
-  assert.equal(layout.anchored, true, `Tras desplazar el modal: ${JSON.stringify(layout)}`);
+  layout = await measureFloatingDropdown(page);
+  assert.deepEqual({ insideViewport: layout.insideViewport, anchored: layout.anchored }, { insideViewport: true, anchored: true }, `Tras desplazar el modal: ${JSON.stringify(layout)}`);
   // El ScrollBar del listado sigue arrastrándose en este espacio reducido.
   const before = await optionsScrollTop(page);
   await dragScrollThumb(page, "Desplazar abreviatura de la unidad base", 20);
@@ -964,9 +1069,7 @@ test("posicionamiento: con poco alto el modal desplaza su contenido y el listado
 test("scroll: el ScrollBar del selector telefónico sigue arrastrándose (sin regresión)", async (context) => {
   const backend = createBackend([]);
   const page = await openModule(context, backend, { path: "/usuarios" });
-  await page.getByRole("button", { name: "Nuevo", exact: true }).click();
-  const phoneDialog = page.getByRole("dialog", { name: "Nuevo usuario" });
-  await phoneDialog.waitFor();
+  const phoneDialog = await openNewUserDialog(page);
   await phoneDialog.getByRole("combobox", { name: /Buscar código de país/ }).first().focus();
   await page.getByRole("listbox", { name: "Países y códigos telefónicos" }).waitFor();
   await dragScrollThumb(page, "Desplazar países", 40);

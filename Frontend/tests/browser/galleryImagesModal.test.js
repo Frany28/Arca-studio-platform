@@ -3,9 +3,10 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
+import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { applyBrowserTimeouts } from "../helpers/browserTimeouts.js";
+import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 
 // Galería de imágenes del proyecto: el ScrollBar propio vive en el margen derecho del modal y
 // debe verse entero, arrastrarse y acompañar la rueda y el teclado sin tapar las imágenes.
@@ -20,7 +21,7 @@ let origin;
 
 before(async () => {
   server = await createServer({
-    root: fileURLToPath(new URL("../../", import.meta.url)),
+    root: fileURLToPath(new URL("../../", import.meta.url)), cacheDir: getBrowserTestCacheDir(import.meta.url),
     configFile: false,
     envDir: false,
     plugins: [react(), tailwindcss()],
@@ -69,7 +70,9 @@ async function openGallery(context, { count = 12, theme = "light", viewport }) {
     assert.deepEqual(errors, []);
   });
   await page.goto(`${origin}/tests/browser/fixtures/gallery-images-modal.html?count=${count}&theme=${theme}`);
-  await page.getByRole("dialog", { name: "Galería de Imágenes" }).waitFor();
+  // El primer render forma parte de la carga en frío del fixture (compilación y optimización de
+  // dependencias de Vite), no de la interacción probada: usa el límite de navegación.
+  await page.getByRole("dialog", { name: "Galería de Imágenes" }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   // El ScrollBar se sincroniza en el siguiente frame tras abrir.
   await page.waitForFunction(() => document.querySelector('[role="dialog"] .overflow-y-auto')?.scrollHeight > 0);
   return page;

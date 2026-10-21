@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
+import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 import react from "@vitejs/plugin-react";
 
 // Manejo global de 401 UNAUTHENTICATED (hallazgo B-3) con AuthProvider y ProtectedRoute reales.
@@ -12,7 +13,7 @@ let origin;
 
 before(async () => {
   server = await createServer({
-    root: fileURLToPath(new URL("../../", import.meta.url)),
+    root: fileURLToPath(new URL("../../", import.meta.url)), cacheDir: getBrowserTestCacheDir(import.meta.url),
     configFile: false,
     envDir: false,
     plugins: [react()],
@@ -103,6 +104,9 @@ test("una sesión revocada lleva al login una sola vez, sin bucles, y avisa a ot
   assert.equal(backend.meCalls, 2, "una restauración inicial por pestaña");
 
   backend.sessionActive = false;
+  // La persona actúa en la pestaña activa. Abrir otherTab deja `page` en segundo plano, donde el
+  // navegador rebaja su prioridad y, con la suite en paralelo, el clic tardaba más de 30 s.
+  await page.bringToFront();
   await page.getByRole("button", { name: "Cargar proyectos" }).click();
 
   await page.locator("#login-page").waitFor();

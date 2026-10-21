@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { formatEnvironmentDate } from "../../src/utils/environmentDate.js";
 
@@ -28,7 +29,7 @@ let origin;
 
 before(async () => {
   server = await createServer({
-    root: fileURLToPath(new URL("../../", import.meta.url)),
+    root: fileURLToPath(new URL("../../", import.meta.url)), cacheDir: getBrowserTestCacheDir(import.meta.url),
     configFile: false,
     envDir: false,
     plugins: [react(), tailwindcss()],

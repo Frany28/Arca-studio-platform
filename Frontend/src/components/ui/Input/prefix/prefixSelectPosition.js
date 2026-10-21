@@ -47,42 +47,22 @@ export function getPrefixSelectPosition(anchorRect, panelHeight, viewport) {
 }
 
 /**
- * Resuelve dónde y con qué altura abrir el listado respetando, además del viewport, un límite
- * opcional (`data-input-options-boundary`, por ejemplo el contenido de un modal cuyo borde
- * inferior es el footer de acciones):
- *
- * 1. Si cabe debajo del segmento dentro del límite, se abre debajo sin reservar espacio.
- * 2. Si no, pero cabe encima dentro del límite, se abre hacia arriba.
- * 3. Si no cabe en ningún lado, se abre debajo y se reserva bajo el campo exactamente el alto
- *    que falta, de modo que el contenido posterior (las acciones) se desplace y no quede tapado.
- *
- * El espacio ya reservado se descuenta del límite para que la medida no se realimente. Por último
- * el área de opciones se limita al espacio del viewport (pantallas muy bajas), con al menos una fila.
+ * Resuelve dónde y con qué altura abrir el listado flotante. El panel vive en un portal con
+ * `position: fixed` por encima del modal, así que solo lo acota el viewport: puede cubrir
+ * temporalmente el contenido del formulario (incluidas sus acciones) sin desplazarlo ni hacer
+ * crecer el modal. Se abre debajo del segmento si cabe y, si no, encima (como el selector
+ * telefónico); el área de opciones se limita al espacio visible de ese lado (pantallas muy
+ * bajas), con al menos una fila, para que todas las opciones sigan alcanzables con su scroll.
  *
  * @param {Object} params - Medidas en coordenadas de viewport.
  * @param {{top: number, bottom: number, left: number, width: number}} params.segment - Segmento selector.
  * @param {number} params.panelHeight - Altura natural del panel (padding incluido).
  * @param {{width: number, height: number}} params.viewport - Ventana visible.
- * @param {{top: number, bottom: number}|null} [params.boundary] - Límite del contenido, si existe.
- * @param {number} [params.reserved=0] - Espacio reservado actualmente por el propio selector.
  * @returns {{left: number, top: number, minWidth: number, maxWidth: number, placement: "bottom"|"top",
- * reserve: number, viewportMaxHeight: number}} Posición, espacio a reservar y altura del área de opciones.
+ * viewportMaxHeight: number}} Posición y altura del área de opciones.
  */
-export function resolvePrefixSelectLayout({ segment, panelHeight, viewport, boundary = null, reserved = 0 }) {
-  let placement = "bottom";
-  let reserve = 0;
-
-  if (boundary) {
-    const spaceBelow = boundary.bottom - reserved - segment.bottom;
-    const spaceAbove = segment.top - boundary.top;
-    if (panelHeight > spaceBelow) {
-      if (panelHeight <= spaceAbove) placement = "top";
-      else reserve = Math.ceil(panelHeight - spaceBelow);
-    }
-  } else {
-    placement = getPrefixSelectPosition(segment, panelHeight, viewport).placement;
-  }
-
+export function resolvePrefixSelectLayout({ segment, panelHeight, viewport }) {
+  const { placement } = getPrefixSelectPosition(segment, panelHeight, viewport);
   const naturalViewportHeight = panelHeight - PANEL_CHROME;
   const viewportSpace = placement === "bottom"
     ? viewport.height - VIEWPORT_MARGIN - segment.bottom
@@ -99,7 +79,6 @@ export function resolvePrefixSelectLayout({ segment, panelHeight, viewport, boun
     minWidth: segment.width + INPUT_OPTIONS_ANCHOR_OFFSET,
     maxWidth: Math.max(segment.width + INPUT_OPTIONS_ANCHOR_OFFSET, viewport.width - left - VIEWPORT_MARGIN),
     placement,
-    reserve,
     viewportMaxHeight,
   };
 }

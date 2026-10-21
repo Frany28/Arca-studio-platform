@@ -7,6 +7,7 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 
 const WIDTHS = [320, 375, 430, 768, 1024, 1279, 1280, 1440, 1920];
@@ -22,7 +23,7 @@ let browser;
 let origin;
 
 before(async () => {
-  server = await createServer({ root: fileURLToPath(new URL("../../", import.meta.url)), configFile: false, envDir: false,
+  server = await createServer({ root: fileURLToPath(new URL("../../", import.meta.url)), cacheDir: getBrowserTestCacheDir(import.meta.url), configFile: false, envDir: false,
     plugins: [react(), tailwindcss()], define: { "import.meta.env.VITE_API_URL": JSON.stringify("/api") },
     server: { host: "127.0.0.1", port: 0 } });
   await server.listen();
