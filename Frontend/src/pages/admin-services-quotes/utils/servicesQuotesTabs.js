@@ -8,8 +8,8 @@ export const SERVICES_QUOTES_TABS = Object.freeze([
   { id: "units", slug: "unidades", label: "Unidades" },
 ]);
 
-// Unidades es la única pestaña funcional y la que muestra activa el diseño aprobado; la raíz
-// del módulo y las subrutas desconocidas redirigen a ella.
+// Unidades es la pestaña que muestra activa el diseño aprobado del módulo; la raíz y las
+// subrutas desconocidas redirigen a ella.
 export const SERVICES_QUOTES_DEFAULT_TAB_SLUG = "unidades";
 
 /**

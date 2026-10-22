@@ -1,28 +1,10 @@
-import { ArrowSwapVertical, Edit2, Filter, MinusCirlce, TickCircle } from "iconsax-react";
+import { Edit2, MinusCirlce, TickCircle } from "iconsax-react";
 
 import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
+import TableHeaderLabel from "../../components/TableHeaderLabel.jsx";
 import { getInUseReason } from "../utils/measurementUnitPresentation.js";
-
-/**
- * Encabezado de columna con el icono decorativo de Figma (orden o filtro), como en la tabla
- * de usuarios; el orden real lo define el backend.
- *
- * @param {Object} props - Texto e icono.
- * @param {import("react").ReactNode} props.children - Texto del encabezado.
- * @param {boolean} [props.filter=false] - Usa el icono de filtro en lugar del de orden.
- * @returns {import("react").ReactElement} Contenido del encabezado.
- */
-function HeaderLabel({ children, filter = false }) {
-  const Icon = filter ? Filter : ArrowSwapVertical;
-  return (
-    <span className="flex items-center gap-[8px] whitespace-nowrap">
-      {children}
-      <Icon size="16" variant="Linear" color="currentColor" aria-hidden="true" />
-    </span>
-  );
-}
 
 /**
  * Acciones del menú «Más opciones» según el estado actual: desactivar una activa (bloqueado si
@@ -59,8 +41,8 @@ function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange 
           <colgroup><col className="w-[154px]" /><col /><col className="w-[128px]" /></colgroup>
           <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
             <tr className="text-heading-8 h-[49px]">
-              <th scope="col" className="px-[24px] py-[16px]"><HeaderLabel>N°</HeaderLabel></th>
-              <th scope="col" className="px-[24px] py-[16px]"><HeaderLabel filter>Unidad</HeaderLabel></th>
+              <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel>N°</TableHeaderLabel></th>
+              <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel filter>Unidad</TableHeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px] text-right">Acciones</th>
             </tr>
           </thead>

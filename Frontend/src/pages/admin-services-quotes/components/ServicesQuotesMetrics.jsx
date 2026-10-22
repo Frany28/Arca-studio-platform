@@ -2,7 +2,6 @@ import { ClipboardTick, CloseSquare, TaskSquare, TickSquare } from "iconsax-reac
 
 import AdminKpiMetric from "../../../components/AdminKpiMetric.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
-import { useServiceCatalogMetrics } from "../hooks/useServiceCatalogMetrics.js";
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
 
@@ -26,12 +25,15 @@ function UnavailableValue({ reason }) {
 /**
  * Indicadores del encabezado del módulo (Figma 5790:339391): servicios totales, activos e
  * inactivos derivados del catálogo real, y cotizaciones totales, que no tienen fuente de datos
- * hasta implementar ese módulo y se muestran como no disponibles.
+ * hasta implementar ese módulo y se muestran como no disponibles. El resumen lo lee la página
+ * (useServiceCatalogSummary) para que el tabulador pueda recargarlo tras un cambio de estado.
  *
+ * @param {Object} props - Resumen del catálogo.
+ * @param {{metrics: Object|null, loading: boolean, error: string}} props.summary - Indicadores derivados.
  * @returns {import("react").ReactElement} Fila de indicadores o su skeleton.
  */
-function ServicesQuotesMetrics() {
-  const { error, loading, metrics } = useServiceCatalogMetrics();
+function ServicesQuotesMetrics({ summary }) {
+  const { error, loading, metrics } = summary;
 
   if (loading) return <Loader preset="adminUserMetrics" label="Cargando indicadores de servicios" />;
 

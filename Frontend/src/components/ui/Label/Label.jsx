@@ -1,28 +1,7 @@
 /* Renderiza etiquetas de formulario con indicador requerido e icono informativo opcional. */
 import clsx from "clsx";
 import { LABEL_STATE_STYLES } from "./labelConfig.js";
-
-// Icono informativo predeterminado mostrado junto al texto de la etiqueta.
-function InfoCircleIcon({ className }) {
-  return (
-    <svg
-      viewBox="0 0 18 18"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <circle cx="9" cy="9" r="9" fill="currentColor" />
-      <path
-        d="M9 5.8V9.55"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <circle cx="9" cy="11.85" r="1" fill="white" />
-    </svg>
-  );
-}
+import { InfoCircleIcon } from "./LabelIcons.jsx";
 
 // Resuelve el estado visual y construye la etiqueta asociada al campo.
 function Label({

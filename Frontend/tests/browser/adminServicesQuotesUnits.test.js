@@ -226,7 +226,7 @@ test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enla
 
   await tabs.getByRole("tab", { name: "Tabulador de servicios" }).click();
   await page.waitForURL(`${origin}/servicios-cotizaciones/tabulador`);
-  await page.getByText("Tabulador de servicios en desarrollo", { exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Tabulador de servicios", level: 2 }).waitFor();
   // Teclado del tablist: flecha izquierda activa Cotizaciones y la enfoca.
   await page.keyboard.press("ArrowLeft");
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);

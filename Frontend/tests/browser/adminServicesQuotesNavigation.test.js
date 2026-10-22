@@ -129,7 +129,8 @@ test("admin: la entrada navega sin recarga y queda activa en la ruta y sus subru
 
   // Las subrutas del módulo conservan el elemento activo y no producen 404 ni páginas vacías.
   await page.goto(`${origin}/servicios-cotizaciones/tabulador`);
-  await page.getByText("Tabulador de servicios en desarrollo", { exact: true }).waitFor();
+  // Sin servicios en el catálogo, el tabulador muestra su estado vacío.
+  await page.getByText("Aún no hay servicios en el tabulador", { exact: true }).waitFor();
   assert.equal(await isSelected(page, LABEL), true);
 });
 

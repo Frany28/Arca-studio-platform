@@ -289,6 +289,31 @@ function MeasurementUnitTableSkeleton({ rows }) {
   );
 }
 
+// Tabulador de servicios (Figma 5790:332039): selección, código, servicio, unidad, tarifa, estado
+// y acciones. Conserva el ancho mínimo de la tabla para no saltar al terminar la carga.
+function ServiceCatalogTableSkeleton({ rows }) {
+  return (
+    <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[1104px]">
+          <SkeletonBlock className="h-[49px] w-full rounded-none" />
+          {Array.from({ length: rows }, (_, rowIndex) => (
+            <div key={rowIndex} className="grid h-[68px] grid-cols-[16px_106px_242px_142px_92px_minmax(0,1fr)_80px] items-center gap-[48px] border-b border-[var(--color-neutral-200)] px-[16px] last:border-b-0">
+              <SkeletonBlock className="size-[16px] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="muted" />
+              <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
+              <SkeletonBlock className="h-[17px] w-[85%] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 30} tone="text" />
+              <SkeletonBlock className="h-[20px] w-[130px] max-w-full rounded-[var(--radius-full)]" delay={rowIndex * 35 + 45} />
+              <SkeletonBlock className="ml-auto h-[17px] w-[48px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 60} tone="text" />
+              <SkeletonBlock className="h-[20px] w-[56px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 75} />
+              <SkeletonBlock className="h-[20px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 90} tone="muted" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminUserDetailsSkeleton() {
   return (
     <div className="flex w-full flex-col gap-[24px]">
@@ -572,6 +597,8 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <AdminUserTableSkeleton />;
   } else if (preset === "measurementUnitTable") {
     content = <MeasurementUnitTableSkeleton rows={itemCount} />;
+  } else if (preset === "serviceCatalogTable") {
+    content = <ServiceCatalogTableSkeleton rows={itemCount} />;
   } else if (preset === "adminUserDetails") {
     content = <AdminUserDetailsSkeleton />;
   } else if (preset === "adminRequestDetails") {

@@ -1,20 +1,4 @@
-import { apiRequest } from "./client.js";
-
-/**
- * Construye la cadena de consulta omitiendo valores vacíos, para no enviar filtros sin efecto
- * que el backend validaría (por ejemplo `search=` o `cursor=`).
- *
- * @param {Object<string, string|number|undefined|null>} values - Parámetros candidatos.
- * @returns {string} Consulta con `?` inicial, o cadena vacía.
- */
-function toQueryString(values) {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(values)) {
-    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
-  }
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
+import { apiRequest, toQueryString } from "./client.js";
 
 // Unidades de medida del módulo administrativo (docs/API_CONTRACT.md, "Unidades de medida").
 // Las unidades base son de solo lectura; las denominaciones se crean, editan y desactivan.

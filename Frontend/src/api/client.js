@@ -75,6 +75,22 @@ export async function apiRequest(path, options = {}) {
 }
 
 /**
+ * Construye la cadena de consulta omitiendo valores vacíos, para no enviar filtros sin efecto
+ * que el backend validaría (por ejemplo `search=` o `cursor=`).
+ *
+ * @param {Object<string, string|number|undefined|null>} values - Parámetros candidatos.
+ * @returns {string} Consulta con `?` inicial, o cadena vacía.
+ */
+export function toQueryString(values) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/**
  * Recorre cursores secuencialmente y conserva la primera aparici?n de cada id.
  * Los elementos sin id reciben una clave seg?n la longitud acumulada.
  *
