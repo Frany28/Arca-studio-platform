@@ -9,11 +9,14 @@ import { createIsolatedMigrationDatabase } from "./helpers/isolatedMigrationData
 // nunca usa DATABASE_URL del proyecto. Ejecuta el servicio y el repositorio reales.
 const enabled = process.env.ARCA_SERVICE_CATALOG_DB_TESTS === "1";
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
+const GENERATED_CODE = /^SERV-\d{3,}$/;
 
 let database;
 let catalog;
 let db;
 let ids;
+// Servicios creados por las pruebas y reutilizados por las siguientes (por id: el código lo genera el sistema).
+const created = {};
 
 /**
  * Consulta la base aislada con el cliente de preparación (fuera del pool de la aplicación).
@@ -33,12 +36,23 @@ async function rows(sql, values = []) {
  * @returns {Promise<Array<object>>} Versiones.
  */
 function versionsOf(serviceId) {
-  return rows(`select version_number, reference_rate, is_active, is_current, unit_symbol, changed_by::int, change_note
+  return rows(`select version_number, code, kind, reference_rate, is_active, is_current, unit_symbol, changed_by::int, change_note
     from public.service_versions where service_id = $1 order by version_number`, [serviceId]);
 }
 
 /**
- * Crea un servicio con valores por defecto válidos mediante el servicio real.
+ * Código que el sistema compone para un id (SERV- y al menos tres dígitos).
+ *
+ * @param {number} id - Id del servicio.
+ * @returns {string} Código esperado.
+ */
+function expectedCode(id) {
+  return `SERV-${String(id).padStart(3, "0")}`;
+}
+
+/**
+ * Crea un servicio mediante el servicio real con un cuerpo como el que deja serviceCreateSchema
+ * (sin código ni tipo). `kind` solo se añade para simular el flujo interno de llave en mano.
  *
  * @param {object} [overrides] - Campos del cuerpo validado que se sustituyen.
  * @param {number} [userId] - Administrador responsable.
@@ -47,7 +61,7 @@ function versionsOf(serviceId) {
 function create(overrides = {}, userId = ids.adminA) {
   return catalog.createService({
     payload: {
-      changeNote: null, code: "SRV", description: null, isActive: true, kind: "individual",
+      changeNote: null, description: null, isActive: true,
       measurementUnitId: ids.squareMeter, name: "Servicio", referenceRate: "12.00", sortOrder: 0, ...overrides,
     },
     user: { id: userId },
@@ -84,42 +98,73 @@ after(async () => {
   if (database) await database.drop();
 });
 
-test("alta: crea el servicio y su versión 1 con la unidad copiada en la misma transacción", { skip }, async () => {
-  const service = await create({ code: "ANTEPROYECTO", name: "Anteproyecto arquitectónico", changeNote: "Tabulador 3.2", sortOrder: 1 });
+test("alta: sin código ni tipo genera SERV- con el id, es individual y la versión 1 copia ambos", { skip }, async () => {
+  const service = await create({ name: "Anteproyecto arquitectónico", changeNote: "Tabulador 3.2", sortOrder: 1 });
+  created.anteproyecto = service.id;
+  assert.equal(service.code, expectedCode(service.id));
+  assert.equal(service.kind, "individual");
   assert.equal(service.currentVersion, 1);
   assert.equal(service.referenceRate, "12.00");
   assert.equal(service.currency, "USD");
   assert.equal(service.measurementUnit.code, "square_meter");
   assert.deepEqual(await versionsOf(service.id), [
-    { change_note: "Tabulador 3.2", changed_by: ids.adminA, is_active: true, is_current: true, reference_rate: "12.00", unit_symbol: "m²", version_number: 1 },
+    { change_note: "Tabulador 3.2", changed_by: ids.adminA, code: service.code, is_active: true, is_current: true, kind: "individual", reference_rate: "12.00", unit_symbol: "m²", version_number: 1 },
   ]);
-  const llave = await create({ code: "LLAVE-PREMIUM", kind: "turnkey", referenceRate: "900.00", sortOrder: 2 });
+});
+
+test("llave en mano: el flujo interno conserva el tipo y su regla de m², con código generado", { skip }, async () => {
+  const llave = await create({ kind: "turnkey", name: "Llave premium", referenceRate: "900.00", sortOrder: 2 });
+  created.llave = llave.id;
   assert.equal(llave.kind, "turnkey");
+  assert.match(llave.code, GENERATED_CODE);
+  await assert.rejects(create({ kind: "turnkey", name: "Llave por punto", measurementUnitId: ids.point }), (error) => {
+    assert.equal(error.code, "VALIDATION_ERROR");
+    assert.equal(error.fields.measurementUnitId, "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.");
+    return true;
+  });
 });
 
-test("alta: sin código el sistema genera SERV- con el id, es individual y la versión 1 lo copia", { skip }, async () => {
-  // Cuerpo tal como lo deja serviceCreateSchema sin código: kind por defecto individual.
-  const payload = { changeNote: null, description: null, isActive: true, kind: "individual",
-    measurementUnitId: ids.squareMeter, name: "Servicio con código generado", referenceRate: "15.50", sortOrder: 0 };
-  const service = await catalog.createService({ payload, user: { id: ids.adminA } });
-  assert.equal(service.code, `SERV-${String(service.id).padStart(3, "0")}`);
-  assert.equal(service.kind, "individual");
-  const version = await db.pool.query("select code, kind from public.service_versions where service_id = $1 and is_current", [service.id]);
-  assert.deepEqual(version.rows[0], { code: service.code, kind: "individual" });
-  // Dos altas simultáneas sin código reciben códigos distintos.
-  const [first, second] = await Promise.all([
-    catalog.createService({ payload: { ...payload, name: "Simultáneo A" }, user: { id: ids.adminA } }),
-    catalog.createService({ payload: { ...payload, name: "Simultáneo B" }, user: { id: ids.adminB } }),
-  ]);
-  assert.notEqual(first.code, second.code);
+test("concurrencia: veinte altas simultáneas reciben códigos únicos y permanentes con su versión 1", { skip }, async () => {
+  const results = await Promise.all(Array.from({ length: 20 }, (_, index) => create(
+    { name: `Simultáneo ${index}`, referenceRate: `${index}.50` },
+    index % 2 ? ids.adminB : ids.adminA,
+  )));
+  const codes = results.map((service) => service.code);
+  assert.equal(new Set(codes).size, 20, "Sin códigos repetidos");
+  assert.ok(results.every((service) => service.code === expectedCode(service.id)), "Cada código deriva de su propio id");
+  const versions = await rows(`select v.code, s.code as service_code from public.service_versions v
+    join public.services s on s.id = v.service_id where v.service_id = any($1::bigint[])`, [results.map((service) => service.id)]);
+  assert.equal(versions.length, 20);
+  assert.ok(versions.every((version) => version.code === version.service_code));
 });
 
-test("alta: unidad inexistente, inactiva o incompatible con llave en mano no deja registros", { skip }, async () => {
+test("códigos: un fallo no reutiliza el id y un código heredado igual al generado se salta", { skip }, async () => {
+  // Una alta fallida consume un id de la secuencia: el siguiente servicio no lo reutiliza.
+  const [{ next: beforeFailure }] = await rows("select last_value + 1 as next from public.services_id_seq");
+  await assert.rejects(create({ measurementUnitId: 999999 }), { code: "VALIDATION_ERROR" });
+  const afterFailure = await create({ name: "Tras un fallo" });
+  assert.ok(afterFailure.id >= Number(beforeFailure), "La numeración no retrocede");
+
+  // Un servicio heredado (escrito a mano cuando la API aceptaba códigos) con el código que
+  // correspondería al próximo id: el sistema reserva el siguiente y no lo toca.
+  const [{ last }] = await rows("select last_value::int as last from public.services_id_seq");
+  const legacyCode = expectedCode(last + 2);
+  const [legacy] = await rows(`insert into public.services (code, name, kind, measurement_unit_id, reference_rate, created_by, updated_by)
+    values ($1, 'Servicio heredado', 'individual', $2, 5, $3, $3) returning id::int`, [legacyCode, ids.squareMeter, ids.adminA]);
+  const { insertServiceVersionSnapshot } = await import("../src/repositories/serviceCatalogRepository.js");
+  await insertServiceVersionSnapshot(database.client, { changeNote: null, serviceId: legacy.id, userId: ids.adminA, versionNumber: 1 });
+  const next = await create({ name: "Después del heredado" });
+  assert.notEqual(next.code, legacyCode);
+  assert.equal(next.code, expectedCode(next.id));
+  assert.equal((await rows("select count(*)::int total from public.services where code = $1", [legacyCode]))[0].total, 1);
+  assert.equal((await rows("select name from public.services where id = $1", [legacy.id]))[0].name, "Servicio heredado");
+});
+
+test("alta: unidad inexistente o inactiva no deja registros", { skip }, async () => {
   const before = (await rows("select count(*)::int total from public.services"))[0].total;
   const cases = [
-    [{ code: "SIN-UNIDAD", measurementUnitId: 999999 }, "La unidad de medida no existe."],
-    [{ code: "UNIDAD-RETIRADA", measurementUnitId: ids.legacy }, "La unidad de medida está inactiva."],
-    [{ code: "LLAVE-POR-PUNTO", kind: "turnkey", measurementUnitId: ids.point }, "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados."],
+    [{ measurementUnitId: 999999 }, "La unidad de medida no existe."],
+    [{ measurementUnitId: ids.legacy }, "La unidad de medida está inactiva."],
   ];
   for (const [overrides, message] of cases) {
     await assert.rejects(create(overrides), (error) => {
@@ -131,16 +176,9 @@ test("alta: unidad inexistente, inactiva o incompatible con llave en mano no dej
   assert.equal((await rows("select count(*)::int total from public.services"))[0].total, before);
 });
 
-test("alta: un código duplicado responde 409 y conserva un único servicio", { skip }, async () => {
-  await assert.rejects(create({ code: "ANTEPROYECTO" }), { code: "SERVICE_CODE_ALREADY_EXISTS", status: 409 });
-  const results = await Promise.allSettled([create({ code: "SIMULTANEO" }), create({ code: "SIMULTANEO" }, ids.adminB)]);
-  assert.deepEqual(results.map((result) => result.status).sort(), ["fulfilled", "rejected"]);
-  assert.equal(results.find((result) => result.status === "rejected").reason.code, "SERVICE_CODE_ALREADY_EXISTS");
-  assert.equal((await rows("select count(*)::int total from public.services where code = 'SIMULTANEO'"))[0].total, 1);
-});
-
-test("edición: sin cambios efectivos no crea versión; un cambio de tarifa crea la versión 2", { skip }, async () => {
-  const [{ id }] = await rows("select id::int from public.services where code = 'ANTEPROYECTO'");
+test("edición: sin cambios no crea versión; un cambio de tarifa crea la versión 2 y conserva el código", { skip }, async () => {
+  const id = created.anteproyecto;
+  const original = await catalog.getService(id);
   const unchanged = await catalog.updateService({
     payload: { expectedVersion: 1, name: "Anteproyecto arquitectónico", referenceRate: "12.00", changeNote: "Sin cambios" },
     serviceId: id, user: { id: ids.adminB },
@@ -150,39 +188,41 @@ test("edición: sin cambios efectivos no crea versión; un cambio de tarifa crea
   assert.equal((await versionsOf(id)).length, 1);
 
   const updated = await catalog.updateService({
-    payload: { expectedVersion: 1, referenceRate: "15.50", changeNote: "Ajuste 2026" }, serviceId: id, user: { id: ids.adminB },
+    payload: { expectedVersion: 1, name: "Anteproyecto renombrado", referenceRate: "15.50", changeNote: "Ajuste 2026" }, serviceId: id, user: { id: ids.adminB },
   });
   assert.equal(updated.changed, true);
-  assert.deepEqual(updated.changedFields, ["referenceRate"]);
-  assert.equal(updated.service.referenceRate, "15.50");
+  assert.deepEqual(updated.changedFields.sort(), ["name", "referenceRate"]);
+  assert.equal(updated.service.code, original.code, "La edición conserva el código");
   assert.equal(updated.service.currentVersion, 2);
-  assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.reference_rate, v.is_current, v.changed_by]), [
-    [1, "12.00", false, ids.adminA],
-    [2, "15.50", true, ids.adminB],
+  assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.code, v.reference_rate, v.is_current, v.changed_by]), [
+    [1, original.code, "12.00", false, ids.adminA],
+    [2, original.code, "15.50", true, ids.adminB],
   ]);
   const [{ updated_by: updatedBy }] = await rows("select updated_by::int from public.services where id = $1", [id]);
   assert.equal(updatedBy, ids.adminB);
 });
 
-test("estado: desactivar y activar crean versiones y el servicio inactivo sigue consultable", { skip }, async () => {
-  const [{ id }] = await rows("select id::int from public.services where code = 'ANTEPROYECTO'");
+test("estado: desactivar y activar crean versiones, conservan el código y el inactivo sigue consultable", { skip }, async () => {
+  const id = created.anteproyecto;
+  const { code } = await catalog.getService(id);
   const off = await catalog.changeServiceStatus({ payload: { expectedVersion: 2, isActive: false, changeNote: null }, serviceId: id, user: { id: ids.adminA } });
   assert.equal(off.service.isActive, false);
   assert.equal(off.service.currentVersion, 3);
-  assert.equal((await catalog.getService(id)).isActive, false);
+  assert.equal(off.service.code, code, "Desactivar no libera ni cambia el código");
   const inactive = await catalog.getServicesPage({ status: "inactive" });
-  assert.deepEqual(inactive.services.map((service) => service.code), ["ANTEPROYECTO"]);
+  assert.deepEqual(inactive.services.map((service) => service.id), [id]);
   const repeated = await catalog.changeServiceStatus({ payload: { expectedVersion: 3, isActive: false, changeNote: null }, serviceId: id, user: { id: ids.adminA } });
   assert.equal(repeated.changed, false);
   const on = await catalog.changeServiceStatus({ payload: { expectedVersion: 3, isActive: true, changeNote: null }, serviceId: id, user: { id: ids.adminA } });
   assert.equal(on.service.currentVersion, 4);
-  assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.is_active, v.is_current]), [
-    [1, true, false], [2, true, false], [3, false, false], [4, true, true],
+  assert.equal(on.service.code, code);
+  assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.is_active, v.is_current, v.code]), [
+    [1, true, false, code], [2, true, false, code], [3, false, false, code], [4, true, true, code],
   ]);
 });
 
 test("concurrencia: versión esperada desactualizada y dos administradores simultáneos", { skip }, async () => {
-  const [{ id }] = await rows("select id::int from public.services where code = 'ANTEPROYECTO'");
+  const id = created.anteproyecto;
   await assert.rejects(
     catalog.updateService({ payload: { expectedVersion: 2, name: "Viejo" }, serviceId: id, user: { id: ids.adminA } }),
     { code: "SERVICE_VERSION_CONFLICT", status: 409 },
@@ -204,7 +244,7 @@ test("concurrencia: versión esperada desactualizada y dos administradores simul
 });
 
 test("reversión: un fallo a mitad de la edición no deja cambios ni pierde la versión vigente", { skip }, async () => {
-  const [{ id }] = await rows("select id::int from public.services where code = 'ANTEPROYECTO'");
+  const id = created.anteproyecto;
   const before = await catalog.getService(id);
   const versionsBefore = await versionsOf(id);
   // Un responsable inexistente viola la FK al actualizar: toda la transacción se revierte.
@@ -216,8 +256,9 @@ test("reversión: un fallo a mitad de la edición no deja cambios ni pierde la v
   assert.deepEqual(await versionsOf(id), versionsBefore);
 });
 
-test("edición: cambiar a una unidad inactiva o a llave en mano con unidad incompatible se rechaza", { skip }, async () => {
-  const service = await create({ code: "PUNTOS", measurementUnitId: ids.point, referenceRate: "45.00", sortOrder: 3 });
+test("edición: unidad inactiva o llave en mano con unidad incompatible se rechazan; el tipo existente se conserva", { skip }, async () => {
+  const service = await create({ name: "Puntos eléctricos", measurementUnitId: ids.point, referenceRate: "45.00", sortOrder: 3 });
+  created.puntos = service.id;
   await assert.rejects(
     catalog.updateService({ payload: { expectedVersion: 1, measurementUnitId: ids.legacy }, serviceId: service.id, user: { id: ids.adminA } }),
     (error) => error.code === "VALIDATION_ERROR" && error.fields.measurementUnitId === "La unidad de medida está inactiva.",
@@ -230,25 +271,30 @@ test("edición: cambiar a una unidad inactiva o a llave en mano con unidad incom
     payload: { expectedVersion: 1, kind: "turnkey", measurementUnitId: ids.squareMeter }, serviceId: service.id, user: { id: ids.adminA },
   });
   assert.deepEqual(moved.changedFields, ["kind", "measurementUnitId"]);
+  assert.equal(moved.service.code, service.code);
   assert.deepEqual((await versionsOf(service.id)).map((v) => v.unit_symbol), ["pt.", "m²"]);
+  // Editar otro campo de un servicio llave en mano no cambia su tipo.
+  const llave = await catalog.getService(created.llave);
+  const renamed = await catalog.updateService({ payload: { expectedVersion: llave.currentVersion, name: "Llave premium 2026" }, serviceId: llave.id, user: { id: ids.adminA } });
+  assert.equal(renamed.service.kind, "turnkey");
 });
 
-test("listado: búsqueda literal, filtros y paginación por cursor en orden estable", { skip }, async () => {
-  const search = await catalog.getServicesPage({ search: "anteproyecto" });
-  assert.deepEqual(search.services.map((service) => service.code), ["ANTEPROYECTO"]);
-  assert.deepEqual((await catalog.getServicesPage({ search: "llave-" })).services.map((service) => service.code), ["LLAVE-PREMIUM"]);
+test("listado: búsqueda literal por nombre o código generado, filtros y paginación por cursor", { skip }, async () => {
+  const anteproyecto = await catalog.getService(created.anteproyecto);
+  assert.deepEqual((await catalog.getServicesPage({ search: "anteproyecto" })).services.map((service) => service.id), [created.anteproyecto]);
+  assert.deepEqual((await catalog.getServicesPage({ search: anteproyecto.code })).services.map((service) => service.id), [created.anteproyecto]);
   // % y _ se buscan literalmente, no como comodines.
   assert.deepEqual((await catalog.getServicesPage({ search: "%" })).services, []);
   assert.deepEqual((await catalog.getServicesPage({ search: "_" })).services, []);
-  assert.deepEqual((await catalog.getServicesPage({ kind: "turnkey" })).services.map((s) => s.code).sort(), ["LLAVE-PREMIUM", "PUNTOS"]);
+  assert.deepEqual((await catalog.getServicesPage({ kind: "turnkey" })).services.map((s) => s.id).sort((a, b) => a - b), [created.llave, created.puntos].sort((a, b) => a - b));
   assert.ok((await catalog.getServicesPage({ measurementUnitId: ids.point })).services.every((s) => s.measurementUnit.id === ids.point));
 
   const all = await rows("select id::int, sort_order from public.services order by sort_order, id");
   const seen = [];
   let cursor;
   do {
-    const page = await catalog.getServicesPage({ cursor, limit: 2 });
-    assert.ok(page.services.length <= 2);
+    const page = await catalog.getServicesPage({ cursor, limit: 7 });
+    assert.ok(page.services.length <= 7);
     seen.push(...page.services.map((service) => service.id));
     cursor = page.nextCursor;
   } while (cursor);
@@ -261,7 +307,7 @@ test("integridad: cada servicio conserva exactamente una versión vigente y no s
     from public.services s`);
   assert.equal(summary.with_one_current, summary.services);
   const { translateServiceCatalogError } = await import("../src/services/serviceCatalogErrors.js");
-  await assert.rejects(rows("delete from public.services where code = 'ANTEPROYECTO'"), (error) => {
+  await assert.rejects(rows("delete from public.services where id = $1", [created.anteproyecto]), (error) => {
     assert.equal(error.code, "23001");
     assert.equal(translateServiceCatalogError(error).code, "SERVICE_REFERENCE_CONFLICT");
     return true;

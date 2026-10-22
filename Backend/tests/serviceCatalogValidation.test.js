@@ -18,7 +18,7 @@ import {
   serviceUpdateSchema,
 } from "../src/validation/serviceCatalogSchemas.js";
 
-const VALID_CREATE = { code: "anteproyecto-m2", kind: "individual", measurementUnitId: 1, name: " Anteproyecto ", referenceRate: "12" };
+const VALID_CREATE = { measurementUnitId: 1, name: " Anteproyecto ", referenceRate: "12" };
 const CURRENT = {
   description: null,
   isActive: true,
@@ -39,26 +39,28 @@ function errorPaths(result) {
   return result.success ? [] : result.error.issues.map((issue) => issue.path.join("."));
 }
 
-test("alta: normaliza código, nombre y tarifa, y aplica valores por defecto", () => {
+test("alta: normaliza nombre y tarifa y aplica valores por defecto, sin código ni tipo", () => {
   const result = serviceCreateSchema.safeParse({ body: VALID_CREATE });
   assert.equal(result.success, true);
+  // El código y el tipo no forman parte del cuerpo: los fija el servicio (SERV-xxx, individual).
   assert.deepEqual(result.data.body, {
-    changeNote: null, code: "ANTEPROYECTO-M2", isActive: true, kind: "individual",
-    measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12.00", sortOrder: 0,
+    changeNote: null, isActive: true, measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12.00", sortOrder: 0,
   });
-  const turnkey = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind: "turnkey", referenceRate: 900.5, description: "  " } });
-  assert.equal(turnkey.data.body.referenceRate, "900.50");
-  assert.equal(turnkey.data.body.description, null);
+  const described = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, referenceRate: 900.5, description: "  " } });
+  assert.equal(described.data.body.referenceRate, "900.50");
+  assert.equal(described.data.body.description, null);
 });
 
-test("alta: sin código ni tipo, el sistema genera el código y el servicio es individual", () => {
-  const { code, kind, ...withoutCodeAndKind } = VALID_CREATE;
-  void code;
-  void kind;
-  const result = serviceCreateSchema.safeParse({ body: withoutCodeAndKind });
-  assert.equal(result.success, true);
-  assert.equal(result.data.body.code, undefined, "El código lo compone el servicio a partir del id");
-  assert.equal(result.data.body.kind, "individual");
+test("alta: el cliente no puede fijar el código ni el tipo (tampoco llave en mano)", () => {
+  for (const [field, value] of [["code", "SERV-001"], ["code", "MANUAL"], ["kind", "individual"], ["kind", "turnkey"]]) {
+    const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, [field]: value } });
+    assert.deepEqual(errorPaths(result), [`body.${field}`], `${field}=${value}`);
+  }
+  const both = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, code: "X", kind: "turnkey" } });
+  assert.deepEqual(both.error.issues.map((issue) => issue.message), [
+    "El código del servicio lo genera el sistema.",
+    "Los servicios del tabulador son individuales; el tipo no se envía.",
+  ]);
 });
 
 test("dominio: el código generado es SERV- y el id con al menos tres dígitos", () => {
@@ -71,18 +73,14 @@ test("dominio: el código generado es SERV- y el id con al menos tres dígitos",
   }
 });
 
-test("alta: rechaza campos obligatorios, longitudes, formato de código y campos no editables", () => {
+test("alta: rechaza campos obligatorios, longitudes y campos no editables", () => {
   for (const field of ["measurementUnitId", "name", "referenceRate"]) {
     const body = { ...VALID_CREATE };
     delete body[field];
     assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body })), [`body.${field}`], field);
   }
-  for (const code of ["CON ESPACIO", "-INICIO", "FIN-", "Ñ", "A".repeat(31), "DOBLE--GUION"]) {
-    assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, code } })), ["body.code"], code);
-  }
   assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, name: "x".repeat(151) } })), ["body.name"]);
   assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, description: "x".repeat(2001) } })), ["body.description"]);
-  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind: "bundle" } })), ["body.kind"]);
   assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, sortOrder: -1 } })), ["body.sortOrder"]);
   // La moneda es siempre USD: un campo `currency` se rechaza en lugar de ignorarse.
   assert.equal(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, currency: "EUR" } }).success, false);

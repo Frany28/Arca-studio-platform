@@ -99,7 +99,8 @@ test("listados: unidades base con inactivas explícitas; denominaciones con filt
 });
 
 test("servicios: unitDenominationId es opcional, admite null y cuenta como campo editable", () => {
-  const base = { code: "ANTEPROYECTO", kind: "individual", measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
+  // El alta no admite código ni tipo: los fija el sistema.
+  const base = { measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
   assert.equal(serviceCreateSchema.safeParse({ body: base }).data.body.unitDenominationId, undefined);
   assert.equal(serviceCreateSchema.safeParse({ body: { ...base, unitDenominationId: 7 } }).data.body.unitDenominationId, 7);
   assert.equal(serviceCreateSchema.safeParse({ body: { ...base, unitDenominationId: null } }).data.body.unitDenominationId, null);

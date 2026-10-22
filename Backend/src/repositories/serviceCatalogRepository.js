@@ -159,6 +159,19 @@ export async function reserveServiceId(client) {
 }
 
 /**
+ * Indica si ya existe un servicio con ese código (por ejemplo, uno heredado escrito a mano que
+ * coincide con el formato generado). Lectura simple: la unicidad la impone uq_services_code.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {string} code - Código a comprobar.
+ * @returns {Promise<boolean>} true si el código ya está en uso.
+ */
+export async function serviceCodeExists(client, code) {
+  const result = await client.query("select 1 from public.services where code = $1 limit 1", [code]);
+  return result.rowCount > 0;
+}
+
+/**
  * Inserta un servicio nuevo con el id reservado y moneda USD y devuelve su id. No crea la
  * versión: el servicio llama a insertServiceVersionSnapshot en la misma transacción.
  *

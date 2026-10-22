@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
-import { DEFAULT_SERVICE_KIND, SERVICE_KINDS } from "../domain/serviceCatalog.js";
+import { SERVICE_KINDS } from "../domain/serviceCatalog.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { describeDecimalParseError, formatScaledDecimal, parseScaledDecimal } from "../utils/scaledDecimal.js";
 
@@ -16,11 +16,6 @@ const serviceKind = z.enum([SERVICE_KINDS.INDIVIDUAL, SERVICE_KINDS.TURNKEY]);
 const serviceName = z.string().trim().min(1, "Es obligatorio.").max(150);
 const sortOrder = z.number().int().min(0).max(MAX_INTEGER);
 const changeNote = z.string().trim().max(255).optional().transform((value) => value || null);
-
-// El código se normaliza a mayúsculas y debe cumplir el CHECK de PostgreSQL (chk_services_code).
-// En el alta es opcional: si no se envía, el sistema genera `SERV-001` a partir del id.
-const serviceCode = z.string().trim().toUpperCase().min(1, "Es obligatorio.").max(30)
-  .regex(/^[A-Z0-9]+([_-][A-Z0-9]+)*$/, "Usa letras, números y guiones (por ejemplo, ANTEPROYECTO-M2).");
 
 // Cadena vacía o null eliminan la descripción.
 const serviceDescription = z.union([z.string(), z.null()]).optional()
@@ -76,13 +71,18 @@ export const serviceListSchema = z.object({
 
 export const serviceDetailSchema = z.object({ params: serviceIdParams });
 
+// Alta del tabulador: el código (`SERV-001`) lo genera el sistema y el tipo es siempre
+// `individual`. `code` y `kind` se rechazan con un mensaje propio por campo (400) para que el
+// cliente no los fije; cualquier otro campo desconocido lo rechaza `.strict()`.
+const systemManaged = (message) => z.never({ error: message }).optional();
+
 export const serviceCreateSchema = z.object({
   body: z.object({
     changeNote,
-    code: serviceCode.optional(),
+    code: systemManaged("El código del servicio lo genera el sistema."),
+    kind: systemManaged("Los servicios del tabulador son individuales; el tipo no se envía."),
     description: serviceDescription,
     isActive: z.boolean().optional().default(true),
-    kind: serviceKind.optional().default(DEFAULT_SERVICE_KIND),
     measurementUnitId: positiveId,
     name: serviceName,
     referenceRate,

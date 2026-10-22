@@ -168,14 +168,19 @@ export function createServiceCatalogBackend(initial) {
       return json(route, 200, { services: matches.slice(start, start + limit), nextCursor: start + limit < matches.length ? String(start + limit) : null });
     }
     if (path === "/api/admin/services" && method === "POST") {
+      // Como serviceCreateSchema: el código y el tipo los fija el sistema.
+      const forbidden = ["code", "kind"].filter((field) => body[field] !== undefined);
+      if (forbidden.length) {
+        return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: Object.fromEntries(forbidden.map((field) => [`body.${field}`, "No se envía."])) });
+      }
       const id = state.nextServiceId;
       state.nextServiceId += 1;
       const denomination = body.unitDenominationId ? state.denominations.find((item) => item.id === body.unitDenominationId) : null;
       const created = {
-        ...service(id, { code: body.code ?? `SERV-${String(id).padStart(3, "0")}`, name: body.name, unit: "m2", rate: body.referenceRate, description: body.description ?? null }),
+        ...service(id, { code: `SERV-${String(id).padStart(3, "0")}`, name: body.name, unit: "m2", rate: body.referenceRate, description: body.description ?? null }),
         measurementUnit: unitById(body.measurementUnitId),
         unitDenomination: denomination ? { id: denomination.id, denomination: denomination.denomination, isActive: denomination.isActive } : null,
-        kind: body.kind ?? "individual",
+        kind: "individual",
         sortOrder: 0,
       };
       created.unitLabel = composeUnitLabel(created);

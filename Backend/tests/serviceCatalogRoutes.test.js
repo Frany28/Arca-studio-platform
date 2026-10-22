@@ -10,7 +10,7 @@ const { pool } = await import("../src/config/db.js");
 const { default: serviceCatalogRouter } = await import("../src/routes/serviceCatalog.js");
 
 const ADMIN = { id: 2, role: { code: "admin" } };
-const VALID_CREATE = { code: "ANTEPROYECTO", kind: "individual", measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
+const VALID_CREATE = { measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
 
 /**
  * Levanta el router del catálogo y devuelve un cliente cuyas rutas son relativas a /api/admin/services.
@@ -53,7 +53,9 @@ test("datos inválidos responden 400 VALIDATION_ERROR antes de consultar el cat�
   const cases = [
     ["POST", "", { ...VALID_CREATE, referenceRate: "12.345" }, "body.referenceRate"],
     ["POST", "", { ...VALID_CREATE, referenceRate: "-5" }, "body.referenceRate"],
-    ["POST", "", { ...VALID_CREATE, code: "con espacio" }, "body.code"],
+    // El código y el tipo los fija el sistema: enviarlos responde 400 por campo.
+    ["POST", "", { ...VALID_CREATE, code: "SERV-001" }, "body.code"],
+    ["POST", "", { ...VALID_CREATE, kind: "turnkey" }, "body.kind"],
     ["PATCH", "/1", { referenceRate: "15" }, "body.expectedVersion"],
     ["PATCH", "/abc", { expectedVersion: 1, name: "x" }, "params.serviceId"],
     ["PATCH", "/1/status", { expectedVersion: 1 }, "body.isActive"],

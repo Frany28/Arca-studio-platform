@@ -1,6 +1,7 @@
 import { withTransaction } from "../config/db.js";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
+  DEFAULT_SERVICE_KIND,
   SERVICE_CURRENCY,
   formatGeneratedServiceCode,
   isUnitCompatibleWithKind,
@@ -17,6 +18,7 @@ import {
   lockServiceForUpdate,
   reserveServiceId,
   retireCurrentServiceVersion,
+  serviceCodeExists,
   updateServiceRecord,
 } from "../repositories/serviceCatalogRepository.js";
 import { decodeCursor, pageResult, parsePageLimit } from "../utils/pagination.js";
@@ -150,33 +152,57 @@ async function assertServiceUnitChanges(client, { changedFields, next, payload }
   }
 }
 
+// Reservas de id permitidas cuando el código generado coincide con uno heredado escrito a mano.
+const MAX_CODE_RESERVATION_ATTEMPTS = 5;
+
+/**
+ * Reserva el id del servicio nuevo con la secuencia de `services.id` y compone `SERV-001`, sin
+ * contar registros ni usar MAX(id)+1: cada reserva es única y nunca se reutiliza. Si el código
+ * coincide con uno heredado (escrito cuando la API aceptaba códigos), reserva el siguiente id.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @returns {Promise<{ id: number, code: string }>} Id reservado y código generado.
+ * @throws {ConflictError} SERVICE_CODE_ALREADY_EXISTS si no encuentra un código libre.
+ */
+async function reserveGeneratedServiceCode(client) {
+  for (let attempt = 0; attempt < MAX_CODE_RESERVATION_ATTEMPTS; attempt += 1) {
+    const id = await reserveServiceId(client);
+    const code = formatGeneratedServiceCode(id);
+    if (!(await serviceCodeExists(client, code))) return { code, id };
+  }
+  throw new ConflictError("SERVICE_CODE_ALREADY_EXISTS", "No se pudo generar un código de servicio disponible. Inténtalo de nuevo.");
+}
+
 /**
  * Crea un servicio y su versión 1 en una única transacción: si falla cualquiera de las dos
- * escrituras no queda ningún registro. Sin código en el cuerpo, el sistema reserva el id y
- * genera `SERV-001` a partir de él (único y permanente, seguro ante altas concurrentes); un
- * código enviado se conserva. La unicidad la garantiza PostgreSQL (uq_services_code), lo que
- * también cubre dos altas simultáneas con el mismo código.
+ * escrituras no queda ningún registro. El código `SERV-001` lo genera siempre el sistema a
+ * partir del id reservado (el cuerpo validado no admite código) y la unicidad la garantiza
+ * además PostgreSQL (uq_services_code). El tabulador crea servicios `individual`; `kind` solo
+ * llega de flujos internos (llave en mano, de las solicitudes), nunca del cuerpo HTTP.
  *
  * @param {object} options - Datos de la operación.
- * @param {object} options.payload - Cuerpo validado por serviceCreateSchema.
+ * @param {object} options.payload - Cuerpo validado por serviceCreateSchema (más `kind` opcional
+ *   en flujos internos; por defecto `individual`).
  * @param {{ id: number }} options.user - Administrador autenticado.
  * @returns {Promise<object>} Servicio creado con currentVersion = 1.
  * @throws {ValidationError} Si la unidad no es válida para el servicio.
- * @throws {ConflictError} SERVICE_CODE_ALREADY_EXISTS si el código ya existe.
+ * @throws {ConflictError} SERVICE_CODE_ALREADY_EXISTS si no hay código libre.
  */
 export async function createService({ payload, user }) {
+  const kind = payload.kind ?? DEFAULT_SERVICE_KIND;
   try {
     return await withTransaction(async (client) => {
-      await assertAssignableUnit(client, { kind: payload.kind, measurementUnitId: payload.measurementUnitId, requireActive: true });
+      await assertAssignableUnit(client, { kind, measurementUnitId: payload.measurementUnitId, requireActive: true });
       if (payload.unitDenominationId) {
         await assertAssignableDenomination(client, { measurementUnitId: payload.measurementUnitId, unitDenominationId: payload.unitDenominationId });
       }
-      const reservedId = await reserveServiceId(client);
+      const { code, id } = await reserveGeneratedServiceCode(client);
       const serviceId = await insertServiceRecord(client, {
         ...payload,
-        code: payload.code ?? formatGeneratedServiceCode(reservedId),
+        code,
+        kind,
         currency: SERVICE_CURRENCY,
-        id: reservedId,
+        id,
         description: payload.description ?? null,
         userId: user.id,
       });
