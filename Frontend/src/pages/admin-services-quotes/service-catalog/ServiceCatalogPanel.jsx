@@ -8,6 +8,7 @@ import ServiceCatalogTable from "./components/ServiceCatalogTable.jsx";
 import ServiceFormDialog from "./components/ServiceFormDialog.jsx";
 import ServiceCatalogToolbar from "./components/ServiceCatalogToolbar.jsx";
 import ServiceStatusModal from "./components/ServiceStatusModal.jsx";
+import { useMeasurementUnitBaseOptions } from "../measurement-units/hooks/useMeasurementUnitBaseOptions.js";
 import { useAlertFeedback } from "./hooks/useAlertFeedback.js";
 import { usePageSelection } from "./hooks/usePageSelection.js";
 import { SERVICE_CATALOG_PAGE_SIZE, useServiceCatalogList } from "./hooks/useServiceCatalogList.js";
@@ -32,6 +33,8 @@ function ServiceCatalogPanel({ summary }) {
   const selection = usePageSelection(items, list.pageKey);
   const feedback = useAlertFeedback();
   const [formRequest, setFormRequest] = useState(null);
+  // Catálogo base de solo lectura: se pide al abrir el formulario por primera vez y se conserva.
+  const baseUnits = useMeasurementUnitBaseOptions({ enabled: Boolean(formRequest) });
   const status = useServiceStatusActions({
     hasStatusFilter: Boolean(list.selectedStatusId),
     notify: feedback.notify,
@@ -160,6 +163,7 @@ function ServiceCatalogPanel({ summary }) {
         <ServiceFormDialog
           key={formRequest.serviceId ?? "create"}
           mode={formRequest.mode}
+          baseUnits={baseUnits}
           serviceId={formRequest.serviceId}
           onClose={() => setFormRequest(null)}
           onSaved={handleSaved}

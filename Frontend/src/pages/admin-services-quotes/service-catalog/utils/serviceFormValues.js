@@ -94,7 +94,7 @@ export function toUpdateServiceChanges(draft, service) {
   const name = draft.name.trim();
   if (name !== service.name) changes.name = name;
   const description = draft.description.trim();
-  if (description !== (service.description ?? "")) changes.description = description || null;
+  if (description !== (service.description ?? "").trim()) changes.description = description || null;
   const denominationId = draft.unitDenomination?.id ?? null;
   const originalDenominationId = service.unitDenomination?.id ?? null;
   if (draft.measurementUnitId !== service.measurementUnit.id) {

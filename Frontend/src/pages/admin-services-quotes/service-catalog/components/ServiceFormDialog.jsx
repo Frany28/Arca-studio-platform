@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 
 import { api } from "../../../../api/http.js";
 import MeasurementUnitFormModal from "../../measurement-units/components/MeasurementUnitFormModal.jsx";
-import { useMeasurementUnitBaseOptions } from "../../measurement-units/hooks/useMeasurementUnitBaseOptions.js";
 import { getMeasurementUnitErrorFeedback } from "../../measurement-units/utils/measurementUnitErrors.js";
 import { toEditBaseUnitOptions } from "../../measurement-units/utils/measurementUnitPresentation.js";
 import { useServiceDenominationOptions } from "../hooks/useServiceDenominationOptions.js";
@@ -23,6 +22,8 @@ const NO_ERRORS = Object.freeze({});
  * cancelar vuelve sin cambios con el foco en «+ Crear unidad».
  *
  * @param {Object} props - Solicitud y callbacks.
+ * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.baseUnits
+ * Catálogo de unidades base (useMeasurementUnitBaseOptions del panel: se lee una vez y se conserva).
  * @param {"create"|"edit"} props.mode - Alta o edición.
  * @param {number|null} [props.serviceId] - Servicio editado.
  * @param {() => void} props.onClose - Cierra sin guardar.
@@ -31,7 +32,7 @@ const NO_ERRORS = Object.freeze({});
  * @param {() => void} props.onStale - La versión editada quedó desactualizada (recargar el listado).
  * @returns {import("react").ReactElement} Paso activo del flujo.
  */
-function ServiceFormDialog({ mode, onClose, onNotFound, onSaved, onStale, serviceId = null }) {
+function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onStale, serviceId = null }) {
   const editing = mode === "edit";
   const detail = useServiceDetail(editing ? serviceId : null);
   const service = detail.service;
@@ -43,7 +44,6 @@ function ServiceFormDialog({ mode, onClose, onNotFound, onSaved, onStale, servic
   const [submitError, setSubmitError] = useState("");
   const [step, setStep] = useState("service");
   const [focusTarget, setFocusTarget] = useState("name");
-  const baseUnits = useMeasurementUnitBaseOptions({ enabled: status === "ready" });
   const denominations = useServiceDenominationOptions({ enabled: status === "ready", measurementUnitId: draft.measurementUnitId });
   const form = useServiceFormSubmit({ mode, service });
 

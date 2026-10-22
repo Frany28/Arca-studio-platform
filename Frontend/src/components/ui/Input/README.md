@@ -20,6 +20,14 @@ La API pública continúa en `Input.jsx`. El valor está controlado cuando
 | `prefix/usePrefixSelect.js` | Apertura, opción activa, teclado de listbox y cierre del selector de prefijo. |
 | `prefix/InputPrefixSelect.jsx` | DOM, estilos y accesibilidad del selector de prefijo y su listado en portal. |
 
+## Variante "Tags" con prefijo
+
+Con `prefixOptions` no vacío, la variante `Tags` antepone el mismo selector de "Prefix select"
+(`prefixValue`, `onPrefixChange`, `prefixAriaLabel`) y muestra las etiquetas seleccionadas
+dentro del campo, junto al texto. Sin `prefixOptions` conserva su presentación anterior. La usa
+el formulario de servicios: unidad base en el prefijo y la denominación como Tag, con
+`onTagsChange` controlado para aceptar solo opciones existentes.
+
 ## Variante "Prefix select"
 
 Texto libre precedido por un selector (Figma `5790:360030`, “Nueva unidad de medida”):

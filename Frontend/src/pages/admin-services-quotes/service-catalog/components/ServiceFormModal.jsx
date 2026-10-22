@@ -188,7 +188,8 @@ function ServiceFormModal({
                   showHint={Boolean(fieldErrors.referenceRate)}
                   hintText={fieldErrors.referenceRate}
                   disabled={submitting}
-                  className="w-[125px] max-w-[125px] shrink-0"
+                  // Figma: 125 px. `!` porque la raíz de Input fija `w-full`, que ganaría al ancho propio.
+                  className="!w-[125px] !max-w-[125px] shrink-0"
                   autoComplete="off"
                   onChange={(event) => onDraftChange({ referenceRate: event.target.value }, "referenceRate")}
                 />

@@ -539,9 +539,24 @@ Validación, capturas y diferencias respecto a Figma:
   - Desactivar y activar desde «Más opciones» con confirmación (`Modal`, como en Unidades) y
     `expectedVersion`; un 409 de versión recarga la página y reactivar con una unidad inactiva
     explica el bloqueo. Nunca se elimina un servicio.
-  - Pendiente de diseño: «Añadir servicio» y «Editar» están visibles pero deshabilitados con el
-    motivo, porque el formulario de Figma no incluye código ni tipo, obligatorios en la API; el
-    botón «Ver» (ojo) se omite hasta que exista el diseño del detalle.
+  - Formulario (Figma `5764:226084`): un único modal (`ServiceFormDialog` + `ServiceFormModal`)
+    para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
+    leídos de `GET /admin/services/:id`). Campos de Figma: nombre (Input, 150), descripción
+    (TextArea de 130 px, 2000; alimenta el tooltip), unidad de medida y tarifa USD (125 px, texto
+    decimal NUMERIC(14,2) sin conversión a Number). No hay campos de código ni tipo: el sistema
+    genera `SERV-001` y los servicios del tabulador son `individual`.
+  - Unidad de medida: variante `Tags` de Input con selector de prefijo (abreviatura de la base)
+    y la denominación como Tag con cierre; solo se sugieren denominaciones activas de la base
+    elegida y cambiar de base retira la denominación, así que no hay combinaciones incompatibles.
+  - «+ Crear unidad» abre el formulario existente de Unidades (`MeasurementUnitFormModal`, con la
+    base del servicio preseleccionada). Los diálogos no se apilan: el flujo alterna entre ambos y
+    el borrador del servicio vive en `ServiceFormDialog`, así que se conserva al cancelar o crear;
+    crear selecciona la nueva denominación y devuelve el foco al campo de unidad.
+  - Edición: solo se envían los campos cambiados con `expectedVersion`; cambiar la base envía
+    también la denominación. Sin cambios no hay petición. Un 409 de versión no sobrescribe: se
+    explica en el formulario, que conserva lo escrito, y se recarga el listado. Los 400 se
+    muestran junto a su campo.
+  - El botón «Ver» (ojo) se omite hasta que exista el diseño del detalle.
 - Unidades: búsqueda en la API (debounce de 300 ms, cada lectura aborta la anterior), diez
   filas por página, Anterior/Siguiente por cursor sin totales ni números de página. La tabla
   no tiene selección de filas (sin checkbox ni contador): columnas N°, Unidad y Acciones, con

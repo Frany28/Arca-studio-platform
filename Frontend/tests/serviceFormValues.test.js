@@ -1,0 +1,94 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { getServiceFormErrorFeedback } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceCatalogErrors.js";
+import {
+  canonicalRate,
+  createServiceDraft,
+  toCreateServicePayload,
+  toDenominationTag,
+  toUpdateServiceChanges,
+  validateServiceDraft,
+} from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
+
+const SERVICE = {
+  id: 7,
+  name: "Anteproyecto",
+  description: "Primera propuesta.",
+  measurementUnit: { id: 1, symbol: "m²" },
+  unitDenomination: { id: 10, denomination: "de construcción", isActive: true },
+  referenceRate: "12.00",
+  currentVersion: 3,
+};
+const VALID_DRAFT = { name: "Servicio", description: "", measurementUnitId: 1, unitDenomination: null, referenceRate: "12.50" };
+
+test("borrador: vacío en el alta y con los datos guardados (sin convertir la tarifa) en la edición", () => {
+  assert.deepEqual(createServiceDraft(null), { name: "", description: "", measurementUnitId: null, unitDenomination: null, referenceRate: "" });
+  assert.deepEqual(createServiceDraft(SERVICE), {
+    name: "Anteproyecto",
+    description: "Primera propuesta.",
+    measurementUnitId: 1,
+    unitDenomination: { id: 10, denomination: "de construcción" },
+    referenceRate: "12.00",
+  });
+});
+
+test("validación: campos obligatorios, límites del contrato y tarifa NUMERIC(14,2) sin signo", () => {
+  assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, name: "  ", measurementUnitId: null, referenceRate: "" }), {
+    name: "Escribe el nombre del servicio.",
+    unit: "Elige la unidad de medida.",
+    referenceRate: "Indica la tarifa.",
+  });
+  assert.ok(validateServiceDraft({ ...VALID_DRAFT, name: "x".repeat(151) }).name);
+  assert.ok(validateServiceDraft({ ...VALID_DRAFT, description: "x".repeat(2001) }).description);
+  for (const rate of ["0", "12", "12.5", "12.50", "999999999999.99"]) assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, referenceRate: rate }), {}, rate);
+  for (const rate of ["-1", "12.345", "1e3", "1,5", "1234567890123", "12."]) assert.ok(validateServiceDraft({ ...VALID_DRAFT, referenceRate: rate }).referenceRate, rate);
+});
+
+test("tarifa: comparación canónica como texto, sin Number", () => {
+  assert.equal(canonicalRate("12.00"), "12");
+  assert.equal(canonicalRate("012.50"), "12.5");
+  assert.equal(canonicalRate("0.00"), "0");
+  assert.equal(canonicalRate("999999999999.99"), "999999999999.99");
+});
+
+test("alta: sin código ni tipo, sin descripción vacía y con la tarifa tal como se escribió", () => {
+  assert.deepEqual(toCreateServicePayload({ ...VALID_DRAFT, name: "  Servicio  ", description: "   ", referenceRate: " 12.50 " }), {
+    name: "Servicio", measurementUnitId: 1, referenceRate: "12.50",
+  });
+  assert.deepEqual(toCreateServicePayload({ ...VALID_DRAFT, description: " Texto ", unitDenomination: { id: 10 } }), {
+    name: "Servicio", description: "Texto", measurementUnitId: 1, unitDenominationId: 10, referenceRate: "12.50",
+  });
+});
+
+test("edición: solo campos cambiados con expectedVersion; la base arrastra la denominación", () => {
+  const draft = createServiceDraft(SERVICE);
+  assert.equal(toUpdateServiceChanges(draft, SERVICE), null, "Sin cambios no hay petición");
+  assert.equal(toUpdateServiceChanges({ ...draft, referenceRate: "12" }, SERVICE), null, "12 equivale a 12.00");
+  assert.deepEqual(toUpdateServiceChanges({ ...draft, referenceRate: "15.5" }, SERVICE), { expectedVersion: 3, referenceRate: "15.5" });
+  assert.deepEqual(toUpdateServiceChanges({ ...draft, description: "  " }, SERVICE), { expectedVersion: 3, description: null });
+  assert.deepEqual(toUpdateServiceChanges({ ...draft, unitDenomination: null }, SERVICE), { expectedVersion: 3, unitDenominationId: null });
+  assert.deepEqual(toUpdateServiceChanges({ ...draft, measurementUnitId: 13, unitDenomination: { id: 20 } }, SERVICE), {
+    expectedVersion: 3, measurementUnitId: 13, unitDenominationId: 20,
+  });
+  // Una descripción guardada con espacios exteriores no cuenta como cambio.
+  assert.equal(toUpdateServiceChanges(draft, { ...SERVICE, description: " Primera propuesta. " }), null);
+});
+
+test("unidad: la denominación se muestra como Tag sin avatar y con cierre", () => {
+  assert.deepEqual(toDenominationTag({ id: 10, denomination: "de construcción" }), { id: 10, label: "de construcción", avatar: false, closeIcon: true });
+});
+
+test("errores del formulario: 400 por campo, 409 explicados y recarga ante versión desactualizada", () => {
+  const validation = getServiceFormErrorFeedback({ status: 400, code: "VALIDATION_ERROR", fields: { "body.referenceRate": "Tarifa inválida.", "body.unitDenominationId": "Denominación inactiva." } }, "x");
+  assert.deepEqual(validation.fieldErrors, { referenceRate: "Tarifa inválida.", unit: "Denominación inactiva." });
+  assert.equal(validation.message, "Revisa los datos marcados.");
+  const conflict = getServiceFormErrorFeedback({ status: 409, code: "SERVICE_VERSION_CONFLICT", message: "x" }, "x");
+  assert.equal(conflict.shouldReload, true);
+  assert.match(conflict.message, /Otro administrador/);
+  assert.deepEqual(getServiceFormErrorFeedback({ status: 409, code: "SERVICE_REFERENCE_CONFLICT", message: "Ya no disponible." }, "x").fieldErrors, { unit: "Ya no disponible." });
+  const missing = getServiceFormErrorFeedback({ status: 404, code: "SERVICE_NOT_FOUND" }, "x");
+  assert.deepEqual([missing.notFound, missing.shouldReload], [true, true]);
+  assert.equal(getServiceFormErrorFeedback({ status: 429 }, "x").message, "Realizaste demasiados cambios en poco tiempo. Espera unos minutos e inténtalo de nuevo.");
+  assert.equal(getServiceFormErrorFeedback({ status: 500, message: "" }, "No se pudo guardar el servicio.").message, "No se pudo guardar el servicio.");
+});

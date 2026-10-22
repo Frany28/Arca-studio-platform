@@ -192,7 +192,8 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   assert.match(await unitDialog.getByRole("combobox").textContent(), /m²/, "Abre con la base del servicio");
   await unitDialog.getByRole("button", { name: "Cancelar" }).click();
   await dialog.waitFor();
-  assert.equal(await dialog.getByRole("button", { name: "Crear unidad" }).evaluate((element) => element === document.activeElement), true);
+  // El foco inicial llega cuando Modal termina de montar su contenido (unos frames).
+  await page.waitForFunction(() => document.activeElement?.matches("[data-service-create-unit]"));
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
   assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), "Texto del borrador.");
   assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30");
@@ -212,7 +213,7 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   await unitDialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.waitFor();
   await dialog.getByRole("button", { name: "Quitar de prueba nueva" }).waitFor();
-  assert.equal(await page.locator("#service-form-unit").evaluate((element) => element === document.activeElement), true);
+  await page.waitForFunction(() => document.activeElement?.id === "service-form-unit");
   assert.deepEqual(requestsOf(backend, "POST", /measurement-unit-denominations$/).map((request) => request.body), [{ denomination: "de prueba nueva", measurementUnitId: 1 }]);
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
   assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30");
@@ -230,7 +231,8 @@ test("edición: mismo modal con datos reales, solo campos cambiados, expectedVer
   await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
   const dialog = page.getByRole("dialog", { name: "Servicio" });
   await dialog.locator("#service-form-name").waitFor();
-  assert.equal(requestsOf(backend, "GET", /^\/api\/admin\/services\/1$/).length, 1, "Lee la versión vigente");
+  // Al menos una lectura del detalle (en desarrollo, StrictMode repite el montaje y aborta la primera).
+  assert.ok(requestsOf(backend, "GET", /^\/api\/admin\/services\/1$/).length >= 1, "Lee la versión vigente");
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Anteproyecto de prueba");
   assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), "Primera propuesta del espacio.");
   assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "12.00", "La tarifa guardada, sin conversión");
