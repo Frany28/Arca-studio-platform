@@ -1,4 +1,4 @@
-import { apiRequest, toQueryString } from "./client.js";
+import { apiRequest, collectCursorPages, toQueryString } from "./client.js";
 
 // Unidades de medida del módulo administrativo (docs/API_CONTRACT.md, "Unidades de medida").
 // Las unidades base son de solo lectura; las denominaciones se crean, editan y desactivan.
@@ -25,12 +25,30 @@ export const measurementUnitsApi = {
    * @param {number} [options.limit] - Tamaño de página (1–100).
    * @param {string} [options.search] - Texto literal de búsqueda.
    * @param {"active"|"inactive"} [options.status] - Filtra por estado.
+   * @param {number} [options.measurementUnitId] - Solo denominaciones de esa unidad base.
    * @param {AbortSignal} [options.signal] - Cancela la petición.
    * @returns {Promise<{unitDenominations: Array<Object>, nextCursor: string|null}>} Página.
    */
-  listDenominations({ cursor, limit, search, signal, status } = {}) {
-    const query = toQueryString({ cursor, limit, search, status });
+  listDenominations({ cursor, limit, measurementUnitId, search, signal, status } = {}) {
+    const query = toQueryString({ cursor, limit, measurementUnitId, search, status });
     return apiRequest(`/admin/measurement-unit-denominations${query}`, { signal });
+  },
+
+  /**
+   * Recorre todas las páginas de denominaciones de una unidad base (sin duplicados), por ejemplo
+   * para ofrecerlas en el formulario de servicios. El contrato no ofrece totales.
+   *
+   * @param {Object} options - Filtros y cancelación.
+   * @param {number} options.measurementUnitId - Unidad base.
+   * @param {"active"|"inactive"} [options.status] - Filtra por estado.
+   * @param {AbortSignal} [options.signal] - Cancela todas las páginas pendientes.
+   * @returns {Promise<{unitDenominations: Array<Object>, nextCursor: null}>} Colección completa.
+   */
+  listAllDenominations({ measurementUnitId, signal, status }) {
+    return collectCursorPages(
+      ({ cursor, limit }) => measurementUnitsApi.listDenominations({ cursor, limit, measurementUnitId, signal, status }),
+      "unitDenominations",
+    );
   },
 
   /**

@@ -1,8 +1,8 @@
 import { apiRequest, collectCursorPages, toQueryString } from "./client.js";
 
 // Catálogo administrativo de servicios (docs/API_CONTRACT.md, "Catálogo de servicios").
-// El tabulador lo lee con búsqueda y filtros y cambia el estado de cada servicio; los servicios
-// nunca se eliminan. `referenceRate` llega como texto decimal y no debe convertirse a Number.
+// El tabulador lo lee con búsqueda y filtros, crea y edita servicios y cambia su estado; los
+// servicios nunca se eliminan. `referenceRate` llega como texto decimal y no debe convertirse a Number.
 export const serviceCatalogApi = {
   /**
    * Lee una página del catálogo, incluidos los inactivos salvo filtro de estado. Los filtros
@@ -33,6 +33,42 @@ export const serviceCatalogApi = {
    */
   listAllServices({ signal } = {}) {
     return collectCursorPages(({ cursor, limit }) => serviceCatalogApi.listServices({ cursor, limit, signal }), "services");
+  },
+
+  /**
+   * Lee un servicio con su versión vigente (`currentVersion`), por ejemplo antes de editarlo.
+   *
+   * @param {Object} params - Servicio y cancelación.
+   * @param {number} params.serviceId - Servicio.
+   * @param {AbortSignal} [params.signal] - Cancela la petición.
+   * @returns {Promise<{service: Object}>} Servicio.
+   */
+  getService({ serviceId, signal }) {
+    return apiRequest(`/admin/services/${encodeURIComponent(serviceId)}`, { signal });
+  },
+
+  /**
+   * Crea un servicio del tabulador. El sistema genera el código (`SERV-001`) y el tipo es
+   * `individual` por defecto, así que el formulario no los envía. La tarifa viaja como texto.
+   *
+   * @param {Object} payload - Nombre, descripción, unidad, denominación y tarifa.
+   * @returns {Promise<{message: string, service: Object}>} Servicio creado con `currentVersion` 1.
+   */
+  createService(payload) {
+    return apiRequest("/admin/services", { body: JSON.stringify(payload), method: "POST" });
+  },
+
+  /**
+   * Edita los campos cambiados de un servicio con la versión leída (`expectedVersion`). Sin
+   * cambios efectivos el backend responde `changed=false` y no crea versión.
+   *
+   * @param {Object} params - Servicio y cambios.
+   * @param {number} params.serviceId - Servicio editado.
+   * @param {Object} params.changes - `expectedVersion` y los campos cambiados.
+   * @returns {Promise<{changed: boolean, changedFields: Array<string>, message: string, service: Object}>} Resultado.
+   */
+  updateService({ changes, serviceId }) {
+    return apiRequest(`/admin/services/${encodeURIComponent(serviceId)}`, { body: JSON.stringify(changes), method: "PATCH" });
   },
 
   /**

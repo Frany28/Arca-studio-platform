@@ -15,25 +15,14 @@ import { getServiceStatusErrorFeedback } from "../utils/serviceCatalogErrors.js"
  * @param {() => void} params.reload - Repite la lectura de la página actual.
  * @param {boolean} params.hasStatusFilter - La consulta visible filtra por estado.
  * @param {() => void} params.onCatalogChanged - Recarga los indicadores del módulo.
- * @returns {Object} Cambio pendiente, envío en curso, acciones y aviso.
+ * @param {(tone: "success"|"danger", title: string, message: string) => void} params.notify - Aviso
+ * compartido del tabulador (useAlertFeedback).
+ * @returns {Object} Cambio pendiente, envío en curso y acciones.
  */
-export function useServiceStatusActions({ hasStatusFilter, onCatalogChanged, reload, replaceItem }) {
+export function useServiceStatusActions({ hasStatusFilter, notify, onCatalogChanged, reload, replaceItem }) {
   const busyRef = useRef(false);
   const [pending, setPending] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-
-  /**
-   * Publica un aviso con un identificador nuevo para que AlertToast lo vuelva a mostrar.
-   *
-   * @param {"success"|"danger"} tone - Tono del aviso.
-   * @param {string} title - Título.
-   * @param {string} message - Descripción.
-   * @returns {void}
-   */
-  function notify(tone, title, message) {
-    setFeedback({ id: Date.now(), message, title, tone });
-  }
 
   /**
    * Confirma el cambio pendiente. El modal permanece abierto y bloqueado hasta la respuesta.
@@ -68,10 +57,6 @@ export function useServiceStatusActions({ hasStatusFilter, onCatalogChanged, rel
   }
 
   return {
-    feedback: {
-      value: feedback,
-      dismiss: () => setFeedback(null),
-    },
     pending,
     submitting,
     request: (service, isActive) => setPending({ isActive, service }),

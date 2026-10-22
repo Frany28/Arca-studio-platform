@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  formatGeneratedServiceCode,
   isUnitCompatibleWithKind,
   listChangedServiceFields,
   mergeServiceChanges,
@@ -50,8 +51,28 @@ test("alta: normaliza código, nombre y tarifa, y aplica valores por defecto", (
   assert.equal(turnkey.data.body.description, null);
 });
 
+test("alta: sin código ni tipo, el sistema genera el código y el servicio es individual", () => {
+  const { code, kind, ...withoutCodeAndKind } = VALID_CREATE;
+  void code;
+  void kind;
+  const result = serviceCreateSchema.safeParse({ body: withoutCodeAndKind });
+  assert.equal(result.success, true);
+  assert.equal(result.data.body.code, undefined, "El código lo compone el servicio a partir del id");
+  assert.equal(result.data.body.kind, "individual");
+});
+
+test("dominio: el código generado es SERV- y el id con al menos tres dígitos", () => {
+  assert.equal(formatGeneratedServiceCode(1), "SERV-001");
+  assert.equal(formatGeneratedServiceCode(42), "SERV-042");
+  assert.equal(formatGeneratedServiceCode(1000), "SERV-1000");
+  assert.match(formatGeneratedServiceCode(123456), /^[A-Z0-9]+([_-][A-Z0-9]+)*$/, "Cumple chk_services_code");
+  for (const invalid of [0, -1, 1.5, Number.NaN, "7"]) {
+    assert.throws(() => formatGeneratedServiceCode(invalid), TypeError, String(invalid));
+  }
+});
+
 test("alta: rechaza campos obligatorios, longitudes, formato de código y campos no editables", () => {
-  for (const field of ["code", "kind", "measurementUnitId", "name", "referenceRate"]) {
+  for (const field of ["measurementUnitId", "name", "referenceRate"]) {
     const body = { ...VALID_CREATE };
     delete body[field];
     assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body })), [`body.${field}`], field);

@@ -146,12 +146,26 @@ export async function lockServiceForUpdate(client, serviceId) {
 }
 
 /**
- * Inserta un servicio nuevo con moneda USD y devuelve su id. No crea la versión: el servicio
- * llama a insertServiceVersionSnapshot en la misma transacción.
+ * Reserva el id del próximo servicio desde la secuencia de `services.id` (BIGSERIAL), para que
+ * el alta pueda componer el código generado (`SERV-001`) antes de insertar. La reserva no se
+ * revierte si la transacción falla: deja un salto en la numeración, igual que el autoincremento.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @returns {Promise<number>} Id reservado.
+ */
+export async function reserveServiceId(client) {
+  const result = await client.query("select nextval(pg_get_serial_sequence('public.services', 'id')) as id");
+  return Number(result.rows[0].id);
+}
+
+/**
+ * Inserta un servicio nuevo con el id reservado y moneda USD y devuelve su id. No crea la
+ * versión: el servicio llama a insertServiceVersionSnapshot en la misma transacción.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} service - Datos validados del servicio.
- * @param {string} service.code - Código único en mayúsculas.
+ * @param {number} service.id - Id reservado con reserveServiceId.
+ * @param {string} service.code - Código único en mayúsculas (enviado o generado).
  * @param {string} service.name - Nombre.
  * @param {string|null} service.description - Descripción opcional.
  * @param {string} service.kind - Tipo de servicio.
@@ -167,11 +181,11 @@ export async function lockServiceForUpdate(client, serviceId) {
 export async function insertServiceRecord(client, service) {
   const result = await client.query(
     `insert into public.services (
-       code, name, description, kind, measurement_unit_id, reference_rate, currency_code, is_active, sort_order,
+       id, code, name, description, kind, measurement_unit_id, reference_rate, currency_code, is_active, sort_order,
        created_by, updated_by, unit_denomination_id
-     ) values ($1, $2, $3, $4, $5, $6::numeric, $7, $8, $9, $10, $10, $11)
+     ) values ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9, $10, $11, $11, $12)
      returning id`,
-    [service.code, service.name, service.description, service.kind, service.measurementUnitId,
+    [service.id, service.code, service.name, service.description, service.kind, service.measurementUnitId,
       service.referenceRate, service.currency, service.isActive, service.sortOrder, service.userId,
       service.unitDenominationId ?? null],
   );

@@ -5,6 +5,8 @@
  * - Las modalidades llave en mano se cotizan por superficie: su unidad debe identificarse
  *   por un código estable de superficie, nunca por el nombre o símbolo visibles.
  * - Moneda única USD en esta fase (restricción también presente en PostgreSQL).
+ * - Código visible generado por el sistema a partir del id (`SERV-001`, `SERV-1000`), como el
+ *   `publicCode` de las unidades; los servicios del tabulador son individuales por defecto.
  * - Un cambio es efectivo cuando altera algún campo versionado; la nota de cambio sola no
  *   genera una versión nueva.
  */
@@ -12,6 +14,28 @@
 export const SERVICE_KINDS = Object.freeze({ INDIVIDUAL: "individual", TURNKEY: "turnkey" });
 
 export const SERVICE_CURRENCY = "USD";
+
+/** Tipo de los servicios del tabulador; `turnkey` corresponde a la modalidad de las solicitudes. */
+export const DEFAULT_SERVICE_KIND = SERVICE_KINDS.INDIVIDUAL;
+
+const GENERATED_CODE_PREFIX = "SERV-";
+const GENERATED_CODE_MIN_DIGITS = 3;
+
+/**
+ * Compone el código visible de un servicio a partir de su id: `SERV-` y el id con al menos tres
+ * dígitos (`SERV-001`, `SERV-1000`). Hereda la unicidad y la permanencia del id, admite saltos
+ * y cumple el CHECK de PostgreSQL (`chk_services_code`). Es solo presentación y búsqueda.
+ *
+ * @param {number} serviceId - Identificador del servicio (entero positivo).
+ * @returns {string} Código generado.
+ * @throws {TypeError} Si el id no es un entero positivo seguro.
+ */
+export function formatGeneratedServiceCode(serviceId) {
+  if (!Number.isSafeInteger(serviceId) || serviceId <= 0) {
+    throw new TypeError("service_catalog: el id del servicio debe ser un entero positivo.");
+  }
+  return `${GENERATED_CODE_PREFIX}${String(serviceId).padStart(GENERATED_CODE_MIN_DIGITS, "0")}`;
+}
 
 /**
  * Códigos estables de unidades de superficie compatibles con m². La carga inicial de

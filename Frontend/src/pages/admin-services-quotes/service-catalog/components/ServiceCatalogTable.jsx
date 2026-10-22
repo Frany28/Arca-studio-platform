@@ -12,9 +12,6 @@ import {
 } from "../utils/serviceCatalogPresentation.js";
 import ServiceDescriptionHint from "./ServiceDescriptionHint.jsx";
 
-// Motivo visible mientras el formulario de servicios no tenga código ni tipo en Figma.
-export const SERVICE_FORM_PENDING_REASON = "Edición disponible cuando el formulario de servicios esté definido";
-
 /**
  * Acciones del menú «Más opciones» según el estado actual (Figma 5790:332135).
  *
@@ -36,10 +33,11 @@ function getStatusActions(service) {
  * @param {Array<Object>} props.items - Servicios de la página visible.
  * @param {Object} props.selection - Estado de usePageSelection.
  * @param {boolean} props.actionsDisabled - Bloquea las acciones mientras hay un cambio en curso.
+ * @param {(service: Object) => void} props.onEdit - Abre el formulario del servicio (Figma: «Servicio»).
  * @param {(service: Object, isActive: boolean) => void} props.onStatusChange - Solicita un cambio de estado.
  * @returns {import("react").ReactElement} Tabla.
  */
-function ServiceCatalogTable({ actionsDisabled, items, onStatusChange, selection }) {
+function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, selection }) {
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
       <div className="w-full overflow-x-auto">
@@ -104,9 +102,10 @@ function ServiceCatalogTable({ actionsDisabled, items, onStatusChange, selection
                         showLeftIcon
                         iconLeft={<Edit2 size="20" color="currentColor" />}
                         showRightIcon={false}
-                        disabled
-                        tooltip={SERVICE_FORM_PENDING_REASON}
-                        aria-label={`Editar ${service.code} ${service.name} (${SERVICE_FORM_PENDING_REASON.toLocaleLowerCase("es")})`}
+                        disabled={actionsDisabled}
+                        tooltip="Editar servicio"
+                        aria-label={`Editar ${service.code} ${service.name}`}
+                        onClick={() => onEdit(service)}
                       />
                       <ActionMenu
                         items={getStatusActions(service)}

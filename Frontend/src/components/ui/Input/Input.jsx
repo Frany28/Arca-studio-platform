@@ -64,6 +64,8 @@ function hasTextValue(value) {
  * @param {boolean} [props.showDisabledTags=false] Conserva las etiquetas informativas en Tags bloqueados.
  * @param {Array<{id: string|number, label: string, description?: string}>} [props.prefixOptions]
  * Opciones del selector de la variante "Prefix select"; `label` es el texto visible del prefijo.
+ * En la variante "Tags" añaden el mismo selector delante de las etiquetas (por ejemplo, unidad
+ * base + denominación); sin opciones, "Tags" conserva su presentación anterior.
  * @param {string|number|null} [props.prefixValue] Opción seleccionada del prefijo (controlada).
  * @param {(option: Object) => void} [props.onPrefixChange] Recibe la opción de prefijo elegida.
  * @param {string} [props.prefixAriaLabel] Nombre accesible del selector de prefijo.
@@ -294,6 +296,8 @@ function Input({
     .join(" ") || undefined;
   const resolvedAriaInvalid =
     ariaInvalid ?? (resolvedState === "Error" ? true : undefined);
+  const hasPrefixSelect = resolvedType === "Prefix select"
+    || (resolvedType === "Tags" && Array.isArray(prefixOptions) && prefixOptions.length > 0);
   // Teléfono y prefijo seleccionable comparten la estructura de selector + campo nativo.
   const leadingSelector = resolvedType === "Phone number" ? (
     <PhoneCountrySelector
@@ -303,7 +307,7 @@ function Input({
       stateStyles={stateStyles}
       phone={phone}
     />
-  ) : resolvedType === "Prefix select" ? (
+  ) : hasPrefixSelect ? (
     <InputPrefixSelect
       inputId={inputId}
       options={prefixOptions}
@@ -343,7 +347,24 @@ function Input({
           )}
         >
           {leadingSelector}
-          <div className={clsx("flex min-w-0 flex-1 items-center gap-[8px]", sizing.field)}>
+          <div
+            ref={resolvedType === "Tags" ? tagFieldScrollRef : undefined}
+            className={clsx(
+              "flex min-w-0 flex-1 items-center gap-[8px]",
+              sizing.field,
+              // Con selector, las etiquetas comparten el campo y desplazan en horizontal como en Tags.
+              resolvedType === "Tags" && "flex-nowrap gap-[4px] overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+            )}
+          >
+            {showTagsInsideField ? (
+              <InputTagGroup
+                inline
+                normalizedVisibleTags={normalizedVisibleTags}
+                sizing={sizing}
+                disabled={isDisabled}
+                handleRemoveTag={handleRemoveTag}
+              />
+            ) : null}
             <input
               ref={resolvedInputRef}
               id={inputId}
@@ -351,11 +372,12 @@ function Input({
               required={required}
               disabled={isDisabled}
               value={fieldValue}
-              placeholder={resolvedPlaceholder}
+              placeholder={showTagsInsideField ? "" : resolvedPlaceholder}
               aria-describedby={resolvedAriaDescribedBy}
               aria-invalid={resolvedAriaInvalid}
               className={clsx(
                 "text-body-3 min-w-0 flex-1 border-0 bg-transparent tracking-[-0.5px] outline-none",
+                showTagsInsideField && "min-w-[48px]",
                 isDisabled ? "cursor-not-allowed" : "cursor-text",
                 isFilled ? stateStyles.inputText : stateStyles.placeholder,
                 stateStyles.placeholder,

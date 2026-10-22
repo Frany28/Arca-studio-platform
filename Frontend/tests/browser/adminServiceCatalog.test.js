@@ -8,21 +8,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
+import { LONG_DESCRIPTION, createServiceCatalogBackend as createBackend, sampleCatalog, service } from "../helpers/serviceCatalogBackend.js";
 
 // Tabulador de servicios (Figma 5790:332031) contra un backend simulado con estado. Los servicios
 // son datos de prueba con la forma del contrato: nunca se usan Supabase ni el catálogo comercial.
-const UNITS = {
-  m2: { id: 1, code: "square_meter", name: "Metro cuadrado", symbol: "m²", allowsDecimals: true, isActive: true },
-  ml: { id: 6, code: "linear_meter", name: "Metro lineal", symbol: "m.l.", allowsDecimals: true, isActive: true },
-  pto: { id: 30, code: "point", name: "Punto", symbol: "pto.", allowsDecimals: false, isActive: true },
-};
-const DENOMINATIONS = {
-  construccion: { id: 10, denomination: "de construcción", isActive: true, unit: "m2" },
-  intervenir: { id: 11, denomination: "a intervenir", isActive: true, unit: "m2" },
-  electrico: { id: 12, denomination: "eléctrico", isActive: true, unit: "pto" },
-};
-const LONG_DESCRIPTION = "Diseña las áreas exteriores de prueba, con vegetación, superficies e iluminación, e integra jardines y terrazas con el resto del proyecto para comprobar textos extensos.";
-
 let browser;
 let server;
 let origin;
@@ -47,109 +36,6 @@ after(async () => {
   await browser?.close();
   await server?.close();
 });
-
-/**
- * Crea un servicio simulado con la forma del contrato: `unitLabel` compuesto como el backend
- * (abreviatura + denominación) y `referenceRate` como texto decimal.
- *
- * @param {number} id - Identificador.
- * @param {Object} fields - Código, nombre, unidad, denominación y demás campos.
- * @returns {Object} Servicio.
- */
-function service(id, { code, name, unit = "m2", denomination = null, rate = "10.00", description = null, isActive = true, currentVersion = 1 }) {
-  const measurementUnit = UNITS[unit];
-  const unitDenomination = denomination ? { id: DENOMINATIONS[denomination].id, denomination: DENOMINATIONS[denomination].denomination, isActive: DENOMINATIONS[denomination].isActive } : null;
-  return {
-    id,
-    code,
-    name,
-    description,
-    kind: "individual",
-    measurementUnit,
-    unitDenomination,
-    unitLabel: unitDenomination ? `${measurementUnit.symbol} ${unitDenomination.denomination}` : measurementUnit.symbol,
-    referenceRate: rate,
-    currency: "USD",
-    isActive,
-    sortOrder: id,
-    currentVersion,
-    createdAt: "2026-10-20T00:00:00.000Z",
-    updatedAt: "2026-10-20T00:00:00.000Z",
-  };
-}
-
-/**
- * Catálogo de prueba: describe servicios con y sin descripción, con y sin denominación, activos
- * e inactivos y tarifas con céntimos y miles.
- *
- * @returns {Array<Object>} Servicios.
- */
-function sampleCatalog() {
-  return [
-    service(1, { code: "TST-001", name: "Anteproyecto de prueba", denomination: "construccion", rate: "12.00", description: "Primera propuesta del espacio." }),
-    service(2, { code: "TST-002", name: "Diseño interior de prueba", denomination: "intervenir", rate: "1250.50", description: "   " }),
-    service(3, { code: "TST-003", name: "Paisajismo de prueba", denomination: "intervenir", rate: "18.00", description: LONG_DESCRIPTION }),
-    service(4, { code: "TST-004", name: "Canalizaciones de prueba", unit: "ml", rate: "0.05", isActive: false }),
-    service(5, { code: "TST-005", name: "Puntos eléctricos de prueba", unit: "pto", denomination: "electrico", rate: "45.00", description: "Cada punto incluye cableado." }),
-  ];
-}
-
-/**
- * Backend simulado: búsqueda literal (nombre o código), filtros del contrato, paginación por
- * cursor, cambio de estado versionado (409 si la versión no coincide; 400 al reactivar con la
- * denominación inactiva) y fallos y retrasos inyectables.
- *
- * @param {Array<Object>} initial - Servicios iniciales.
- * @returns {Object} Estado, registro de peticiones y manejador de rutas.
- */
-function createBackend(initial) {
-  const state = { items: initial.map((item) => ({ ...item })), requests: [], failures: {}, delays: {} };
-  const json = (route, status, body) => route.fulfill({ status, json: body });
-
-  state.handle = async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const method = request.method();
-    const path = url.pathname;
-    const body = request.postData() ? JSON.parse(request.postData()) : null;
-    const params = Object.fromEntries(url.searchParams);
-    state.requests.push({ method, path, params, body });
-    const failure = state.failures[`${method} ${path.replace(/\d+/g, ":id")}`];
-    const delay = state.delays[params.search ?? (params.limit === "100" ? "summary" : "")];
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-
-    if (path === "/api/auth/me") return json(route, 200, { user: { id: 1, firstName: "Ana", lastName: "Admin", email: "ana@example.test", role: "admin", status: "active" } });
-    if (path === "/api/projects") return json(route, 200, { projects: [], nextCursor: null });
-    // El resumen de los indicadores (limit=100) no se ve afectado por los fallos de la tabla.
-    if (failure && !(method === "GET" && params.limit === "100")) return json(route, failure.status, failure.body);
-
-    if (path === "/api/admin/services" && method === "GET") {
-      const search = (params.search || "").toLowerCase();
-      const matches = state.items.filter((item) => (!search || item.name.toLowerCase().includes(search) || item.code.toLowerCase().includes(search))
-        && (!params.status || item.isActive === (params.status === "active"))
-        && (!params.measurementUnitId || item.measurementUnit.id === Number(params.measurementUnitId))
-        && (!params.unitDenominationId || item.unitDenomination?.id === Number(params.unitDenominationId)));
-      const limit = Number(params.limit || 25);
-      const start = Number(params.cursor || 0);
-      return json(route, 200, { services: matches.slice(start, start + limit), nextCursor: start + limit < matches.length ? String(start + limit) : null });
-    }
-    const match = /^\/api\/admin\/services\/(\d+)\/status$/.exec(path);
-    if (match && method === "PATCH") {
-      const item = state.items.find((candidate) => candidate.id === Number(match[1]));
-      if (!item) return json(route, 404, { code: "SERVICE_NOT_FOUND", message: "El servicio no existe." });
-      if (body.expectedVersion !== item.currentVersion) return json(route, 409, { code: "SERVICE_VERSION_CONFLICT", message: "Versión desactualizada." });
-      if (body.isActive && item.unitDenomination && !item.unitDenomination.isActive) {
-        return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { unitDenominationId: "La denominación está inactiva." } });
-      }
-      const changed = item.isActive !== body.isActive;
-      if (changed) Object.assign(item, { isActive: body.isActive, currentVersion: item.currentVersion + 1 });
-      return json(route, 200, { changed, changedFields: changed ? ["isActive"] : [], message: "Servicio actualizado.", service: { ...item } });
-    }
-    state.requests.push({ unexpected: true, method, path });
-    return json(route, 404, { code: "TEST_ROUTE_MISSING", message: "Fixture no definida" });
-  };
-  return state;
-}
 
 /**
  * Abre el tabulador con sesión de administrador; vigila errores de página y peticiones no previstas.
@@ -227,13 +113,10 @@ test("carga: columnas de Figma, códigos, unidades, tarifas decimales y estados 
   assert.equal(await metricValue(page, "Servicios Inactivos").textContent(), "1");
   // Primera lectura: 10 filas por página y sin filtros.
   assert.deepEqual(tableGets(backend)[0].params, { limit: "10" });
-  // Sin «Ver» hasta que exista su diseño; alta y edición visibles pero deshabilitadas con motivo.
+  // Sin «Ver» hasta que exista su diseño; alta y edición disponibles (formulario en adminServiceForm).
   assert.equal(await page.getByRole("button", { name: /^Ver (detalle|servicio)/ }).count(), 0);
-  const add = page.getByRole("button", { name: "Añadir servicio" });
-  assert.equal(await add.isDisabled(), true);
-  assert.equal(await add.getAttribute("aria-describedby"), "service-catalog-add-pending");
-  const edit = page.getByRole("button", { name: /^Editar TST-001 Anteproyecto de prueba \(edición disponible/ });
-  assert.equal(await edit.isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Añadir servicio" }).isEnabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).isEnabled(), true);
   assert.equal(backend.requests.some((request) => request.method === "DELETE"), false);
 });
 

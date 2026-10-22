@@ -2,6 +2,7 @@ import { withTransaction } from "../config/db.js";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
   SERVICE_CURRENCY,
+  formatGeneratedServiceCode,
   isUnitCompatibleWithKind,
   listChangedServiceFields,
   mergeServiceChanges,
@@ -14,6 +15,7 @@ import {
   insertServiceVersionSnapshot,
   listServices,
   lockServiceForUpdate,
+  reserveServiceId,
   retireCurrentServiceVersion,
   updateServiceRecord,
 } from "../repositories/serviceCatalogRepository.js";
@@ -150,8 +152,10 @@ async function assertServiceUnitChanges(client, { changedFields, next, payload }
 
 /**
  * Crea un servicio y su versión 1 en una única transacción: si falla cualquiera de las dos
- * escrituras no queda ningún registro. La unicidad del código la garantiza PostgreSQL
- * (uq_services_code), lo que también cubre dos altas simultáneas.
+ * escrituras no queda ningún registro. Sin código en el cuerpo, el sistema reserva el id y
+ * genera `SERV-001` a partir de él (único y permanente, seguro ante altas concurrentes); un
+ * código enviado se conserva. La unicidad la garantiza PostgreSQL (uq_services_code), lo que
+ * también cubre dos altas simultáneas con el mismo código.
  *
  * @param {object} options - Datos de la operación.
  * @param {object} options.payload - Cuerpo validado por serviceCreateSchema.
@@ -167,9 +171,12 @@ export async function createService({ payload, user }) {
       if (payload.unitDenominationId) {
         await assertAssignableDenomination(client, { measurementUnitId: payload.measurementUnitId, unitDenominationId: payload.unitDenominationId });
       }
+      const reservedId = await reserveServiceId(client);
       const serviceId = await insertServiceRecord(client, {
         ...payload,
+        code: payload.code ?? formatGeneratedServiceCode(reservedId),
         currency: SERVICE_CURRENCY,
+        id: reservedId,
         description: payload.description ?? null,
         userId: user.id,
       });

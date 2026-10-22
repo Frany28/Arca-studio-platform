@@ -1,12 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
 import Button from "../../../components/ui/Button/Button.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import ServiceCatalogTable from "./components/ServiceCatalogTable.jsx";
+import ServiceFormDialog from "./components/ServiceFormDialog.jsx";
 import ServiceCatalogToolbar from "./components/ServiceCatalogToolbar.jsx";
 import ServiceStatusModal from "./components/ServiceStatusModal.jsx";
+import { useAlertFeedback } from "./hooks/useAlertFeedback.js";
 import { usePageSelection } from "./hooks/usePageSelection.js";
 import { SERVICE_CATALOG_PAGE_SIZE, useServiceCatalogList } from "./hooks/useServiceCatalogList.js";
 import { useServiceStatusActions } from "./hooks/useServiceStatusActions.js";
@@ -16,8 +18,8 @@ import { buildUnitFilterItems } from "./utils/serviceCatalogPresentation.js";
  * Pestaña «Tabulador de servicios» del módulo (Figma 5790:332031): búsqueda y filtros en la API,
  * tabla con selección de la página visible, descripción en tooltip, activación y desactivación
  * individual y paginación Anterior/Siguiente por cursor. Las filas son los servicios reales del
- * backend; sin servicios se muestra el estado vacío. Alta y edición quedan visibles y
- * deshabilitadas hasta que Figma defina código y tipo, obligatorios en la API.
+ * backend; sin servicios se muestra el estado vacío. «Añadir servicio» y «Editar» abren el mismo
+ * formulario (ServiceFormDialog); guardar recarga el listado y los indicadores.
  *
  * @param {Object} props - Resumen del catálogo leído por la página.
  * @param {{services: Array<Object>, reload: () => void}} props.summary - Colección completa (opciones
@@ -28,14 +30,43 @@ function ServiceCatalogPanel({ summary }) {
   const list = useServiceCatalogList();
   const { items, loading, error, pagination, search } = list;
   const selection = usePageSelection(items, list.pageKey);
+  const feedback = useAlertFeedback();
+  const [formRequest, setFormRequest] = useState(null);
   const status = useServiceStatusActions({
     hasStatusFilter: Boolean(list.selectedStatusId),
+    notify: feedback.notify,
     onCatalogChanged: summary.reload,
     reload: list.reload,
     replaceItem: list.replaceItem,
   });
   const unitItems = useMemo(() => buildUnitFilterItems(summary.services), [summary.services]);
-  const feedback = status.feedback.value;
+  const alert = feedback.value;
+
+  /**
+   * Cierra el formulario tras guardar y actualiza el listado y los indicadores: el alta vuelve a
+   * la primera página (su posición la decide el backend) y la edición repite la página actual,
+   * porque el servicio puede dejar de cumplir los filtros aplicados.
+   *
+   * @param {{mode: string, service: Object|null, changed: boolean}} result - Resultado del guardado.
+   * @returns {void}
+   */
+  function handleSaved({ changed, mode, service }) {
+    setFormRequest(null);
+    const name = service ? `${service.code} · ${service.name}` : "";
+    if (mode === "create") {
+      list.reloadFromStart();
+      summary.reload();
+      feedback.notify("success", "Servicio creado", name);
+      return;
+    }
+    if (!changed) {
+      feedback.notify("success", "Sin cambios", name);
+      return;
+    }
+    list.reload();
+    summary.reload();
+    feedback.notify("success", "Servicio actualizado", name);
+  }
 
   let content;
   if (loading) {
@@ -61,6 +92,7 @@ function ServiceCatalogPanel({ summary }) {
         items={items}
         selection={selection}
         actionsDisabled={status.submitting}
+        onEdit={(service) => setFormRequest({ mode: "edit", serviceId: service.id })}
         onStatusChange={status.request}
       />
     );
@@ -107,6 +139,7 @@ function ServiceCatalogPanel({ summary }) {
         onStatusChange={list.setStatusFilter}
         hasFilters={list.hasFilters}
         onClearFilters={list.clearAll}
+        onAddService={() => setFormRequest({ mode: "create" })}
       />
 
       {content}
@@ -123,6 +156,21 @@ function ServiceCatalogPanel({ summary }) {
         </footer>
       ) : null}
 
+      {formRequest ? (
+        <ServiceFormDialog
+          key={formRequest.serviceId ?? "create"}
+          mode={formRequest.mode}
+          serviceId={formRequest.serviceId}
+          onClose={() => setFormRequest(null)}
+          onSaved={handleSaved}
+          onStale={list.reload}
+          onNotFound={(message) => {
+            setFormRequest(null);
+            list.reload();
+            feedback.notify("danger", "No se pudo guardar", message);
+          }}
+        />
+      ) : null}
       <ServiceStatusModal
         change={status.pending}
         submitting={status.submitting}
@@ -130,12 +178,12 @@ function ServiceCatalogPanel({ summary }) {
         onConfirm={status.confirm}
       />
       <AlertToast
-        trigger={feedback}
-        title={feedback?.title || "Tabulador de servicios"}
-        description={feedback?.message || ""}
-        theme={feedback?.tone === "danger" ? "Danger" : "Success"}
-        aria-label={feedback?.tone === "danger" ? "Error en el tabulador de servicios" : "Tabulador de servicios actualizado"}
-        onDismiss={status.feedback.dismiss}
+        trigger={alert}
+        title={alert?.title || "Tabulador de servicios"}
+        description={alert?.message || ""}
+        theme={alert?.tone === "danger" ? "Danger" : "Success"}
+        aria-label={alert?.tone === "danger" ? "Error en el tabulador de servicios" : "Tabulador de servicios actualizado"}
+        onDismiss={feedback.dismiss}
       />
     </section>
   );

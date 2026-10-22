@@ -97,6 +97,23 @@ test("alta: crea el servicio y su versión 1 con la unidad copiada en la misma t
   assert.equal(llave.kind, "turnkey");
 });
 
+test("alta: sin código el sistema genera SERV- con el id, es individual y la versión 1 lo copia", { skip }, async () => {
+  // Cuerpo tal como lo deja serviceCreateSchema sin código: kind por defecto individual.
+  const payload = { changeNote: null, description: null, isActive: true, kind: "individual",
+    measurementUnitId: ids.squareMeter, name: "Servicio con código generado", referenceRate: "15.50", sortOrder: 0 };
+  const service = await catalog.createService({ payload, user: { id: ids.adminA } });
+  assert.equal(service.code, `SERV-${String(service.id).padStart(3, "0")}`);
+  assert.equal(service.kind, "individual");
+  const version = await db.pool.query("select code, kind from public.service_versions where service_id = $1 and is_current", [service.id]);
+  assert.deepEqual(version.rows[0], { code: service.code, kind: "individual" });
+  // Dos altas simultáneas sin código reciben códigos distintos.
+  const [first, second] = await Promise.all([
+    catalog.createService({ payload: { ...payload, name: "Simultáneo A" }, user: { id: ids.adminA } }),
+    catalog.createService({ payload: { ...payload, name: "Simultáneo B" }, user: { id: ids.adminB } }),
+  ]);
+  assert.notEqual(first.code, second.code);
+});
+
 test("alta: unidad inexistente, inactiva o incompatible con llave en mano no deja registros", { skip }, async () => {
   const before = (await rows("select count(*)::int total from public.services"))[0].total;
   const cases = [

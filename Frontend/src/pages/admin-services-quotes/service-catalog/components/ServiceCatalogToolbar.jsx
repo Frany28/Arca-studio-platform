@@ -4,9 +4,7 @@ import AdminTableToolbar from "../../../../components/admin-table/AdminTableTool
 import Button from "../../../../components/ui/Button/Button.jsx";
 import DropdownMenu from "../../../../components/ui/DropdownMenu/DropdownMenu.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
-import Tooltip from "../../../../components/ui/Tooltip/Tooltip.jsx";
 import { SERVICE_STATUS_FILTER_ITEMS } from "../utils/serviceCatalogPresentation.js";
-import { SERVICE_FORM_PENDING_REASON } from "./ServiceCatalogTable.jsx";
 
 // Lista de opciones de los filtros, igual que en las tablas de usuarios y proyectos.
 const FILTER_MENU_PROPS = {
@@ -17,14 +15,12 @@ const FILTER_MENU_PROPS = {
   truncateTriggerLabel: true,
   type: "Text",
 };
-const ADD_PENDING_DESCRIPTION_ID = "service-catalog-add-pending";
 
 /**
  * Barra del tabulador (Figma 5790:332032): búsqueda en la API, filtros por unidad y estado,
  * «Quitar filtros» y «Añadir servicio». En escritorio ocupa una fila (320 px, 513 px y el
  * botón); con menos ancho el botón pasa a la fila siguiente y en móvil ocupa todo el ancho.
- * «Añadir servicio» queda visible pero deshabilitado mientras el formulario de Figma no
- * incluya código y tipo, obligatorios en la API; el motivo está en su tooltip y descripción.
+ * «Añadir servicio» abre el formulario de alta.
  *
  * @param {Object} props - Estado de la consulta y callbacks.
  * @param {string} props.query - Texto escrito en la búsqueda.
@@ -36,10 +32,11 @@ const ADD_PENDING_DESCRIPTION_ID = "service-catalog-add-pending";
  * @param {(status: string) => void} props.onStatusChange - Aplica un estado.
  * @param {boolean} props.hasFilters - Hay búsqueda o filtros que quitar.
  * @param {() => void} props.onClearFilters - Restaura la consulta inicial.
+ * @param {() => void} props.onAddService - Abre el formulario «Nuevo servicio».
  * @returns {import("react").ReactElement} Barra de herramientas.
  */
 function ServiceCatalogToolbar({
-  hasFilters, onClearFilters, onQueryChange, onStatusChange, onUnitChange, query,
+  hasFilters, onAddService, onClearFilters, onQueryChange, onStatusChange, onUnitChange, query,
   selectedStatusId, selectedUnitItemId, unitItems,
 }) {
   return (
@@ -88,26 +85,21 @@ function ServiceCatalogToolbar({
           />
         </AdminTableToolbar>
       </div>
-      {/* El botón deshabilitado no recibe eventos del puntero: el tooltip los toma de su contenedor. */}
-      <Tooltip asChild portal showTip tipPosition="Top center" text={SERVICE_FORM_PENDING_REASON} className="max-w-[min(224px,calc(100vw-16px))]">
-        <span className="inline-flex max-[767px]:w-full" data-service-add-action>
-          <Button
-            theme="Primary"
-            type="Solid"
-            size="M"
-            fitContent
-            showLeftIcon
-            iconLeft={<Add size="20" color="currentColor" />}
-            showRightIcon={false}
-            disabled
-            aria-describedby={ADD_PENDING_DESCRIPTION_ID}
-            className="pointer-events-none max-[767px]:!w-full"
-          >
-            Añadir servicio
-          </Button>
-          <span id={ADD_PENDING_DESCRIPTION_ID} className="sr-only">{SERVICE_FORM_PENDING_REASON}</span>
-        </span>
-      </Tooltip>
+      <span className="inline-flex max-[767px]:w-full" data-service-add-action>
+        <Button
+          theme="Primary"
+          type="Solid"
+          size="M"
+          fitContent
+          showLeftIcon
+          iconLeft={<Add size="20" color="currentColor" />}
+          showRightIcon={false}
+          className="max-[767px]:!w-full"
+          onClick={onAddService}
+        >
+          Añadir servicio
+        </Button>
+      </span>
     </div>
   );
 }

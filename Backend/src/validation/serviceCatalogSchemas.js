@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
-import { SERVICE_KINDS } from "../domain/serviceCatalog.js";
+import { DEFAULT_SERVICE_KIND, SERVICE_KINDS } from "../domain/serviceCatalog.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { describeDecimalParseError, formatScaledDecimal, parseScaledDecimal } from "../utils/scaledDecimal.js";
 
@@ -18,6 +18,7 @@ const sortOrder = z.number().int().min(0).max(MAX_INTEGER);
 const changeNote = z.string().trim().max(255).optional().transform((value) => value || null);
 
 // El código se normaliza a mayúsculas y debe cumplir el CHECK de PostgreSQL (chk_services_code).
+// En el alta es opcional: si no se envía, el sistema genera `SERV-001` a partir del id.
 const serviceCode = z.string().trim().toUpperCase().min(1, "Es obligatorio.").max(30)
   .regex(/^[A-Z0-9]+([_-][A-Z0-9]+)*$/, "Usa letras, números y guiones (por ejemplo, ANTEPROYECTO-M2).");
 
@@ -78,10 +79,10 @@ export const serviceDetailSchema = z.object({ params: serviceIdParams });
 export const serviceCreateSchema = z.object({
   body: z.object({
     changeNote,
-    code: serviceCode,
+    code: serviceCode.optional(),
     description: serviceDescription,
     isActive: z.boolean().optional().default(true),
-    kind: serviceKind,
+    kind: serviceKind.optional().default(DEFAULT_SERVICE_KIND),
     measurementUnitId: positiveId,
     name: serviceName,
     referenceRate,

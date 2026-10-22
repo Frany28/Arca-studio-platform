@@ -25,22 +25,25 @@ const COPY = {
  * texto de la denominación en un mismo campo, con Cancelar y Crear. En edición la abreviatura
  * solo se habilita si el backend indica `baseUnitEditable` (sin servicios ni historial) y solo se
  * envía si cambia. Conserva lo escrito ante un error, lo señala junto al campo y bloquea el envío
- * mientras la petición está en curso.
+ * mientras la petición está en curso. También lo abre el formulario de servicios («+ Crear
+ * unidad») con su propio `onSubmit`, para no duplicar el alta de unidades.
  *
  * @param {Object} props - Modo, datos y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
  * @param {Object|null} props.denomination - Denominación editada (modo edit).
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: Function}} props.baseUnits
  * Catálogo de unidades base para el alta y para editar una unidad cuya base puede cambiar.
+ * @param {number|null} [props.initialMeasurementUnitId] - Unidad base preseleccionada en el alta
+ * (por ejemplo, la elegida en el servicio); sin ella se usa la primera del catálogo.
  * @param {() => void} props.onClose - Cierra sin guardar.
  * @param {(values: Object) => Promise<{ok: boolean, message?: string, fieldErrors?: Object, baseUnitLocked?: boolean}>} props.onSubmit
  * Envía los valores normalizados y devuelve el resultado; `baseUnitLocked` bloquea la abreviatura.
  * @returns {import("react").ReactElement} Modal en portal.
  */
-function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSubmit }) {
+function MeasurementUnitFormModal({ baseUnits, denomination, initialMeasurementUnitId = null, mode, onClose, onSubmit }) {
   const editing = mode === "edit";
   const copy = COPY[editing ? "edit" : "create"];
-  const [selectedUnitId, setSelectedUnitId] = useState(denomination?.measurementUnit?.id ?? null);
+  const [selectedUnitId, setSelectedUnitId] = useState(denomination?.measurementUnit?.id ?? initialMeasurementUnitId ?? null);
   const [text, setText] = useState(denomination?.denomination ?? "");
   const [fieldError, setFieldError] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -57,7 +60,8 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
     if (!editing) return baseUnits.options;
     return toEditBaseUnitOptions(baseEditable ? baseUnits.options : [], denomination.measurementUnit);
   }, [baseEditable, baseUnits.options, denomination, editing]);
-  const unitId = selectedUnitId ?? prefixOptions[0]?.id ?? null;
+  // Una base preseleccionada que no figura entre las opciones (inactiva) cede a la primera.
+  const unitId = prefixOptions.some((option) => option.id === selectedUnitId) ? selectedUnitId : prefixOptions[0]?.id ?? null;
   const selectedOption = prefixOptions.find((option) => option.id === unitId);
   // Solo el alta depende del catálogo para enviar; la edición puede guardar el texto sin él.
   const catalogUnavailable = !editing && catalogPending;
