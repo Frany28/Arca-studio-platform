@@ -513,7 +513,35 @@ Validación, capturas y diferencias respecto a Figma:
   `AdminRequestEvaluation`.
 - Los indicadores de servicios se derivan de la colección real (`GET /admin/services`
   recorrido por cursor), porque el contrato no ofrece totales; «Cotizaciones totales» muestra
-  «—» con texto accesible hasta que exista su fuente. Nunca se muestran cifras de Figma.
+  «—» con texto accesible hasta que exista su fuente. Nunca se muestran cifras de Figma. La
+  página lee esa colección una vez (`useServiceCatalogSummary`): alimenta los indicadores y el
+  filtro por unidad del tabulador, que la recarga tras activar o desactivar un servicio.
+- Tabulador de servicios (Figma `5790:332031`, tooltip `5790:332129`, menú `5790:332135`):
+  filas reales del backend, nunca los ejemplos de Figma; sin servicios se muestra el estado
+  vacío. Columnas: selección (48 px), N° (`code`, definido por el administrador al crear; el
+  frontend no genera `SERV-xxx`), Servicio (290 px), Unidad (`unitLabel` en `Badge` `Brand 2`),
+  Tarifa base (140 px, derecha), Estado (`Badge` `Success`/`Disabled` según `isActive`) y
+  Acciones (128 px). La tabla mide al menos 1104 px y desplaza dentro de su contenedor.
+  - `referenceRate` se formatea como texto, sin `Number`: miles agrupados y céntimos solo si no
+    son cero (`$12`, `$1,250.50`). El valor almacenado no cambia.
+  - Descripción: icono informativo (`InfoCircleIcon` de `Label/LabelIcons.jsx`, `neutral-400`)
+    junto al nombre solo si la descripción no está vacía; muestra el `Tooltip` del sistema en
+    portal (máximo 224 px, flecha, encima del icono y dentro del viewport). Se abre con hover,
+    foco de teclado o un toque (táctil), y se cierra con Escape, al salir o con un toque fuera.
+  - Barra: búsqueda en la API (nombre o código), filtro por unidad con las unidades que usan
+    los servicios (base «m² · todas» con `measurementUnitId` o denominación con
+    `unitDenominationId`, excluyentes), filtro por estado (`status`) y «Quitar filtros», que
+    restaura la consulta inicial. En escritorio, «Añadir servicio» comparte la fila; con menos
+    ancho pasa debajo y en móvil ocupa todo el ancho.
+  - Selección de la página visible con contador «X de Y seleccionados»; se reinicia al cambiar
+    de página, búsqueda o filtros y se conserva al cambiar el estado de una fila. Sin acciones
+    masivas: el backend no tiene un endpoint para ellas.
+  - Desactivar y activar desde «Más opciones» con confirmación (`Modal`, como en Unidades) y
+    `expectedVersion`; un 409 de versión recarga la página y reactivar con una unidad inactiva
+    explica el bloqueo. Nunca se elimina un servicio.
+  - Pendiente de diseño: «Añadir servicio» y «Editar» están visibles pero deshabilitados con el
+    motivo, porque el formulario de Figma no incluye código ni tipo, obligatorios en la API; el
+    botón «Ver» (ojo) se omite hasta que exista el diseño del detalle.
 - Unidades: búsqueda en la API (debounce de 300 ms, cada lectura aborta la anterior), diez
   filas por página, Anterior/Siguiente por cursor sin totales ni números de página. La tabla
   no tiene selección de filas (sin checkbox ni contador): columnas N°, Unidad y Acciones, con
