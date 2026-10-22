@@ -5,6 +5,8 @@ import { getServiceFormErrorFeedback } from "../src/pages/admin-services-quotes/
 import {
   canonicalRate,
   createServiceDraft,
+  rateFromPastedText,
+  rateFromTypedValue,
   toCreateServicePayload,
   toDenominationTag,
   toUpdateServiceChanges,
@@ -91,4 +93,33 @@ test("errores del formulario: 400 por campo, 409 explicados y recarga ante versi
   assert.deepEqual([missing.notFound, missing.shouldReload], [true, true]);
   assert.equal(getServiceFormErrorFeedback({ status: 429 }, "x").message, "Realizaste demasiados cambios en poco tiempo. Espera unos minutos e inténtalo de nuevo.");
   assert.equal(getServiceFormErrorFeedback({ status: 500, message: "" }, "No se pudo guardar el servicio.").message, "No se pudo guardar el servicio.");
+});
+
+test("la tarifa se escribe como en una caja registradora: los dígitos entran por la derecha", () => {
+  let rate = "";
+  const typed = [];
+  for (const digit of "100") {
+    rate = rateFromTypedValue(`${rate}${digit}`, rate);
+    typed.push(rate);
+  }
+  assert.deepEqual(typed, ["0.01", "0.10", "1.00"]);
+  // Borrar quita el último dígito y vaciarlo deja el campo vacío.
+  assert.equal(rateFromTypedValue("1.0", "1.00"), "0.10");
+  assert.equal(rateFromTypedValue("0.0", "0.01"), "");
+  // Editar una tarifa guardada continúa desde ella; letras y signos se ignoran.
+  assert.equal(rateFromTypedValue("12.005", "12.00"), "120.05");
+  assert.equal(rateFromTypedValue("1.00a-", "1.00"), "1.00");
+  // Tope de NUMERIC(14,2): un dígito más conserva la tarifa anterior.
+  assert.equal(rateFromTypedValue("999999999999.99", "99999999999.99"), "999999999999.99");
+  assert.equal(rateFromTypedValue("999999999999.991", "999999999999.99"), "999999999999.99");
+  for (const value of typed) assert.deepEqual(validateServiceDraft({ ...createServiceDraft(null), referenceRate: value }).referenceRate, undefined);
+});
+
+test("pegar una tarifa la interpreta como importe o, si no lo es, por sus dígitos", () => {
+  assert.equal(rateFromPastedText("12.5", "3.00"), "12.50");
+  assert.equal(rateFromPastedText(" 1250 ", ""), "1250.00");
+  assert.equal(rateFromPastedText("007.05", ""), "7.05");
+  assert.equal(rateFromPastedText("$1,250.50", ""), "1250.50");
+  assert.equal(rateFromPastedText("abc", "3.00"), "");
+  assert.equal(rateFromPastedText("1234567890123456", "3.00"), "3.00");
 });

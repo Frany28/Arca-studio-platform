@@ -6,7 +6,9 @@ import Loader from "../../../../components/ui/Loader/Loader.jsx";
 import Modal, { ModalCloseButton } from "../../../../components/ui/Modal/Modal.jsx";
 import TextArea from "../../../../components/ui/TextArea.jsx";
 import { useDialogKeyboard } from "../../../../hooks/useDialogKeyboard.js";
-import { SERVICE_DESCRIPTION_MAX_LENGTH, SERVICE_NAME_MAX_LENGTH } from "../utils/serviceFormValues.js";
+import {
+  rateFromPastedText, rateFromTypedValue, SERVICE_DESCRIPTION_MAX_LENGTH, SERVICE_NAME_MAX_LENGTH,
+} from "../utils/serviceFormValues.js";
 import ServiceUnitField from "./ServiceUnitField.jsx";
 
 const DIALOG_SELECTOR = "[data-service-form]";
@@ -181,17 +183,23 @@ function ServiceFormModal({
                   showLeftIcon={false}
                   showRightIcon={false}
                   placeholder="0.00"
-                  inputMode="decimal"
+                  // Entrada de caja registradora: los dígitos entran por la derecha y los dos
+                  // últimos son céntimos ("1", "0", "0" → 1.00); el teclado solo necesita dígitos.
+                  inputMode="numeric"
                   value={draft.referenceRate}
-                  maxLength={15}
                   state={fieldErrors.referenceRate ? "Error" : "Default"}
                   showHint={Boolean(fieldErrors.referenceRate)}
                   hintText={fieldErrors.referenceRate}
                   disabled={submitting}
                   // Figma: 125 px. `!` porque la raíz de Input fija `w-full`, que ganaría al ancho propio.
                   className="!w-[125px] !max-w-[125px] shrink-0"
+                  inputClassName="text-right tabular-nums"
                   autoComplete="off"
-                  onChange={(event) => onDraftChange({ referenceRate: event.target.value }, "referenceRate")}
+                  onChange={(event) => onDraftChange({ referenceRate: rateFromTypedValue(event.target.value, draft.referenceRate) }, "referenceRate")}
+                  onPaste={(event) => {
+                    event.preventDefault();
+                    onDraftChange({ referenceRate: rateFromPastedText(event.clipboardData.getData("text"), draft.referenceRate) }, "referenceRate");
+                  }}
                 />
               </div>
               {submitError ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}

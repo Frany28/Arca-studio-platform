@@ -181,7 +181,7 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   const dialog = await openCreate(page);
   await dialog.locator("#service-form-name").fill("Borrador conservado");
   await dialog.getByPlaceholder("Descripción del servicio.").fill("Texto del borrador.");
-  await dialog.getByPlaceholder("0.00").fill("30");
+  await dialog.getByPlaceholder("0.00").fill("3000");
   await chooseBase(page, "m², Metro cuadrado");
 
   // Cancelar vuelve al servicio sin cambios y con el foco en «Crear unidad».
@@ -196,7 +196,7 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   await page.waitForFunction(() => document.activeElement?.matches("[data-service-create-unit]"));
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
   assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), "Texto del borrador.");
-  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30");
+  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30.00");
   assert.equal(requestsOf(backend, "POST", /measurement-unit-denominations$/).length, 0, "Cancelar no crea unidades");
 
   // Escape en el formulario de unidades solo cierra ese paso.
@@ -216,7 +216,7 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   await page.waitForFunction(() => document.activeElement?.id === "service-form-unit");
   assert.deepEqual(requestsOf(backend, "POST", /measurement-unit-denominations$/).map((request) => request.body), [{ denomination: "de prueba nueva", measurementUnitId: 1 }]);
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
-  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30");
+  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30.00");
 
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
@@ -248,10 +248,10 @@ test("edición: mismo modal con datos reales, solo campos cambiados, expectedVer
   // Cambiar solo la tarifa (12 equivale a 12.00, así que se cambia de verdad a 15).
   await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
   await dialog.locator("#service-form-name").waitFor();
-  await dialog.getByPlaceholder("0.00").fill("15");
+  await dialog.getByPlaceholder("0.00").fill("1500");
   await dialog.getByRole("button", { name: "Guardar" }).click();
   await dialog.waitFor({ state: "detached" });
-  assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).at(-1).body, { expectedVersion: 1, referenceRate: "15" });
+  assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).at(-1).body, { expectedVersion: 1, referenceRate: "15.00" });
   await rowFor(page, "TST-001").getByText("$15", { exact: true }).waitFor();
 
   // Vaciar la descripción la retira y el tabulador deja de mostrar el icono.
@@ -283,12 +283,35 @@ test("precisión y errores: tarifa decimal exacta, 400 por campo y 409 de versi�
   await dialog.locator("#service-form-name").waitFor();
   assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "1250.50");
 
-  // Más de 2 decimales o signo: validación local, sin petición.
-  for (const invalid of ["12.345", "-5", "1e3"]) {
-    await dialog.getByPlaceholder("0.00").fill(invalid);
-    await dialog.getByRole("button", { name: "Guardar" }).click();
-    await dialog.getByText("Usa hasta 12 enteros y 2 decimales, sin signo (por ejemplo, 12.50).", { exact: true }).waitFor();
+  // Caja registradora: los dígitos entran por la derecha con dos céntimos fijos; letras y signos
+  // se ignoran, Backspace quita el último dígito y no se superan 12 enteros y 2 decimales.
+  const rate = dialog.getByPlaceholder("0.00");
+  assert.equal(await rate.evaluate((input) => getComputedStyle(input).textAlign), "right");
+  await rate.fill("");
+  const typed = [];
+  for (const key of ["1", "0", "0", "a", "-", "."]) {
+    await rate.press(key);
+    typed.push(await rate.inputValue());
   }
+  assert.deepEqual(typed, ["0.01", "0.10", "1.00", "1.00", "1.00", "1.00"]);
+  await rate.press("Backspace");
+  assert.equal(await rate.inputValue(), "0.10");
+  await rate.press("Backspace");
+  await rate.press("Backspace");
+  assert.equal(await rate.inputValue(), "", "Borrar hasta el final vacía el campo");
+  await rate.pressSequentially("1234567890123456");
+  assert.equal(await rate.inputValue(), "123456789012.34", "Tope de NUMERIC(14,2)");
+  // Pegar un importe lo respeta como importe (no como dígitos desplazados).
+  await rate.evaluate((input) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text", "12.5");
+    input.dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
+  });
+  assert.equal(await rate.inputValue(), "12.50");
+  // Un campo vaciado sigue validándose localmente, sin petición.
+  await rate.fill("");
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  await dialog.getByText("Indica la tarifa.", { exact: true }).waitFor();
   assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/2$/).length, 0);
 
   // 400 del backend junto al campo; el formulario sigue abierto con lo escrito.

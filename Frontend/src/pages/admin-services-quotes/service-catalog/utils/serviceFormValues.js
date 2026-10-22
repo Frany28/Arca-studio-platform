@@ -68,14 +68,15 @@ const RATE_MAX_DIGITS = 14;
 /**
  * Compone la tarifa a partir de dígitos como una caja registradora: los dígitos entran por la
  * derecha y los dos últimos son los céntimos ("1" → "0.01", "100" → "1.00"). Trabaja con texto
- * (sin Number) para no perder precisión. Sin dígitos devuelve "" (el campo muestra el ejemplo).
+ * (sin Number) para no perder precisión. Sin dígitos significativos devuelve "": así borrar hasta
+ * el final vacía el campo (que muestra "0.00" como ejemplo) en vez de quedarse en "0.00".
  *
- * @param {string} digits - Solo dígitos, ya limitados a RATE_MAX_DIGITS.
+ * @param {string} digits - Solo dígitos, sin ceros a la izquierda y limitados a RATE_MAX_DIGITS.
  * @returns {string} Tarifa con dos decimales o cadena vacía.
  */
 function composeRateFromDigits(digits) {
   if (!digits) return "";
-  const padded = digits.replace(/^0+/, "").padStart(3, "0");
+  const padded = digits.padStart(3, "0");
   return `${padded.slice(0, -2)}.${padded.slice(-2)}`;
 }
 
@@ -89,19 +90,19 @@ function composeRateFromDigits(digits) {
  * @returns {string} Tarifa formateada ("12.50") o cadena vacía.
  */
 export function rateFromTypedValue(inputValue, previousRate) {
-  const digits = String(inputValue).replace(/\D/g, "");
-  if (digits.replace(/^0+/, "").length > RATE_MAX_DIGITS) return previousRate;
+  const digits = String(inputValue).replace(/\D/g, "").replace(/^0+/, "");
+  if (digits.length > RATE_MAX_DIGITS) return previousRate;
   return composeRateFromDigits(digits);
 }
 
 /**
- * Tarifa a partir de un texto pegado: un importe con punto decimal ("12.5", "1250") se respeta
- * como importe y se completa a dos decimales; cualquier otro texto se trata como dígitos tecleados
- * a continuación de la tarifa actual.
+ * Tarifa a partir de un texto pegado, que sustituye a la actual: un importe válido ("12.5",
+ * "1250") se respeta como importe y se completa a dos decimales; cualquier otro texto
+ * ("$1,250.50") se interpreta por sus dígitos, como si se tecleara.
  *
  * @param {string} pastedText - Texto pegado.
- * @param {string} previousRate - Tarifa vigente del borrador.
- * @returns {string} Tarifa formateada o la anterior si no es válida.
+ * @param {string} previousRate - Tarifa vigente del borrador (se conserva si se excede el máximo).
+ * @returns {string} Tarifa formateada, cadena vacía o la anterior.
  */
 export function rateFromPastedText(pastedText, previousRate) {
   const text = String(pastedText).trim();
@@ -109,7 +110,7 @@ export function rateFromPastedText(pastedText, previousRate) {
     const [integerPart, fractionPart = ""] = text.split(".");
     return `${integerPart.replace(/^0+(?=\d)/, "")}.${fractionPart.padEnd(2, "0")}`;
   }
-  return rateFromTypedValue(`${previousRate}${text}`, previousRate);
+  return rateFromTypedValue(text, previousRate);
 }
 
 /**
