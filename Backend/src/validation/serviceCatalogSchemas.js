@@ -74,6 +74,13 @@ export const serviceDetailSchema = z.object({ params: serviceIdParams });
 // Alta del tabulador: el código (`SERV-001`) lo genera el sistema y el tipo es siempre
 // `individual`. `code` y `kind` se rechazan con un mensaje propio por campo (400) para que el
 // cliente no los fije; cualquier otro campo desconocido lo rechaza `.strict()`.
+/**
+ * Campo que gestiona el sistema y que el cliente no puede enviar: ausente es válido y cualquier
+ * valor responde 400 en su propia ruta (`body.code`, `body.kind`) con un mensaje explicativo.
+ *
+ * @param {string} message - Mensaje del error de validación.
+ * @returns {import("zod").ZodOptional<import("zod").ZodNever>} Esquema del campo.
+ */
 const systemManaged = (message) => z.never({ error: message }).optional();
 
 export const serviceCreateSchema = z.object({
