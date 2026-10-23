@@ -7,10 +7,17 @@ import Alert from "../Alert/Alert.jsx";
 
 const EXIT_DURATION_MS = 320;
 
-// Coordina timers, montaje, visibilidad y acciones de una alerta flotante.
+/**
+ * Coordina timers, portal y animación de una alerta flotante. El contenido opcional permite
+ * distinguir el dato principal de su descripción sin cambiar los consumidores anteriores.
+ * @param {Object} props - Textos, tema, duración y acciones del aviso.
+ * @param {string} [props.content] - Dato principal consultable completo con la ayuda accesible de Alert.
+ * @returns {import("react").ReactPortal|null} Alerta mientras permanece montada.
+ */
 function AlertToast({
   trigger = null,
   title,
+  content,
   description,
   theme = "Success",
   autoHideMs = 5000,
@@ -94,6 +101,7 @@ function AlertToast({
         theme={theme}
         layout="Box"
         title={title}
+        content={content}
         description={resolvedDescription}
         showIcon
         showText

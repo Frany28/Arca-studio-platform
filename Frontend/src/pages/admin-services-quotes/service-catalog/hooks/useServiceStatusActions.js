@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../../../api/http.js";
 import { getServiceStatusErrorFeedback } from "../utils/serviceCatalogErrors.js";
 import { verifyServiceStatusSelection } from "../utils/serviceStatusOperation.js";
+import { describeServiceStatusSuccess } from "../utils/serviceStatusFeedback.js";
 
 /**
  * Coordina la activación y desactivación individual de servicios: confirmación previa, envío con
@@ -17,7 +18,7 @@ import { verifyServiceStatusSelection } from "../utils/serviceStatusOperation.js
  * @param {() => void} params.reload - Repite la lectura de la página actual.
  * @param {boolean} params.hasStatusFilter - La consulta visible filtra por estado.
  * @param {() => void} params.onCatalogChanged - Recarga los indicadores del módulo.
- * @param {(tone: "success"|"danger", title: string, message: string) => void} params.notify - Aviso
+ * @param {(tone: "success"|"danger", title: string, message: string, content?: string) => void} params.notify - Aviso
  * compartido del tabulador (useAlertFeedback).
  * @returns {Object} Cambio pendiente, envío en curso y acciones.
  */
@@ -41,7 +42,6 @@ export function useServiceStatusActions({ hasStatusFilter, notify, onCatalogChan
     const controller = new AbortController();
     readAbortRef.current = controller;
     const { isActive, service } = pending;
-    const name = `${service.code} · ${service.name}`;
     try {
       await verifyServiceStatusSelection([service], isActive, api.serviceCatalog.getService, controller.signal);
       const response = await api.serviceCatalog.changeServiceStatus({
@@ -53,7 +53,8 @@ export function useServiceStatusActions({ hasStatusFilter, notify, onCatalogChan
       if (hasStatusFilter) reload();
       else if (response?.service) replaceItem(response.service);
       if (response?.changed !== false) onCatalogChanged();
-      notify("success", isActive ? "Servicio activado" : "Servicio desactivado", name);
+      const result = describeServiceStatusSuccess({ isActive, service: response?.service ?? service });
+      notify(result.tone, result.title, result.message, result.content);
     } catch (error) {
       if (controller.signal.aborted) return;
       const result = getServiceStatusErrorFeedback(error, "No se pudo cambiar el estado del servicio.");

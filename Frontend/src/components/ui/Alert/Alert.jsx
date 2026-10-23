@@ -2,6 +2,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import Button from "../Button/Button.jsx";
+import Tooltip from "../Tooltip/Tooltip.jsx";
 import {
   ALERT_DEFAULT_PROPS,
   ALERT_LAYOUTS,
@@ -186,10 +187,17 @@ function getAlertButtonTheme(theme) {
   return "Primary";
 }
 
-// Coordina visibilidad, tema, layout, acciones y accesibilidad del mensaje.
+/**
+ * Presenta el resultado con jerarquía de título, dato opcional y descripción. Los textos largos
+ * se ajustan al ancho y el dato conserva acceso completo por teclado, hover y toque mediante Tooltip.
+ * @param {Object} props - Tema, textos, acciones y visibilidad controlada u opcionalmente interna.
+ * @param {string} [props.content] - Dato principal, limitado visualmente a dos líneas.
+ * @returns {import("react").ReactElement|null} Alerta visible o null tras su cierre.
+ */
 function Alert({
   className,
   title = ALERT_DEFAULT_PROPS.title,
+  content,
   description = ALERT_DEFAULT_PROPS.description,
   theme = ALERT_DEFAULT_PROPS.theme,
   layout = ALERT_DEFAULT_PROPS.layout,
@@ -279,7 +287,7 @@ function Alert({
         >
           <div
             className={clsx(
-              "flex flex-col gap-[4px]",
+              "flex min-w-0 w-full flex-col gap-[4px] [overflow-wrap:anywhere]",
               isFullWidth && "min-w-0 flex-1",
             )}
             data-node-id={ALERT_NODE_IDS.text}
@@ -287,9 +295,16 @@ function Alert({
             <p className="text-heading-8 text-[var(--color-text-300)]">
               {title}
             </p>
+            {content ? (
+              <Tooltip asChild portal text={content} showTip>
+                <span tabIndex={0} className="line-clamp-2 text-body-3 text-[var(--color-text-50)] rounded-[var(--radius-1)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary-300)]">
+                  {content}
+                </span>
+              </Tooltip>
+            ) : null}
             {showText ? (
               <p
-                className="text-body-3 text-[var(--color-text-200)]"
+                className="text-body-3 text-[var(--color-text-200)] dark:text-[var(--color-text-300)]"
                 data-node-id={ALERT_NODE_IDS.description}
               >
                 {description}

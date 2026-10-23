@@ -28,7 +28,7 @@ import { executeServiceStatusChanges } from "../utils/serviceStatusOperation.js"
  * @param {{selectedIds: Set<string>, selectedCount: number}} params.selection - Selección de la página.
  * @param {() => void} params.reload - Repite la lectura de la página actual.
  * @param {() => void} params.onCatalogChanged - Recarga los indicadores del módulo.
- * @param {(tone: "success"|"danger", title: string, message: string) => void} params.notify - Aviso del tabulador.
+ * @param {(tone: "success"|"danger", title: string, message: string, content?: string) => void} params.notify - Aviso del tabulador.
  * @returns {Object} Destinos por acción, cambio pendiente, envío en curso y acciones.
  */
 export function useServiceBulkStatusActions({ items, notify, onCatalogChanged, reload, selection }) {
@@ -84,8 +84,9 @@ export function useServiceBulkStatusActions({ items, notify, onCatalogChanged, r
       const cancelled = results.filter((result) => result.skipped).length;
       reload();
       if (succeeded || results.some((result) => result.error?.status === 409)) onCatalogChanged();
-      const result = describeBulkStatusResult({ cancelled, failures, isActive, succeeded });
-      notify(result.tone, result.title, result.message);
+      const service = services.length === 1 ? (results[0]?.value?.service ?? services[0]) : undefined;
+      const result = describeBulkStatusResult({ cancelled, failures, isActive, succeeded, service });
+      notify(result.tone, result.title, result.message, result.content);
     } catch (error) {
       if (controller.signal.aborted) return;
       const result = getServiceStatusErrorFeedback(error, "No se pudo comprobar la selección. No se enviaron cambios.");

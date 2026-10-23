@@ -199,6 +199,7 @@ function ServiceCatalogPanel({ summary }) {
       <AlertToast
         trigger={alert}
         title={alert?.title || "Tabulador de servicios"}
+        content={alert?.content}
         description={alert?.message || ""}
         theme={alert?.tone === "danger" ? "Danger" : "Success"}
         aria-label={alert?.tone === "danger" ? "Error en el tabulador de servicios" : "Tabulador de servicios actualizado"}

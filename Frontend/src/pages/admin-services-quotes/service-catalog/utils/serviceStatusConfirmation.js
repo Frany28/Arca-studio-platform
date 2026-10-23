@@ -1,6 +1,6 @@
 /**
  * Adapta el patrón de confirmación a Servicios: operación, cantidad completa y disponibilidad
- * para nuevas cotizaciones. La activación usa el tema primario con iconografía positiva;
+ * para nuevas cotizaciones. La activación usa el tema Success con iconografía positiva;
  * la desactivación reutiliza la variante Danger del patrón de advertencia de Figma.
  *
  * @param {Object|null} change - Cambio individual o selección homogénea pendiente.
@@ -19,6 +19,6 @@ export function describeServiceStatusConfirmation(change) {
     title: `¿${actionLabel} ${plural ? "servicios" : "servicio"}?`,
     description: `${subject} ${effect} para nuevas cotizaciones`,
     actionLabel,
-    actionTheme: activating ? "Primary" : "Danger",
+    actionTheme: activating ? "Success" : "Danger",
   };
 }

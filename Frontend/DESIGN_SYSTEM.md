@@ -147,12 +147,22 @@ Antes de desarrollar un equivalente, revisar especialmente:
 
 Usar `Button` y sus propiedades existentes:
 
-- `theme`: `Primary`, `Danger` o `Info`.
+- `theme`: `Primary`, `Danger`, `Success` o `Info`.
 - `type`: `Solid`, `Outline`, `Ghost` o `Link`, según lo admita el tema.
 - `size`: `S`, `M` o `L`.
 - `disabled` para bloquear la interacción real.
 - `fitContent` cuando la etiqueta no deba ocupar el ancho predeterminado.
 - `htmlType="submit"` dentro de formularios.
+
+`Success` admite `Solid` y `Outline` para confirmaciones positivas, usando `success-200`,
+`success-100` y `success-10`. El botón sólido usa texto oscuro uniforme para asegurar contraste;
+el outline profundiza el verde en claro mezclándolo con el neutral oscuro existente y conserva
+`success-200` en oscuro. Ambos incluyen hover, active, focus y disabled sin cambiar otros temas.
+
+`AlertToast` y `Alert` admiten `content` opcional para separar el dato principal del título y la
+descripción. Se limita a dos líneas con el texto completo accesible mediante `Tooltip` (hover,
+foco y toque); la consecuencia permanece visible. Textos y códigos sin espacios se envuelven
+sin desbordar el ancho disponible. La altura se adapta al contenido.
 
 No simular un botón con un `div`. Las acciones solo con icono necesitan nombre accesible mediante `aria-label` y un `Tooltip` descriptivo visible tanto por hover como por foco. El tooltip debe usar portal, la capa flotante global y ajuste al viewport para sobreponerse sin quedar recortado; su incorporación no puede alterar la posición ni las dimensiones del botón.
 
@@ -598,7 +608,7 @@ Validación, capturas y diferencias respecto a Figma:
     responsables): máximo 400 px, centrado, radio de 12 px, icono superior de 20 px dentro de
     `IconContainer` M Outline, padding/gap de 16 px, título h6, descripción b3 y footer separado
     por borde con dos botones iguales de 41 px. Activar usa `TickCircle` con `success-200` y
-    botones Primary (Button no tiene variante Success); desactivar usa `Warning2` y botones
+    botones Success Outline/Solid; desactivar usa `Warning2` y botones
     Danger Outline/Solid, como la referencia. No cambia el diseño de Usuarios, Proyectos ni
     formularios. El título es «¿Activar/Desactivar servicio(s)?» y la descripción explica que
     «Este servicio» o «Los N servicios seleccionados» volverán/dejarán de estar disponibles para
@@ -606,6 +616,10 @@ Validación, capturas y diferencias respecto a Figma:
     foco inicial en Cancelar, Tab cíclico y devolución al disparador de fila o footer.
     Escape, Cancelar y overlay cierran sin lecturas ni escrituras. Confirmar bloquea las acciones,
     incluido cerrar, y muestra «Confirmando...»/`aria-busy` hasta terminar. Un 409 recarga la página.
+  - Los avisos de estado usan `AlertToast` Success solo después de la confirmación de la API:
+    «Servicio activado/desactivado correctamente», nombre real y consecuencia para nuevas
+    cotizaciones. Con varios, «Servicios activados/desactivados correctamente» y cantidad aplicada.
+    Los errores y resultados parciales conservan Danger y el detalle real de fallos/cancelaciones.
   - Formulario (Figma `5764:226084`): un único modal (`ServiceFormDialog` + `ServiceFormModal`)
     para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
     leídos de `GET /admin/services/:id`). Campos implementados: nombre (Input, 150), descripción

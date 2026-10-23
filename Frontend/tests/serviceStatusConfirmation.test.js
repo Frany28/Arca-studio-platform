@@ -11,7 +11,7 @@ for (const isActive of [true, false]) {
         title: `¿${action} servicio?`,
         description: `Este servicio ${isActive ? "volverá a estar disponible" : "dejará de estar disponible"} para nuevas cotizaciones`,
         actionLabel: action,
-        actionTheme: isActive ? "Primary" : "Danger",
+        actionTheme: isActive ? "Success" : "Danger",
       });
     }
   });
@@ -22,7 +22,7 @@ for (const isActive of [true, false]) {
       title: `¿${action} servicios?`,
       description: `Los 10 servicios seleccionados ${isActive ? "volverán a estar disponibles" : "dejarán de estar disponibles"} para nuevas cotizaciones`,
       actionLabel: action,
-      actionTheme: isActive ? "Primary" : "Danger",
+      actionTheme: isActive ? "Success" : "Danger",
     });
     assert.ok(services.every((service) => service.isActive === !isActive && service.currentVersion === 3));
   });

@@ -1,4 +1,9 @@
 /* Centraliza tamaños, estados visuales e interacciones del componente Button. */
+// El verde existente necesita más profundidad sobre blanco para texto pequeño; en oscuro
+// conserva el token original. La mezcla evita añadir otra paleta o cambiar los tokens globales.
+const SUCCESS_OUTLINE_COLORS = "border border-[color-mix(in_srgb,var(--color-success-200)_70%,var(--color-neutral-950-uniform))] text-[color-mix(in_srgb,var(--color-success-200)_70%,var(--color-neutral-950-uniform))] dark:border-[var(--color-success-200)] dark:text-[var(--color-success-200)]";
+const SUCCESS_OUTLINE_DEFAULT = `${SUCCESS_OUTLINE_COLORS} bg-[var(--color-neutral-100)]`;
+
 export const BUTTON_SIZE_STYLES = {
   S: {
     default:
@@ -115,6 +120,24 @@ export const BUTTON_VISUALS = {
         "border border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]",
     },
   },
+  // Confirmaciones positivas: texto oscuro sobre verde y outline más profundo en claro
+  // para conservar contraste usando exclusivamente los tokens semánticos existentes.
+  Success: {
+    Solid: {
+      Default: "border border-[var(--color-success-200)] bg-[var(--color-success-200)] text-[var(--color-neutral-950-uniform)]",
+      Hover: "border border-[var(--color-success-100)] bg-[var(--color-success-100)] text-[var(--color-neutral-950-uniform)]",
+      FocusedInner: "border border-[var(--color-success-200)] bg-[var(--color-success-200)] text-[var(--color-neutral-950-uniform)]",
+      FocusedOuter: "var(--color-success-10)",
+      Disabled: "border border-transparent bg-[var(--color-neutral-200)] text-[var(--color-neutral-400)]",
+    },
+    Outline: {
+      Default: SUCCESS_OUTLINE_DEFAULT,
+      Hover: `${SUCCESS_OUTLINE_COLORS} bg-[var(--color-success-10)]`,
+      FocusedInner: SUCCESS_OUTLINE_DEFAULT,
+      FocusedOuter: "var(--color-success-10)",
+      Disabled: "border border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]",
+    },
+  },
   Info: {
     Solid: {
       Default:
@@ -157,6 +180,10 @@ export const BUTTON_INTERACTIVE_STYLES = {
       "hover:border-[var(--color-danger-200)] hover:bg-[var(--color-danger-200)] active:border-[var(--color-danger-200)] active:bg-[var(--color-danger-200)] focus:outline-none focus-visible:border-[var(--color-danger-100)] focus-visible:bg-[var(--color-danger-100)] focus-visible:text-[var(--color-neutral-100-uniform)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-danger-10)]",
     Outline:
       "hover:border-[var(--color-danger-200)] hover:bg-[var(--color-neutral-100)] hover:text-[var(--color-danger-200)] active:border-[var(--color-danger-200)] active:text-[var(--color-danger-200)] focus:outline-none focus-visible:border-[var(--color-danger-100)] focus-visible:bg-[var(--color-neutral-100)] focus-visible:text-[var(--color-danger-100)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-danger-10)]",
+  },
+  Success: {
+    Solid: "hover:border-[var(--color-success-100)] hover:bg-[var(--color-success-100)] active:border-[var(--color-success-100)] active:bg-[var(--color-success-100)] focus:outline-none focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-success-10)]",
+    Outline: "hover:bg-[var(--color-success-10)] active:bg-[var(--color-success-10)] focus:outline-none focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-success-10)]",
   },
   Info: {
     Solid:

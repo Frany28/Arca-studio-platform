@@ -302,7 +302,9 @@ test("acciones: desactivar y activar con confirmación, versión esperada, fila 
   await page.getByRole("button", { name: "Más opciones para TST-001" }).click();
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
   await dialog.getByRole("button", { name: "Desactivar" }).click();
-  await page.getByRole("alert").getByText("TST-001 · Anteproyecto de prueba").waitFor();
+  await page.getByRole("alert").getByText("Servicio desactivado correctamente", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Anteproyecto de prueba", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Ya no está disponible para nuevas cotizaciones", { exact: true }).waitFor();
   const [patch] = backend.requests.filter((request) => request.method === "PATCH");
   assert.equal(patch.path, "/api/admin/services/1/status");
   assert.deepEqual(patch.body, { expectedVersion: 1, isActive: false });
@@ -316,6 +318,8 @@ test("acciones: desactivar y activar con confirmación, versión esperada, fila 
   await page.getByRole("menuitem", { name: "Activar" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicio?" }).getByRole("button", { name: "Activar" }).click();
   await rowFor(page, "TST-001").getByText("Activo", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Servicio activado correctamente", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Vuelve a estar disponible para nuevas cotizaciones", { exact: true }).waitFor();
   assert.deepEqual(backend.requests.filter((request) => request.method === "PATCH").at(-1).body, { expectedVersion: 2, isActive: true });
 
   // Con filtro de estado, el servicio desactivado sale de la consulta: se recarga la página.
@@ -502,7 +506,8 @@ test("footer: con selección muestra ambos botones sin ayuda y habilita solo acc
   await footer.getByRole("button", { name: "Desactivar 4 servicios seleccionados" }).click();
   // Dos eventos en el mismo turno ejercitan la guarda síncrona, antes del rerender del disabled.
   await dialog.getByRole("button", { name: "Desactivar", exact: true }).evaluate((element) => { element.click(); element.click(); });
-  await page.getByRole("alert").getByText("4 servicios desactivados", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Servicios desactivados correctamente", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Se desactivaron 4 servicios", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
   assert.equal(await footer.locator("[data-service-bulk-actions]").count(), 0, "Al terminar desaparecen las acciones");
   assert.deepEqual(patches().map((request) => request.path).sort(), [1, 2, 3, 5].map((id) => `/api/admin/services/${id}/status`));
@@ -514,7 +519,8 @@ test("footer: con selección muestra ambos botones sin ayuda y habilita solo acc
   assert.equal(await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).isEnabled(), true);
   await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
-  await page.getByRole("alert").getByText("5 servicios activados", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Servicios activados correctamente", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Se activaron 5 servicios", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
   assert.equal(await footer.getByRole("button", { name: /Activar|Desactivar/ }).count(), 0);
   const activationRequests = patches().slice(4);
@@ -555,7 +561,7 @@ test("reactivación: unidad o denominación inactiva cancela toda la selección 
   await header.click();
   await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
-  await alert.getByText("5 servicios activados", { exact: true }).waitFor();
+  await alert.getByText("Servicios activados correctamente", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
   assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 5);
 });
@@ -649,7 +655,8 @@ test("conflicto posterior a la comprobación: conserva expectedVersion, detiene 
   for (const id of [1, 2, 3]) await page.getByRole("checkbox", { name: `Seleccionar TEST-${id} Prueba ${id}` }).click();
   await footer.getByRole("button", { name: "Activar 4 servicios seleccionados" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
-  await page.getByRole("alert").getByText("4 servicios activados", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Servicios activados correctamente", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Se activaron 4 servicios", { exact: true }).waitFor();
   assert.deepEqual(patches().slice(3).map((request) => request.path).sort(), [4, 5, 6, 7].map((id) => `/api/admin/services/${id}/status`));
 });
 
@@ -717,7 +724,7 @@ test("confirmación Figma de servicios: cuatro variantes, iconos, colores, foco,
       const cancel = footer.querySelector("button:first-child");
       const tokenColor = (token) => {
         const probe = document.createElement("span");
-        probe.style.color = `var(${token})`;
+        probe.style.color = token.startsWith("--") ? `var(${token})` : token;
         document.body.append(probe);
         const color = getComputedStyle(probe).color;
         probe.remove();
@@ -728,9 +735,11 @@ test("confirmación Figma de servicios: cuatro variantes, iconos, colores, foco,
         iconColor: getComputedStyle(icon).color,
         expectedIcon: tokenColor(active ? "--color-success-200" : "--color-danger-100"),
         buttonColor: getComputedStyle(confirm).backgroundColor,
-        expectedButton: tokenColor(active ? "--color-primary-300" : "--color-danger-100"),
+        expectedButton: tokenColor(active ? "--color-success-200" : "--color-danger-100"),
         cancelColor: getComputedStyle(cancel).color,
-        expectedCancel: tokenColor(active ? "--color-text-200" : "--color-danger-100"),
+        cancelBorder: getComputedStyle(cancel).borderTopColor,
+        expectedCancel: tokenColor(active ? (document.documentElement.classList.contains("dark")
+          ? "--color-success-200" : "color-mix(in srgb, var(--color-success-200) 70%, var(--color-neutral-950-uniform))") : "--color-danger-100"),
         radius: getComputedStyle(card).borderRadius,
         footerBorder: getComputedStyle(footer).borderTopWidth,
         footerPadding: getComputedStyle(footer).padding,
@@ -743,6 +752,28 @@ test("confirmación Figma de servicios: cuatro variantes, iconos, colores, foco,
     assert.equal(palette.iconColor, palette.expectedIcon);
     assert.equal(palette.buttonColor, palette.expectedButton);
     assert.equal(palette.cancelColor, palette.expectedCancel);
+    assert.equal(palette.cancelBorder, palette.expectedCancel);
+    const confirmButton = dialog.getByRole("button", { name: action, exact: true });
+    await confirmButton.hover();
+    await confirmButton.evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations().map((animation) => animation.finished));
+    });
+    const hover = await confirmButton.evaluate((element, active) => {
+      const probe = document.createElement("span");
+      probe.style.color = `var(${active ? "--color-success-100" : "--color-danger-200"})`;
+      document.body.append(probe);
+      const expected = getComputedStyle(probe).color;
+      probe.remove();
+      return { actual: getComputedStyle(element).backgroundColor, expected };
+    }, activating);
+    assert.equal(hover.actual, hover.expected);
+    await page.mouse.down();
+    assert.equal(await confirmButton.evaluate((element) => getComputedStyle(element).backgroundColor), hover.expected);
+    // Soltar fuera evita confirmar; la operación solo se valida visualmente en este caso.
+    await page.mouse.move(4, 4);
+    await page.mouse.up();
+    await dialog.getByRole("button", { name: "Cancelar", exact: true }).focus();
+    assert.notEqual(await dialog.getByRole("button", { name: "Cancelar", exact: true }).evaluate((element) => getComputedStyle(element).boxShadow), "none");
     assert.deepEqual({ radius: palette.radius, footerBorder: palette.footerBorder, padding: palette.footerPadding, gap: palette.footerGap, iconSize: palette.iconSize },
       { radius: "12px", footerBorder: "1px", padding: "16px", gap: "16px", iconSize: [20, 20] });
     assert.ok(Math.abs(palette.buttons[0] - palette.buttons[1]) <= 1, "Botones de igual ancho");
@@ -774,6 +805,52 @@ test("confirmación Figma de servicios: cuatro variantes, iconos, colores, foco,
   }
 });
 
+test("avisos de Servicios: nombre largo consultable, código largo omitido y consecuencia visible en ambos temas", async (context) => {
+  for (const theme of ["light", "dark"]) {
+    for (const activating of [false, true]) {
+      const name = "Servicio".repeat(18);
+      const code = "PUBLICO-".repeat(30);
+      const backend = createBackend([service(1, { name, code, isActive: !activating })]);
+      const page = await openTabulator(context, backend, { theme });
+      const action = activating ? "Activar" : "Desactivar";
+      // La selección de un solo registro también debe producir el aviso singular con su nombre.
+      await page.getByRole("checkbox", { name: `Seleccionar ${code} ${name}`, exact: true }).click();
+      await page.getByRole("button", { name: `${action} 1 servicio seleccionado`, exact: true }).click();
+      await page.getByRole("dialog").getByRole("button", { name: action, exact: true }).click();
+      const alert = page.getByRole("alert");
+      const consequence = `${activating ? "Vuelve a estar disponible" : "Ya no está disponible"} para nuevas cotizaciones`;
+      await alert.getByText(`Servicio ${activating ? "activado" : "desactivado"} correctamente`, { exact: true }).waitFor();
+      await alert.getByText(consequence, { exact: true }).waitFor();
+      assert.equal((await alert.innerText()).includes(code), false);
+      assert.equal(await alert.getAttribute("data-node-id"), "2068:22275");
+      for (const width of [375, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 812 });
+        const bounds = await alert.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return { left: rect.left, right: rect.right, bottom: rect.bottom, overflow: element.scrollWidth - element.clientWidth };
+        });
+        assert.ok(bounds.left >= 0 && bounds.right <= width && bounds.bottom <= 812 && bounds.overflow <= 1, JSON.stringify(bounds));
+        assert.equal(await alert.getByText(consequence, { exact: true }).isVisible(), true);
+      }
+      const subject = alert.getByText(name, { exact: true });
+      assert.equal(await subject.evaluate((element) => element.scrollHeight > element.clientHeight), true, "El nombre se limita a dos líneas");
+      await subject.focus();
+      await page.getByRole("tooltip").getByText(name, { exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByRole("tooltip").waitFor({ state: "detached" });
+      await page.mouse.move(4, 4);
+      await subject.hover();
+      await page.getByRole("tooltip").getByText(name, { exact: true }).waitFor();
+      await page.mouse.move(4, 4);
+      if (process.env.ARCA_SERVICE_STATUS_SCREENSHOTS) {
+        await alert.screenshot({ path: join(tmpdir(), `arca-service-toast-${theme}-${activating ? "activate" : "deactivate"}.png`) });
+      }
+      await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).click();
+      await alert.waitFor({ state: "detached" });
+    }
+  }
+});
+
 test("confirmación Servicios: overlay cancela y la operación en curso bloquea cierre y doble envío", async (context) => {
   const backend = createBackend(sampleCatalog());
   const page = await openTabulator(context, backend);
@@ -790,6 +867,7 @@ test("confirmación Servicios: overlay cancela y la operación en curso bloquea 
   dialog = await openConfirmation();
   await dialog.getByRole("button", { name: "Desactivar", exact: true }).evaluate((element) => { element.click(); element.click(); });
   await dialog.getByRole("button", { name: "Confirmando...", exact: true }).waitFor();
+  assert.equal(await page.getByRole("alert").count(), 0, "Sin éxito antes de la confirmación de API");
   assert.equal(await dialog.getAttribute("aria-busy"), "true");
   for (const button of await dialog.getByRole("button").all()) assert.equal(await button.isDisabled(), true);
   await page.keyboard.press("Escape");

@@ -91,9 +91,11 @@ test("concurrencia: respeta el límite, conserva el orden y devuelve cada fallo 
 
 test("resumen: éxito total, parcial y total fallido, sin presentarlo como atómico", () => {
   assert.deepEqual(describeBulkStatusResult({ failures: [], isActive: false, succeeded: 4 }), {
-    tone: "success", title: "4 servicios desactivados", message: "Cambios correctos: 4. Fallidos: 0. Actualizando el tabulador.",
+    tone: "success", title: "Servicios desactivados correctamente", message: "Se desactivaron 4 servicios",
   });
-  assert.equal(describeBulkStatusResult({ failures: [], isActive: true, succeeded: 1 }).title, "1 servicio activado");
+  assert.deepEqual(describeBulkStatusResult({ failures: [], isActive: true, succeeded: 1, service: { name: "Servicio confirmado" } }), {
+    tone: "success", title: "Servicio activado correctamente", content: "Servicio confirmado", message: "Vuelve a estar disponible para nuevas cotizaciones",
+  });
   const failures = [
     { message: "Unidad inactiva.", service: { code: "TST-002" } },
     { message: "Versión desactualizada.", service: { code: "TST-003" } },

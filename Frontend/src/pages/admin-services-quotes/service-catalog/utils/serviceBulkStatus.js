@@ -1,6 +1,7 @@
 // Activación y desactivación de varios servicios seleccionados. El backend no ofrece una operación
 // masiva: cada servicio se cambia con su PATCH /admin/services/:id/status y su `expectedVersion`,
 // así que el conjunto NO es atómico (unos pueden aplicarse y otros fallar).
+import { describeServiceStatusSuccess } from "./serviceStatusFeedback.js";
 
 // Peticiones simultáneas como máximo: acota la carga y el límite de escrituras por administrador.
 export const SERVICE_BULK_STATUS_CONCURRENCY = 3;
@@ -89,20 +90,17 @@ export async function runWithConcurrency(items, limit, worker) {
  * @param {Object} params - Resultado y textos.
  * @param {boolean} params.isActive - Estado pedido.
  * @param {number} params.succeeded - Servicios cambiados.
+ * @param {Object} [params.service] - Servicio confirmado cuando la selección tiene uno solo.
  * @param {number} [params.cancelled=0] - Servicios cancelados antes de enviar su cambio.
  * @param {Array<{service: {code: string}, message: string}>} params.failures - Fallos con su motivo.
- * @returns {{tone: "success"|"danger", title: string, message: string}} Aviso.
+ * @returns {{tone: "success"|"danger", title: string, message: string, content?: string}} Aviso.
  */
-export function describeBulkStatusResult({ cancelled = 0, failures, isActive, succeeded }) {
+export function describeBulkStatusResult({ cancelled = 0, failures, isActive, succeeded, service }) {
   const total = succeeded + failures.length + cancelled;
   const verb = isActive ? "activ" : "desactiv";
   const plural = (count, singular, pluralText) => (count === 1 ? singular : pluralText);
   if (!failures.length && !cancelled) {
-    return {
-      tone: "success",
-      title: `${succeeded} ${plural(succeeded, `servicio ${verb}ado`, `servicios ${verb}ados`)}`,
-      message: `Cambios correctos: ${succeeded}. Fallidos: 0. Actualizando el tabulador.`,
-    };
+    return describeServiceStatusSuccess({ isActive, service, count: succeeded });
   }
   const detail = failures.slice(0, MAX_DETAILED_FAILURES).map(({ message, service }) => `${service.code}: ${message}`).join(" ");
   const rest = failures.length > MAX_DETAILED_FAILURES ? ` Y ${failures.length - MAX_DETAILED_FAILURES} más.` : "";
