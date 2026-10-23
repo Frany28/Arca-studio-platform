@@ -4,7 +4,10 @@ import test from "node:test";
 import { getServiceFormErrorFeedback } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceCatalogErrors.js";
 import {
   canonicalRate,
+  changeDraftKind,
   createServiceDraft,
+  filterBaseOptionsForKind,
+  isBaseUnitAllowedForKind,
   rateFromPastedText,
   rateFromTypedValue,
   toCreateServicePayload,
@@ -16,18 +19,26 @@ import {
 const SERVICE = {
   id: 7,
   name: "Anteproyecto",
+  kind: "turnkey",
   description: "Primera propuesta.",
-  measurementUnit: { id: 1, symbol: "m²" },
+  measurementUnit: { id: 1, code: "square_meter", symbol: "m²" },
   unitDenomination: { id: 10, denomination: "de construcción", isActive: true },
   referenceRate: "12.00",
   currentVersion: 3,
 };
-const VALID_DRAFT = { name: "Servicio", description: "", measurementUnitId: 1, unitDenomination: null, referenceRate: "12.50" };
+const VALID_DRAFT = { name: "Servicio", kind: "individual", description: "", measurementUnitId: 1, unitDenomination: null, referenceRate: "12.50" };
+const BASE_OPTIONS = [
+  { id: 1, code: "square_meter", label: "m²" },
+  { id: 6, code: "linear_meter", label: "m.l." },
+  { id: 30, code: "point", label: "pto." },
+];
 
 test("borrador: vacío en el alta y con los datos guardados (sin convertir la tarifa) en la edición", () => {
-  assert.deepEqual(createServiceDraft(null), { name: "", description: "", measurementUnitId: null, unitDenomination: null, referenceRate: "" });
+  // El alta empieza sin modalidad: el administrador debe elegirla.
+  assert.deepEqual(createServiceDraft(null), { name: "", kind: "", description: "", measurementUnitId: null, unitDenomination: null, referenceRate: "" });
   assert.deepEqual(createServiceDraft(SERVICE), {
     name: "Anteproyecto",
+    kind: "turnkey",
     description: "Primera propuesta.",
     measurementUnitId: 1,
     unitDenomination: { id: 10, denomination: "de construcción" },
@@ -36,8 +47,9 @@ test("borrador: vacío en el alta y con los datos guardados (sin convertir la ta
 });
 
 test("validación: campos obligatorios, límites del contrato y tarifa NUMERIC(14,2) sin signo", () => {
-  assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, name: "  ", measurementUnitId: null, referenceRate: "" }), {
+  assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, name: "  ", kind: "", measurementUnitId: null, referenceRate: "" }), {
     name: "Escribe el nombre del servicio.",
+    kind: "Elige la modalidad de contratación.",
     unit: "Elige la unidad de medida.",
     referenceRate: "Indica la tarifa.",
   });
@@ -47,6 +59,31 @@ test("validación: campos obligatorios, límites del contrato y tarifa NUMERIC(1
   for (const rate of ["-1", "12.345", "1e3", "1,5", "1234567890123", "12."]) assert.ok(validateServiceDraft({ ...VALID_DRAFT, referenceRate: rate }).referenceRate, rate);
 });
 
+test("modalidad: solo individual o turnkey, y llave en mano exige la base m² por su código", () => {
+  for (const kind of ["individual", "turnkey"]) assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, kind }, { unitCode: "square_meter" }), {}, kind);
+  for (const kind of ["", "bundle", undefined]) assert.equal(validateServiceDraft({ ...VALID_DRAFT, kind }).kind, "Elige la modalidad de contratación.", String(kind));
+  // Individual admite cualquier unidad; llave en mano, solo square_meter (nunca por el símbolo).
+  assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, measurementUnitId: 6 }, { unitCode: "linear_meter" }), {});
+  assert.equal(validateServiceDraft({ ...VALID_DRAFT, kind: "turnkey", measurementUnitId: 6 }, { unitCode: "linear_meter" }).unit, "Llave en mano requiere una unidad en metros cuadrados (m²).");
+  assert.ok(validateServiceDraft({ ...VALID_DRAFT, kind: "turnkey" }, { unitCode: undefined }).unit, "Sin código conocido no se acepta");
+  assert.equal(isBaseUnitAllowedForKind("turnkey", "metro_cuadrado"), false);
+  assert.equal(isBaseUnitAllowedForKind("individual", "point"), true);
+  assert.deepEqual(filterBaseOptionsForKind(BASE_OPTIONS, "turnkey").map((option) => option.label), ["m²"]);
+  assert.equal(filterBaseOptionsForKind(BASE_OPTIONS, "individual"), BASE_OPTIONS);
+  assert.equal(filterBaseOptionsForKind(BASE_OPTIONS, ""), BASE_OPTIONS);
+});
+
+test("modalidad: al cambiarla se conserva la unidad compatible y se retira la incompatible", () => {
+  const withLinear = { ...VALID_DRAFT, measurementUnitId: 6, unitDenomination: { id: 40, denomination: "de canalización" } };
+  assert.deepEqual(changeDraftKind(withLinear, "turnkey", BASE_OPTIONS), { kind: "turnkey", measurementUnitId: null, unitDenomination: null });
+  const withSquare = { ...VALID_DRAFT, unitDenomination: { id: 10, denomination: "de construcción" } };
+  assert.deepEqual(changeDraftKind(withSquare, "turnkey", BASE_OPTIONS), { kind: "turnkey" });
+  assert.deepEqual(changeDraftKind({ ...withLinear, kind: "turnkey" }, "individual", BASE_OPTIONS), { kind: "individual" });
+  assert.deepEqual(changeDraftKind({ ...VALID_DRAFT, measurementUnitId: null }, "turnkey", BASE_OPTIONS), { kind: "turnkey" });
+  // Una base desconocida no se da por compatible con llave en mano.
+  assert.deepEqual(changeDraftKind({ ...VALID_DRAFT, measurementUnitId: 99 }, "turnkey", BASE_OPTIONS), { kind: "turnkey", measurementUnitId: null, unitDenomination: null });
+});
+
 test("tarifa: comparación canónica como texto, sin Number", () => {
   assert.equal(canonicalRate("12.00"), "12");
   assert.equal(canonicalRate("012.50"), "12.5");
@@ -54,13 +91,14 @@ test("tarifa: comparación canónica como texto, sin Number", () => {
   assert.equal(canonicalRate("999999999999.99"), "999999999999.99");
 });
 
-test("alta: sin código ni tipo, sin descripción vacía y con la tarifa tal como se escribió", () => {
+test("alta: con la modalidad elegida, sin código, sin descripción vacía y con la tarifa tal como se escribió", () => {
   assert.deepEqual(toCreateServicePayload({ ...VALID_DRAFT, name: "  Servicio  ", description: "   ", referenceRate: " 12.50 " }), {
-    name: "Servicio", measurementUnitId: 1, referenceRate: "12.50",
+    name: "Servicio", kind: "individual", measurementUnitId: 1, referenceRate: "12.50",
   });
-  assert.deepEqual(toCreateServicePayload({ ...VALID_DRAFT, description: " Texto ", unitDenomination: { id: 10 } }), {
-    name: "Servicio", description: "Texto", measurementUnitId: 1, unitDenominationId: 10, referenceRate: "12.50",
+  assert.deepEqual(toCreateServicePayload({ ...VALID_DRAFT, kind: "turnkey", description: " Texto ", unitDenomination: { id: 10 } }), {
+    name: "Servicio", kind: "turnkey", description: "Texto", measurementUnitId: 1, unitDenominationId: 10, referenceRate: "12.50",
   });
+  assert.equal("code" in toCreateServicePayload(VALID_DRAFT), false);
 });
 
 test("edición: solo campos cambiados con expectedVersion; la base arrastra la denominación", () => {
@@ -75,6 +113,9 @@ test("edición: solo campos cambiados con expectedVersion; la base arrastra la d
   });
   // Una descripción guardada con espacios exteriores no cuenta como cambio.
   assert.equal(toUpdateServiceChanges(draft, { ...SERVICE, description: " Primera propuesta. " }), null);
+  // La modalidad precargada no viaja; solo un cambio explícito la envía.
+  assert.equal("kind" in (toUpdateServiceChanges({ ...draft, name: "Otro" }, SERVICE) ?? {}), false);
+  assert.deepEqual(toUpdateServiceChanges({ ...draft, kind: "individual" }, SERVICE), { expectedVersion: 3, kind: "individual" });
 });
 
 test("unidad: la denominación se muestra como Tag sin avatar y con cierre", () => {
@@ -82,8 +123,8 @@ test("unidad: la denominación se muestra como Tag sin avatar y con cierre", () 
 });
 
 test("errores del formulario: 400 por campo, 409 explicados y recarga ante versión desactualizada", () => {
-  const validation = getServiceFormErrorFeedback({ status: 400, code: "VALIDATION_ERROR", fields: { "body.referenceRate": "Tarifa inválida.", "body.unitDenominationId": "Denominación inactiva." } }, "x");
-  assert.deepEqual(validation.fieldErrors, { referenceRate: "Tarifa inválida.", unit: "Denominación inactiva." });
+  const validation = getServiceFormErrorFeedback({ status: 400, code: "VALIDATION_ERROR", fields: { "body.referenceRate": "Tarifa inválida.", "body.unitDenominationId": "Denominación inactiva.", "body.kind": "Modalidad inválida." } }, "x");
+  assert.deepEqual(validation.fieldErrors, { referenceRate: "Tarifa inválida.", unit: "Denominación inactiva.", kind: "Modalidad inválida." });
   assert.equal(validation.message, "Revisa los datos marcados.");
   const conflict = getServiceFormErrorFeedback({ status: 409, code: "SERVICE_VERSION_CONFLICT", message: "x" }, "x");
   assert.equal(conflict.shouldReload, true);

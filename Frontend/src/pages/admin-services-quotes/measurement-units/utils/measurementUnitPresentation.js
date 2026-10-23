@@ -71,26 +71,28 @@ export function canEditBaseUnit(denomination) {
  * Opciones del selector al editar: el catálogo de bases activas y, si la base actual ya no
  * figura en él (inactiva), también la actual al inicio, para conservar el símbolo mostrado.
  *
- * @param {Array<{id: number, label: string, description: string}>} options - Catálogo activo.
- * @param {{id: number, symbol: string, name: string}} currentUnit - Base actual de la denominación.
- * @returns {Array<{id: number, label: string, description: string}>} Opciones del Input.
+ * @param {Array<{id: number, code: string, label: string, description: string}>} options - Catálogo activo.
+ * @param {{id: number, code: string, symbol: string, name: string}} currentUnit - Base actual.
+ * @returns {Array<{id: number, code: string, label: string, description: string}>} Opciones del Input.
  */
 export function toEditBaseUnitOptions(options, currentUnit) {
   const catalog = Array.isArray(options) ? options : [];
   if (catalog.some((option) => option.id === currentUnit.id)) return catalog;
-  return [{ id: currentUnit.id, label: currentUnit.symbol, description: currentUnit.name }, ...catalog];
+  return [{ id: currentUnit.id, code: currentUnit.code, label: currentUnit.symbol, description: currentUnit.name }, ...catalog];
 }
 
 /**
  * Convierte las unidades base del API en opciones del selector: el disparador muestra solo la
- * abreviatura (m², m.l., hrs…) y el listado añade el nombre completo para distinguirlas.
+ * abreviatura (m², m.l., hrs…) y el listado añade el nombre completo para distinguirlas. El
+ * `code` estable (`square_meter`) permite aplicar reglas sin depender del símbolo visible.
  *
- * @param {Array<{id: number, symbol: string, name: string}>} units - Unidades base activas.
- * @returns {Array<{id: number, label: string, description: string}>} Opciones del Input.
+ * @param {Array<{id: number, code: string, symbol: string, name: string}>} units - Unidades base activas.
+ * @returns {Array<{id: number, code: string, label: string, description: string}>} Opciones del Input.
  */
 export function toBaseUnitOptions(units) {
   return (Array.isArray(units) ? units : []).map((unit) => ({
     id: unit.id,
+    code: unit.code,
     label: unit.symbol,
     description: unit.name,
   }));

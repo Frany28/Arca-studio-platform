@@ -8,7 +8,9 @@ import { useServiceDenominationOptions } from "../hooks/useServiceDenominationOp
 import { useServiceDetail } from "../hooks/useServiceDetail.js";
 import { useServiceFormSubmit } from "../hooks/useServiceFormSubmit.js";
 import { getServiceFormErrorFeedback } from "../utils/serviceCatalogErrors.js";
-import { createServiceDraft, validateServiceDraft } from "../utils/serviceFormValues.js";
+import {
+  SERVICE_KINDS, changeDraftKind, createServiceDraft, filterBaseOptionsForKind, validateServiceDraft,
+} from "../utils/serviceFormValues.js";
 import ServiceFormModal from "./ServiceFormModal.jsx";
 
 const NO_ERRORS = Object.freeze({});
@@ -20,6 +22,10 @@ const NO_ERRORS = Object.freeze({});
  * flujo alterna entre ellos: el borrador y los errores viven aquí, así que el servicio conserva
  * lo escrito al ir y volver. Crear la unidad la selecciona y devuelve el foco al campo de unidad;
  * cancelar vuelve sin cambios con el foco en «+ Crear unidad».
+ *
+ * Modalidad: llave en mano solo ofrece unidades base de m² (también en «+ Crear unidad») y, al
+ * elegirla, retira una unidad incompatible ya elegida. La modalidad solo cambia por una elección
+ * explícita del administrador; en la edición se precarga la guardada.
  *
  * @param {Object} props - Solicitud y callbacks.
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.baseUnits
@@ -52,6 +58,10 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
     () => (service ? toEditBaseUnitOptions(baseUnits.options, service.measurementUnit) : baseUnits.options),
     [baseUnits.options, service],
   );
+  // Bases que admite la modalidad elegida (solo m² en llave en mano).
+  const kindBaseOptions = useMemo(() => filterBaseOptionsForKind(baseOptions, draft.kind), [baseOptions, draft.kind]);
+  const unitCode = baseOptions.find((option) => option.id === draft.measurementUnitId)?.code;
+  const noTurnkeyUnit = draft.kind === SERVICE_KINDS.TURNKEY && !baseUnits.loading && !baseUnits.error && kindBaseOptions.length === 0;
   const denominationOptions = useMemo(() => {
     const current = service?.unitDenomination;
     if (!current || draft.measurementUnitId !== service.measurementUnit.id) return denominations.options;
@@ -60,6 +70,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const catalogUnavailable = !editing && (Boolean(baseUnits.error) || baseUnits.options.length === 0);
   const unitHint = baseUnits.error
     || (baseUnits.loading ? "Cargando unidades base..." : "")
+    || (noTurnkeyUnit ? "No hay una unidad base de metros cuadrados activa para llave en mano." : "")
     || denominations.error
     || (denominations.loading ? "Cargando unidades de medida..." : "");
 
@@ -77,12 +88,25 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   }
 
   /**
+   * Aplica la modalidad elegida. Si la unidad base ya elegida no la admite, la retira junto con
+   * su denominación (y su error), para que el administrador elija una compatible.
+   *
+   * @param {string} kind - Modalidad elegida.
+   * @returns {void}
+   */
+  function changeKind(kind) {
+    const patch = changeDraftKind(draft, kind, baseOptions);
+    changeDraft(patch, "kind");
+    if ("measurementUnitId" in patch) setFieldErrors((current) => (current.unit ? { ...current, unit: undefined } : current));
+  }
+
+  /**
    * Valida y envía. Un error conserva el borrador y se muestra junto a los campos.
    *
    * @returns {Promise<void>}
    */
   async function submit() {
-    const errors = validateServiceDraft(draft);
+    const errors = validateServiceDraft(draft, { unitCode });
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
       return;
@@ -132,7 +156,8 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       <MeasurementUnitFormModal
         mode="create"
         denomination={null}
-        baseUnits={baseUnits}
+        // En llave en mano solo se pueden crear unidades de la base m².
+        baseUnits={draft.kind === SERVICE_KINDS.TURNKEY ? { ...baseUnits, options: filterBaseOptionsForKind(baseUnits.options, draft.kind) } : baseUnits}
         initialMeasurementUnitId={draft.measurementUnitId}
         onClose={() => {
           setFocusTarget("create-unit");
@@ -151,10 +176,11 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       onRetryLoad={detail.retry}
       draft={draft}
       onDraftChange={changeDraft}
+      onKindChange={changeKind}
       fieldErrors={fieldErrors}
       submitError={submitError}
       submitting={form.submitting}
-      baseOptions={baseOptions}
+      baseOptions={kindBaseOptions}
       denominations={{ ...denominations, options: denominationOptions }}
       unitHint={unitHint}
       catalogUnavailable={catalogUnavailable}

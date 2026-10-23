@@ -177,15 +177,16 @@ async function reserveGeneratedServiceCode(client) {
  * Crea un servicio y su versión 1 en una única transacción: si falla cualquiera de las dos
  * escrituras no queda ningún registro. El código `SERV-001` lo genera siempre el sistema a
  * partir del id reservado (el cuerpo validado no admite código) y la unicidad la garantiza
- * además PostgreSQL (uq_services_code). El tabulador crea servicios `individual`; `kind` solo
- * llega de flujos internos (llave en mano, de las solicitudes), nunca del cuerpo HTTP.
+ * además PostgreSQL (uq_services_code). La modalidad (`kind`) la elige el administrador: un
+ * servicio `turnkey` exige una unidad base de superficie `square_meter` (con cualquier
+ * denominación activa de esa base), comprobada aquí con la unidad bloqueada.
  *
  * @param {object} options - Datos de la operación.
- * @param {object} options.payload - Cuerpo validado por serviceCreateSchema (más `kind` opcional
- *   en flujos internos; por defecto `individual`).
+ * @param {object} options.payload - Cuerpo validado por serviceCreateSchema (`kind` ya resuelto;
+ *   `individual` si se omite).
  * @param {{ id: number }} options.user - Administrador autenticado.
  * @returns {Promise<object>} Servicio creado con currentVersion = 1.
- * @throws {ValidationError} Si la unidad no es válida para el servicio.
+ * @throws {ValidationError} Si la unidad no es válida para el servicio o su modalidad.
  * @throws {ConflictError} SERVICE_CODE_ALREADY_EXISTS si no hay código libre.
  */
 export async function createService({ payload, user }) {

@@ -9,9 +9,30 @@ export const DIALOG_FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
+// Menús y listas desplegables abiertos dentro del diálogo (DropdownMenu, ActionMenu, selectores
+// de prefijo o país): Escape debe cerrar primero esa capa, y cada uno lo hace por sí mismo.
+// Sin esta regla, el listener del diálogo, registrado antes en `document`, cerraba todo el modal.
+// Se mira el foco (dentro del menú o en su disparador) y también el disparador expandido aunque
+// el foco no esté en él (al abrir con el ratón puede quedar en `body`).
+const EXPANDED_POPUP_TRIGGER_SELECTOR = '[aria-haspopup="menu"][aria-expanded="true"],[aria-haspopup="listbox"][aria-expanded="true"]';
+const OPEN_POPUP_SELECTOR = `[role="menu"],[role="listbox"],${EXPANDED_POPUP_TRIGGER_SELECTOR}`;
+
+/**
+ * Indica si Escape corresponde a un menú o lista abiertos dentro del diálogo y no al diálogo.
+ *
+ * @param {KeyboardEvent} event - Pulsación de Escape.
+ * @param {HTMLElement|null} container - Nodo del diálogo.
+ * @returns {boolean} true si hay una capa emergente abierta que debe cerrarse primero.
+ */
+function isEscapeForOpenPopup(event, container) {
+  const focusedInPopup = event.target instanceof Element && Boolean(event.target.closest(OPEN_POPUP_SELECTOR));
+  return focusedInPopup || Boolean(container?.querySelector(EXPANDED_POPUP_TRIGGER_SELECTOR));
+}
+
 /**
  * Aplica el contrato de teclado de los diálogos modales: enfoca un control inicial,
- * mantiene Tab dentro del diálogo, cierra con Escape y devuelve el foco al disparador.
+ * mantiene Tab dentro del diálogo, cierra con Escape y devuelve el foco al disparador. Con un
+ * menú o lista desplegable abiertos y enfocados, Escape solo cierra esa capa.
  *
  * El contenedor se resuelve en cada evento porque `Modal` monta su contenido tras una
  * microtarea y dos frames; así el hook no depende del orden de montaje. La devolución
@@ -49,6 +70,7 @@ export function useDialogKeyboard({ open, getContainer, onEscape, getInitialFocu
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
+        if (isEscapeForOpenPopup(event, latestRef.current.getContainer())) return;
         event.preventDefault();
         latestRef.current.onEscape();
         return;

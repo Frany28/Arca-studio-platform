@@ -9,10 +9,11 @@ import { useDialogKeyboard } from "../../../../hooks/useDialogKeyboard.js";
 import {
   rateFromPastedText, rateFromTypedValue, SERVICE_DESCRIPTION_MAX_LENGTH, SERVICE_NAME_MAX_LENGTH,
 } from "../utils/serviceFormValues.js";
+import ServiceModalityField from "./ServiceModalityField.jsx";
 import ServiceUnitField from "./ServiceUnitField.jsx";
 
 const DIALOG_SELECTOR = "[data-service-form]";
-const FIELD_IDS = { name: "service-form-name", unit: "service-form-unit" };
+const FIELD_IDS = { name: "service-form-name", kind: "service-form-kind", unit: "service-form-unit" };
 // Anotación de Figma: el mismo modal edita, con los datos completos y el título «Servicio».
 const COPY = {
   create: { title: "Nuevo servicio", submit: "Crear", submitting: "Creando...", close: "Cerrar formulario de nuevo servicio" },
@@ -26,10 +27,10 @@ const FOCUS_SELECTORS = {
 };
 
 /**
- * Modal único de alta y edición de servicios (Figma 5764:226084): nombre, descripción opcional,
- * unidad de medida (base + denominación), tarifa en USD y «+ Crear unidad». No guarda estado
- * propio: el borrador vive en ServiceFormDialog para sobrevivir al paso por el formulario de
- * unidades. El código y el tipo no se muestran: los genera el sistema.
+ * Modal único de alta y edición de servicios (Figma 5764:226084): nombre, modalidad de
+ * contratación, descripción opcional, unidad de medida (base + denominación), tarifa en USD y
+ * «+ Crear unidad». No guarda estado propio: el borrador vive en ServiceFormDialog para
+ * sobrevivir al paso por el formulario de unidades. El código no se muestra: lo genera el sistema.
  *
  * @param {Object} props - Modo, borrador, opciones y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
@@ -38,7 +39,8 @@ const FOCUS_SELECTORS = {
  * @param {() => void} [props.onRetryLoad] - Repite la lectura.
  * @param {Object} props.draft - Borrador (createServiceDraft).
  * @param {(patch: Object) => void} props.onDraftChange - Aplica cambios parciales al borrador.
- * @param {Object} props.fieldErrors - Errores por campo (name, description, unit, referenceRate).
+ * @param {(kind: string) => void} props.onKindChange - Aplica la modalidad elegida (y sus efectos en la unidad).
+ * @param {Object} props.fieldErrors - Errores por campo (name, kind, description, unit, referenceRate).
  * @param {string} props.submitError - Error general del envío.
  * @param {boolean} props.submitting - Envío en curso.
  * @param {Array<Object>} props.baseOptions - Unidades base del selector.
@@ -54,7 +56,7 @@ const FOCUS_SELECTORS = {
  */
 function ServiceFormModal({
   baseOptions, catalogUnavailable, denominations, draft, fieldErrors, focusTarget, loadError, mode,
-  onCancel, onCreateUnit, onDraftChange, onRetryLoad, onSubmit, status, submitError, submitting, unitHint,
+  onCancel, onCreateUnit, onDraftChange, onKindChange, onRetryLoad, onSubmit, status, submitError, submitting, unitHint,
 }) {
   const copy = COPY[mode === "edit" ? "edit" : "create"];
   const ready = status === "ready";
@@ -125,6 +127,13 @@ function ServiceFormModal({
                 className="max-w-none"
                 autoComplete="off"
                 onChange={(event) => onDraftChange({ name: event.target.value }, "name")}
+              />
+              <ServiceModalityField
+                id={FIELD_IDS.kind}
+                value={draft.kind}
+                error={fieldErrors.kind}
+                disabled={submitting}
+                onChange={onKindChange}
               />
               <TextArea
                 label="Descripción (opcional)"

@@ -56,6 +56,7 @@ export function getServiceStatusErrorFeedback(error, fallback) {
 // Campos del contrato que el formulario señala junto a su control.
 const FORM_FIELD_BY_PATH = {
   description: "description",
+  kind: "kind",
   measurementUnitId: "unit",
   name: "name",
   referenceRate: "referenceRate",

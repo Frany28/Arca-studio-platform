@@ -78,7 +78,8 @@ test("presentación: normaliza y valida como el contrato y previsualiza la etiqu
   assert.equal(previewUnitLabel("m²", " de  construcción"), "m² de construcción");
   assert.equal(previewUnitLabel("m²", ""), "");
   assert.deepEqual(toBaseUnitOptions([{ id: 1, symbol: "m²", name: "Metro cuadrado", code: "square_meter" }]), [
-    { id: 1, label: "m²", description: "Metro cuadrado" },
+    // El código estable acompaña a la opción para reglas como la de llave en mano (square_meter).
+    { id: 1, code: "square_meter", label: "m²", description: "Metro cuadrado" },
   ]);
   assert.deepEqual(toBaseUnitOptions(null), []);
   assert.equal(getInUseReason({ activeServiceCount: 0 }), "");
@@ -95,7 +96,7 @@ test("presentación: la base solo es editable con el indicador explícito y cons
   assert.equal(toEditBaseUnitOptions(catalog, { id: 2, symbol: "m.l.", name: "Metro lineal" }), catalog);
   // Una base inactiva (fuera del catálogo activo) se añade al inicio para conservar el símbolo.
   assert.deepEqual(toEditBaseUnitOptions(catalog, { id: 9, symbol: "min", name: "Minuto" }).map((option) => option.label), ["min", "m²", "m.l."]);
-  assert.deepEqual(toEditBaseUnitOptions(null, { id: 9, symbol: "min", name: "Minuto" }), [{ id: 9, label: "min", description: "Minuto" }]);
+  assert.deepEqual(toEditBaseUnitOptions(null, { id: 9, code: "minute", symbol: "min", name: "Minuto" }), [{ id: 9, code: "minute", label: "min", description: "Minuto" }]);
 });
 
 test("errores: 400 por campo, duplicado sobre el texto, 401/403/404/429 comprensibles y 409 del backend", () => {

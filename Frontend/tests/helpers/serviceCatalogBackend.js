@@ -17,6 +17,22 @@ export const DENOMINATIONS = {
 export const LONG_DESCRIPTION = "Diseña las áreas exteriores de prueba, con vegetación, superficies e iluminación, e integra jardines y terrazas con el resto del proyecto para comprobar textos extensos.";
 
 const unitById = (id) => Object.values(UNITS).find((unit) => unit.id === Number(id));
+const SERVICE_KIND_VALUES = ["individual", "turnkey"];
+const TURNKEY_UNIT_MESSAGE = "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.";
+
+/**
+ * Regla del backend para la modalidad: individual admite cualquier unidad y llave en mano solo la
+ * base de código `square_meter`. Devuelve los errores por campo como el VALIDATION_ERROR real.
+ *
+ * @param {string} kind - Modalidad resultante.
+ * @param {number} measurementUnitId - Unidad base resultante.
+ * @returns {Object|null} Errores por campo o null si es válida.
+ */
+function kindUnitErrors(kind, measurementUnitId) {
+  if (!SERVICE_KIND_VALUES.includes(kind)) return { "body.kind": "Elige una modalidad de contratación válida: individual o llave en mano." };
+  if (kind === "turnkey" && unitById(measurementUnitId)?.code !== "square_meter") return { measurementUnitId: TURNKEY_UNIT_MESSAGE };
+  return null;
+}
 
 /**
  * Denominación con la forma de la API (publicCode generado como PostgreSQL).
@@ -101,7 +117,8 @@ function composeUnitLabel(item) {
 
 /**
  * Backend simulado con estado: búsqueda literal, filtros y cursor del listado; detalle; alta con
- * código generado (`SERV-` + id) y tipo individual; edición versionada (409 si la versión no
+ * código generado (`SERV-` + id) y modalidad elegida (individual si se omite; llave en mano solo
+ * con m²); edición versionada (409 si la versión no
  * coincide, `changed=false` sin cambios); cambio de estado; unidades base; denominaciones por
  * base y su alta. Admite fallos y retrasos inyectados por operación.
  *
@@ -169,11 +186,13 @@ export function createServiceCatalogBackend(initial) {
       return json(route, 200, { services: matches.slice(start, start + limit), nextCursor: start + limit < matches.length ? String(start + limit) : null });
     }
     if (path === "/api/admin/services" && method === "POST") {
-      // Como serviceCreateSchema: el código y el tipo los fija el sistema.
-      const forbidden = ["code", "kind"].filter((field) => body[field] !== undefined);
-      if (forbidden.length) {
-        return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: Object.fromEntries(forbidden.map((field) => [`body.${field}`, "No se envía."])) });
+      // Como serviceCreateSchema: el código lo fija el sistema; la modalidad se elige (individual si se omite).
+      if (body.code !== undefined) {
+        return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { "body.code": "El código del servicio lo genera el sistema." } });
       }
+      const kind = body.kind === undefined ? "individual" : body.kind;
+      const kindErrors = kindUnitErrors(kind, body.measurementUnitId);
+      if (kindErrors) return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: kindErrors });
       const id = state.nextServiceId;
       state.nextServiceId += 1;
       const denomination = body.unitDenominationId ? state.denominations.find((item) => item.id === body.unitDenominationId) : null;
@@ -181,7 +200,7 @@ export function createServiceCatalogBackend(initial) {
         ...service(id, { code: `SERV-${String(id).padStart(3, "0")}`, name: body.name, unit: "m2", rate: body.referenceRate, description: body.description ?? null }),
         measurementUnit: unitById(body.measurementUnitId),
         unitDenomination: denomination ? { id: denomination.id, denomination: denomination.denomination, isActive: denomination.isActive } : null,
-        kind: "individual",
+        kind,
         sortOrder: 0,
       };
       created.unitLabel = composeUnitLabel(created);
@@ -199,8 +218,14 @@ export function createServiceCatalogBackend(initial) {
         if (match[2] && body.isActive && item.unitDenomination && !item.unitDenomination.isActive) {
           return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { unitDenominationId: "La denominación está inactiva." } });
         }
+        // Como updateService: cambiar la modalidad o la unidad revalida la regla de llave en mano.
+        if (body.kind !== undefined || body.measurementUnitId !== undefined) {
+          const kindErrors = kindUnitErrors(body.kind ?? item.kind, body.measurementUnitId ?? item.measurementUnit.id);
+          if (kindErrors) return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: kindErrors });
+        }
         const before = JSON.stringify(item);
         if (body.name !== undefined) item.name = body.name;
+        if (body.kind !== undefined) item.kind = body.kind;
         if (body.description !== undefined) item.description = body.description;
         if (body.referenceRate !== undefined) item.referenceRate = body.referenceRate;
         if (body.isActive !== undefined) item.isActive = body.isActive;

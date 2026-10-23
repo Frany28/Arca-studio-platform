@@ -1,12 +1,13 @@
 /*
  * Reglas puras del catálogo de servicios (tabulador). No conocen PostgreSQL ni HTTP.
  *
- * - Tipos: `individual` (servicio del tabulador) y `turnkey` (modalidad llave en mano).
+ * - Modalidades de contratación: `individual` («Detalle por detalle») y `turnkey` («Llave en
+ *   mano»). El administrador la elige al crear el servicio; omitida, es `individual`.
  * - Las modalidades llave en mano se cotizan por superficie: su unidad debe identificarse
  *   por un código estable de superficie, nunca por el nombre o símbolo visibles.
  * - Moneda única USD en esta fase (restricción también presente en PostgreSQL).
  * - Código visible generado por el sistema a partir del id (`SERV-001`, `SERV-1000`), como el
- *   `publicCode` de las unidades; los servicios del tabulador son individuales por defecto.
+ *   `publicCode` de las unidades.
  * - Un cambio es efectivo cuando altera algún campo versionado; la nota de cambio sola no
  *   genera una versión nueva.
  */
@@ -15,7 +16,7 @@ export const SERVICE_KINDS = Object.freeze({ INDIVIDUAL: "individual", TURNKEY: 
 
 export const SERVICE_CURRENCY = "USD";
 
-/** Tipo de los servicios del tabulador; `turnkey` corresponde a la modalidad de las solicitudes. */
+/** Modalidad que se asigna cuando el alta no indica `kind` (compatibilidad con clientes previos). */
 export const DEFAULT_SERVICE_KIND = SERVICE_KINDS.INDIVIDUAL;
 
 const GENERATED_CODE_PREFIX = "SERV-";

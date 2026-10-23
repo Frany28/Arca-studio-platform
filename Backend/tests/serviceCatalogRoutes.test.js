@@ -53,9 +53,10 @@ test("datos inválidos responden 400 VALIDATION_ERROR antes de consultar el cat�
   const cases = [
     ["POST", "", { ...VALID_CREATE, referenceRate: "12.345" }, "body.referenceRate"],
     ["POST", "", { ...VALID_CREATE, referenceRate: "-5" }, "body.referenceRate"],
-    // El código y el tipo los fija el sistema: enviarlos responde 400 por campo.
+    // El código lo fija el sistema y la modalidad solo admite individual o turnkey.
     ["POST", "", { ...VALID_CREATE, code: "SERV-001" }, "body.code"],
-    ["POST", "", { ...VALID_CREATE, kind: "turnkey" }, "body.kind"],
+    ["POST", "", { ...VALID_CREATE, kind: "bundle" }, "body.kind"],
+    ["PATCH", "/1", { expectedVersion: 1, kind: "llave" }, "body.kind"],
     ["PATCH", "/1", { referenceRate: "15" }, "body.expectedVersion"],
     ["PATCH", "/abc", { expectedVersion: 1, name: "x" }, "params.serviceId"],
     ["PATCH", "/1/status", { expectedVersion: 1 }, "body.isActive"],
@@ -68,6 +69,90 @@ test("datos inválidos responden 400 VALIDATION_ERROR antes de consultar el cat�
     assert.ok(field in response.body.fields, `${field} en ${JSON.stringify(response.body.fields)}`);
   }
   assert.deepEqual(server.queries, []);
+});
+
+const UNIT_ROWS = {
+  1: { allows_decimals: true, code: "square_meter", id: "1", is_active: true, name: "Metro cuadrado", sort_order: 101, symbol: "m²" },
+  6: { allows_decimals: true, code: "linear_meter", id: "6", is_active: true, name: "Metro lineal", sort_order: 201, symbol: "m.l." },
+};
+
+/**
+ * Simula PostgreSQL en el alta: unidades por id, reserva del id 7 con su código libre, inserción
+ * y lectura del servicio creado con la modalidad realmente insertada. Registra las inserciones.
+ *
+ * @returns {{ respond: (sql: string, params?: Array<unknown>) => object, inserts: Array<{ sql: string, params: Array<unknown> }> }} Mock.
+ */
+function createCatalogDatabase() {
+  const inserts = [];
+  let inserted = null;
+  const respond = (sql, params = []) => {
+    if (/from public\.measurement_units\s+where id = \$1/.test(sql)) {
+      const row = UNIT_ROWS[params[0]];
+      return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
+    }
+    if (sql.includes("nextval(")) return { rowCount: 1, rows: [{ id: "7" }] };
+    if (sql.includes("select 1 from public.services where code")) return { rowCount: 0, rows: [] };
+    if (sql.includes("insert into public.services")) {
+      inserts.push({ params, sql });
+      inserted = params;
+      return { rowCount: 1, rows: [{ id: params[0] }] };
+    }
+    if (sql.includes("insert into public.service_versions")) {
+      inserts.push({ params, sql });
+      return { rowCount: 1, rows: [] };
+    }
+    if (inserted && /from public\.services s\b/.test(sql)) {
+      const unit = UNIT_ROWS[inserted[5]];
+      return {
+        rowCount: 1,
+        rows: [{
+          code: inserted[1], created_at: "2026-10-22T00:00:00.000Z", currency_code: "USD", current_version: 1, denomination_id: null,
+          description: inserted[3], id: inserted[0], is_active: inserted[8], kind: inserted[4], name: inserted[2], reference_rate: inserted[6],
+          sort_order: inserted[9], unit_allows_decimals: unit.allows_decimals, unit_code: unit.code, unit_id: unit.id, unit_is_active: true,
+          unit_name: unit.name, unit_symbol: unit.symbol, updated_at: "2026-10-22T00:00:00.000Z",
+        }],
+      };
+    }
+    return { rowCount: 0, rows: [] };
+  };
+  return { inserts, respond };
+}
+
+test("alta: crea servicios individuales y llave en mano con código generado y versión 1", async (context) => {
+  for (const [body, expectedKind] of [
+    [VALID_CREATE, "individual"],
+    [{ ...VALID_CREATE, kind: "individual", measurementUnitId: 6 }, "individual"],
+    [{ ...VALID_CREATE, kind: "turnkey", measurementUnitId: 1, referenceRate: "850.50" }, "turnkey"],
+  ]) {
+    const database = createCatalogDatabase();
+    const server = await startServer(context, database.respond);
+    server.setUser(ADMIN);
+    const response = await server.send("POST", "", body);
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(response.body.service.kind, expectedKind);
+    assert.equal(response.body.service.code, "SERV-007", "El código lo genera el sistema a partir del id");
+    assert.equal(response.body.service.currentVersion, 1);
+    assert.equal(response.body.service.referenceRate, body.referenceRate === "850.50" ? "850.50" : "12.00");
+    // La modalidad elegida es la que se inserta y la versión 1 se escribe en la misma transacción.
+    const [serviceInsert, versionInsert] = database.inserts;
+    assert.equal(serviceInsert.params[4], expectedKind);
+    assert.match(versionInsert.sql, /insert into public\.service_versions/);
+    assert.equal(versionInsert.params.includes(1), true, "Versión 1");
+    assert.ok(server.queries.includes("commit"));
+  }
+});
+
+test("alta: llave en mano con una unidad que no es m² responde 400 y no inserta nada", async (context) => {
+  const database = createCatalogDatabase();
+  const server = await startServer(context, database.respond);
+  server.setUser(ADMIN);
+  const response = await server.send("POST", "", { ...VALID_CREATE, kind: "turnkey", measurementUnitId: 6 });
+  assert.equal(response.status, 400);
+  assert.equal(response.body.code, "VALIDATION_ERROR");
+  assert.equal(response.body.fields.measurementUnitId, "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.");
+  assert.deepEqual(database.inserts, []);
+  assert.ok(server.queries.includes("rollback"));
+  assert.ok(!server.queries.some((sql) => sql.includes("nextval(")), "No reserva código si la modalidad es incompatible");
 });
 
 test("un servicio inexistente responde 404 SERVICE_NOT_FOUND en consulta, edición y estado", async (context) => {

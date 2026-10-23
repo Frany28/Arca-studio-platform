@@ -66,6 +66,12 @@ const SERVICE_MODALITY_LABELS = Object.freeze({
   turnkey: "Llave en mano",
 });
 
+// Opciones de «Modalidad de Contratación» en el formulario (Figma 5924:439642), con los mismos
+// textos que la columna para que tabla y formulario no diverjan.
+export const SERVICE_MODALITY_OPTIONS = Object.freeze(
+  Object.entries(SERVICE_MODALITY_LABELS).map(([id, label]) => Object.freeze({ id, label })),
+);
+
 /**
  * Modalidad del servicio para su Badge, derivada solo del `kind` que devuelve la API: nunca se
  * deduce del nombre, la tarifa ni la unidad. Sin `kind` se indica «Sin modalidad» y un valor

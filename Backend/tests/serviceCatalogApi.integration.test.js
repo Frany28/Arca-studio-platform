@@ -52,7 +52,7 @@ function expectedCode(id) {
 
 /**
  * Crea un servicio mediante el servicio real con un cuerpo como el que deja serviceCreateSchema
- * (sin código ni tipo). `kind` solo se añade para simular el flujo interno de llave en mano.
+ * (sin código). Sin `kind` el servicio aplica `individual`, como el esquema cuando se omite.
  *
  * @param {object} [overrides] - Campos del cuerpo validado que se sustituyen.
  * @param {number} [userId] - Administrador responsable.
@@ -112,11 +112,13 @@ test("alta: sin código ni tipo genera SERV- con el id, es individual y la versi
   ]);
 });
 
-test("llave en mano: el flujo interno conserva el tipo y su regla de m², con código generado", { skip }, async () => {
+test("llave en mano: el alta elegida por el administrador conserva el tipo y su regla de m², con código generado", { skip }, async () => {
   const llave = await create({ kind: "turnkey", name: "Llave premium", referenceRate: "900.00", sortOrder: 2 });
   created.llave = llave.id;
   assert.equal(llave.kind, "turnkey");
   assert.match(llave.code, GENERATED_CODE);
+  assert.equal(llave.currentVersion, 1);
+  assert.deepEqual((await versionsOf(llave.id)).map((version) => [version.version_number, version.kind]), [[1, "turnkey"]]);
   await assert.rejects(create({ kind: "turnkey", name: "Llave por punto", measurementUnitId: ids.point }), (error) => {
     assert.equal(error.code, "VALIDATION_ERROR");
     assert.equal(error.fields.measurementUnitId, "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.");

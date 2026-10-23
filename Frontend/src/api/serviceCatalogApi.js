@@ -48,10 +48,11 @@ export const serviceCatalogApi = {
   },
 
   /**
-   * Crea un servicio del tabulador. El sistema genera el código (`SERV-001`) y el tipo es
-   * `individual` por defecto, así que el formulario no los envía. La tarifa viaja como texto.
+   * Crea un servicio del tabulador. El sistema genera el código (`SERV-001`), que no se envía;
+   * la modalidad (`kind`: `individual` o `turnkey`) la elige el administrador. La tarifa viaja
+   * como texto.
    *
-   * @param {Object} payload - Nombre, descripción, unidad, denominación y tarifa.
+   * @param {Object} payload - Nombre, modalidad, descripción, unidad, denominación y tarifa.
    * @returns {Promise<{message: string, service: Object}>} Servicio creado con `currentVersion` 1.
    */
   createService(payload) {

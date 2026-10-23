@@ -542,12 +542,16 @@ Validación, capturas y diferencias respecto a Figma:
   - Filtro por modalidad: pendiente de diseño. Ninguna variante del tabulador (component set
     `5764:218615`) lo incluye en la barra ni en la cabecera, aunque `GET /admin/services` ya admite
     `kind=individual|turnkey`.
-  - Modalidad en el formulario: Figma `5764:226084` incluye ya «Modalidad de Contratación»
-    (`5924:439642`, desplegable «Llave en mano» / «Detalle por Detalle» entre Nombre y Descripción),
-    pero no se implementa: `POST /admin/services` rechaza `kind` (400) y el alta es siempre
-    `individual` por contrato. Falta decidir si el alta debe aceptar `kind` (con la regla de m²
-    para llave en mano) y cómo se crean las tres categorías comerciales. Hasta entonces el alta
-    crea `individual` y la edición no envía `kind`, así que un servicio llave en mano la conserva.
+  - Modalidad en el formulario (Figma `5764:226084`, campo `5924:439642`): «Modalidad de
+    Contratación» entre Nombre y Descripción (`ServiceModalityField`: `Label` + `DropdownMenu`
+    + `HintText`), con los textos de la columna (`SERVICE_MODALITY_OPTIONS`; Figma escribe
+    «Detalle por Detalle» en el desplegable y «Detalle por detalle» en la tabla: se usa uno solo).
+    En el alta empieza sin elegir y es obligatoria; se envía `kind`. En la edición se precarga la
+    guardada y solo viaja si el administrador la cambia.
+  - Llave en mano solo admite la unidad base de código `square_meter` (nunca por el símbolo):
+    el selector de base y «+ Crear unidad» solo ofrecen m², y elegir llave en mano retira una
+    unidad incompatible ya elegida (con su denominación). Volver a individual conserva la unidad.
+    El backend aplica la misma regla y es la autoridad.
   - `referenceRate` se formatea como texto, sin `Number`: miles agrupados y céntimos solo si no
     son cero (`$12`, `$1,250.50`). El valor almacenado no cambia.
   - Descripción: icono informativo (`InfoCircleIcon` de `Label/LabelIcons.jsx`, `neutral-400`)
@@ -569,9 +573,8 @@ Validación, capturas y diferencias respecto a Figma:
     para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
     leídos de `GET /admin/services/:id`). Campos implementados: nombre (Input, 150), descripción
     (TextArea de 130 px, 2000; alimenta el tooltip), unidad de medida y tarifa USD (125 px, texto
-    decimal NUMERIC(14,2) sin conversión a Number). No hay campo de código (el sistema genera
-    `SERV-001`) y la «Modalidad de Contratación» de Figma está bloqueada por el contrato (ver
-    «Modalidad en el formulario»): los servicios creados desde el tabulador son `individual`.
+    decimal NUMERIC(14,2) sin conversión a Number), además de la modalidad (ver «Modalidad en el
+    formulario»). No hay campo de código: el sistema genera `SERV-001`.
   - Unidad de medida: variante `Tags` de Input con selector de prefijo (abreviatura de la base)
     y la denominación como Tag con cierre; solo se sugieren denominaciones activas de la base
     elegida y cambiar de base retira la denominación, así que no hay combinaciones incompatibles.

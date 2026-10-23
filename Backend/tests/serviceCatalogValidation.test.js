@@ -39,28 +39,41 @@ function errorPaths(result) {
   return result.success ? [] : result.error.issues.map((issue) => issue.path.join("."));
 }
 
-test("alta: normaliza nombre y tarifa y aplica valores por defecto, sin código ni tipo", () => {
+test("alta: normaliza nombre y tarifa y aplica valores por defecto (modalidad individual si se omite)", () => {
   const result = serviceCreateSchema.safeParse({ body: VALID_CREATE });
   assert.equal(result.success, true);
-  // El código y el tipo no forman parte del cuerpo: los fija el servicio (SERV-xxx, individual).
+  // Sin código (lo genera el servicio) y, por compatibilidad con clientes previos, `individual`.
   assert.deepEqual(result.data.body, {
-    changeNote: null, isActive: true, measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12.00", sortOrder: 0,
+    changeNote: null, isActive: true, kind: "individual", measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12.00", sortOrder: 0,
   });
   const described = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, referenceRate: 900.5, description: "  " } });
   assert.equal(described.data.body.referenceRate, "900.50");
   assert.equal(described.data.body.description, null);
 });
 
-test("alta: el cliente no puede fijar el código ni el tipo (tampoco llave en mano)", () => {
-  for (const [field, value] of [["code", "SERV-001"], ["code", "MANUAL"], ["kind", "individual"], ["kind", "turnkey"]]) {
-    const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, [field]: value } });
-    assert.deepEqual(errorPaths(result), [`body.${field}`], `${field}=${value}`);
+test("alta: el cliente no puede fijar el código", () => {
+  for (const value of ["SERV-001", "MANUAL"]) {
+    const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, code: value } });
+    assert.deepEqual(errorPaths(result), ["body.code"], value);
+    assert.equal(result.error.issues[0].message, "El código del servicio lo genera el sistema.");
   }
-  const both = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, code: "X", kind: "turnkey" } });
-  assert.deepEqual(both.error.issues.map((issue) => issue.message), [
-    "El código del servicio lo genera el sistema.",
-    "Los servicios del tabulador son individuales; el tipo no se envía.",
-  ]);
+  // Aunque la modalidad sea válida, el código sigue rechazándose.
+  const withKind = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, code: "X", kind: "turnkey" } });
+  assert.deepEqual(errorPaths(withKind), ["body.code"]);
+});
+
+test("alta: la modalidad admite solo individual y turnkey", () => {
+  for (const kind of ["individual", "turnkey"]) {
+    const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind } });
+    assert.equal(result.data.body.kind, kind);
+  }
+  // La regla de m² de turnkey la aplica el servicio con la unidad bloqueada, no el esquema.
+  assert.equal(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind: "turnkey", measurementUnitId: 6 } }).success, true);
+  for (const kind of ["", "Turnkey", "llave en mano", "bundle", null, 1, ["turnkey"]]) {
+    const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind } });
+    assert.deepEqual(errorPaths(result), ["body.kind"], JSON.stringify(kind));
+    assert.equal(result.error.issues[0].message, "Elige una modalidad de contratación válida: individual o llave en mano.");
+  }
 });
 
 test("dominio: el código generado es SERV- y el id con al menos tres dígitos", () => {

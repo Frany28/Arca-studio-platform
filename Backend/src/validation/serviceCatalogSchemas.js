@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
-import { SERVICE_KINDS } from "../domain/serviceCatalog.js";
+import { DEFAULT_SERVICE_KIND, SERVICE_KINDS } from "../domain/serviceCatalog.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { describeDecimalParseError, formatScaledDecimal, parseScaledDecimal } from "../utils/scaledDecimal.js";
 
@@ -12,7 +12,9 @@ const positiveId = z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGE
 // Denominación opcional de la unidad base; null la retira (el servicio usa solo la base).
 const unitDenominationId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional();
 const expectedVersion = z.number({ error: "Indica la versión vigente que estás editando." }).int().min(1);
-const serviceKind = z.enum([SERVICE_KINDS.INDIVIDUAL, SERVICE_KINDS.TURNKEY]);
+const serviceKind = z.enum([SERVICE_KINDS.INDIVIDUAL, SERVICE_KINDS.TURNKEY], {
+  error: "Elige una modalidad de contratación válida: individual o llave en mano.",
+});
 const serviceName = z.string().trim().min(1, "Es obligatorio.").max(150);
 const sortOrder = z.number().int().min(0).max(MAX_INTEGER);
 const changeNote = z.string().trim().max(255).optional().transform((value) => value || null);
@@ -71,12 +73,14 @@ export const serviceListSchema = z.object({
 
 export const serviceDetailSchema = z.object({ params: serviceIdParams });
 
-// Alta del tabulador: el código (`SERV-001`) lo genera el sistema y el tipo es siempre
-// `individual`. `code` y `kind` se rechazan con un mensaje propio por campo (400) para que el
-// cliente no los fije; cualquier otro campo desconocido lo rechaza `.strict()`.
+// Alta del tabulador: el código (`SERV-001`) lo genera el sistema y se rechaza con un mensaje
+// propio (400 en `body.code`); cualquier otro campo desconocido lo rechaza `.strict()`. La
+// modalidad (`kind`) la elige el administrador; omitida es `individual`, como antes de admitirla,
+// para no romper clientes existentes. La regla de m² de `turnkey` la aplica el servicio, que
+// necesita leer la unidad en la transacción.
 /**
  * Campo que gestiona el sistema y que el cliente no puede enviar: ausente es válido y cualquier
- * valor responde 400 en su propia ruta (`body.code`, `body.kind`) con un mensaje explicativo.
+ * valor responde 400 en su propia ruta (`body.code`) con un mensaje explicativo.
  *
  * @param {string} message - Mensaje del error de validación.
  * @returns {import("zod").ZodOptional<import("zod").ZodNever>} Esquema del campo.
@@ -87,7 +91,7 @@ export const serviceCreateSchema = z.object({
   body: z.object({
     changeNote,
     code: systemManaged("El código del servicio lo genera el sistema."),
-    kind: systemManaged("Los servicios del tabulador son individuales; el tipo no se envía."),
+    kind: serviceKind.optional().default(DEFAULT_SERVICE_KIND),
     description: serviceDescription,
     isActive: z.boolean().optional().default(true),
     measurementUnitId: positiveId,

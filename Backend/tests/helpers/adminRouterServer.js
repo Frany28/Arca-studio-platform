@@ -9,7 +9,8 @@ import { createRateLimitQueryMock } from "./rateLimitQueryMock.js";
  * @param {object} options - Configuración del servidor.
  * @param {import("pg").Pool} options.pool - Pool real de la aplicación que se simula.
  * @param {Array<[string, import("express").Router]>} options.routes - Rutas de montaje y routers.
- * @param {(sql: string) => object} [options.respond] - Respuesta a consultas que no son del rate limit.
+ * @param {(sql: string, params?: Array<unknown>) => object} [options.respond] - Respuesta a consultas que no
+ *   son del rate limit; recibe también sus parámetros.
  * @returns {Promise<{ send: Function, setUser: Function, queries: Array<string> }>} Cliente HTTP y estado.
  */
 export async function startAdminRouterServer(context, { pool, respond, routes }) {
@@ -23,7 +24,7 @@ export async function startAdminRouterServer(context, { pool, respond, routes })
     const rateLimit = rateLimitQueries.handle(sql, params);
     if (rateLimit) return rateLimit;
     queries.push(String(sql));
-    return reply(String(sql));
+    return reply(String(sql), params);
   };
   context.mock.method(pool, "query", handle);
   context.mock.method(pool, "connect", async () => ({ query: handle, release() {} }));

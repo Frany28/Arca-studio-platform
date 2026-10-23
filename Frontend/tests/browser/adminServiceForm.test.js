@@ -93,6 +93,32 @@ async function chooseBase(page, optionName) {
 }
 
 /**
+ * Elige la modalidad de contratación en su Dropdown menu.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @param {"Detalle por detalle"|"Llave en mano"} label - Opción visible.
+ * @returns {Promise<void>}
+ */
+async function chooseModality(page, label) {
+  await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+}
+
+/**
+ * Abre el selector de la unidad base y devuelve los nombres de sus opciones; lo deja cerrado.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<Array<string>>} Opciones visibles (abreviatura, nombre).
+ */
+async function baseOptionNames(page) {
+  const combobox = page.getByRole("combobox", { name: /^Unidad base del servicio/ });
+  await combobox.click();
+  const names = await page.getByRole("option").evaluateAll((options) => options.map((option) => option.getAttribute("aria-label") || option.textContent.trim()));
+  await page.keyboard.press("Escape");
+  return names;
+}
+
+/**
  * Enfoca el campo de unidad y elige una denominación entre las sugerencias de la base.
  *
  * @param {import("playwright").Page} page - Página.
@@ -104,25 +130,39 @@ async function chooseDenomination(page, text) {
   await page.getByRole("button", { name: `Seleccionar ${text}`, exact: true }).click();
 }
 
-test("alta: modal de Figma, foco, campos obligatorios y sin código ni tipo en el formulario", async (context) => {
+test("alta: modal de Figma, foco, campos obligatorios, modalidad exigida y sin código", async (context) => {
   const backend = createServiceCatalogBackend(sampleCatalog());
   const page = await openTabulator(context, backend);
   const dialog = await openCreate(page);
   assert.equal(await page.locator("#service-form-name").evaluate((element) => element === document.activeElement), true, "El nombre recibe el foco");
-  for (const label of ["Nombre del servicio", "Descripción (opcional)", "Unidad de medida", "Tarifa USD"]) {
+  for (const label of ["Nombre del servicio", "Modalidad de Contratación", "Descripción (opcional)", "Unidad de medida", "Tarifa USD"]) {
     assert.equal(await dialog.getByText(label, { exact: true }).count() > 0, true, label);
   }
-  assert.equal(await dialog.getByText(/Código|Tipo|Modalidad/).count(), 0, "El código y el tipo (modalidad) los asigna el sistema");
+  assert.equal(await dialog.getByText(/Código/).count(), 0, "El código lo genera el sistema");
+  // Figma 5764:226084: la modalidad va entre el nombre y la descripción, sin elegir en el alta.
+  const order = await dialog.evaluate((element) => ["#service-form-name", "[data-service-modality-field]", "textarea"]
+    .map((selector) => Math.round(element.querySelector(selector).getBoundingClientRect().top)));
+  assert.ok(order[0] < order[1] && order[1] < order[2], JSON.stringify(order));
+  assert.match(await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).innerText(), /Elige la modalidad/);
+  await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).click();
+  assert.deepEqual(await page.getByRole("menuitem").allInnerTexts(), ["Detalle por detalle", "Llave en mano"]);
+  // Escape con el desplegable abierto cierra solo el desplegable, no el modal.
+  await page.keyboard.press("Escape");
+  await page.getByRole("menuitem").first().waitFor({ state: "detached" });
+  assert.equal(await dialog.isVisible(), true, "El modal sigue abierto");
   assert.equal(await dialog.getByRole("button", { name: "Crear unidad" }).isVisible(), true);
   assert.equal(await dialog.getByRole("button", { name: "Crear", exact: true }).isVisible(), true);
   // Unidades base reales del catálogo.
   assert.equal(requestsOf(backend, "GET", /^\/api\/admin\/measurement-units$/).length, 1);
 
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
-  for (const message of ["Escribe el nombre del servicio.", "Elige la unidad de medida.", "Indica la tarifa."]) {
+  for (const message of ["Escribe el nombre del servicio.", "Elige la modalidad de contratación.", "Elige la unidad de medida.", "Indica la tarifa."]) {
     await dialog.getByText(message, { exact: true }).waitFor();
   }
   assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "No se envía un formulario inválido");
+  // Elegir la modalidad retira su error.
+  await chooseModality(page, "Detalle por detalle");
+  assert.equal(await dialog.getByText("Elige la modalidad de contratación.", { exact: true }).count(), 0);
   // Escape cierra el modal (un único diálogo) sin crear nada.
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
@@ -133,6 +173,7 @@ test("unidad: base y denominación coherentes, cambio de base sin combinaciones 
   const page = await openTabulator(context, backend);
   const dialog = await openCreate(page);
   await dialog.locator("#service-form-name").fill("Servicio de prueba del formulario");
+  await chooseModality(page, "Detalle por detalle");
   await dialog.getByPlaceholder("Descripción del servicio.").fill("Descripción de prueba del formulario.");
   await dialog.getByPlaceholder("0.00").fill("12.50");
 
@@ -161,11 +202,12 @@ test("unidad: base y denominación coherentes, cambio de base sin combinaciones 
   const [post] = requestsOf(backend, "POST", /^\/api\/admin\/services$/);
   assert.deepEqual(post.body, {
     name: "Servicio de prueba del formulario",
+    kind: "individual",
     description: "Descripción de prueba del formulario.",
     measurementUnitId: 13,
     unitDenominationId: 13,
     referenceRate: "12.50",
-  }, "Sin código ni tipo; tarifa como texto");
+  }, "Con la modalidad elegida, sin código; tarifa como texto");
   await page.getByRole("alert").getByText("SERV-006 · Servicio de prueba del formulario").waitFor();
   const row = rowFor(page, "SERV-006");
   await row.waitFor();
@@ -181,6 +223,7 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   const page = await openTabulator(context, backend);
   const dialog = await openCreate(page);
   await dialog.locator("#service-form-name").fill("Borrador conservado");
+  await chooseModality(page, "Detalle por detalle");
   await dialog.getByPlaceholder("Descripción del servicio.").fill("Texto del borrador.");
   await dialog.getByPlaceholder("0.00").fill("3000");
   await chooseBase(page, "m², Metro cuadrado");
@@ -196,6 +239,7 @@ test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y 
   // El foco inicial llega cuando Modal termina de montar su contenido (unos frames).
   await page.waitForFunction(() => document.activeElement?.matches("[data-service-create-unit]"));
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
+  assert.match(await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).innerText(), /Detalle por detalle/);
   assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), "Texto del borrador.");
   assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30.00");
   assert.equal(requestsOf(backend, "POST", /measurement-unit-denominations$/).length, 0, "Cancelar no crea unidades");
@@ -315,13 +359,101 @@ test("edición de un servicio llave en mano: no envía el tipo y la fila conserv
   await page.getByRole("button", { name: "Editar TST-003 Paisajismo de prueba" }).click();
   const dialog = page.getByRole("dialog", { name: "Servicio" });
   await dialog.locator("#service-form-name").waitFor();
-  assert.equal(await dialog.getByText(/Modalidad|Tipo/).count(), 0, "El formulario aprobado no tiene campo de modalidad");
+  // La modalidad guardada se precarga y, sin cambiarla, no viaja en el PATCH.
+  assert.match(await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).innerText(), /Llave en mano/);
+  assert.deepEqual(await baseOptionNames(page), ["m², Metro cuadrado"], "Llave en mano solo ofrece m²");
   await dialog.locator("#service-form-name").fill("Paisajismo de prueba editado");
   await dialog.getByRole("button", { name: "Guardar" }).click();
   await dialog.waitFor({ state: "detached" });
   assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/3$/).at(-1).body, { expectedVersion: 1, name: "Paisajismo de prueba editado" });
   await rowFor(page, "TST-003").getByText("Paisajismo de prueba editado", { exact: true }).waitFor();
   assert.equal((await rowFor(page, "TST-003").locator("[data-service-modality]").innerText()).trim(), "Llave en mano");
+});
+
+test("alta llave en mano: solo unidades m², retira la unidad incompatible y crea el servicio turnkey", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openCreate(page);
+  await dialog.locator("#service-form-name").fill("Residencial de prueba");
+  await dialog.getByPlaceholder("0.00").fill("85000");
+  // Sin modalidad (y en individual) se ofrecen todas las bases.
+  assert.equal((await baseOptionNames(page)).length, 4);
+  await chooseBase(page, "m.l., Metro lineal");
+
+  // Llave en mano: la unidad m.l. ya elegida es incompatible y se retira; solo queda m².
+  await chooseModality(page, "Llave en mano");
+  assert.deepEqual(await baseOptionNames(page), ["m², Metro cuadrado"]);
+  await dialog.getByRole("button", { name: "Crear", exact: true }).click();
+  await dialog.getByText("Elige la unidad de medida.", { exact: true }).waitFor();
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
+
+  // «+ Crear unidad» en llave en mano solo permite la base m².
+  await dialog.getByRole("button", { name: "Crear unidad" }).click();
+  const unitDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  await unitDialog.waitFor();
+  await unitDialog.getByRole("combobox").click();
+  assert.deepEqual(await page.getByRole("option").evaluateAll((options) => options.map((option) => option.getAttribute("aria-label") || option.textContent.trim())), ["m², Metro cuadrado"]);
+  await page.keyboard.press("Escape");
+  await unitDialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor();
+
+  await chooseBase(page, "m², Metro cuadrado");
+  await chooseDenomination(page, "de construcción");
+  await dialog.getByRole("button", { name: "Crear", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  const [post] = requestsOf(backend, "POST", /^\/api\/admin\/services$/);
+  assert.deepEqual(post.body, { name: "Residencial de prueba", kind: "turnkey", measurementUnitId: 1, unitDenominationId: 10, referenceRate: "850.00" });
+  const row = rowFor(page, "SERV-006");
+  await row.waitFor();
+  assert.equal((await row.locator("[data-service-modality]").innerText()).trim(), "Llave en mano");
+  assert.equal(await row.locator("[data-service-modality]").getAttribute("data-service-modality"), "turnkey");
+});
+
+test("alta: cambiar de llave en mano a individual conserva la unidad m² elegida", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openCreate(page);
+  await chooseModality(page, "Llave en mano");
+  await chooseBase(page, "m², Metro cuadrado");
+  await chooseDenomination(page, "a intervenir");
+  await chooseModality(page, "Detalle por detalle");
+  await dialog.getByRole("button", { name: "Quitar a intervenir" }).waitFor();
+  assert.equal((await baseOptionNames(page)).length, 4, "Individual vuelve a ofrecer todas las bases");
+});
+
+test("edición: la modalidad cambia solo por elección explícita y llave en mano exige m²", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  // TST-005: individual con unidad «pto. eléctrico».
+  await page.getByRole("button", { name: "Editar TST-005 Puntos eléctricos de prueba" }).click();
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+  await dialog.locator("#service-form-name").waitFor();
+  assert.match(await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).innerText(), /Detalle por detalle/);
+
+  // Pasar a llave en mano retira la unidad incompatible: no se puede guardar sin elegir m².
+  await chooseModality(page, "Llave en mano");
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  await dialog.getByText("Elige la unidad de medida.", { exact: true }).waitFor();
+  assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/5$/).length, 0);
+
+  // Volver a individual sin guardar no envía nada: la modalidad no cambia sola.
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/5$/).length, 0);
+  assert.equal((await rowFor(page, "TST-005").locator("[data-service-modality]").innerText()).trim(), "Detalle por detalle");
+
+  // Cambio explícito con una unidad m²: viaja la modalidad con la unidad y la versión leída.
+  await page.getByRole("button", { name: "Editar TST-005 Puntos eléctricos de prueba" }).click();
+  await dialog.locator("#service-form-name").waitFor();
+  await chooseModality(page, "Llave en mano");
+  await chooseBase(page, "m², Metro cuadrado");
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/5$/).at(-1).body, {
+    expectedVersion: 1, kind: "turnkey", measurementUnitId: 1, unitDenominationId: null,
+  });
+  // El listado se recarga tras guardar: se espera a la fila actualizada.
+  await rowFor(page, "TST-005").locator("[data-service-modality]", { hasText: "Llave en mano" }).waitFor();
 });
 
 test("precisión y errores: tarifa decimal exacta, 400 por campo y 409 de versión sin perder lo escrito", async (context) => {
