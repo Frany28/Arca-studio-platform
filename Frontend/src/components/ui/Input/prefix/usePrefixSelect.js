@@ -20,10 +20,12 @@ const TYPEAHEAD_RESET_MS = 600;
  * @param {Array<{id: string|number, label: string, description?: string}>} params.options - Opciones.
  * @param {string|number|null} params.value - Identificador seleccionado.
  * @param {boolean} params.disabled - Bloquea apertura y selección.
- * @param {(option: Object) => void} [params.onChange] - Recibe la opción elegida.
+ * @param {(option: Object) => void} [params.onChange] - Recibe la opción elegida si cambia el valor.
+ * @param {(option: Object) => void} [params.onSelect] - Recibe toda elección confirmada, también
+ * la del valor vigente (p. ej. para continuar el flujo tras volver a elegir la misma opción).
  * @returns {Object} Estado, refs y manejadores del disparador y del listado.
  */
-export default function usePrefixSelect({ options, value, disabled, onChange }) {
+export default function usePrefixSelect({ options, value, disabled, onChange, onSelect }) {
   const triggerRef = useRef(null);
   const listboxRef = useRef(null);
   const typeaheadRef = useRef({ query: "", timeoutId: 0 });
@@ -108,7 +110,8 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
   }
 
   /**
-   * Notifica la opción elegida y cierra el panel devolviendo el foco al disparador.
+   * Notifica la opción elegida y cierra el panel devolviendo el foco al disparador. `onChange`
+   * solo recibe cambios de valor; `onSelect`, después, toda elección confirmada.
    *
    * @param {number} index - Índice de la opción.
    * @returns {void}
@@ -119,6 +122,7 @@ export default function usePrefixSelect({ options, value, disabled, onChange }) 
     triggerRef.current?.focus();
     if (!option || disabled) return;
     if (String(option.id) !== String(value)) onChange?.(option);
+    onSelect?.(option);
   }
 
   /**

@@ -23,10 +23,11 @@ import usePrefixSelect from "./usePrefixSelect.js";
  * @param {Object} props.sizing - Estilos de tamaño del Input.
  * @param {Object} props.stateStyles - Estilos del estado visual del Input.
  * @param {(option: Object) => void} [props.onChange] - Recibe la opción elegida.
+ * @param {(option: Object) => void} [props.onSelect] - Recibe toda elección, también la del valor vigente.
  * @returns {import("react").ReactElement} Disparador y, abierto, el listado en portal.
  */
-export default function InputPrefixSelect({ inputId, options, value, selectedOption: storedOption = null, ariaLabel, disabled, sizing, stateStyles, onChange }) {
-  const select = usePrefixSelect({ options, value, disabled, onChange });
+export default function InputPrefixSelect({ inputId, options, value, selectedOption: storedOption = null, ariaLabel, disabled, sizing, stateStyles, onChange, onSelect }) {
+  const select = usePrefixSelect({ options, value, disabled, onChange, onSelect });
   const { activeIndex, highlightedIndex, isOpen, listboxRef, position, triggerRef } = select;
   // Solo afecta al disparador; las opciones y la navegación siguen usando el catálogo permitido.
   const selectedOption = select.selectedOption ?? (storedOption && String(storedOption.id) === String(value) ? storedOption : null);

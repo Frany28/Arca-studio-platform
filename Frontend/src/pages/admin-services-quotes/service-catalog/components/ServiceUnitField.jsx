@@ -15,7 +15,8 @@ const VISIBLE_SUGGESTIONS = 6;
  *
  * - Las sugerencias muestran símbolo y texto («m² de construcción»); escribir las filtra.
  * - Primero se elige una base; sin ella el texto es de solo lectura y no hay sugerencias. Elegir
- *   un símbolo enfoca la búsqueda y muestra sus denominaciones sin otro clic (alta y edición).
+ *   un símbolo, incluso el vigente, enfoca la búsqueda y muestra sus denominaciones sin otro clic
+ *   (alta y edición).
  * - El prefijo solo ofrece bases con denominaciones activas; la guardada se muestra aparte si es histórica.
  * - Solo admite una denominación activa de la base elegida, comparada por identificador.
  * - Escribir y pulsar Enter nunca crea unidades; para eso está «+ Crear unidad».
@@ -90,11 +91,14 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
           if (option.id === measurementUnitId || !prefixOptions.some((base) => base.id === option.id)) return;
           setSearch({ key: searchKey, text: "" });
           onChange({ measurementUnitId: option.id, unitDenomination: null });
-          // Input muestra las sugerencias mientras su campo tiene el foco. Llevarlo al buscador
-          // tras elegir el símbolo abre las denominaciones de esa base sin otro clic; el selector
-          // ya devolvió el foco a su disparador, así que esta llamada prevalece sin retrasos.
-          // Solo ocurre por una elección explícita: abrir la edición no despliega opciones.
-          searchInputRef.current?.focus({ preventScroll: true });
+        }}
+        // Input muestra las sugerencias mientras su campo tiene el foco. Llevarlo al buscador tras
+        // elegir un símbolo abre sus denominaciones sin otro clic, también al volver a elegir el
+        // vigente (p. ej. tras quitar la unidad en llave en mano, que solo ofrece m²). El selector
+        // ya devolvió el foco a su disparador, así que esta llamada prevalece sin retrasos. Solo
+        // ocurre por una elección explícita: abrir la edición no despliega opciones.
+        onPrefixSelect={(option) => {
+          if (prefixOptions.some((base) => base.id === option.id)) searchInputRef.current?.focus({ preventScroll: true });
         }}
         tags={selectedTags}
         tagOptions={suggestions}

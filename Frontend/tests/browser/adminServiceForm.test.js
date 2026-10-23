@@ -1308,3 +1308,53 @@ test("alta: no muestra el skeleton de detalle ni lee un servicio", async (contex
   assert.equal(await page.evaluate(() => window.__serviceFormSkeletonSeen), false);
   assert.equal(serviceDetailGets(backend).length, 0);
 });
+
+for (const theme of ["light", "dark"]) {
+  test(`unidad en Editar llave en mano (${theme}): quitarla o volver a elegir m² muestra las unidades registradas, no los símbolos`, async (context) => {
+    const backend = createServiceCatalogBackend(sampleCatalog());
+    const page = await openTabulator(context, backend, { theme, viewport: { width: 508, height: 700 } });
+    await page.getByRole("button", { name: "Editar TST-003 Paisajismo de prueba" }).click();
+    const dialog = page.getByRole("dialog", { name: "Servicio" });
+    await dialog.getByRole("button", { name: "Quitar a intervenir" }).waitFor();
+    await page.waitForFunction(() => !document.querySelector("[data-service-form]")?.textContent.includes("Cargando unidades de medida"));
+    const input = page.locator("#service-form-unit");
+    const suggestions = () => dialog.getByRole("button", { name: /^Seleccionar / }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label").replace(/^Seleccionar /, "")).sort());
+    const prefix = dialog.getByRole("combobox", { name: /^Unidad base del servicio/ });
+
+    // Quitar la unidad deja el símbolo y despliega sus unidades registradas bajo el campo.
+    await dialog.getByRole("button", { name: "Quitar a intervenir" }).click();
+    await dialog.getByRole("button", { name: "Seleccionar m² de construcción", exact: true }).waitFor();
+    assert.deepEqual(await suggestions(), ["m² a intervenir", "m² de construcción"]);
+    assert.equal(await prefix.innerText(), "m²");
+
+    // Tras salir del campo, volver a elegir el mismo símbolo (el único en llave en mano) también
+    // lleva a la búsqueda con sus unidades registradas, en lugar de quedarse en el selector.
+    await dialog.locator("#service-form-name").focus();
+    await dialog.getByRole("button", { name: /^Seleccionar / }).first().waitFor({ state: "detached" });
+    await prefix.click();
+    const listbox = page.getByRole("listbox", { name: "Unidad base del servicio" });
+    assert.deepEqual(await listbox.getByRole("option").allInnerTexts(), ["m²"], "Llave en mano solo ofrece m²");
+    await listbox.getByRole("option", { name: /^m²/ }).click();
+    await listbox.waitFor({ state: "detached" });
+    await dialog.getByRole("button", { name: "Seleccionar m² de construcción", exact: true }).waitFor();
+    assert.equal(await input.evaluate((element) => document.activeElement === element), true);
+    assert.deepEqual(await suggestions(), ["m² a intervenir", "m² de construcción"]);
+
+    // Cerrar el selector con Escape no es una elección: no mueve el foco ni despliega opciones.
+    await dialog.locator("#service-form-name").focus();
+    await prefix.click();
+    await listbox.waitFor();
+    await page.keyboard.press("Escape");
+    await listbox.waitFor({ state: "detached" });
+    assert.equal(await dialog.getByRole("button", { name: /^Seleccionar / }).count(), 0);
+    assert.equal(await input.evaluate((element) => document.activeElement === element), false);
+
+    // La selección sigue igual: elegir una registrada la fija como Tag.
+    await input.focus();
+    await dialog.getByRole("button", { name: "Seleccionar m² de construcción", exact: true }).click();
+    await dialog.getByRole("button", { name: "Quitar de construcción" }).waitFor();
+    await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/3$/).length, 0);
+  });
+}

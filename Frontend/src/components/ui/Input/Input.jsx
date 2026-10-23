@@ -70,6 +70,8 @@ function hasTextValue(value) {
  * @param {Object|null} [props.prefixSelectedOption] Presenta un valor guardado que ya no está en
  * las opciones, sin añadirlo al listado ni permitir una nueva asignación de ese valor.
  * @param {(option: Object) => void} [props.onPrefixChange] Recibe la opción de prefijo elegida.
+ * @param {(option: Object) => void} [props.onPrefixSelect] Recibe toda elección de prefijo, también
+ * la del valor vigente, después de `onPrefixChange`.
  * @param {string} [props.prefixAriaLabel] Nombre accesible del selector de prefijo.
  * @param {boolean} [props.prefixDisabled=false] Bloquea solo el prefijo y deja editable el texto.
  * @returns {import("react").ReactElement} Campo accesible con sus adornos y ayudas.
@@ -103,6 +105,7 @@ function Input({
   prefixValue = null,
   prefixSelectedOption = null,
   onPrefixChange,
+  onPrefixSelect,
   prefixAriaLabel = "Prefijo",
   prefixDisabled = false,
   tags = [],
@@ -321,6 +324,7 @@ function Input({
       sizing={sizing}
       stateStyles={stateStyles}
       onChange={onPrefixChange}
+      onSelect={onPrefixSelect}
     />
   ) : null;
 
