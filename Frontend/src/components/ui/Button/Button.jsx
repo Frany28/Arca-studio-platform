@@ -8,7 +8,14 @@ import {
   BUTTON_VISUALS,
 } from "./buttonConfig.js";
 
-// Normaliza tema, tipo, tamaño y estado antes de construir las clases y accesibilidad del botón.
+/**
+ * Normaliza las variantes y accesibilidad del botón reutilizable. Su ayuda es autónoma salvo
+ * que el consumidor controle la apertura para coordinarla con otras capas, sin cambiar el diseño.
+ * @param {Object} props - Variantes, contenido y atributos nativos del botón.
+ * @param {boolean} [props.tooltipOpen] - Apertura controlada de la ayuda opcional.
+ * @param {(open: boolean) => void} [props.onTooltipOpenChange] - Solicitudes de apertura y cierre.
+ * @returns {import("react").ReactElement} Botón con su ayuda opcional en portal.
+ */
 function Button({
   className,
   children = "Button",

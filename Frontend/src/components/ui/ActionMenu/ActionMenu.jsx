@@ -64,6 +64,8 @@ function ActionMenu({
 }) {
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const outsideFocusFrameRef = useRef(null);
+  const restoringFocusRef = useRef(false);
   // Solo se enfoca la primera acción al abrir con teclado (event.detail === 0);
   // con puntero se evita un foco visible inesperado sobre la primera opción.
   const focusFirstItemOnOpenRef = useRef(false);
@@ -73,6 +75,7 @@ function ActionMenu({
 
   /** Cambia la capa activa y descarta el tooltip antes de mover el foco al menú o al disparador. */
   const changeOpen = (nextOpen) => {
+    window.cancelAnimationFrame(outsideFocusFrameRef.current);
     setInternalTooltipOpen(false);
     onTooltipOpenChange?.(false);
     setOpen(nextOpen);
@@ -85,6 +88,8 @@ function ActionMenu({
   useLayoutEffect(() => {
     changeOpenRef.current = changeOpen;
   });
+
+  useEffect(() => () => window.cancelAnimationFrame(outsideFocusFrameRef.current), []);
 
   useLayoutEffect(() => {
     if (!open) return undefined;
@@ -116,10 +121,21 @@ function ActionMenu({
     const closeOnOutsidePress = (event) => {
       if (triggerRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
       changeOpenRef.current(false);
-      // Si el foco estaba dentro del portal que se desmonta, vuelve al disparador. El pointerdown
-      // conserva después su comportamiento nativo si el usuario pulsó otro control enfocable.
-      if (menuRef.current?.contains(document.activeElement)) {
-        triggerRef.current?.querySelector("button")?.focus();
+      // El comportamiento nativo del pointerdown puede quitar el foco devuelto sincrónicamente.
+      // Tras pulsar contenido no interactivo se restaura en el siguiente frame; pulsar otro
+      // control conserva el foco de ese control. El frame se cancela al desmontar el componente.
+      const target = event.target;
+      const focusableTarget = target.closest?.('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]');
+      if (!focusableTarget) {
+        window.cancelAnimationFrame(outsideFocusFrameRef.current);
+        outsideFocusFrameRef.current = window.requestAnimationFrame(() => {
+          // No roba el foco si otra acción abrió una capa que ya lo capturó.
+          if (document.activeElement === document.body || document.activeElement?.contains(target)) {
+            restoringFocusRef.current = true;
+            triggerRef.current?.querySelector("button")?.focus({ preventScroll: true });
+            restoringFocusRef.current = false;
+          }
+        });
       }
     };
     const closeOnEscape = (event) => {
@@ -193,7 +209,7 @@ function ActionMenu({
           tooltip={tooltip}
           tooltipOpen={!open && (tooltipOpen ?? internalTooltipOpen)}
           onTooltipOpenChange={(nextOpen) => {
-            if (nextOpen && open) return;
+            if (nextOpen && (open || restoringFocusRef.current)) return;
             setInternalTooltipOpen(nextOpen);
             onTooltipOpenChange?.(nextOpen);
           }}

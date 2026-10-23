@@ -616,6 +616,38 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
   assert.equal(backend.requests.some((request) => request.method === "DELETE"), false);
 });
 
+test("menú compartido: descarta su tooltip al abrir, no lo restaura al cerrar y conserva hover y foco", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+  const trigger = page.getByRole("button", { name: "Más opciones para UNID-001" });
+  await trigger.waitFor();
+  await page.evaluate(() => document.fonts.ready);
+  const tooltip = page.getByRole("tooltip");
+  await trigger.hover();
+  await tooltip.getByText("Más opciones", { exact: true }).waitFor();
+  await trigger.click();
+  const menu = page.getByRole("menu");
+  await menu.waitFor();
+  await tooltip.waitFor({ state: "detached" });
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await tooltip.count(), 0);
+  assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
+  await page.mouse.move(5, 5);
+  await trigger.hover();
+  await tooltip.getByText("Más opciones", { exact: true }).waitFor();
+  await page.mouse.move(5, 5);
+  await tooltip.waitFor({ state: "detached" });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await menu.getByRole("menuitem", { name: "Desactivar" }).focus();
+  await page.getByRole("heading", { name: "Servicios y cotizaciones", level: 1 }).click();
+  await menu.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Más opciones para UNID-001");
+  assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
+  assert.equal(await tooltip.count(), 0);
+});
+
 test("estados: carga, vacío con acción, error recuperable y 403 comprensible", async (context) => {
   const backend = createBackend([]);
   backend.failures["GET /api/admin/measurement-unit-denominations"] = { status: 500, body: { code: "INTERNAL_SERVER_ERROR", message: "Ocurrió un error inesperado." } };
