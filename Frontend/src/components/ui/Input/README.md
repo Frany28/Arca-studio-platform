@@ -28,6 +28,11 @@ dentro del campo, junto al texto. Sin `prefixOptions` conserva su presentación 
 el formulario de servicios: unidad base en el prefijo y la denominación como Tag, con
 `onTagsChange` controlado para aceptar solo opciones existentes.
 
+`prefixSelectedOption` permite mostrar una selección guardada que ya no está entre las opciones,
+como una unidad histórica inactiva. Solo presenta la opción cuyo id coincide con `prefixValue`;
+no la añade al listado ni a la navegación por teclado. Sin otras opciones el prefijo queda
+bloqueado. Se conserva la variante anterior cuando no se proporciona esta prop.
+
 ## Variante "Prefix select"
 
 Texto libre precedido por un selector (Figma `5790:360030`, “Nueva unidad de medida”):

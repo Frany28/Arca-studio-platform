@@ -305,6 +305,23 @@ test("Tags: Enter/coma normalizan, deduplican y consumen teclado antes del callb
   await page.waitForFunction(() => document.activeElement?.id === "contract-input");
 });
 
+test("Prefijo: conserva el valor histórico sin añadirlo a las opciones ni permitir reasignarlo", async (context) => {
+  const page = await openInput(context, { type: "Tags", tags: [], tagOptions: [], prefixValue: 99,
+    prefixAriaLabel: "Unidad base", prefixSelectedOption: { id: 99, label: "hist.", description: "Base histórica" },
+    prefixOptions: [{ id: 1, label: "m²", description: "Metro cuadrado" }] });
+  const prefix = page.getByRole("combobox", { name: /^Unidad base/ });
+  assert.equal(await prefix.innerText(), "hist.");
+  await prefix.click();
+  assert.deepEqual(await page.getByRole("option").allTextContents(), ["m²"]);
+  await page.keyboard.press("Escape");
+  assert.equal(await prefix.innerText(), "hist.");
+  await page.evaluate(() => window.inputHarness.setProps({ prefixOptions: [] }));
+  assert.equal(await prefix.isDisabled(), true);
+  assert.equal(await prefix.innerText(), "hist.");
+  await page.evaluate(() => window.inputHarness.setProps({ prefixValue: 1 }));
+  assert.equal(await prefix.innerText(), "", "No presenta una opción guardada cuyo identificador no coincide");
+});
+
 test("Tags: onTagsChange controla la selección y onTagOptionSelect intercepta solo el clic", async (context) => {
   const page = await openInput(context, { type: "Tags", value: "ana", tags: [], tagOptions: TAG_OPTIONS, showTagOptionsOnFocus: true, tagGroupPlacement: "overlay" });
   await page.evaluate(() => window.inputHarness.setProps({

@@ -17,6 +17,7 @@ import usePrefixSelect from "./usePrefixSelect.js";
  * @param {string} props.inputId - Identificador del campo nativo, base de los ids del listado.
  * @param {Array<{id: string|number, label: string, description?: string}>} props.options - Opciones.
  * @param {string|number|null} props.value - Opción seleccionada.
+ * @param {Object|null} [props.selectedOption] - Valor guardado visible si ya no está en las opciones.
  * @param {string} props.ariaLabel - Nombre accesible del selector.
  * @param {boolean} props.disabled - Bloquea el selector (también si el Input está deshabilitado).
  * @param {Object} props.sizing - Estilos de tamaño del Input.
@@ -24,9 +25,11 @@ import usePrefixSelect from "./usePrefixSelect.js";
  * @param {(option: Object) => void} [props.onChange] - Recibe la opción elegida.
  * @returns {import("react").ReactElement} Disparador y, abierto, el listado en portal.
  */
-export default function InputPrefixSelect({ inputId, options, value, ariaLabel, disabled, sizing, stateStyles, onChange }) {
+export default function InputPrefixSelect({ inputId, options, value, selectedOption: storedOption = null, ariaLabel, disabled, sizing, stateStyles, onChange }) {
   const select = usePrefixSelect({ options, value, disabled, onChange });
-  const { activeIndex, highlightedIndex, isOpen, listboxRef, position, selectedOption, triggerRef } = select;
+  const { activeIndex, highlightedIndex, isOpen, listboxRef, position, triggerRef } = select;
+  // Solo afecta al disparador; las opciones y la navegación siguen usando el catálogo permitido.
+  const selectedOption = select.selectedOption ?? (storedOption && String(storedOption.id) === String(value) ? storedOption : null);
   const listboxId = `${inputId}-prefix-options`;
   const optionId = (index) => `${inputId}-prefix-option-${index}`;
   const selectedLabel = selectedOption?.label ?? "";

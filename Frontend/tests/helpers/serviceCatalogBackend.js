@@ -128,6 +128,7 @@ function composeUnitLabel(item) {
 export function createServiceCatalogBackend(initial) {
   const state = {
     items: initial.map((item) => ({ ...item })),
+    baseUnits: Object.values(UNITS).map((unit) => ({ ...unit })),
     denominations: Object.values(DENOMINATIONS).map(denominationRecord),
     requests: [],
     failures: {},
@@ -159,7 +160,7 @@ export function createServiceCatalogBackend(initial) {
     }
 
     if (path === "/api/admin/measurement-units" && method === "GET") {
-      return json(route, 200, { measurementUnits: Object.values(UNITS).filter((unit) => unit.isActive) });
+      return json(route, 200, { measurementUnits: state.baseUnits.filter((unit) => unit.isActive) });
     }
     if (path === "/api/admin/measurement-unit-denominations" && method === "GET") {
       const matches = state.denominations.filter((item) => (!params.measurementUnitId || item.measurementUnit.id === Number(params.measurementUnitId))

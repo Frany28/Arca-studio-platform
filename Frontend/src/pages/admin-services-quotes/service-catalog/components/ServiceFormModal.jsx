@@ -49,6 +49,7 @@ const FOCUS_SELECTORS = {
  * @param {string} props.submitError - Error general del envío.
  * @param {boolean} props.submitting - Envío en curso.
  * @param {Array<Object>} props.unitPrefixOptions - Símbolos del campo de unidad: solo bases con unidades registradas.
+ * @param {Object|null} props.selectedBaseOption - Base elegida, visible aunque sea histórica y no seleccionable.
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.denominations
  * Unidades de medida registradas que ofrece el campo (filtradas por modalidad y base).
  * @param {string} props.unitHint - Ayuda del campo de unidad (carga o error del catálogo).
@@ -65,7 +66,7 @@ const FOCUS_SELECTORS = {
  */
 function ServiceFormModal({
   catalogUnavailable, denominations, draft, fieldErrors, focusRequest, loadError, mode,
-  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, status, submitError, submitting, unitCreation, unitHint, unitNotice, unitPrefixOptions,
+  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, selectedBaseOption, status, submitError, submitting, unitCreation, unitHint, unitNotice, unitPrefixOptions,
 }) {
   const copy = COPY[mode === "edit" ? "edit" : "create"];
   const ready = status === "ready";
@@ -176,6 +177,7 @@ function ServiceFormModal({
                   <ServiceUnitField
                     id={FIELD_IDS.unit}
                     prefixOptions={unitPrefixOptions}
+                    selectedBaseOption={selectedBaseOption}
                     measurementUnitId={draft.measurementUnitId}
                     unitDenomination={draft.unitDenomination}
                     denominations={denominations.options}

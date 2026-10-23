@@ -82,17 +82,19 @@ export function changeDraftKind(draft, kind, baseOptions) {
 /**
  * Valida el borrador con las reglas del contrato. Devuelve un mensaje por campo inválido.
  *
- * @param {Object} draft - Borrador del formulario.
- * La unidad es una denominación registrada; solo se admite la base sin denominación cuando la
- * edición conserva la unidad que el servicio ya tenía así (`allowBaseOnly`).
+ * La unidad es una denominación activa registrada; la edición puede conservar la combinación
+ * histórica guardada (`preserveStoredUnit`) sin sustituirla ni reenviarla a la API.
  *
  * @param {Object} draft - Borrador del formulario.
  * @param {Object} [context] - Datos que dependen del catálogo.
  * @param {string} [context.unitCode] - Código estable de la unidad base elegida.
  * @param {boolean} [context.allowBaseOnly] - La base sin denominación es la guardada del servicio.
+ * @param {boolean} [context.preserveStoredUnit] - No cambió la base ni denominación guardada.
+ * @param {string} [context.originalKind] - Modalidad guardada; cambiarla revalida compatibilidad.
+ * @param {Array<Object>} [context.availableDenominations] - Catálogo de nuevas asignaciones activas.
  * @returns {{name?: string, kind?: string, description?: string, unit?: string, referenceRate?: string}} Errores.
  */
-export function validateServiceDraft(draft, { allowBaseOnly = false, unitCode } = {}) {
+export function validateServiceDraft(draft, { allowBaseOnly = false, availableDenominations, originalKind, preserveStoredUnit = false, unitCode } = {}) {
   const errors = {};
   const name = draft.name.trim();
   if (!name) errors.name = "Escribe el nombre del servicio.";
@@ -101,8 +103,18 @@ export function validateServiceDraft(draft, { allowBaseOnly = false, unitCode } 
   if (draft.description.trim().length > SERVICE_DESCRIPTION_MAX_LENGTH) {
     errors.description = `Usa como máximo ${SERVICE_DESCRIPTION_MAX_LENGTH} caracteres.`;
   }
-  if (!draft.measurementUnitId || (!draft.unitDenomination && !allowBaseOnly)) errors.unit = "Elige la unidad de medida.";
-  else if (!isBaseUnitAllowedForKind(draft.kind, unitCode)) errors.unit = TURNKEY_UNIT_MESSAGE;
+  if (!preserveStoredUnit) {
+    if (!draft.measurementUnitId || (!draft.unitDenomination && !allowBaseOnly)) errors.unit = "Elige la unidad de medida.";
+    else if (draft.unitDenomination && Array.isArray(availableDenominations)
+      && !filterDenominationsForBase(availableDenominations, draft.measurementUnitId).some((item) => item.id === draft.unitDenomination.id)) {
+      errors.unit = "Elige una unidad activa registrada para este símbolo.";
+    }
+  }
+  // Como PATCH: cambiar modalidad revalida su compatibilidad, pero no reasigna una unidad que
+  // conserva sus ids. Una combinación histórica intacta puede editar otros campos.
+  if (!errors.unit && (!preserveStoredUnit || draft.kind !== originalKind) && !isBaseUnitAllowedForKind(draft.kind, unitCode)) {
+    errors.unit = TURNKEY_UNIT_MESSAGE;
+  }
   const rate = draft.referenceRate.trim();
   if (!rate) errors.referenceRate = "Indica la tarifa.";
   else if (!REFERENCE_RATE_PATTERN.test(rate)) errors.referenceRate = "Usa hasta 12 enteros y 2 decimales, sin signo (por ejemplo, 12.50).";
@@ -270,5 +282,6 @@ export function filterDenominationsForKind(denominations, kind) {
  */
 export function filterDenominationsForBase(denominations, measurementUnitId) {
   if (!measurementUnitId) return [];
-  return (denominations || []).filter((item) => item.isActive !== false && item.measurementUnit?.id === measurementUnitId);
+  return (denominations || []).filter((item) => item.isActive !== false
+    && item.measurementUnit?.isActive !== false && item.measurementUnit?.id === measurementUnitId);
 }

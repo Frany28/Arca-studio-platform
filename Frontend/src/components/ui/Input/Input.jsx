@@ -67,6 +67,8 @@ function hasTextValue(value) {
  * En la variante "Tags" añaden el mismo selector delante de las etiquetas (por ejemplo, unidad
  * base + denominación); sin opciones, "Tags" conserva su presentación anterior.
  * @param {string|number|null} [props.prefixValue] Opción seleccionada del prefijo (controlada).
+ * @param {Object|null} [props.prefixSelectedOption] Presenta un valor guardado que ya no está en
+ * las opciones, sin añadirlo al listado ni permitir una nueva asignación de ese valor.
  * @param {(option: Object) => void} [props.onPrefixChange] Recibe la opción de prefijo elegida.
  * @param {string} [props.prefixAriaLabel] Nombre accesible del selector de prefijo.
  * @param {boolean} [props.prefixDisabled=false] Bloquea solo el prefijo y deja editable el texto.
@@ -99,6 +101,7 @@ function Input({
   phoneOptions = PHONE_COUNTRY_OPTIONS,
   prefixOptions = [],
   prefixValue = null,
+  prefixSelectedOption = null,
   onPrefixChange,
   prefixAriaLabel = "Prefijo",
   prefixDisabled = false,
@@ -297,7 +300,7 @@ function Input({
   const resolvedAriaInvalid =
     ariaInvalid ?? (resolvedState === "Error" ? true : undefined);
   const hasPrefixSelect = resolvedType === "Prefix select"
-    || (resolvedType === "Tags" && Array.isArray(prefixOptions) && prefixOptions.length > 0);
+    || (resolvedType === "Tags" && Array.isArray(prefixOptions) && (prefixOptions.length > 0 || Boolean(prefixSelectedOption)));
   // Teléfono y prefijo seleccionable comparten la estructura de selector + campo nativo.
   const leadingSelector = resolvedType === "Phone number" ? (
     <PhoneCountrySelector
@@ -312,8 +315,9 @@ function Input({
       inputId={inputId}
       options={prefixOptions}
       value={prefixValue}
+      selectedOption={prefixSelectedOption}
       ariaLabel={prefixAriaLabel}
-      disabled={isDisabled || prefixDisabled}
+      disabled={isDisabled || prefixDisabled || (Boolean(prefixSelectedOption) && prefixOptions.length === 0)}
       sizing={sizing}
       stateStyles={stateStyles}
       onChange={onPrefixChange}

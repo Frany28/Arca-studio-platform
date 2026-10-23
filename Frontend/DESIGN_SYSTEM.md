@@ -612,20 +612,31 @@ Validación, capturas y diferencias respecto a Figma:
     decimal NUMERIC(14,2) sin conversión a Number), además de la modalidad (ver «Modalidad en el
     formulario»). No hay campo de código: el sistema genera `SERV-001`.
   - Unidad de medida: primero se elige el símbolo de una base y después una denominación activa
-    registrada para ella. El catálogo se lee una vez al elegir base o abrir el alta contextual con
+    registrada para ella. Crear y Editar comparten `ServiceFormDialog`, `ServiceFormModal` y
+    `ServiceUnitField`, sin selectores diferentes. El catálogo se lee una vez al abrir con
     `GET /admin/measurement-unit-denominations?status=active` (`useActiveDenominations`),
     nunca las unidades base sueltas. Conserva la composición de Figma: variante `Tags` de Input con
     la abreviatura en el prefijo y la unidad elegida como Tag con cierre. Las sugerencias muestran
     símbolo y texto («m² de construcción») y escribir las filtra. Sin base, el texto es de solo
-    lectura con «Selecciona un símbolo», sin sugerencias ni lecturas de denominaciones. El prefijo
-    sigue disponible y lista las bases activas, incluso sin denominaciones. Las sugerencias se
+    lectura con «Selecciona un símbolo», sin sugerencias ni consultas adicionales al hacer clic.
+    `getServiceUnitCatalog` deriva el prefijo solo de bases activas con denominaciones activas
+    registradas, nunca de las 48 bases sueltas. El alta contextual sí conserva todas las bases
+    activas permitidas, para crear la primera denominación de un símbolo. Las sugerencias se
     filtran por `measurementUnitId`, nunca por símbolo. Cambiar de base retira la denominación y
     la consulta anterior (una sola por servicio), conservando los otros campos. Llave en mano solo
-    ofrece la base `square_meter`. Sin denominaciones activas para la base seleccionada se muestra
-    «No hay unidades registradas para este símbolo», también al enfocar, y sigue «+ Crear unidad».
+    ofrece la base `square_meter`. Sin denominaciones activas para la base histórica seleccionada
+    se muestra «No hay unidades registradas para este símbolo», también al enfocar. Sin catálogo
+    se indica crear una unidad; siempre sigue disponible «+ Crear unidad» si hay bases activas.
     - Se exige una unidad registrada; en la edición se conservan la unidad guardada aunque esté
       inactiva y un servicio guardado solo con la base, mientras no se cambie. La unidad inactiva
-      permanece como Tag guardado, pero no vuelve a ofrecerse como una nueva selección.
+      permanece como Tag guardado, pero no vuelve a ofrecerse como una nueva selección. Una base
+      inactiva o sin denominaciones activas se presenta mediante `prefixSelectedOption` del Input,
+      sin añadirla al listado ni a la navegación por opciones. Sin denominación guardada no se
+      fabrica un Tag. `preservesServiceUnit` permite editar otros campos conservando esos ids,
+      incluso históricos. Cambiar la modalidad revalida compatibilidad; cambiar los ids exige
+      una denominación activa válida de una base activa.
+      El PATCH envía solo cambios efectivos con `expectedVersion`; restaurar los valores originales
+      no genera cambios de unidad ni versiones innecesarias. El backend conserva la autoridad.
     - Las sugerencias usan la tira horizontal del Input (scroll con la barra oculta): con muchas
       unidades, las que no caben se alcanzan con Tab, la rueda o el gesto, o filtrando.
   - «+ Crear unidad» (Figma `5767:342334`) despliega dentro del mismo modal, debajo de Unidad y
@@ -640,6 +651,8 @@ Validación, capturas y diferencias respecto a Figma:
     - Guardar (o Enter en el campo) crea solo la denominación, nunca el servicio: se añade a las
       opciones, queda elegida con su base, se confirma con la alerta de éxito compartida y el foco
       vuelve al campo de unidad. El borrador del servicio no cambia. Un doble clic envía una vez.
+      Si el alta termina durante la lectura inicial, `useActiveDenominations` combina ambas respuestas
+      por id sin cancelar la lectura ni perder el resto del catálogo o duplicar la unidad creada.
     - Duplicados: antes de enviar se compara con las denominaciones activas de la base con la clave
       del índice único (`denominationEquivalenceKey`: NFKC y minúsculas) y se ofrece «Usar «…»». El
       409 `MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS` (p. ej. una equivalente inactiva) muestra

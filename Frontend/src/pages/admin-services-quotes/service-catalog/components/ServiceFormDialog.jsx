@@ -7,9 +7,10 @@ import { useServiceDetail } from "../hooks/useServiceDetail.js";
 import { useServiceFormSubmit } from "../hooks/useServiceFormSubmit.js";
 import { getServiceFormErrorFeedback } from "../utils/serviceCatalogErrors.js";
 import {
-  changeDraftKind, createServiceDraft, filterBaseOptionsForKind, filterDenominationsForBase, filterDenominationsForKind,
+  changeDraftKind, createServiceDraft, filterBaseOptionsForKind, filterDenominationsForBase,
   validateServiceDraft,
 } from "../utils/serviceFormValues.js";
+import { getServiceUnitCatalog, preservesServiceUnit } from "../utils/serviceUnitSelection.js";
 import ServiceFormModal from "./ServiceFormModal.jsx";
 
 const NO_ERRORS = Object.freeze({});
@@ -71,22 +72,26 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
     preferredUnitId: draft.measurementUnitId,
     onCreated: selectCreatedDenomination,
   });
-  // La primera elección es la base, incluso si aún no tiene denominaciones registradas.
-  const unitPrefixOptions = useMemo(() => filterBaseOptionsForKind(baseOptions, draft.kind), [baseOptions, draft.kind]);
-  // Se lee una vez cuando hace falta buscar o comprobar duplicados del alta contextual.
-  const activeDenominations = useActiveDenominations({ enabled: status === "ready" && Boolean(draft.measurementUnitId || creator.open) });
+  // Ambos modos necesitan las denominaciones al abrir para construir los símbolos seleccionables.
+  const activeDenominations = useActiveDenominations({ enabled: status === "ready" });
+  const unitCatalog = useMemo(() => getServiceUnitCatalog(baseUnits.options, activeDenominations.options, draft.kind),
+    [activeDenominations.options, baseUnits.options, draft.kind]);
+  const unitPrefixOptions = unitCatalog.prefixOptions;
+  // La base guardada puede mostrarse sin estar disponible para otra asignación.
+  const selectedBaseOption = baseOptions.find((option) => option.id === draft.measurementUnitId) ?? null;
   // La unidad guardada se conserva en el borrador, pero una inactiva no vuelve a ofrecerse.
   const unitSuggestions = useMemo(
-    () => filterDenominationsForBase(filterDenominationsForKind(activeDenominations.options, draft.kind), draft.measurementUnitId),
-    [activeDenominations.options, draft.kind, draft.measurementUnitId],
+    () => filterDenominationsForBase(unitCatalog.denominations, draft.measurementUnitId),
+    [draft.measurementUnitId, unitCatalog.denominations],
   );
   // Un servicio guardado solo con la base puede conservarla; cualquier cambio exige una unidad registrada.
-  const allowBaseOnly = Boolean(service && !service.unitDenomination && !draft.unitDenomination && draft.measurementUnitId === service.measurementUnit.id);
+  const preserveStoredUnit = preservesServiceUnit(draft, service);
   const noRegisteredUnits = status === "ready" && draft.measurementUnitId && !draft.unitDenomination
     && !activeDenominations.loading && !activeDenominations.error && unitSuggestions.length === 0;
   const catalogUnavailable = !editing && (Boolean(baseUnits.error) || baseUnits.options.length === 0);
   const unitHint = activeDenominations.error
     || (activeDenominations.loading ? "Cargando unidades de medida..." : "")
+    || (!draft.measurementUnitId && unitPrefixOptions.length === 0 ? "No hay unidades de medida registradas. Crea una con «+ Crear unidad»." : "")
     || (noRegisteredUnits ? "No hay unidades registradas para este símbolo" : "");
   const createUnitHint = baseUnits.error
     || (baseUnits.loading ? "Cargando unidades base..." : "")
@@ -155,7 +160,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
    * @returns {Promise<void>}
    */
   async function submit() {
-    const errors = validateServiceDraft(draft, { allowBaseOnly, unitCode });
+    const errors = validateServiceDraft(draft, { availableDenominations: unitCatalog.denominations, originalKind: service?.kind, preserveStoredUnit, unitCode });
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
       return;
@@ -188,6 +193,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       submitError={submitError}
       submitting={form.submitting}
       unitPrefixOptions={unitPrefixOptions}
+      selectedBaseOption={selectedBaseOption}
       denominations={{ ...activeDenominations, options: unitSuggestions }}
       unitHint={unitHint}
       unitNotice={unitNotice}

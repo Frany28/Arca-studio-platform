@@ -15,13 +15,14 @@ const VISIBLE_SUGGESTIONS = 6;
  *
  * - Las sugerencias muestran símbolo y texto («m² de construcción»); escribir las filtra.
  * - Primero se elige una base; sin ella el texto es de solo lectura y no hay sugerencias.
- * - El prefijo incluye bases sin denominaciones; elegir otra retira la selección incompatible.
+ * - El prefijo solo ofrece bases con denominaciones activas; la guardada se muestra aparte si es histórica.
  * - Solo admite una denominación activa de la base elegida, comparada por identificador.
  * - Escribir y pulsar Enter nunca crea unidades; para eso está «+ Crear unidad».
  *
  * @param {Object} props - Selección, opciones y callbacks.
  * @param {string} props.id - Id del campo nativo (enfoque inicial y etiqueta).
  * @param {Array<{id: number, label: string, description: string}>} props.prefixOptions - Bases permitidas.
+ * @param {Object|null} props.selectedBaseOption - Base actual, incluida una histórica no seleccionable.
  * @param {number|null} props.measurementUnitId - Base elegida.
  * @param {{id: number, denomination: string}|null} props.unitDenomination - Unidad elegida.
  * @param {Array<Object>} props.denominations - Unidades registradas que se ofrecen (forma del contrato).
@@ -32,7 +33,7 @@ const VISIBLE_SUGGESTIONS = 6;
  * @param {boolean} props.disabled - Bloquea el campo.
  * @returns {import("react").ReactElement} Campo de unidad.
  */
-function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurementUnitId, onChange, prefixOptions, unitDenomination }) {
+function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurementUnitId, onChange, prefixOptions, selectedBaseOption, unitDenomination }) {
   // La consulta pertenece a esta combinación. Un cambio externo de base o unidad (modalidad,
   // alta contextual) no puede reutilizar texto anterior ni necesita sincronizarlo con un efecto.
   const searchKey = `${measurementUnitId}:${unitDenomination?.id ?? ""}`;
@@ -42,6 +43,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   const compatibleDenominations = filterDenominationsForBase(denominations, measurementUnitId);
   const suggestions = compatibleDenominations.map(toDenominationOption);
   const hintId = `${id}-unit-hint`;
+  const selectableBase = prefixOptions.some((option) => option.id === measurementUnitId);
 
   /**
    * Elige una unidad registrada, con su base, sustituyendo la anterior (selección única).
@@ -71,8 +73,8 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         showLabelInfo={false}
         showLeftIcon={false}
         showRightIcon={false}
-        placeholder={!measurementUnitId ? "Selecciona un símbolo" : unitDenomination ? "" : "Buscar unidad"}
-        readOnly={!measurementUnitId}
+        placeholder={!measurementUnitId ? "Selecciona un símbolo" : unitDenomination ? "" : selectableBase ? "Buscar unidad" : "Sin denominación guardada"}
+        readOnly={!measurementUnitId || !selectableBase}
         value={query}
         state={invalid ? "Error" : "Default"}
         showHint={false}
@@ -80,9 +82,10 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         disabled={disabled}
         prefixOptions={prefixOptions}
         prefixValue={measurementUnitId}
+        prefixSelectedOption={selectedBaseOption}
         prefixAriaLabel="Unidad base del servicio"
         onPrefixChange={(option) => {
-          if (option.id === measurementUnitId) return;
+          if (option.id === measurementUnitId || !prefixOptions.some((base) => base.id === option.id)) return;
           setSearch({ key: searchKey, text: "" });
           onChange({ measurementUnitId: option.id, unitDenomination: null });
         }}
