@@ -2,6 +2,15 @@ import { CloseCircle, TickCircle } from "iconsax-react";
 
 import Button from "../../../../components/ui/Button/Button.jsx";
 
+// Figma 5790:351653: los controles de texto miden 41 px, las acciones con icono 44 px.
+// Se conserva Button M y sus tokens; solo se ajusta la geometría de esta composición.
+const FOOTER_BUTTON_GEOMETRY = {
+  deactivate: { width: 119, height: 44 },
+  activate: { width: 97, height: 44 },
+  previous: { width: 75, height: 41 },
+  next: { width: 114, height: 41 },
+};
+
 /**
  * Pie del tabulador (Figma 5790:351653): contador de la selección a la izquierda, acciones
  * «Desactivar» y «Activar» para los seleccionados y la paginación a la derecha. Como en Figma,
@@ -21,8 +30,8 @@ import Button from "../../../../components/ui/Button/Button.jsx";
  */
 function ServiceCatalogFooter({ busy, onStatusRequest, pagination, selectedCount, targets, total }) {
   const actions = [
-    { icon: CloseCircle, isActive: false, label: "Desactivar", count: targets.deactivate.length },
-    { icon: TickCircle, isActive: true, label: "Activar", count: targets.activate.length },
+    { icon: CloseCircle, isActive: false, label: "Desactivar", count: targets.deactivate.length, geometry: FOOTER_BUTTON_GEOMETRY.deactivate },
+    { icon: TickCircle, isActive: true, label: "Activar", count: targets.activate.length, geometry: FOOTER_BUTTON_GEOMETRY.activate },
   ];
 
   return (
@@ -41,6 +50,7 @@ function ServiceCatalogFooter({ busy, onStatusRequest, pagination, selectedCount
                 type="Ghost"
                 size="M"
                 fitContent
+                style={action.geometry}
                 showLeftIcon
                 iconLeft={<ActionIcon size="20" color="currentColor" />}
                 showRightIcon={false}
@@ -57,8 +67,8 @@ function ServiceCatalogFooter({ busy, onStatusRequest, pagination, selectedCount
         </div>
       ) : null}
       <nav className="flex items-center gap-[8px] max-[1023px]:ml-auto" aria-label="Paginación de servicios">
-        <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasPrevious} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
-        <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasNext} onClick={pagination.next}>Siguiente pág.</Button>
+        <Button theme="Primary" type="Outline" size="M" fitContent style={FOOTER_BUTTON_GEOMETRY.previous} showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasPrevious} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
+        <Button theme="Primary" type="Solid" size="M" fitContent style={FOOTER_BUTTON_GEOMETRY.next} showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasNext} onClick={pagination.next}>Siguiente pág.</Button>
       </nav>
     </footer>
   );

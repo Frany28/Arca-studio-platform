@@ -582,6 +582,15 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
     for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000], [1920, 1080]]) {
       await page.setViewportSize({ width, height });
       await page.evaluate(() => document.fonts.ready);
+      // Cruzar el breakpoint del riel cambia su expansión con una transición. Medir durante
+      // ella daba falsos positivos: a 1440 px la barra cabía antes de terminar de expandirse.
+      // Se esperan frames y animaciones finitas; una transición sustituida puede cancelarse.
+      await page.evaluate(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await Promise.allSettled(document.getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+          .map((animation) => animation.finished));
+      });
       const layout = await page.evaluate(() => {
         const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
         const textOverflows = (cell) => {
@@ -636,7 +645,8 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
       else assert.ok(layout.tableHorizontalOverflow > 0, `${theme} ${width}px: la tabla debe desplazar`);
       if (width >= 1920) assert.ok(layout.tableAreaWidth >= SERVICE_CATALOG_TABLE_MIN_WIDTH, `${theme} ${width}px: en escritorio amplio la tabla cabe`);
       if (width <= 768) assert.ok(layout.tableHorizontalOverflow > 0, `${theme} ${width}px: en móvil y tablet la tabla desplaza`);
-      if (width >= 1440) assert.equal(layout.addSameRow, true, `${theme} ${width}px: «Añadir servicio» en la fila de la búsqueda`);
+      // Con el riel expandido, 1440 px dejan 1032 px: la barra requiere 1053 px y puede envolver.
+      if (width >= 1920) assert.equal(layout.addSameRow, true, `${theme} ${width}px: «Añadir servicio» en la fila de la búsqueda`);
       if (width < 768) assert.equal(layout.addFullWidth, true, `${theme} ${width}px: «Añadir servicio» a todo el ancho`);
       assert.notEqual(layout.rowBackground, "rgba(0, 0, 0, 0)");
       assert.equal(layout.footerGroups.length, 3, "Contador, acciones masivas y paginación");
