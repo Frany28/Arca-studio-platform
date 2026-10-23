@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import Input from "../../../../components/ui/Input/Input.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
@@ -14,7 +14,8 @@ const VISIBLE_SUGGESTIONS = 6;
  * dentro del campo (variante "Tags" del Input con prefijo).
  *
  * - Las sugerencias muestran símbolo y texto («m² de construcción»); escribir las filtra.
- * - Primero se elige una base; sin ella el texto es de solo lectura y no hay sugerencias.
+ * - Primero se elige una base; sin ella el texto es de solo lectura y no hay sugerencias. Elegir
+ *   un símbolo enfoca la búsqueda y muestra sus denominaciones sin otro clic (alta y edición).
  * - El prefijo solo ofrece bases con denominaciones activas; la guardada se muestra aparte si es histórica.
  * - Solo admite una denominación activa de la base elegida, comparada por identificador.
  * - Escribir y pulsar Enter nunca crea unidades; para eso está «+ Crear unidad».
@@ -38,6 +39,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   // alta contextual) no puede reutilizar texto anterior ni necesita sincronizarlo con un efecto.
   const searchKey = `${measurementUnitId}:${unitDenomination?.id ?? ""}`;
   const [search, setSearch] = useState({ key: searchKey, text: "" });
+  const searchInputRef = useRef(null);
   const query = search.key === searchKey ? search.text : "";
   const selectedTags = unitDenomination ? [toDenominationTag(unitDenomination)] : [];
   const compatibleDenominations = filterDenominationsForBase(denominations, measurementUnitId);
@@ -88,6 +90,11 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
           if (option.id === measurementUnitId || !prefixOptions.some((base) => base.id === option.id)) return;
           setSearch({ key: searchKey, text: "" });
           onChange({ measurementUnitId: option.id, unitDenomination: null });
+          // Input muestra las sugerencias mientras su campo tiene el foco. Llevarlo al buscador
+          // tras elegir el símbolo abre las denominaciones de esa base sin otro clic; el selector
+          // ya devolvió el foco a su disparador, así que esta llamada prevalece sin retrasos.
+          // Solo ocurre por una elección explícita: abrir la edición no despliega opciones.
+          searchInputRef.current?.focus({ preventScroll: true });
         }}
         tags={selectedTags}
         tagOptions={suggestions}
@@ -108,6 +115,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         onChange={(event) => {
           if (measurementUnitId) setSearch({ key: searchKey, text: event.target.value });
         }}
+        inputRef={searchInputRef}
         className="max-w-none"
         autoComplete="off"
       />

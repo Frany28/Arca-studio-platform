@@ -353,7 +353,7 @@ test("unidad: teclado selecciona primero el símbolo y después una única denom
   await page.keyboard.press("Enter");
   assert.equal(await prefix.innerText(), "m²");
   assert.equal(await prefix.getAttribute("aria-expanded"), "false");
-  await page.keyboard.press("Tab");
+  // Elegir el símbolo lleva el foco a la búsqueda de sus denominaciones, sin otro Tab.
   assert.equal(await page.locator("#service-form-unit").evaluate((element) => document.activeElement === element), true);
   assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción"]);
   await page.keyboard.type("intervenir");
@@ -365,6 +365,103 @@ test("unidad: teclado selecciona primero el símbolo y después una única denom
   assert.equal(await dialog.getByRole("button", { name: "Quitar a intervenir" }).count(), 0);
   assert.equal(await prefix.innerText(), "m²", "Quitar la denominación conserva la base");
   assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "Enter selecciona sin enviar el servicio");
+});
+
+/**
+ * Mide el campo de unidad y las sugerencias visibles bajo él: posición, tamaño y estilo de cada
+ * etiqueta. Permite comparar la apertura automática con la apertura manual existente.
+ *
+ * @param {import("playwright").Page} page - Página con el formulario abierto.
+ * @returns {Promise<Object>} Medidas del campo y de las sugerencias.
+ */
+function measureUnitOptions(page) {
+  return page.evaluate(() => {
+    const rect = (element) => {
+      const box = element.getBoundingClientRect();
+      return [box.x, box.y, box.width, box.height].map(Math.round);
+    };
+    const input = document.querySelector("[data-service-form] #service-form-unit");
+    const shell = input.closest("[data-input-shell]");
+    const group = document.getElementById("service-form-unit-tags");
+    return {
+      shell: rect(shell).slice(2),
+      group: group ? rect(group) : null,
+      options: [...(group?.querySelectorAll("button") ?? [])].map((button) => {
+        const style = getComputedStyle(button);
+        return {
+          label: button.getAttribute("aria-label"),
+          box: rect(button),
+          style: [style.backgroundColor, style.color, style.borderTopWidth, style.borderTopColor, style.borderRadius, style.padding, style.fontSize, style.lineHeight],
+        };
+      }),
+    };
+  });
+}
+
+test("unidad en Crear: elegir el símbolo muestra sus denominaciones sin otro clic y con el mismo diseño", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openCreate(page);
+  const input = page.locator("#service-form-unit");
+  const shellBefore = (await measureUnitOptions(page)).shell;
+  assert.equal(await dialog.getByRole("button", { name: /^Seleccionar / }).count(), 0, "Sin símbolo no hay sugerencias");
+
+  await chooseBase(page, "m², Metro cuadrado");
+  await dialog.getByRole("button", { name: "Seleccionar m² de construcción", exact: true }).waitFor();
+  assert.equal(await input.evaluate((element) => document.activeElement === element), true, "La búsqueda queda lista para escribir");
+  const automatic = await measureUnitOptions(page);
+  assert.deepEqual(automatic.options.map((option) => option.label).sort(), ["Seleccionar m² a intervenir", "Seleccionar m² de construcción"]);
+  // La altura enfocada (borde de Focused) se compara abajo con la apertura manual, también enfocada.
+  assert.equal(automatic.shell[0], shellBefore[0], "El campo conserva su ancho");
+  assert.ok(automatic.group[1] >= (await input.boundingBox()).y, "Las etiquetas siguen debajo del campo");
+
+  // La apertura manual existente (salir y volver a enfocar) produce exactamente la misma presentación.
+  await page.keyboard.press("Shift+Tab");
+  await dialog.getByRole("button", { name: /^Seleccionar / }).first().waitFor({ state: "detached" });
+  await input.focus();
+  await dialog.getByRole("button", { name: "Seleccionar m² de construcción", exact: true }).waitFor();
+  assert.deepEqual(await measureUnitOptions(page), automatic);
+
+  // Cambiar de símbolo sustituye las opciones; búsqueda y selección siguen igual.
+  await chooseBase(page, "m³, Metro cúbico");
+  await dialog.getByRole("button", { name: "Seleccionar m³ de excavación", exact: true }).waitFor();
+  assert.deepEqual((await measureUnitOptions(page)).options.map((option) => option.label), ["Seleccionar m³ de excavación"]);
+  await page.keyboard.type("excav");
+  await page.keyboard.press("Enter");
+  await dialog.getByRole("button", { name: "Quitar de excavación" }).waitFor();
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
+});
+
+test("unidad en Editar (móvil oscuro): abre sin sugerencias y las muestra solo al cambiar el símbolo", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend, { theme: "dark", viewport: { width: 375, height: 812 } });
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+  await dialog.getByRole("button", { name: "Quitar de construcción" }).waitFor();
+  await page.waitForFunction(() => !document.querySelector("[data-service-form]")?.textContent.includes("Cargando unidades de medida"));
+  const prefix = dialog.getByRole("combobox", { name: /^Unidad base del servicio/ });
+  assert.equal(await prefix.innerText(), "m²", "Conserva la unidad precargada");
+  assert.equal(await dialog.getByRole("button", { name: /^Seleccionar / }).count(), 0, "Abrir la edición no despliega opciones");
+  const shellBefore = (await measureUnitOptions(page)).shell;
+
+  await chooseBase(page, "m³, Metro cúbico");
+  await dialog.getByRole("button", { name: "Seleccionar m³ de excavación", exact: true }).waitFor();
+  const automatic = await measureUnitOptions(page);
+  assert.deepEqual(automatic.options.map((option) => option.label), ["Seleccionar m³ de excavación"]);
+  // La altura enfocada (borde de Focused) se compara abajo con la apertura manual, también enfocada.
+  assert.equal(automatic.shell[0], shellBefore[0], "El campo conserva su ancho");
+  assert.equal(await dialog.getByRole("button", { name: "Quitar de construcción" }).count(), 0, "Cambiar la base retira la unidad anterior");
+  const { group } = automatic;
+  assert.ok(group[0] >= 0 && group[0] + group[2] <= 375, `Las etiquetas caben en el viewport ${JSON.stringify(group)}`);
+
+  await page.keyboard.press("Shift+Tab");
+  await dialog.getByRole("button", { name: /^Seleccionar / }).first().waitFor({ state: "detached" });
+  await page.locator("#service-form-unit").focus();
+  await dialog.getByRole("button", { name: "Seleccionar m³ de excavación", exact: true }).waitFor();
+  assert.deepEqual(await measureUnitOptions(page), automatic, "Misma presentación que la apertura manual");
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).length, 0);
 });
 
 test("alta contextual durante una lectura lenta conserva el catálogo completo y la selección creada", async (context) => {

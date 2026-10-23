@@ -641,6 +641,8 @@ Validación, capturas y diferencias respecto a Figma:
     la abreviatura en el prefijo y la unidad elegida como Tag con cierre. Las sugerencias muestran
     símbolo y texto («m² de construcción») y escribir las filtra. Sin base, el texto es de solo
     lectura con «Selecciona un símbolo», sin sugerencias ni consultas adicionales al hacer clic.
+    Elegir o cambiar el símbolo (Crear y Editar) enfoca la búsqueda y muestra sus denominaciones
+    bajo el campo sin otro clic; abrir la edición no las despliega.
     `getServiceUnitCatalog` deriva el prefijo solo de bases activas con denominaciones activas
     registradas, nunca de las 48 bases sueltas. El alta contextual sí conserva todas las bases
     activas permitidas, para crear la primera denominación de un símbolo. Las sugerencias se
