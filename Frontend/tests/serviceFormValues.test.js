@@ -7,11 +7,14 @@ import {
   changeDraftKind,
   createServiceDraft,
   filterBaseOptionsForKind,
+  filterDenominationsForKind,
   isBaseUnitAllowedForKind,
   rateFromPastedText,
   rateFromTypedValue,
   toCreateServicePayload,
+  toDenominationOption,
   toDenominationTag,
+  toUnitPrefixOptions,
   toUpdateServiceChanges,
   validateServiceDraft,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
@@ -27,6 +30,15 @@ const SERVICE = {
   currentVersion: 3,
 };
 const VALID_DRAFT = { name: "Servicio", kind: "individual", description: "", measurementUnitId: 1, unitDenomination: null, referenceRate: "12.50" };
+// Borrador con una unidad registrada (denominación), que es lo que exige el formulario.
+const REGISTERED = { ...VALID_DRAFT, unitDenomination: { id: 10, denomination: "de construcción" } };
+const M2 = { id: 1, code: "square_meter", symbol: "m²", name: "Metro cuadrado" };
+const ML = { id: 6, code: "linear_meter", symbol: "m.l.", name: "Metro lineal" };
+const REGISTERED_UNITS = [
+  { id: 10, denomination: "de construcción", label: "m² de construcción", measurementUnit: M2 },
+  { id: 11, denomination: "a intervenir", label: "m² a intervenir", measurementUnit: M2 },
+  { id: 40, denomination: "de canalización", label: "m.l. de canalización", measurementUnit: ML },
+];
 const BASE_OPTIONS = [
   { id: 1, code: "square_meter", label: "m²" },
   { id: 6, code: "linear_meter", label: "m.l." },
@@ -47,25 +59,25 @@ test("borrador: vacío en el alta y con los datos guardados (sin convertir la ta
 });
 
 test("validación: campos obligatorios, límites del contrato y tarifa NUMERIC(14,2) sin signo", () => {
-  assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, name: "  ", kind: "", measurementUnitId: null, referenceRate: "" }), {
+  assert.deepEqual(validateServiceDraft({ ...REGISTERED, name: "  ", kind: "", measurementUnitId: null, referenceRate: "" }), {
     name: "Escribe el nombre del servicio.",
     kind: "Elige la modalidad de contratación.",
     unit: "Elige la unidad de medida.",
     referenceRate: "Indica la tarifa.",
   });
-  assert.ok(validateServiceDraft({ ...VALID_DRAFT, name: "x".repeat(151) }).name);
-  assert.ok(validateServiceDraft({ ...VALID_DRAFT, description: "x".repeat(2001) }).description);
-  for (const rate of ["0", "12", "12.5", "12.50", "999999999999.99"]) assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, referenceRate: rate }), {}, rate);
-  for (const rate of ["-1", "12.345", "1e3", "1,5", "1234567890123", "12."]) assert.ok(validateServiceDraft({ ...VALID_DRAFT, referenceRate: rate }).referenceRate, rate);
+  assert.ok(validateServiceDraft({ ...REGISTERED, name: "x".repeat(151) }).name);
+  assert.ok(validateServiceDraft({ ...REGISTERED, description: "x".repeat(2001) }).description);
+  for (const rate of ["0", "12", "12.5", "12.50", "999999999999.99"]) assert.deepEqual(validateServiceDraft({ ...REGISTERED, referenceRate: rate }), {}, rate);
+  for (const rate of ["-1", "12.345", "1e3", "1,5", "1234567890123", "12."]) assert.ok(validateServiceDraft({ ...REGISTERED, referenceRate: rate }).referenceRate, rate);
 });
 
 test("modalidad: solo individual o turnkey, y llave en mano exige la base m² por su código", () => {
-  for (const kind of ["individual", "turnkey"]) assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, kind }, { unitCode: "square_meter" }), {}, kind);
-  for (const kind of ["", "bundle", undefined]) assert.equal(validateServiceDraft({ ...VALID_DRAFT, kind }).kind, "Elige la modalidad de contratación.", String(kind));
+  for (const kind of ["individual", "turnkey"]) assert.deepEqual(validateServiceDraft({ ...REGISTERED, kind }, { unitCode: "square_meter" }), {}, kind);
+  for (const kind of ["", "bundle", undefined]) assert.equal(validateServiceDraft({ ...REGISTERED, kind }).kind, "Elige la modalidad de contratación.", String(kind));
   // Individual admite cualquier unidad; llave en mano, solo square_meter (nunca por el símbolo).
-  assert.deepEqual(validateServiceDraft({ ...VALID_DRAFT, measurementUnitId: 6 }, { unitCode: "linear_meter" }), {});
-  assert.equal(validateServiceDraft({ ...VALID_DRAFT, kind: "turnkey", measurementUnitId: 6 }, { unitCode: "linear_meter" }).unit, "Llave en mano requiere una unidad en metros cuadrados (m²).");
-  assert.ok(validateServiceDraft({ ...VALID_DRAFT, kind: "turnkey" }, { unitCode: undefined }).unit, "Sin código conocido no se acepta");
+  assert.deepEqual(validateServiceDraft({ ...REGISTERED, measurementUnitId: 6 }, { unitCode: "linear_meter" }), {});
+  assert.equal(validateServiceDraft({ ...REGISTERED, kind: "turnkey", measurementUnitId: 6 }, { unitCode: "linear_meter" }).unit, "Llave en mano requiere una unidad en metros cuadrados (m²).");
+  assert.ok(validateServiceDraft({ ...REGISTERED, kind: "turnkey" }, { unitCode: undefined }).unit, "Sin código conocido no se acepta");
   assert.equal(isBaseUnitAllowedForKind("turnkey", "metro_cuadrado"), false);
   assert.equal(isBaseUnitAllowedForKind("individual", "point"), true);
   assert.deepEqual(filterBaseOptionsForKind(BASE_OPTIONS, "turnkey").map((option) => option.label), ["m²"]);
@@ -82,6 +94,28 @@ test("modalidad: al cambiarla se conserva la unidad compatible y se retira la in
   assert.deepEqual(changeDraftKind({ ...VALID_DRAFT, measurementUnitId: null }, "turnkey", BASE_OPTIONS), { kind: "turnkey" });
   // Una base desconocida no se da por compatible con llave en mano.
   assert.deepEqual(changeDraftKind({ ...VALID_DRAFT, measurementUnitId: 99 }, "turnkey", BASE_OPTIONS), { kind: "turnkey", measurementUnitId: null, unitDenomination: null });
+});
+
+test("unidad: se exige una unidad registrada; solo la edición conserva una base sin denominación", () => {
+  assert.equal(validateServiceDraft(VALID_DRAFT).unit, "Elige la unidad de medida.", "Una base sola no es una unidad");
+  assert.equal(validateServiceDraft(VALID_DRAFT, { allowBaseOnly: true }).unit, undefined, "Servicio guardado solo con la base");
+  assert.deepEqual(validateServiceDraft(REGISTERED), {});
+});
+
+test("unidades registradas: modalidad, símbolos derivados y sugerencias con símbolo", () => {
+  assert.equal(filterDenominationsForKind(REGISTERED_UNITS, "individual"), REGISTERED_UNITS);
+  assert.deepEqual(filterDenominationsForKind(REGISTERED_UNITS, "turnkey").map((item) => item.id), [10, 11], "Llave en mano: solo base square_meter");
+  assert.deepEqual(filterDenominationsForKind(null, "turnkey"), []);
+  // Solo bases con unidades registradas, sin repetir y en el orden de la API.
+  assert.deepEqual(toUnitPrefixOptions(REGISTERED_UNITS), [
+    { id: 1, code: "square_meter", label: "m²", description: "Metro cuadrado" },
+    { id: 6, code: "linear_meter", label: "m.l.", description: "Metro lineal" },
+  ]);
+  // La base guardada sin unidades registradas se añade al inicio (edición).
+  assert.deepEqual(toUnitPrefixOptions([], { id: 30, code: "point", symbol: "pto.", name: "Punto" }).map((option) => option.label), ["pto."]);
+  assert.deepEqual(toUnitPrefixOptions(REGISTERED_UNITS, M2).map((option) => option.label), ["m²", "m.l."]);
+  assert.deepEqual(toDenominationOption(REGISTERED_UNITS[0]), { id: 10, label: "m² de construcción", avatar: false, closeIcon: true });
+  assert.equal(toDenominationOption({ id: 5, denomination: "de obra", measurementUnit: M2 }).label, "m² de obra", "Sin label, compone símbolo y texto");
 });
 
 test("tarifa: comparación canónica como texto, sin Number", () => {

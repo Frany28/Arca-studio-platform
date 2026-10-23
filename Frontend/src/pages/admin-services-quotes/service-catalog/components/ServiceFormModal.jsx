@@ -48,9 +48,9 @@ const FOCUS_SELECTORS = {
  * @param {Object} props.fieldErrors - Errores por campo (name, kind, description, unit, referenceRate).
  * @param {string} props.submitError - Error general del envío.
  * @param {boolean} props.submitting - Envío en curso.
- * @param {Array<Object>} props.baseOptions - Unidades base del selector.
+ * @param {Array<Object>} props.unitPrefixOptions - Símbolos del campo de unidad: solo bases con unidades registradas.
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.denominations
- * Denominaciones de la base elegida.
+ * Unidades de medida registradas que ofrece el campo (filtradas por modalidad y base).
  * @param {string} props.unitHint - Ayuda del campo de unidad (carga o error del catálogo).
  * @param {string} [props.unitNotice] - Confirmación discreta tras crear o elegir una unidad.
  * @param {boolean} props.catalogUnavailable - El catálogo de bases no está disponible.
@@ -64,8 +64,8 @@ const FOCUS_SELECTORS = {
  * @returns {import("react").ReactElement} Modal en portal.
  */
 function ServiceFormModal({
-  baseOptions, catalogUnavailable, denominations, draft, fieldErrors, focusRequest, loadError, mode,
-  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, status, submitError, submitting, unitCreation, unitHint, unitNotice,
+  catalogUnavailable, denominations, draft, fieldErrors, focusRequest, loadError, mode,
+  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, status, submitError, submitting, unitCreation, unitHint, unitNotice, unitPrefixOptions,
 }) {
   const copy = COPY[mode === "edit" ? "edit" : "create"];
   const ready = status === "ready";
@@ -175,7 +175,7 @@ function ServiceFormModal({
                 <div className="flex min-w-0 flex-1 flex-col items-start gap-[8px]">
                   <ServiceUnitField
                     id={FIELD_IDS.unit}
-                    baseOptions={baseOptions}
+                    prefixOptions={unitPrefixOptions}
                     measurementUnitId={draft.measurementUnitId}
                     unitDenomination={draft.unitDenomination}
                     denominations={denominations.options}

@@ -578,9 +578,18 @@ Validación, capturas y diferencias respecto a Figma:
     (TextArea de 130 px, 2000; alimenta el tooltip), unidad de medida y tarifa USD (125 px, texto
     decimal NUMERIC(14,2) sin conversión a Number), además de la modalidad (ver «Modalidad en el
     formulario»). No hay campo de código: el sistema genera `SERV-001`.
-  - Unidad de medida: variante `Tags` de Input con selector de prefijo (abreviatura de la base)
-    y la denominación como Tag con cierre; solo se sugieren denominaciones activas de la base
-    elegida y cambiar de base retira la denominación, así que no hay combinaciones incompatibles.
+  - Unidad de medida: solo unidades registradas (denominaciones activas de todas las bases, leídas
+    una vez con `GET /admin/measurement-unit-denominations?status=active`; `useActiveDenominations`),
+    nunca las unidades base sueltas. Conserva la composición de Figma: variante `Tags` de Input con
+    la abreviatura en el prefijo y la unidad elegida como Tag con cierre. Las sugerencias muestran
+    símbolo y texto («m² de construcción») y escribir las filtra. El prefijo solo lista las bases
+    que tienen unidades registradas y filtra las sugerencias; elegir una unidad fija su base y
+    cambiar de base retira la unidad (una sola por servicio). Llave en mano solo ofrece las de base
+    `square_meter`. Sin unidades registradas, el campo indica crear una con «+ Crear unidad».
+    - Se exige una unidad registrada; en la edición se conservan la unidad guardada aunque esté
+      inactiva y un servicio guardado solo con la base, mientras no se cambie.
+    - Las sugerencias usan la tira horizontal del Input (scroll con la barra oculta): con muchas
+      unidades, las que no caben se alcanzan con Tab, la rueda o el gesto, o filtrando.
   - «+ Crear unidad» (Figma `5767:342334`) despliega dentro del mismo modal, debajo de Unidad y
     Tarifa, la fila «Nombre de la unidad *» (`ServiceUnitCreateField`: Input «Prefix select» con la
     abreviatura y el texto, y «Guardar» con borde a la derecha); el botón cede su lugar a la fila.

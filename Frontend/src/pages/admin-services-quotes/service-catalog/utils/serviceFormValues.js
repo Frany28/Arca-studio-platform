@@ -83,11 +83,16 @@ export function changeDraftKind(draft, kind, baseOptions) {
  * Valida el borrador con las reglas del contrato. Devuelve un mensaje por campo inválido.
  *
  * @param {Object} draft - Borrador del formulario.
+ * La unidad es una denominación registrada; solo se admite la base sin denominación cuando la
+ * edición conserva la unidad que el servicio ya tenía así (`allowBaseOnly`).
+ *
+ * @param {Object} draft - Borrador del formulario.
  * @param {Object} [context] - Datos que dependen del catálogo.
  * @param {string} [context.unitCode] - Código estable de la unidad base elegida.
+ * @param {boolean} [context.allowBaseOnly] - La base sin denominación es la guardada del servicio.
  * @returns {{name?: string, kind?: string, description?: string, unit?: string, referenceRate?: string}} Errores.
  */
-export function validateServiceDraft(draft, { unitCode } = {}) {
+export function validateServiceDraft(draft, { allowBaseOnly = false, unitCode } = {}) {
   const errors = {};
   const name = draft.name.trim();
   if (!name) errors.name = "Escribe el nombre del servicio.";
@@ -96,7 +101,7 @@ export function validateServiceDraft(draft, { unitCode } = {}) {
   if (draft.description.trim().length > SERVICE_DESCRIPTION_MAX_LENGTH) {
     errors.description = `Usa como máximo ${SERVICE_DESCRIPTION_MAX_LENGTH} caracteres.`;
   }
-  if (!draft.measurementUnitId) errors.unit = "Elige la unidad de medida.";
+  if (!draft.measurementUnitId || (!draft.unitDenomination && !allowBaseOnly)) errors.unit = "Elige la unidad de medida.";
   else if (!isBaseUnitAllowedForKind(draft.kind, unitCode)) errors.unit = TURNKEY_UNIT_MESSAGE;
   const rate = draft.referenceRate.trim();
   if (!rate) errors.referenceRate = "Indica la tarifa.";
@@ -227,4 +232,49 @@ export function toUpdateServiceChanges(draft, service) {
  */
 export function toDenominationTag(denomination) {
   return { id: denomination.id, label: denomination.denomination, avatar: false, closeIcon: true };
+}
+
+/**
+ * Sugerencia del campo de unidad: símbolo y denominación («m² de construcción»), con la etiqueta
+ * que compone el backend (`label`); la búsqueda del Input filtra sobre ese texto.
+ *
+ * @param {{id: number, denomination: string, label?: string, measurementUnit: {symbol: string}}} denomination - Denominación.
+ * @returns {{id: number, label: string, avatar: false, closeIcon: true}} Opción del Input.
+ */
+export function toDenominationOption(denomination) {
+  const label = denomination.label || `${denomination.measurementUnit?.symbol ?? ""} ${denomination.denomination}`.trim();
+  return { id: denomination.id, label, avatar: false, closeIcon: true };
+}
+
+/**
+ * Unidades de medida registradas que admite la modalidad: todas en individual (o sin modalidad
+ * elegida) y solo las de base `square_meter` en llave en mano (por código, nunca por símbolo).
+ *
+ * @param {Array<{measurementUnit: {code: string}}>} denominations - Denominaciones activas.
+ * @param {string} kind - Modalidad del borrador.
+ * @returns {Array<Object>} Denominaciones permitidas (la misma lista si no hay restricción).
+ */
+export function filterDenominationsForKind(denominations, kind) {
+  const list = Array.isArray(denominations) ? denominations : [];
+  return kind === SERVICE_KINDS.TURNKEY ? list.filter((item) => isBaseUnitAllowedForKind(kind, item.measurementUnit?.code)) : list;
+}
+
+/**
+ * Símbolos del selector compuesto «Unidad de medida»: solo las bases que tienen unidades
+ * registradas (derivadas de las denominaciones, nunca el catálogo completo de bases), sin repetir y
+ * en el orden de la API (base, texto). En la edición se añade al inicio la base guardada si no
+ * figura (por ejemplo, un servicio con solo la base o con una denominación ya inactiva).
+ *
+ * @param {Array<{measurementUnit: {id: number, code: string, symbol: string, name: string}}>} denominations - Denominaciones permitidas.
+ * @param {{id: number, code: string, symbol: string, name: string}|null} [currentUnit] - Base guardada (edición).
+ * @returns {Array<{id: number, code: string, label: string, description: string}>} Opciones del prefijo.
+ */
+export function toUnitPrefixOptions(denominations, currentUnit = null) {
+  const bases = new Map();
+  for (const item of denominations || []) {
+    if (item.measurementUnit?.id && !bases.has(item.measurementUnit.id)) bases.set(item.measurementUnit.id, item.measurementUnit);
+  }
+  const options = [...bases.values()];
+  if (currentUnit && !bases.has(currentUnit.id)) options.unshift(currentUnit);
+  return options.map((unit) => ({ id: unit.id, code: unit.code, label: unit.symbol, description: unit.name }));
 }

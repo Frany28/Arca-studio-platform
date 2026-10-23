@@ -35,11 +35,11 @@ export const measurementUnitsApi = {
   },
 
   /**
-   * Recorre todas las páginas de denominaciones de una unidad base (sin duplicados), por ejemplo
-   * para ofrecerlas en el formulario de servicios. El contrato no ofrece totales.
+   * Recorre todas las páginas de denominaciones (sin duplicados), de una unidad base o de todas,
+   * por ejemplo para ofrecerlas en el formulario de servicios. El contrato no ofrece totales.
    *
    * @param {Object} options - Filtros y cancelación.
-   * @param {number} options.measurementUnitId - Unidad base.
+   * @param {number} [options.measurementUnitId] - Solo esa unidad base; sin él, todas.
    * @param {"active"|"inactive"} [options.status] - Filtra por estado.
    * @param {AbortSignal} [options.signal] - Cancela todas las páginas pendientes.
    * @returns {Promise<{unitDenominations: Array<Object>, nextCursor: null}>} Colección completa.
