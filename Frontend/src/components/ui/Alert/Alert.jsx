@@ -1,6 +1,7 @@
 /* Renderiza alertas temáticas con acciones, cierre opcional y soporte de ancho completo. */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import clsx from "clsx";
+import { useIsTextClamped } from "../../../hooks/useIsTextClamped.js";
 import Button from "../Button/Button.jsx";
 import Tooltip from "../Tooltip/Tooltip.jsx";
 import {
@@ -218,8 +219,14 @@ function Alert({
 }) {
   const [internalVisible, setInternalVisible] = useState(defaultVisible);
   const [contentTooltipOpen, setContentTooltipOpen] = useState(false);
+  const contentRef = useRef(null);
   const isVisibleControlled = typeof visible === "boolean";
   const isVisible = isVisibleControlled ? visible : internalVisible;
+  // El contenido completo ya es visible salvo que el límite de dos líneas lo recorte: solo
+  // entonces se puede abrir su Tooltip (hover, foco o pulsación larga) y se ofrece en el orden
+  // de tabulación. Así un puntero que queda sobre el aviso no muestra una ayuda redundante.
+  const contentClamped = useIsTextClamped(contentRef, isVisible ? content : null);
+  const contentTooltipAvailable = Boolean(content) && contentClamped;
   const resolvedTheme = getResolvedTheme(theme);
   const resolvedLayout = getResolvedLayout(layout);
   const visual = ALERT_THEME_STYLES[resolvedTheme];
@@ -303,11 +310,12 @@ function Alert({
                 text={content}
                 showTip
                 className="[&>p]:text-[var(--color-text-50)]"
-                open={contentTooltipOpen}
-                onOpenChange={setContentTooltipOpen}
+                open={contentTooltipAvailable && contentTooltipOpen}
+                onOpenChange={(nextOpen) => setContentTooltipOpen(contentTooltipAvailable && nextOpen)}
               >
                 <span
-                  tabIndex={0}
+                  ref={contentRef}
+                  tabIndex={contentTooltipAvailable ? 0 : undefined}
                   className="line-clamp-2 text-body-3 text-[var(--color-text-50)] rounded-[var(--radius-1)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary-300)]"
                   onKeyDown={(event) => {
                     if (event.key === "Escape" && contentTooltipOpen) {

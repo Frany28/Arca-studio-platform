@@ -160,8 +160,10 @@ el outline profundiza el verde en claro mezclándolo con el neutral oscuro exist
 `success-200` en oscuro. Ambos incluyen hover, active, focus y disabled sin cambiar otros temas.
 
 `AlertToast` y `Alert` admiten `content` opcional para separar el dato principal del título y la
-descripción. Se limita a dos líneas con el texto completo accesible mediante `Tooltip` (hover,
-foco y pulsación larga táctil); la consecuencia permanece visible. Textos y códigos sin espacios se envuelven
+descripción. Se limita a dos líneas. Solo cuando ese límite lo recorta (`useIsTextClamped`) ofrece
+el texto completo mediante `Tooltip` (hover, foco y pulsación larga táctil) y una parada de foco; un
+texto completo no abre ayuda, ni siquiera si el cursor ya está encima al aparecer el aviso. La
+consecuencia permanece visible. Textos y códigos sin espacios se envuelven
 sin desbordar el ancho disponible. La altura se adapta al contenido.
 Sin descripción (por ejemplo, título y contenido), `AlertToast` no reserva un párrafo vacío.
 El autoocultado se pausa mientras el aviso contiene el foco o el puntero, y concede otro

@@ -882,6 +882,83 @@ test("avisos de Servicios: nombre largo consultable, código largo omitido y con
   }
 });
 
+for (const theme of ["light", "dark"]) {
+  test(`aviso sin Tooltip redundante (${theme}): un nombre completo no lo abre, ni con el cursor ya encima; uno recortado sí`, async (context) => {
+    const longName = "Servicio de prueba con nombre extenso ".repeat(4).trim();
+    const backend = createBackend([
+      service(1, { code: "TEST-SHORT", name: "Servicio de pruebas", isActive: true }),
+      service(2, { code: "TEST-LONG", name: longName, isActive: true }),
+    ]);
+    const page = await openTabulator(context, backend, { theme });
+    const alert = page.getByRole("alert");
+    const settle = () => alert.evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations({ subtree: true }).map((animation) => animation.finished));
+    });
+
+    // Nombre completo: sin Tooltip por hover ni por foco, y fuera del orden de tabulación.
+    await page.getByRole("button", { name: "Más opciones para TEST-SHORT", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Desactivar", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Desactivar", exact: true }).click();
+    const shortName = alert.getByText("Servicio de pruebas", { exact: true });
+    await shortName.waitFor();
+    await settle();
+    const designBefore = await alert.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return { width: box.width, height: box.height, border: style.borderTopColor, background: style.backgroundColor, padding: style.padding };
+    });
+    const nameBox = await shortName.boundingBox();
+    const nameCenter = { x: nameBox.x + nameBox.width / 2, y: nameBox.y + nameBox.height / 2 };
+    await page.mouse.move(nameCenter.x, nameCenter.y);
+    await page.waitForTimeout(400);
+    assert.equal(await page.getByRole("tooltip").count(), 0, "Sin Tooltip sobre un nombre visible completo");
+    assert.equal(await shortName.getAttribute("tabindex"), null, "Sin parada de foco sin ayuda");
+    assert.equal(await shortName.evaluate((element) => element.scrollHeight <= element.clientHeight), true);
+    await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).click();
+    await alert.waitFor({ state: "detached" });
+
+    // El cursor permanece donde aparecerá el nombre mientras se confirma con el teclado.
+    await page.getByRole("button", { name: "Más opciones para TEST-SHORT", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Activar", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "¿Activar servicio?", exact: true });
+    await dialog.getByRole("button", { name: "Activar", exact: true }).focus();
+    await page.mouse.move(nameCenter.x, nameCenter.y);
+    await page.keyboard.press("Enter");
+    await alert.getByText("Servicio activado correctamente", { exact: true }).waitFor();
+    await settle();
+    await page.mouse.move(nameCenter.x + 1, nameCenter.y);
+    await page.waitForTimeout(400);
+    // Al volver el foco por teclado, «Más opciones» de la fila muestra su propio Tooltip, que se conserva.
+    assert.equal(await page.getByRole("tooltip").filter({ hasText: "Servicio de pruebas" }).count(), 0, "No se abre automáticamente bajo el cursor");
+    assert.equal(await alert.getByText("Servicio de pruebas", { exact: true }).getAttribute("aria-describedby"), null);
+    const designAfter = await alert.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return { width: box.width, height: box.height, border: style.borderTopColor, background: style.backgroundColor, padding: style.padding };
+    });
+    assert.deepEqual({ ...designAfter, border: undefined }, { ...designBefore, border: undefined }, "Mismas dimensiones y fondo");
+    await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).click();
+    await alert.waitFor({ state: "detached" });
+
+    // Nombre recortado a dos líneas: el Tooltip sigue disponible por hover y por foco.
+    await page.getByRole("button", { name: "Más opciones para TEST-LONG", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Desactivar", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Desactivar", exact: true }).click();
+    const clipped = alert.getByText(longName, { exact: true });
+    await clipped.waitFor();
+    await settle();
+    assert.equal(await clipped.evaluate((element) => element.scrollHeight > element.clientHeight), true);
+    assert.equal(await clipped.getAttribute("tabindex"), "0");
+    await clipped.hover();
+    await page.getByRole("tooltip").getByText(longName, { exact: true }).waitFor();
+    await page.mouse.move(4, 4);
+    await page.getByRole("tooltip").waitFor({ state: "detached" });
+    await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.getByRole("tooltip").getByText(longName, { exact: true }).waitFor();
+  });
+}
+
 test("aviso móvil oscuro: nombre completo por pulsación larga sin perder la consecuencia", async (context) => {
   const name = "Servicio de prueba con nombre extenso ".repeat(4);
   const backend = createBackend([service(1, { name, code: "TEST-TOUCH", isActive: true })]);

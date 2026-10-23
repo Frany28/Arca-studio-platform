@@ -743,6 +743,12 @@ test("avisos de alta y edición: título, código y nombre devueltos por la API 
   await alert.getByText("UNID-002 · m² de prueba nueva", { exact: true }).waitFor();
   await alert.getByText("Ya está disponible para asignarla a servicios", { exact: true }).waitFor();
   assert.equal(await alert.getAttribute("data-node-id"), SUCCESS_NODE);
+  // La identidad cabe completa: no abre un Tooltip que repita lo visible ni recibe foco.
+  const identity = alert.getByText("UNID-002 · m² de prueba nueva", { exact: true });
+  await identity.hover();
+  await page.waitForTimeout(400);
+  assert.equal(await page.getByRole("tooltip").filter({ hasText: "UNID-002" }).count(), 0);
+  assert.equal(await identity.getAttribute("tabindex"), null);
   await closeAlert(page);
 
   const edit = await openEditDialog(page);
