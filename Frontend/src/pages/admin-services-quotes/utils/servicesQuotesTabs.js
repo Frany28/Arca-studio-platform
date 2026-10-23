@@ -8,9 +8,9 @@ export const SERVICES_QUOTES_TABS = Object.freeze([
   { id: "units", slug: "unidades", label: "Unidades" },
 ]);
 
-// Unidades es la pestaña que muestra activa el diseño aprobado del módulo; la raíz y las
-// subrutas desconocidas redirigen a ella.
-export const SERVICES_QUOTES_DEFAULT_TAB_SLUG = "unidades";
+// Cotizaciones, primera pestaña del módulo, es su punto de entrada: la raíz (incluido el
+// destino del Side Navigation) y las subrutas desconocidas redirigen a ella.
+export const SERVICES_QUOTES_DEFAULT_TAB_SLUG = "cotizaciones";
 
 /**
  * Construye la ruta absoluta de una pestaña del módulo.

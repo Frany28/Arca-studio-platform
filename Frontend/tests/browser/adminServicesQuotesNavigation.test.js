@@ -120,9 +120,9 @@ test("admin: la entrada navega sin recarga y queda activa en la ruta y sus subru
   // Un marcador en window sobrevive solo si la navegación es del lado del cliente.
   await page.evaluate(() => { window.__arcaNoReload = true; });
   await entry.click();
-  await page.waitForURL(`${origin}/servicios-cotizaciones/unidades`);
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
   await page.getByRole("heading", { name: LABEL, level: 1 }).waitFor();
-  await page.getByText("Aún no hay unidades de medida", { exact: true }).waitFor();
+  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.__arcaNoReload), true, "La navegación no debe recargar la página");
   assert.equal(await isSelected(page, LABEL), true);
   assert.equal(await isSelected(page, "Archivos"), false);
@@ -173,8 +173,8 @@ test("riel contraído: icono con nombre accesible, tooltip y activación por tec
   assert.equal(await entry.evaluate((element) => element === document.activeElement), true);
   await page.getByRole("tooltip").getByText(LABEL, { exact: true }).waitFor();
   await page.keyboard.press("Enter");
-  await page.waitForURL(`${origin}/servicios-cotizaciones/unidades`);
-  await page.getByText("Aún no hay unidades de medida", { exact: true }).waitFor();
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
+  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
   assert.equal(await isSelected(page, LABEL), true);
 });
 
@@ -185,8 +185,8 @@ test("móvil: el drawer incluye la entrada y navega; sin desborde horizontal", a
   const drawer = page.getByRole("dialog", { name: "Menú de navegación", exact: true });
   await drawer.waitFor({ state: "visible" });
   await drawer.getByRole("button", { name: LABEL, exact: true }).click();
-  await page.waitForURL(`${origin}/servicios-cotizaciones/unidades`);
-  await page.getByText("Aún no hay unidades de medida", { exact: true }).waitFor();
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
+  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
   await drawer.waitFor({ state: "detached" });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert.equal(overflow, 0);

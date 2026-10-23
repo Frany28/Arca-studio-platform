@@ -522,7 +522,7 @@ Validación, capturas y diferencias respecto a Figma:
   `5790:359521`/`5790:360030` (modal «Nueva unidad de medida») y `5767:342204` (variante del
   formulario de servicios con «Crear unidad» desplegado). Ruta administrativa `/servicios-cotizaciones/*`; `AdminServicesQuotesPage` resuelve
   las subrutas `cotizaciones`, `tabulador` y `unidades`. La raíz y las subrutas desconocidas
-  redirigen (con `replace`) a `unidades`. La pestaña activa se deriva de la URL
+  redirigen (con `replace`) a `cotizaciones`, primera pestaña y punto de entrada del módulo. La pestaña activa se deriva de la URL
   (`utils/servicesQuotesTabs.js`), así que Atrás/Adelante y los enlaces directos funcionan.
 - Las pestañas usan `HorizontalTabMenu` `Underlined` con icono y texto dentro de `TabPanel`.
   El icono `document-normal` no existe en iconsax-react 0.0.8: se usa el SVG de Figma sin

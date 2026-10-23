@@ -195,10 +195,10 @@ async function openNewUserDialog(page) {
 const rowCodes = (page) => page.locator("tbody tr th[scope=row]").allTextContents();
 const denominationGets = (backend) => backend.requests.filter((request) => request.method === "GET" && request.path === "/api/admin/measurement-unit-denominations");
 
-test("contenedor: título, indicadores reales, pestañas de Figma y redirección a Unidades", async (context) => {
+test("contenedor: título, indicadores reales, pestañas de Figma y redirección a Cotizaciones", async (context) => {
   const backend = createBackend([denomination(1, 1, "de construcción")]);
   const page = await openModule(context, backend);
-  await page.waitForURL(`${origin}/servicios-cotizaciones/unidades`, { timeout: NAVIGATION_TIMEOUT_MS });
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`, { timeout: NAVIGATION_TIMEOUT_MS });
   await page.getByRole("heading", { name: "Servicios y cotizaciones", level: 1 }).waitFor();
   const metrics = page.getByLabel("Indicadores de servicios y cotizaciones");
   await metrics.getByText("Servicios totales").waitFor();
@@ -208,12 +208,12 @@ test("contenedor: título, indicadores reales, pestañas de Figma y redirección
 
   const tabs = page.getByRole("tablist", { name: "Secciones de servicios y cotizaciones" });
   assert.deepEqual(await tabs.getByRole("tab").allInnerTexts(), ["Cotizaciones", "Tabulador de servicios", "Unidades"]);
-  assert.equal(await tabs.getByRole("tab", { name: "Unidades" }).getAttribute("aria-selected"), "true");
-  assert.equal(await tabs.getByRole("tab", { name: "Unidades" }).evaluate((tab) => getComputedStyle(tab).borderBottomWidth), "2px");
-  // Una subruta desconocida vuelve a Unidades sin pantalla vacía.
+  assert.equal(await tabs.getByRole("tab", { name: "Cotizaciones" }).getAttribute("aria-selected"), "true");
+  assert.equal(await tabs.getByRole("tab", { name: "Cotizaciones" }).evaluate((tab) => getComputedStyle(tab).borderBottomWidth), "2px");
+  // Una subruta desconocida vuelve a Cotizaciones sin pantalla vacía.
   await page.goto(`${origin}/servicios-cotizaciones/inexistente`);
-  await page.waitForURL(`${origin}/servicios-cotizaciones/unidades`);
-  await page.getByText("UNID-001", { exact: true }).waitFor();
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
+  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
 });
 
 test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enlaces directos", async (context) => {

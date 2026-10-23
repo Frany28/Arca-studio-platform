@@ -124,7 +124,7 @@ async function openAdminPage(context, path, width, { theme = "light" } = {}) {
     "/dashboard-arquitecto": "Apto. Noventa y Uno",
     "/usuarios": USERS[9].name,
     "/archivos": "Última carga",
-    "/servicios-cotizaciones": "Aún no hay unidades de medida",
+    "/servicios-cotizaciones": "Cotizaciones en desarrollo",
   }[path];
   await page.getByText(readyText, { exact: true }).first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   // Las medidas dependen de las métricas reales de Inter, no de la fuente de respaldo.

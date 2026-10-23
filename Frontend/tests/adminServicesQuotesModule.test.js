@@ -62,7 +62,7 @@ test("pestañas: orden de Figma, subrutas coherentes y pestaña activa derivada 
     "/servicios-cotizaciones/tabulador",
     "/servicios-cotizaciones/unidades",
   ]);
-  assert.equal(SERVICES_QUOTES_DEFAULT_TAB_SLUG, "unidades");
+  assert.equal(SERVICES_QUOTES_DEFAULT_TAB_SLUG, "cotizaciones");
   assert.equal(getServicesQuotesTabIndex("/servicios-cotizaciones/unidades"), 2);
   assert.equal(getServicesQuotesTabIndex("/servicios-cotizaciones/tabulador/detalle"), 1);
   assert.equal(getServicesQuotesTabIndex("/servicios-cotizaciones"), -1);
