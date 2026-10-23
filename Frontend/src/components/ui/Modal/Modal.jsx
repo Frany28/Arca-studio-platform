@@ -241,6 +241,7 @@ function Modal({
                 {showDialogCloseButton ? (
                   <ModalCloseButton
                     className="absolute right-0 top-0"
+                    disabled={actionsDisabled}
                     onClick={onClose}
                   />
                 ) : null}

@@ -44,20 +44,22 @@ function isEscapeForOpenPopup(event, container) {
  * @param {() => void} params.onEscape - Cierre solicitado por Escape.
  * @param {(elements: HTMLElement[]) => HTMLElement|undefined} [params.getInitialFocus]
  * Elige el control inicial; por defecto el primero enfocable.
+ * @param {() => HTMLElement|null} [params.getReturnFocus] - Resuelve el origen al abrir, si el
+ * elemento enfocado desaparecerá (por ejemplo, una acción de un menú en portal).
  * @returns {void}
  */
-export function useDialogKeyboard({ open, getContainer, onEscape, getInitialFocus }) {
+export function useDialogKeyboard({ open, getContainer, onEscape, getInitialFocus, getReturnFocus }) {
   // Refs para que callbacks nuevos en cada render no reinicien el foco ni los listeners.
-  const latestRef = useRef({ getContainer, onEscape, getInitialFocus });
+  const latestRef = useRef({ getContainer, onEscape, getInitialFocus, getReturnFocus });
 
   useEffect(() => {
-    latestRef.current = { getContainer, onEscape, getInitialFocus };
+    latestRef.current = { getContainer, onEscape, getInitialFocus, getReturnFocus };
   });
 
   useEffect(() => {
     if (!open) return undefined;
 
-    const previousElement = document.activeElement;
+    const previousElement = latestRef.current.getReturnFocus?.() ?? document.activeElement;
     const getFocusableElements = () => Array.from(
       latestRef.current.getContainer()?.querySelectorAll(DIALOG_FOCUSABLE_SELECTOR) ?? [],
     );

@@ -593,10 +593,18 @@ Validación, capturas y diferencias respecto a Figma:
     cambiar de página invalida también las capas pertenecientes a las filas desmontadas.
   - Desactivar y activar desde «Más opciones» conserva su funcionamiento individual y comparte la
     comprobación previa de estado, versión y referencias. Tanto esta acción como la masiva usan
-    `ServiceStatusModal`, con el diálogo estándar compacto de `Modal` (máximo 400 px), iconos de
-    estado y texto exclusivo de servicios: «Activar/Desactivar servicio(s)», cantidad completa y
-    disponibilidad para nuevas cotizaciones. Cancelar no inicia lecturas ni escrituras; confirmar
-    bloquea el diálogo hasta terminar. Un 409 recarga la página. Nunca se elimina un servicio.
+    `ServiceStatusModal`, reutilizando el patrón de `Modal` de Figma `3727:686871` (retiro de
+    responsables): máximo 400 px, centrado, radio de 12 px, icono superior de 20 px dentro de
+    `IconContainer` M Outline, padding/gap de 16 px, título h6, descripción b3 y footer separado
+    por borde con dos botones iguales de 41 px. Activar usa `TickCircle` con `success-200` y
+    botones Primary (Button no tiene variante Success); desactivar usa `Warning2` y botones
+    Danger Outline/Solid, como la referencia. No cambia el diseño de Usuarios, Proyectos ni
+    formularios. El título es «¿Activar/Desactivar servicio(s)?» y la descripción explica que
+    «Este servicio» o «Los N servicios seleccionados» volverán/dejarán de estar disponibles para
+    nuevas cotizaciones. No se elimina el servicio. Usa `aria-labelledby` y `aria-describedby`,
+    foco inicial en Cancelar, Tab cíclico y devolución al disparador de fila o footer.
+    Escape, Cancelar y overlay cierran sin lecturas ni escrituras. Confirmar bloquea las acciones,
+    incluido cerrar, y muestra «Confirmando...»/`aria-busy` hasta terminar. Un 409 recarga la página.
   - Formulario (Figma `5764:226084`): un único modal (`ServiceFormDialog` + `ServiceFormModal`)
     para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
     leídos de `GET /admin/services/:id`). Campos implementados: nombre (Input, 150), descripción
