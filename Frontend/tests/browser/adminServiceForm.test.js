@@ -112,7 +112,7 @@ test("alta: modal de Figma, foco, campos obligatorios y sin código ni tipo en e
   for (const label of ["Nombre del servicio", "Descripción (opcional)", "Unidad de medida", "Tarifa USD"]) {
     assert.equal(await dialog.getByText(label, { exact: true }).count() > 0, true, label);
   }
-  assert.equal(await dialog.getByText(/Código|Tipo/).count(), 0, "El código y el tipo los genera el sistema");
+  assert.equal(await dialog.getByText(/Código|Tipo|Modalidad/).count(), 0, "El código y el tipo (modalidad) los asigna el sistema");
   assert.equal(await dialog.getByRole("button", { name: "Crear unidad" }).isVisible(), true);
   assert.equal(await dialog.getByRole("button", { name: "Crear", exact: true }).isVisible(), true);
   // Unidades base reales del catálogo.
@@ -169,7 +169,8 @@ test("unidad: base y denominación coherentes, cambio de base sin combinaciones 
   await page.getByRole("alert").getByText("SERV-006 · Servicio de prueba del formulario").waitFor();
   const row = rowFor(page, "SERV-006");
   await row.waitFor();
-  assert.deepEqual((await row.locator("td").allInnerTexts()).slice(1, 4).map((text) => text.trim()), ["Servicio de prueba del formulario", "m³ de excavación", "$12.50"]);
+  // El alta del tabulador es siempre `individual` («Detalle por detalle»), asignado por el sistema.
+  assert.deepEqual((await row.locator("td").allInnerTexts()).slice(1, 5).map((text) => text.trim()), ["Servicio de prueba del formulario", "Detalle por detalle", "m³ de excavación", "$12.50"]);
   // La descripción alimenta el tooltip del tabulador.
   await row.getByRole("button", { name: "Ver descripción de Servicio de prueba del formulario" }).hover();
   await page.getByRole("tooltip").getByText("Descripción de prueba del formulario.", { exact: true }).waitFor();
@@ -273,6 +274,22 @@ test("edición: mismo modal con datos reales, solo campos cambiados, expectedVer
   await dialog.getByRole("button", { name: "Guardar" }).click();
   await dialog.waitFor({ state: "detached" });
   assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).at(-1).body, { expectedVersion: 3, measurementUnitId: 6, unitDenominationId: null });
+});
+
+test("edición de un servicio llave en mano: no envía el tipo y la fila conserva su modalidad", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  assert.equal((await rowFor(page, "TST-003").locator("[data-service-modality]").innerText()).trim(), "Llave en mano");
+  await page.getByRole("button", { name: "Editar TST-003 Paisajismo de prueba" }).click();
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+  await dialog.locator("#service-form-name").waitFor();
+  assert.equal(await dialog.getByText(/Modalidad|Tipo/).count(), 0, "El formulario aprobado no tiene campo de modalidad");
+  await dialog.locator("#service-form-name").fill("Paisajismo de prueba editado");
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/3$/).at(-1).body, { expectedVersion: 1, name: "Paisajismo de prueba editado" });
+  await rowFor(page, "TST-003").getByText("Paisajismo de prueba editado", { exact: true }).waitFor();
+  assert.equal((await rowFor(page, "TST-003").locator("[data-service-modality]").innerText()).trim(), "Llave en mano");
 });
 
 test("precisión y errores: tarifa decimal exacta, 400 por campo y 409 de versión sin perder lo escrito", async (context) => {

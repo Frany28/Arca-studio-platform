@@ -518,10 +518,27 @@ Validación, capturas y diferencias respecto a Figma:
   filtro por unidad del tabulador, que la recarga tras activar o desactivar un servicio.
 - Tabulador de servicios (Figma `5790:332031`, tooltip `5790:332129`, menú `5790:332135`):
   filas reales del backend, nunca los ejemplos de Figma; sin servicios se muestra el estado
-  vacío. Columnas: selección (48 px), N° (`code`, definido por el administrador al crear; el
-  frontend no genera `SERV-xxx`), Servicio (290 px), Unidad (`unitLabel` en `Badge` `Brand 2`),
-  Tarifa base (140 px, derecha), Estado (`Badge` `Success`/`Disabled` según `isActive`) y
-  Acciones (128 px). La tabla mide al menos 1104 px y desplaza dentro de su contenedor.
+  vacío. Columnas: selección (48 px), N° (120 px; `code` generado por el backend, el frontend no
+  genera `SERV-xxx`), Servicio (resto, 246 px a 1104), Modalidad (140 px), Unidad (190 px,
+  `unitLabel` en `Badge` `Brand 2`), Tarifa (116 px, derecha), Estado (116 px; `Badge`
+  `Success`/`Disabled` según `isActive`) y Acciones (128 px). La tabla mide al menos 1104 px y
+  desplaza dentro de su contenedor.
+  - Anchos: Figma `5790:332040` fija N° 100, Servicio 290, Tarifa y Estado 82 y Acciones 172,
+    pero con datos reales recortaba `SERV-1000`, tarifas como `$1,250.50` y comprimía los iconos
+    de cabecera. Se conservan Modalidad y Unidad; N° cabe hasta `SERV-1000`, Tarifa hasta cuatro
+    cifras enteras (mayores se truncan con el valor completo en `title`) y Acciones mantiene
+    128 px mientras «Ver» siga omitido. Servicio absorbe el resto y su nombre se trunca con `title`.
+  - Modalidad (cabecera Figma `5924:439741`, sin icono): `Badge` `Brand 2` según el `kind` de la
+    API, nunca deducido del nombre, la unidad ni la tarifa: `individual` → «Detalle por detalle»
+    (texto de Figma) y `turnkey` → «Llave en mano». Sin `kind` muestra «Sin modalidad» y un valor
+    fuera del contrato «No reconocida» (tema `Disabled`, con el valor recibido en `title`). La
+    lógica vive en `getServiceModalityBadge` (`utils/serviceCatalogPresentation.js`).
+  - Filtro por modalidad: pendiente de diseño. Figma no lo incluye en la barra ni en la cabecera,
+    aunque `GET /admin/services` ya admite `kind=individual|turnkey`.
+  - Formulario: el diseño aprobado no tiene campo Modalidad; el alta sigue creando `individual` y
+    la edición no envía `kind`, así que un servicio llave en mano conserva su modalidad. Crear o
+    cambiar servicios llave en mano desde el tabulador queda pendiente de una variante aprobada
+    del formulario y de autorizar `kind` en el alta (hoy la API lo rechaza con 400).
   - `referenceRate` se formatea como texto, sin `Number`: miles agrupados y céntimos solo si no
     son cero (`$12`, `$1,250.50`). El valor almacenado no cambia.
   - Descripción: icono informativo (`InfoCircleIcon` de `Label/LabelIcons.jsx`, `neutral-400`)

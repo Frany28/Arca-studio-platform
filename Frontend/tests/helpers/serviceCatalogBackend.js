@@ -45,10 +45,11 @@ export function denominationRecord({ id, denomination, isActive = true, unit }) 
  * denominación) y `referenceRate` como texto decimal.
  *
  * @param {number} id - Identificador.
- * @param {Object} fields - Código, nombre, unidad, denominación y demás campos.
+ * @param {Object} fields - Código, nombre, tipo (`individual` por defecto, como el alta real),
+ *   unidad, denominación y demás campos.
  * @returns {Object} Servicio.
  */
-export function service(id, { code, name, unit = "m2", denomination = null, rate = "10.00", description = null, isActive = true, currentVersion = 1 }) {
+export function service(id, { code, name, kind = "individual", unit = "m2", denomination = null, rate = "10.00", description = null, isActive = true, currentVersion = 1 }) {
   const measurementUnit = UNITS[unit];
   const unitDenomination = denomination
     ? { id: DENOMINATIONS[denomination].id, denomination: DENOMINATIONS[denomination].denomination, isActive: DENOMINATIONS[denomination].isActive }
@@ -58,7 +59,7 @@ export function service(id, { code, name, unit = "m2", denomination = null, rate
     code,
     name,
     description,
-    kind: "individual",
+    kind,
     measurementUnit,
     unitDenomination,
     unitLabel: unitDenomination ? `${measurementUnit.symbol} ${unitDenomination.denomination}` : measurementUnit.symbol,
@@ -74,7 +75,7 @@ export function service(id, { code, name, unit = "m2", denomination = null, rate
 
 /**
  * Catálogo de prueba: servicios con y sin descripción, con y sin denominación, activos e
- * inactivos y tarifas con céntimos y miles.
+ * inactivos, tarifas con céntimos y miles, y uno llave en mano (`turnkey`, por m²).
  *
  * @returns {Array<Object>} Servicios.
  */
@@ -82,7 +83,7 @@ export function sampleCatalog() {
   return [
     service(1, { code: "TST-001", name: "Anteproyecto de prueba", denomination: "construccion", rate: "12.00", description: "Primera propuesta del espacio." }),
     service(2, { code: "TST-002", name: "Diseño interior de prueba", denomination: "intervenir", rate: "1250.50", description: "   " }),
-    service(3, { code: "TST-003", name: "Paisajismo de prueba", denomination: "intervenir", rate: "18.00", description: LONG_DESCRIPTION }),
+    service(3, { code: "TST-003", name: "Paisajismo de prueba", kind: "turnkey", denomination: "intervenir", rate: "18.00", description: LONG_DESCRIPTION }),
     service(4, { code: "TST-004", name: "Canalizaciones de prueba", unit: "ml", rate: "0.05", isActive: false }),
     service(5, { code: "TST-005", name: "Puntos eléctricos de prueba", unit: "pto", denomination: "electrico", rate: "45.00", description: "Cada punto incluye cableado." }),
   ];

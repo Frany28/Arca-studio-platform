@@ -6,6 +6,7 @@ import {
   buildUnitFilterItems,
   formatReferenceRate,
   getServiceDescription,
+  getServiceModalityBadge,
   getServiceStatusBadge,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceCatalogPresentation.js";
 
@@ -31,6 +32,20 @@ test("descripción y estado: sin texto real no hay tooltip; el estado solo depen
   assert.equal(getServiceDescription({ description: null }), "");
   assert.deepEqual(getServiceStatusBadge({ isActive: true }), { label: "Activo", theme: "Success" });
   assert.deepEqual(getServiceStatusBadge({ isActive: false }), { label: "Inactivo", theme: "Disabled" });
+});
+
+test("modalidad: solo el kind real del contrato; ausente o desconocido no inventa una modalidad", () => {
+  assert.deepEqual(getServiceModalityBadge({ kind: "individual" }), { label: "Detalle por detalle", theme: "Brand 2", rawKind: null });
+  assert.deepEqual(getServiceModalityBadge({ kind: "turnkey" }), { label: "Llave en mano", theme: "Brand 2", rawKind: null });
+  // Nunca se deduce del nombre, la unidad ni la tarifa.
+  assert.deepEqual(getServiceModalityBadge({ name: "Llave en mano premium", unitLabel: "m²", referenceRate: "900.00" }), { label: "Sin modalidad", theme: "Disabled", rawKind: null });
+  for (const kind of [null, undefined, "", "   ", 3]) {
+    assert.deepEqual(getServiceModalityBadge({ kind }), { label: "Sin modalidad", theme: "Disabled", rawKind: null }, String(kind));
+  }
+  assert.deepEqual(getServiceModalityBadge(null), { label: "Sin modalidad", theme: "Disabled", rawKind: null });
+  assert.deepEqual(getServiceModalityBadge({ kind: "bundle" }), { label: "No reconocida", theme: "Disabled", rawKind: "bundle" });
+  // Las claves heredadas de Object.prototype no son modalidades.
+  assert.deepEqual(getServiceModalityBadge({ kind: "toString" }), { label: "No reconocida", theme: "Disabled", rawKind: "toString" });
 });
 
 test("filtro por unidad: solo unidades usadas, base excluyente con sus denominaciones y sin duplicados", () => {

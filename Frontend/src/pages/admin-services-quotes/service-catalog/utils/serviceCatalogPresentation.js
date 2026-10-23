@@ -1,6 +1,7 @@
 // Presentación del tabulador de servicios. Los datos se muestran tal como los entrega la API:
 // el código lo define el administrador al crear el servicio (no se genera en el frontend),
-// `unitLabel` es la etiqueta oficial de la unidad y `referenceRate` es texto decimal.
+// `kind` define la modalidad, `unitLabel` es la etiqueta oficial de la unidad y
+// `referenceRate` es texto decimal.
 
 const DECIMAL_RATE = /^(\d+)(?:\.(\d+))?$/;
 const CURRENCY_SYMBOLS = { USD: "$" };
@@ -55,6 +56,30 @@ export function getServiceStatusBadge(service) {
   return service?.isActive
     ? { label: "Activo", theme: "Success" }
     : { label: "Inactivo", theme: "Disabled" };
+}
+
+// Etiquetas de la columna «Modalidad» (Figma 5924:439741) por cada `kind` del contrato
+// (`individual|turnkey`). El texto de `individual` es el de Figma, no la clave interna.
+const SERVICE_MODALITY_LABELS = Object.freeze({
+  individual: "Detalle por detalle",
+  turnkey: "Llave en mano",
+});
+
+/**
+ * Modalidad del servicio para su Badge, derivada solo del `kind` que devuelve la API: nunca se
+ * deduce del nombre, la tarifa ni la unidad. Sin `kind` se indica «Sin modalidad» y un valor
+ * fuera del contrato se marca «No reconocida» (con el valor recibido en `rawKind`), ambos con
+ * el tema `Disabled`, en lugar de mostrar una modalidad inventada.
+ *
+ * @param {Object} service - Servicio de la API.
+ * @returns {{label: string, theme: "Brand 2"|"Disabled", rawKind: string|null}} Texto, tema y
+ *   valor original cuando no es reconocido.
+ */
+export function getServiceModalityBadge(service) {
+  const kind = typeof service?.kind === "string" ? service.kind.trim() : "";
+  if (!kind) return { label: "Sin modalidad", theme: "Disabled", rawKind: null };
+  if (Object.hasOwn(SERVICE_MODALITY_LABELS, kind)) return { label: SERVICE_MODALITY_LABELS[kind], theme: "Brand 2", rawKind: null };
+  return { label: "No reconocida", theme: "Disabled", rawKind: kind };
 }
 
 /**

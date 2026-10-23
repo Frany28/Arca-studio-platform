@@ -100,13 +100,17 @@ async function chooseFilter(page, filterName, option) {
 test("carga: columnas de Figma, códigos, unidades, tarifas decimales y estados reales del backend", async (context) => {
   const backend = createBackend(sampleCatalog());
   const page = await openTabulator(context, backend);
-  assert.deepEqual(await page.locator("thead th").allInnerTexts(), ["", "N°", "Servicio", "Unidad", "Tarifa base", "Estado", "Acciones"]);
+  // Figma 5790:332040 con «Modalidad» (5924:439741) entre Servicio y Unidad.
+  assert.deepEqual(await page.locator("thead th").allInnerTexts(), ["", "N°", "Servicio", "Modalidad", "Unidad", "Tarifa", "Estado", "Acciones"]);
   assert.deepEqual(await rowCodes(page), ["TST-001", "TST-002", "TST-003", "TST-004", "TST-005"]);
+  // Modalidad: solo el `kind` real de la API (TST-003 es `turnkey`; el resto, `individual`).
+  assert.deepEqual(await page.locator("tbody tr td:nth-child(4)").allInnerTexts(), ["Detalle por detalle", "Detalle por detalle", "Llave en mano", "Detalle por detalle", "Detalle por detalle"]);
+  assert.deepEqual(await page.locator("tbody tr td:nth-child(4)").evaluateAll((cells) => cells.map((cell) => cell.dataset.serviceModality)), ["individual", "individual", "turnkey", "individual", "individual"]);
   // Unidad: etiqueta oficial de la API (con o sin denominación).
-  assert.deepEqual(await page.locator("tbody tr td:nth-child(4)").allInnerTexts(), ["m² de construcción", "m² a intervenir", "m² a intervenir", "m.l.", "pto. eléctrico"]);
+  assert.deepEqual(await page.locator("tbody tr td:nth-child(5)").allInnerTexts(), ["m² de construcción", "m² a intervenir", "m² a intervenir", "m.l.", "pto. eléctrico"]);
   // Tarifa: texto decimal formateado sin redondear (céntimos solo si no son cero, miles agrupados).
-  assert.deepEqual(await page.locator("tbody tr td:nth-child(5)").allInnerTexts(), ["$12", "$1,250.50", "$18", "$0.05", "$45"]);
-  assert.deepEqual(await page.locator("tbody tr td:nth-child(6)").allInnerTexts(), ["Activo", "Activo", "Activo", "Inactivo", "Activo"]);
+  assert.deepEqual(await page.locator("tbody tr td:nth-child(6)").allInnerTexts(), ["$12", "$1,250.50", "$18", "$0.05", "$45"]);
+  assert.deepEqual(await page.locator("tbody tr td:nth-child(7)").allInnerTexts(), ["Activo", "Activo", "Activo", "Inactivo", "Activo"]);
   // Indicadores derivados de la colección completa.
   await page.waitForFunction(() => document.querySelector('[aria-label="Indicadores de servicios y cotizaciones"]')?.textContent.includes("Servicios totales5"));
   assert.equal(await metricValue(page, "Servicios activos").textContent(), "4");
@@ -118,6 +122,22 @@ test("carga: columnas de Figma, códigos, unidades, tarifas decimales y estados 
   assert.equal(await page.getByRole("button", { name: "Añadir servicio" }).isEnabled(), true);
   assert.equal(await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).isEnabled(), true);
   assert.equal(backend.requests.some((request) => request.method === "DELETE"), false);
+});
+
+test("modalidad sin `kind` o con un valor fuera del contrato: estado controlado, sin inventar la modalidad", async (context) => {
+  const missing = { ...service(1, { code: "TST-001", name: "Sin tipo de prueba" }) };
+  delete missing.kind;
+  const backend = createBackend([
+    missing,
+    service(2, { code: "TST-002", name: "Tipo vacío de prueba", kind: "" }),
+    service(3, { code: "TST-003", name: "Tipo futuro de prueba", kind: "bundle" }),
+  ]);
+  const page = await openTabulator(context, backend);
+  const cells = page.locator("tbody tr td:nth-child(4)");
+  assert.deepEqual(await cells.allInnerTexts(), ["Sin modalidad", "Sin modalidad", "No reconocida"]);
+  // El valor recibido queda disponible para diagnosticar la incompatibilidad con el contrato.
+  assert.equal(await cells.nth(2).locator("[title]").getAttribute("title"), "Modalidad no reconocida: bundle");
+  assert.equal(await page.getByText(/Llave en mano|Detalle por detalle/).count(), 0);
 });
 
 test("vacío, carga y error: estados del Design System con reintento", async (context) => {
@@ -364,13 +384,21 @@ test("tooltip táctil (móvil, oscuro): un toque lo abre dentro del viewport y u
 
 test("responsive: sin desborde de página, tabla con scroll propio y barra según Figma (claro y oscuro)", async (context) => {
   for (const theme of ["light", "dark"]) {
-    const backend = createBackend(sampleCatalog());
+    // Los casos más anchos previstos: código generado de cuatro cifras, tarifa de cuatro cifras
+    // enteras con céntimos y «Inactivo». Tarifas mayores se truncan con el valor en `title`.
+    const backend = createBackend([...sampleCatalog(), service(1000, { code: "SERV-1000", name: "Servicio de prueba con código largo", rate: "9999.99", isActive: false })]);
     const page = await openTabulator(context, backend, { theme, viewport: { width: 375, height: 812 } });
     for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000]]) {
       await page.setViewportSize({ width, height });
       await page.evaluate(() => document.fonts.ready);
       const layout = await page.evaluate(() => {
         const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+        const textOverflows = (cell) => {
+          const range = document.createRange();
+          range.selectNodeContents(cell);
+          const style = getComputedStyle(cell);
+          return range.getBoundingClientRect().width > cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) + 0.01;
+        };
         const scroller = document.querySelector("main > div > .overflow-y-auto") ?? document.scrollingElement;
         const table = document.querySelector("table").closest(".overflow-x-auto");
         const search = rect('input[aria-label="Buscar servicios por nombre o código"]');
@@ -381,8 +409,28 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
           addSameRow: Math.abs(add.top + add.height / 2 - (search.top + search.height / 2)) < 4,
           addFullWidth: Math.abs(add.width - document.querySelector("[data-service-add-action]").parentElement.getBoundingClientRect().width) < 1,
           rowBackground: getComputedStyle(document.querySelector("tbody tr")).backgroundColor,
+          // Contenido que invade la celda vecina: se mide el contenido de cada celda frente a su caja.
+          // Un SVG comprimido a 0 px por el flex (icono de cabecera sin espacio) también cuenta.
+          squashedIcons: [...document.querySelectorAll("table svg")].filter((icon) => icon.getBoundingClientRect().width === 0).length,
+          overflowingCells: [...document.querySelectorAll("thead th, tbody th, tbody td")].flatMap((cell) => {
+            const box = cell.getBoundingClientRect();
+            return [...cell.querySelectorAll("*")]
+              .filter((child) => {
+                const inner = child.getBoundingClientRect();
+                return inner.width > 0 && (inner.left < box.left - 0.5 || inner.right > box.right + 0.5);
+              })
+              .map(() => cell.textContent.trim());
+          }),
+          // Ancho exacto del texto (Range) frente a la caja de contenido: scrollWidth redondea y
+          // oculta recortes de menos de un píxel, que la elipsis sí muestra.
+          truncatedCodes: [...document.querySelectorAll("tbody th[scope=row]")].filter(textOverflows).map((cell) => cell.textContent),
+          truncatedRates: [...document.querySelectorAll("tbody td:nth-child(6)")].filter(textOverflows).map((cell) => cell.textContent),
         };
       });
+      assert.deepEqual([...new Set(layout.overflowingCells)], [], `${theme} ${width}px: celdas desbordadas`);
+      assert.deepEqual(layout.truncatedCodes, [], `${theme} ${width}px: códigos recortados`);
+      assert.deepEqual(layout.truncatedRates, [], `${theme} ${width}px: tarifas recortadas`);
+      assert.equal(layout.squashedIcons, 0, `${theme} ${width}px: iconos comprimidos`);
       assert.equal(layout.pageOverflow, 0, `${theme} ${width}px: ${JSON.stringify(layout)}`);
       assert.equal(layout.tableScrollsInside, true, `${theme} ${width}px`);
       if (width >= 1440) assert.equal(layout.addSameRow, true, `${theme} ${width}px: «Añadir servicio» en la fila de la búsqueda`);

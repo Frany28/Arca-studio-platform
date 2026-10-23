@@ -8,6 +8,7 @@ import TableHeaderLabel from "../../components/TableHeaderLabel.jsx";
 import {
   formatReferenceRate,
   getServiceDescription,
+  getServiceModalityBadge,
   getServiceStatusBadge,
 } from "../utils/serviceCatalogPresentation.js";
 import ServiceDescriptionHint from "./ServiceDescriptionHint.jsx";
@@ -26,8 +27,9 @@ function getStatusActions(service) {
 
 /**
  * Tabla del tabulador de servicios (Figma 5790:332039): selección, código, servicio con su
- * descripción en tooltip, etiqueta de unidad, tarifa base, estado y acciones. Presenta solo
- * filas reales de la API y desplaza horizontalmente dentro de su propio contenedor.
+ * descripción en tooltip, modalidad según `kind` (Figma 5924:439741), etiqueta de unidad,
+ * tarifa base, estado y acciones. Presenta solo filas reales de la API y desplaza
+ * horizontalmente dentro de su propio contenedor.
  *
  * @param {Object} props - Filas, selección y callbacks.
  * @param {Array<Object>} props.items - Servicios de la página visible.
@@ -43,9 +45,13 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
       <div className="w-full overflow-x-auto">
         <table className="w-full min-w-[1104px] table-fixed border-collapse text-left">
           <caption className="sr-only">Tabulador de servicios</caption>
+          {/* Modalidad (140) y Unidad (190) como en Figma. N° (100), Tarifa y Estado (82) se
+              ensanchan para que quepan `SERV-1000`, tarifas de hasta cuatro cifras enteras y los
+              iconos de cabecera; Acciones conserva 128 px mientras «Ver» siga omitido. Servicio
+              ocupa el resto (246 px a 1104 en lugar de 290) y su nombre se trunca con `title`. */}
           <colgroup>
-            <col className="w-[48px]" /><col className="w-[154px]" /><col className="w-[290px]" /><col className="w-[190px]" />
-            <col className="w-[140px]" /><col /><col className="w-[128px]" />
+            <col className="w-[48px]" /><col className="w-[120px]" /><col /><col className="w-[140px]" />
+            <col className="w-[190px]" /><col className="w-[116px]" /><col className="w-[116px]" /><col className="w-[128px]" />
           </colgroup>
           <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
             <tr className="text-heading-8 h-[49px]">
@@ -54,8 +60,9 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
               </th>
               <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel>N°</TableHeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px]">Servicio</th>
+              <th scope="col" className="px-[24px] py-[16px]">Modalidad</th>
               <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel filter>Unidad</TableHeaderLabel></th>
-              <th scope="col" className="px-[24px] py-[16px]"><span className="flex justify-end"><TableHeaderLabel>Tarifa base</TableHeaderLabel></span></th>
+              <th scope="col" className="px-[24px] py-[16px]"><span className="flex justify-end"><TableHeaderLabel>Tarifa</TableHeaderLabel></span></th>
               <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel filter>Estado</TableHeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px] text-right">Acciones</th>
             </tr>
@@ -65,6 +72,8 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
               const selected = selection.isSelected(service.id);
               const description = getServiceDescription(service);
               const status = getServiceStatusBadge(service);
+              const modality = getServiceModalityBadge(service);
+              const rate = formatReferenceRate(service.referenceRate, service.currency);
               return (
                 <tr
                   key={service.id}
@@ -81,13 +90,29 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
                       {description ? <ServiceDescriptionHint serviceName={service.name} description={description} /> : null}
                     </div>
                   </td>
+                  {/* Etiquetas cerradas y cortas: sin truncado; como en Figma, «Detalle por detalle» puede usar el padding derecho. */}
+                  <td className="px-[24px] py-[16px]" data-service-modality={service.kind ?? ""}>
+                    <div className="flex">
+                      <Badge
+                        label={modality.label}
+                        theme={modality.theme}
+                        variation="Simple"
+                        size="S"
+                        title={modality.rawKind ? `Modalidad no reconocida: ${modality.rawKind}` : undefined}
+                      />
+                    </div>
+                  </td>
                   <td className="px-[24px] py-[16px]">
                     <div className="flex min-w-0">
                       <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
                     </div>
                   </td>
-                  <td className="text-heading-8 px-[24px] py-[16px] text-right text-[var(--color-text-300)] tabular-nums">
-                    {formatReferenceRate(service.referenceRate, service.currency)}
+                  {/* Una tarifa fuera de lo previsto se recorta con su valor completo en `title`, en lugar de invadir Estado. */}
+                  <td
+                    className="text-heading-8 truncate px-[24px] py-[16px] text-right text-[var(--color-text-300)] tabular-nums"
+                    title={rate}
+                  >
+                    {rate}
                   </td>
                   <td className="px-[24px] py-[16px]">
                     <Badge label={status.label} theme={status.theme} variation="Simple" size="S" />
