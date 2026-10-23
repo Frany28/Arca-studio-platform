@@ -1,6 +1,7 @@
 import { Edit2, MinusCirlce, TickCircle } from "iconsax-react";
 
 import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
+import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import TableHeaderLabel from "../../components/TableHeaderLabel.jsx";
@@ -34,7 +35,7 @@ function getStatusActions(denomination) {
 function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange }) {
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
-      <div className="w-full overflow-x-auto">
+      <HorizontalScrollViewport scrollBarLabel="Desplazar tabla de unidades horizontalmente">
         <table className="w-full min-w-[512px] table-fixed border-collapse text-left">
           <caption className="sr-only">Unidades de medida</caption>
           {/* Sin columna de selección: «Unidad» absorbe el ancho libre; N° y Acciones conservan el suyo. */}
@@ -89,7 +90,7 @@ function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange 
             })}
           </tbody>
         </table>
-      </div>
+      </HorizontalScrollViewport>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
+import { assertHorizontalTableScroll } from "../helpers/horizontalTableScroll.js";
 
 const ADMIN_PAGES = ["/dashboard-arquitecto", "/usuarios", "/archivos", "/servicios-cotizaciones"];
 const CHECKPOINT_WIDTHS = [320, 375, 430, 768, 1023, 1024, 1279, 1280, 1440, 1920];
@@ -465,3 +466,31 @@ test("Dashboard móvil: el selector con responsables no empuja la acción fuera 
     assert.equal(await measureContentOverflow(page), 0, `Desborde horizontal a ${width} px`);
   }
 });
+
+const USERS_SCROLLBAR = "Desplazar tabla de usuarios horizontalmente";
+
+for (const theme of ["light", "dark"]) {
+  test(`/usuarios (${theme}): ScrollBar horizontal de la tabla en 320–1920 px y con el sidebar expandido o contraído`, async (context) => {
+    const page = await openAdminPage(context, "/usuarios", 320, { theme });
+    const results = {};
+    for (const width of [320, 375, 390, 768, 1024, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      results[width] = await assertHorizontalTableScroll(page, USERS_SCROLLBAR, `${theme} ${width}px`);
+    }
+    for (const width of [320, 375, 390, 768]) assert.equal(results[width], true, `${theme} ${width}px: la tabla de 1092 px desborda`);
+    assert.equal(await page.locator("[data-horizontal-scroll-viewport] footer[aria-label='Selección y paginación de usuarios']").count(), 0);
+
+    // Expandir o contraer el riel cambia el ancho útil: la barra se recalcula o desaparece.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const sidebar = page.locator('aside[aria-label="Navegación lateral"]:visible');
+    const toggle = sidebar.getByRole("button", { name: /^(Contraer|Expandir) navegación lateral$/ });
+    for (const expanded of [false, true]) {
+      if (await toggle.getAttribute("aria-expanded") !== String(expanded)) await toggle.click();
+      await page.waitForFunction((expectedWidth) => {
+        const rail = [...document.querySelectorAll('aside[aria-label="Navegación lateral"]')].find((element) => element.getClientRects().length);
+        return Math.abs(rail.getBoundingClientRect().width - expectedWidth) < 0.5;
+      }, expanded ? 312 : 76);
+      await assertHorizontalTableScroll(page, USERS_SCROLLBAR, `${theme} 1440px riel ${expanded ? "expandido" : "contraído"}`);
+    }
+  });
+}

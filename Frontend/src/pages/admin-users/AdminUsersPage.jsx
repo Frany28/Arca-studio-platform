@@ -31,6 +31,7 @@ import EmptyState from "../../components/ui/EmptyState/EmptyState.jsx";
 import Input from "../../components/ui/Input/Input.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import Modal from "../../components/ui/Modal/Modal.jsx";
+import HorizontalScrollViewport from "../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import Tooltip from "../../components/ui/Tooltip/Tooltip.jsx";
 import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
@@ -237,7 +238,7 @@ function AdminUsersPage({ empty = false }) {
           ) : users.length ? (
             <>
               <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-2)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
-                <div className="w-full overflow-x-auto">
+                <HorizontalScrollViewport scrollBarLabel="Desplazar tabla de usuarios horizontalmente">
                   <table className="w-full min-w-[1092px] table-fixed border-collapse text-left">
                   <colgroup><col className="w-[48px]" /><col className="w-[130px]" /><col className="w-[190px]" /><col className="w-[250px]" /><col className="w-[160px]" /><col className="w-[140px]" /><col className="w-[174px]" /></colgroup>
                   <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
@@ -322,7 +323,7 @@ function AdminUsersPage({ empty = false }) {
                     })}
                   </tbody>
                   </table>
-                </div>
+                </HorizontalScrollViewport>
               </div>
               {/* Figma 4270:675497: contador, acciones y paginación mantienen ese orden
                   al envolver. El CSS responde al ancho disponible después del sidebar. */}

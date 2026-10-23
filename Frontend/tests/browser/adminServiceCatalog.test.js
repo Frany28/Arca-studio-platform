@@ -13,6 +13,7 @@ import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserT
 import { SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../src/config/serviceCatalogTable.js";
 import { LONG_DESCRIPTION, createServiceCatalogBackend as createBackend, sampleCatalog, service } from "../helpers/serviceCatalogBackend.js";
 import { observeStatusDialog } from "../helpers/statusConfirmationDialog.js";
+import { assertHorizontalTableScroll, touchSwipeTable, waitForScrollBarSync } from "../helpers/horizontalTableScroll.js";
 
 // Tabulador de servicios (Figma 5790:332031) contra un backend simulado con estado. Los servicios
 // son datos de prueba con la forma del contrato: nunca se usan Supabase ni el catálogo comercial.
@@ -1249,4 +1250,77 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
     assert.ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= 375, JSON.stringify(menuBox));
     await page.keyboard.press("Escape");
   }
+});
+
+const SERVICE_SCROLLBAR = "Desplazar tabla de servicios horizontalmente";
+const SCROLL_WIDTHS = [[320, 700], [375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 1000], [1920, 1080]];
+
+for (const theme of ["light", "dark"]) {
+  test(`ScrollBar horizontal de la tabla (${theme}): patrón de Proyectos en 320–1920 px, fuera del footer y con redimensionado`, async (context) => {
+    const backend = createBackend(sampleCatalog());
+    const page = await openTabulator(context, backend, { theme, viewport: { width: 320, height: 700 } });
+    const results = {};
+    for (const [width, height] of SCROLL_WIDTHS) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await Promise.allSettled(document.getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+          .map((animation) => animation.finished));
+      });
+      results[width] = await assertHorizontalTableScroll(page, SERVICE_SCROLLBAR, `${theme} ${width}px`);
+    }
+    // Hasta tablet la tabla de 1102 px desborda; el resultado de escritorio depende del riel.
+    for (const width of [320, 375, 390, 768]) assert.equal(results[width], true, `${theme} ${width}px desborda y muestra ScrollBar`);
+
+    // El footer (contador, acciones masivas y paginación) no pertenece al scroll horizontal.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await waitForScrollBarSync(page, SERVICE_SCROLLBAR);
+    assert.equal(await page.locator("[data-horizontal-scroll-viewport] [data-service-catalog-footer]").count(), 0);
+    assert.equal(await page.locator("[data-horizontal-scroll-viewport] [role='scrollbar']").count(), 0, "La barra queda fuera del viewport desplazable");
+    const footer = await page.getByLabel("Selección y paginación de servicios").boundingBox();
+    const bar = await page.getByRole("scrollbar", { name: SERVICE_SCROLLBAR }).boundingBox();
+    assert.ok(footer.y >= bar.y + bar.height, "El footer va debajo de la tabla y su barra");
+
+    // Tras desplazar, la selección y el ActionMenu de la última columna siguen funcionando.
+    await page.getByRole("scrollbar", { name: SERVICE_SCROLLBAR }).click({ position: { x: bar.width - 4, y: bar.height / 2 } });
+    await page.waitForFunction((label) => document.querySelector(`[role="scrollbar"][aria-label="${label}"]`)?.getAttribute("aria-valuenow") !== "0", SERVICE_SCROLLBAR);
+    await page.getByRole("button", { name: "Más opciones para TST-001", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Desactivar", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menu").waitFor({ state: "detached" });
+    await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
+    await page.getByLabel("Selección y paginación de servicios").getByText("1 de 5 seleccionados").waitFor();
+
+    // Al ganar ancho desaparece el overflow y la barra; al perderlo se recalcula.
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await waitForScrollBarSync(page, SERVICE_SCROLLBAR);
+    await page.setViewportSize({ width: 375, height: 812 });
+    await waitForScrollBarSync(page, SERVICE_SCROLLBAR);
+    const resized = await page.getByRole("scrollbar", { name: SERVICE_SCROLLBAR }).evaluate((element) => element.getBoundingClientRect().width);
+    const viewportWidth = await page.locator("[data-horizontal-scroll-viewport]").evaluate((element) => element.clientWidth);
+    assert.ok(Math.abs(resized + 8 - viewportWidth) <= 1, "La pista se recalcula con el nuevo ancho");
+  });
+}
+
+test("ScrollBar horizontal táctil (móvil): el gesto desplaza la tabla y la barra lo refleja; vacío y carga sin barra", async (context) => {
+  const backend = createBackend(sampleCatalog());
+  const page = await openTabulator(context, backend, { theme: "dark", viewport: { width: 375, height: 812 }, hasTouch: true });
+  await waitForScrollBarSync(page, SERVICE_SCROLLBAR);
+  await touchSwipeTable(page, -200);
+  await page.waitForFunction((label) => Number(document.querySelector(`[role="scrollbar"][aria-label="${label}"]`)?.getAttribute("aria-valuenow")) > 0, SERVICE_SCROLLBAR);
+  assert.ok(await page.locator("[data-horizontal-scroll-viewport]").evaluate((element) => element.scrollLeft) > 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 0, "El gesto no desplaza la página");
+
+  // Una búsqueda sin coincidencias sustituye la tabla por el estado vacío: sin barra huérfana.
+  backend.delays.zzz = 600;
+  await page.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("zzz");
+  await page.getByText("Cargando tabulador de servicios", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("scrollbar", { name: SERVICE_SCROLLBAR }).count(), 0, "Durante la carga no hay ScrollBar de la tabla");
+  await page.getByText("No hay coincidencias", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("scrollbar", { name: SERVICE_SCROLLBAR }).count(), 0);
+  await page.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("");
+  await page.locator("tbody tr").first().waitFor();
+  await waitForScrollBarSync(page, SERVICE_SCROLLBAR);
+  assert.equal(await page.getByRole("scrollbar", { name: SERVICE_SCROLLBAR }).count(), 1, "La tabla nueva se vuelve a observar");
 });

@@ -1,6 +1,7 @@
 import { Edit2, MinusCirlce, TickCircle } from "iconsax-react";
 
 import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
+import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import Checkbox from "../../../../components/ui/Checkbox/Checkbox.jsx";
@@ -44,7 +45,7 @@ function getStatusActions(service) {
 function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, overlays, selection }) {
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
-      <div className="w-full overflow-x-auto">
+      <HorizontalScrollViewport scrollBarLabel="Desplazar tabla de servicios horizontalmente">
         {/* Anchos y mínimo compartidos con el skeleton; su relación con Figma está en config/serviceCatalogTable.js. */}
         <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: SERVICE_CATALOG_TABLE_MIN_WIDTH }}>
           <caption className="sr-only">Tabulador de servicios</caption>
@@ -153,7 +154,7 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, o
             })}
           </tbody>
         </table>
-      </div>
+      </HorizontalScrollViewport>
     </div>
   );
 }

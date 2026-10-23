@@ -9,6 +9,7 @@ import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 import { observeStatusDialog, readStatusDialogPalette } from "../helpers/statusConfirmationDialog.js";
+import { assertHorizontalTableScroll, touchSwipeTable, waitForScrollBarSync } from "../helpers/horizontalTableScroll.js";
 
 // Módulo «Servicios y cotizaciones» (Figma 5790:339391, 5771:487550, 5790:359521) contra un
 // backend simulado con estado: nunca se usan Supabase ni datos reales.
@@ -1107,7 +1108,8 @@ for (const [label, viewport, theme] of [["escritorio claro", { width: 1440, heig
       systemScrollbars: 0, nativeScrollbarWidth: 0, scrollbarWidth: "none", overflowY: "auto",
       paddingRight: "0px", scrollable: true, fullyVisibleRows: 3,
     });
-    assert.equal(await page.getByRole("scrollbar").count(), 0);
+    // Solo el listado: en móvil la tabla de unidades de fondo muestra su propio ScrollBar horizontal.
+    assert.equal(await listbox.getByRole("scrollbar").count(), 0);
     assert.equal(await listbox.getByRole("option").count(), 48);
     assert.equal(await listbox.getByRole("option").first().textContent(), "u1");
 
@@ -1628,5 +1630,36 @@ for (const theme of ["light", "dark"]) {
       return list.contains(topElement);
     });
     assert.equal(stacking, true, "El listado queda por encima del modal y su overlay");
+  });
+}
+
+const UNITS_SCROLLBAR = "Desplazar tabla de unidades horizontalmente";
+
+for (const theme of ["light", "dark"]) {
+  test(`ScrollBar horizontal de la tabla de unidades (${theme}): 320–1920 px, cambio de página y gesto táctil`, async (context) => {
+    const backend = createBackend(Array.from({ length: 12 }, (_, index) => denomination(index + 1, 1, `de prueba ${index + 1}`)));
+    const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme, viewport: { width: 320, height: 700 }, hasTouch: true });
+    await page.getByText("UNID-001", { exact: true }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+    const results = {};
+    for (const [width, height] of [[320, 700], [375, 812], [390, 844], [768, 1024], [1024, 768], [1440, 1000], [1920, 1080]]) {
+      await page.setViewportSize({ width, height });
+      results[width] = await assertHorizontalTableScroll(page, UNITS_SCROLLBAR, `${theme} ${width}px`);
+    }
+    // La tabla mide 512 px como mínimo: solo desborda en móvil; desde tablet no hay barra.
+    assert.deepEqual([results[320], results[375], results[390], results[768], results[1440], results[1920]], [true, true, true, false, false, false]);
+
+    // Cambiar de página sustituye las filas: la barra se recalcula y la paginación queda fuera.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await waitForScrollBarSync(page, UNITS_SCROLLBAR);
+    assert.equal(await page.locator("[data-horizontal-scroll-viewport] nav[aria-label='Paginación de unidades']").count(), 0);
+    await page.getByRole("button", { name: "Siguiente pág.", exact: true }).click();
+    await page.getByText("UNID-011", { exact: true }).waitFor();
+    assert.equal(await assertHorizontalTableScroll(page, UNITS_SCROLLBAR, `${theme} página 2`), true);
+    await touchSwipeTable(page, -150);
+    await page.waitForFunction((label) => Number(document.querySelector(`[role="scrollbar"][aria-label="${label}"]`)?.getAttribute("aria-valuenow")) > 0, UNITS_SCROLLBAR);
+    // El menú contextual de la última columna sigue abriéndose tras desplazar.
+    await page.getByRole("button", { name: "Más opciones para UNID-011", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Desactivar", exact: true }).waitFor();
+    await page.keyboard.press("Escape");
   });
 }

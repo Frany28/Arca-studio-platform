@@ -140,7 +140,7 @@ function AdminActiveProjects({
     tableViewportRef, tableFooterRef, scrollToTableEndAfterPreviousRef,
     tableScrollState, syncTableScrollState, handleTableScrollPositionChange,
   } = useAdminProjectsTableScroll({
-    error, loading, visibleProjectCount: visibleProjects.length, pageIndex: pagination.pageIndex,
+    visibleProjectCount: visibleProjects.length, pageIndex: pagination.pageIndex,
   });
 
   /**
