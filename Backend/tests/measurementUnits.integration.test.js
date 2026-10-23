@@ -22,6 +22,9 @@ let db;
 let units;
 let catalog;
 let ids;
+// Servicios que reutilizan pruebas posteriores, por id: el código lo genera el sistema
+// (`SERV-001`), así que el `code` que reciben estos helpers no identifica la fila.
+const created = {};
 
 /**
  * Consulta la base aislada con el cliente de preparación (fuera del pool de la aplicación).
@@ -223,6 +226,7 @@ test("servicios: denominación de la misma base, llave en mano por m² y copia h
   const [construction] = (await units.getDenominationsPage({ measurementUnitId: ids.units.square_meter, search: "construcción" })).unitDenominations;
   const [canalization] = (await units.getDenominationsPage({ search: "canalización" })).unitDenominations;
   const turnkey = await createService({ code: "LLAVE-PREMIUM", kind: "turnkey", referenceRate: "900.00", unitDenominationId: construction.id });
+  created.llavePremium = turnkey.id;
   assert.deepEqual(turnkey.unitDenomination, { denomination: "de construcción", id: construction.id, isActive: true });
   assert.equal(turnkey.unitLabel, "m² de construcción");
   assert.deepEqual(await versionsOf(turnkey.id), [{ is_current: true, unit_denomination: "de construcción", unit_denomination_id: construction.id, unit_symbol: "m²", version_number: 1 }]);
@@ -241,7 +245,7 @@ test("servicios: denominación de la misma base, llave en mano por m² y copia h
 });
 
 test("versionado: cambiar o retirar la denominación crea versiones y exige coherencia al cambiar de base", { skip }, async () => {
-  const [{ id }] = await rows("select id::int from public.services where code = 'LLAVE-PREMIUM'");
+  const id = created.llavePremium;
   const [commercial] = (await units.getDenominationsPage({ search: "recorrido" })).unitDenominations;
   const moved = await catalog.updateService({ payload: { expectedVersion: 1, unitDenominationId: commercial.id }, serviceId: id, user: { id: ids.admin } });
   assert.deepEqual([moved.changedFields, moved.service.unitLabel, moved.service.currentVersion], [["unitDenominationId"], "m² de recorrido comercial", 2]);
@@ -510,7 +514,7 @@ test("unidad base: sin referencias cambia conservando id, código público, text
 
 test("unidad base: un servicio activo, inactivo o solo una versión histórica impiden cambiarla (409)", { skip }, async () => {
   const active = await createDenomination("box", "de embalaje");
-  await createService({ code: "CAJA-ACTIVA", measurementUnitId: ids.units.box, unitDenominationId: active.id });
+  created.cajaActiva = (await createService({ code: "CAJA-ACTIVA", measurementUnitId: ids.units.box, unitDenominationId: active.id })).id;
   const inactive = await createDenomination("box", "de archivo");
   const inactiveService = await createInactiveService("CAJA-INACTIVA", "box", inactive);
   const historic = await createDenomination("box", "de muestras");
@@ -585,7 +589,7 @@ test("concurrencia (referencia primero): un cambio de base en espera ve la refer
   const holder = await openClient();
   const writer = await openClient();
   try {
-    const [carrier] = await rows("select id::int from public.services where code = 'CAJA-ACTIVA'");
+    const carrier = { id: created.cajaActiva };
     const scenarios = [
       ["servicio, cambio por la API", "de herrajes", true, false],
       ["servicio, UPDATE directo contra el trigger", "de bisagras", false, false],

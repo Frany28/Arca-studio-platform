@@ -547,7 +547,10 @@ Validación, capturas y diferencias respecto a Figma:
     + `HintText`), con los textos de la columna (`SERVICE_MODALITY_OPTIONS`; Figma escribe
     «Detalle por Detalle» en el desplegable y «Detalle por detalle» en la tabla: se usa uno solo).
     En el alta empieza sin elegir y es obligatoria; se envía `kind`. En la edición se precarga la
-    guardada y solo viaja si el administrador la cambia.
+    guardada y solo viaja si el administrador la cambia. Pendiente: cuando existan cotizaciones,
+    un servicio ya cotizado mostrará la modalidad deshabilitada con el motivo («La modalidad no se
+    puede modificar porque este servicio ya está incluido en una cotización») a partir de un dato
+    real del backend; hoy no se muestra ningún bloqueo (Backend/ARCHITECTURE.md).
   - Llave en mano solo admite la unidad base de código `square_meter` (nunca por el símbolo):
     el selector de base y «+ Crear unidad» solo ofrecen m², y elegir llave en mano retira una
     unidad incompatible ya elegida (con su denominación). Volver a individual conserva la unidad.
