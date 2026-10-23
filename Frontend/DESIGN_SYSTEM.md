@@ -574,10 +574,10 @@ Validación, capturas y diferencias respecto a Figma:
   - Selección de la página visible con contador «X de Y seleccionados»; se reinicia al cambiar
     de página, búsqueda o filtros y se conserva al cambiar el estado de una fila.
   - Footer (`5790:351653`): contador a la izquierda, «Desactivar» (`CloseCircle`) y «Activar»
-    (`TickCircle`) como `Button` Primary/Ghost/M siempre visibles, y Anterior/Siguiente a la
-    derecha. Sin selección ambas acciones están deshabilitadas. Solo una selección completamente
-    activa habilita Desactivar y solo una completamente inactiva habilita Activar. Una mezcla
-    bloquea ambas, con una ayuda visible asociada mediante `aria-describedby`; se cuentan todos
+    (`TickCircle`) como `Button` Primary/Ghost/M, y Anterior/Siguiente a la derecha. Sin selección
+    no se renderiza el grupo de acciones ni se reserva espacio para él. Una selección completamente
+    activa muestra solo Desactivar y una completamente inactiva solo Activar. Una mezcla
+    muestra ambas deshabilitadas, con una ayuda visible asociada mediante `aria-describedby`; se cuentan todos
     los registros, nunca solo el primero. Los grupos pasan a
     filas sucesivas si no caben; se conservan los tokens y los temas del sistema.
   - Las operaciones masivas usan el endpoint individual de estado, con `expectedVersion` y un

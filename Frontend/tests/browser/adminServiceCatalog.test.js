@@ -257,10 +257,10 @@ test("paginación y selección: cursor real, contador, todos, indeterminado y re
   await footer.getByText("10 de 10 seleccionados").waitFor();
   await header.click();
   await footer.getByText("0 de 10 seleccionados").waitFor();
-  // Ambas acciones permanecen visibles sin selección y no se pueden ejecutar.
+  // Al quitar toda la selección desaparecen las acciones y su contenedor.
   const actions = footer.getByRole("button", { name: /Desactivar|Activar/ });
-  assert.equal(await actions.count(), 2);
-  for (const action of await actions.all()) assert.equal(await action.isDisabled(), true);
+  assert.equal(await actions.count(), 0);
+  assert.equal(await footer.locator("[data-service-bulk-actions]").count(), 0);
 
   await page.getByRole("checkbox", { name: "Seleccionar TST-002 Servicio de prueba 2" }).click();
   await page.getByRole("button", { name: "Siguiente pág." }).click();
@@ -268,6 +268,7 @@ test("paginación y selección: cursor real, contador, todos, indeterminado y re
   assert.deepEqual(await rowCodes(page), ["TST-011", "TST-012", "TST-013"]);
   assert.equal(tableGets(backend).at(-1).params.cursor, "10");
   await footer.getByText("0 de 3 seleccionados").waitFor();
+  assert.equal(await actions.count(), 0, "Cambiar de página elimina las acciones junto con la selección");
   assert.equal(await page.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
   await page.getByRole("button", { name: "Anterior" }).click();
   await page.getByText("TST-001", { exact: true }).waitFor();
@@ -278,6 +279,7 @@ test("paginación y selección: cursor real, contador, todos, indeterminado y re
   await page.getByRole("checkbox", { name: "Seleccionar TST-003 Servicio de prueba 3" }).click();
   await chooseFilter(page, "Filtrar servicios por estado", "Activos");
   await footer.getByText("0 de 10 seleccionados").waitFor();
+  assert.equal(await actions.count(), 0);
   assert.equal(tableGets(backend).at(-1).params.cursor, undefined);
 });
 
@@ -454,20 +456,23 @@ test("capas: seleccionar descarta ayudas, un menú bloquea todos los tooltips y 
   await tooltip.getByText("Primera propuesta del espacio.").waitFor();
 });
 
-test("footer: selección vacía y mixta deshabilitan ambas acciones; homogéneas permiten cancelar, desactivar y activar sin doble envío", async (context) => {
+test("footer: sin selección oculta acciones, homogéneas muestran solo la válida y mixtas bloquean ambas", async (context) => {
   const backend = createBackend(sampleCatalog());
   backend.delays["PATCH /api/admin/services/:id/status"] = 200;
   const page = await openTabulator(context, backend);
   const footer = page.getByLabel("Selección y paginación de servicios");
   const patches = () => backend.requests.filter((request) => request.method === "PATCH");
   const selectAll = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
-  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
-  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
+  await footer.getByText("0 de 5 seleccionados").waitFor();
+  assert.equal(await footer.getByRole("button", { name: /Activar|Desactivar/ }).count(), 0);
+  assert.equal(await footer.locator("[data-service-bulk-actions]").count(), 0, "No queda un grupo vacío que reserve espacio");
+  assert.equal(await footer.locator(":scope > *").count(), 2, "Solo contador y paginación");
   await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
-  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
+  assert.equal(await footer.getByRole("button", { name: /Activar/ }).count(), 0);
   assert.equal(await footer.getByRole("button", { name: "Desactivar 1 servicio seleccionado" }).isEnabled(), true);
   await selectAll.click();
   await footer.getByText("5 de 5 seleccionados").waitFor();
+  assert.equal(await footer.getByRole("button", { name: /Activar|Desactivar/ }).count(), 2);
   assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
   assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
   const explanation = footer.getByRole("status");
@@ -481,6 +486,7 @@ test("footer: selección vacía y mixta deshabilitan ambas acciones; homogéneas
   // Deseleccionar el inactivo habilita desactivar TODOS los cuatro activos restantes.
   await page.getByRole("checkbox", { name: "Seleccionar TST-004 Canalizaciones de prueba" }).click();
   assert.equal(await explanation.count(), 0);
+  assert.equal(await footer.getByRole("button", { name: /Activar/ }).count(), 0);
   await footer.getByRole("button", { name: "Desactivar 4 servicios seleccionados" }).click();
   const dialog = page.getByRole("dialog", { name: "Desactivar servicios" });
   await dialog.getByText("¿Deseas desactivar 4 servicios? No estarán disponibles para nuevas cotizaciones.", { exact: true }).waitFor();
@@ -492,16 +498,19 @@ test("footer: selección vacía y mixta deshabilitan ambas acciones; homogéneas
   await dialog.getByRole("button", { name: "Desactivar", exact: true }).evaluate((element) => { element.click(); element.click(); });
   await page.getByRole("alert").getByText("4 servicios desactivados", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
+  assert.equal(await footer.locator("[data-service-bulk-actions]").count(), 0, "Al terminar desaparecen las acciones");
   assert.deepEqual(patches().map((request) => request.path).sort(), [1, 2, 3, 5].map((id) => `/api/admin/services/${id}/status`));
   for (const request of patches()) assert.deepEqual(request.body, { expectedVersion: 1, isActive: false });
   assert.equal(backend.items.every((item) => !item.isActive), true);
 
   await selectAll.click();
-  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
+  assert.equal(await footer.getByRole("button", { name: /Desactivar/ }).count(), 0);
+  assert.equal(await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).isEnabled(), true);
   await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
   await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
   await page.getByRole("alert").getByText("5 servicios activados", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
+  assert.equal(await footer.getByRole("button", { name: /Activar|Desactivar/ }).count(), 0);
   const activationRequests = patches().slice(4);
   assert.equal(activationRequests.length, 5);
   for (const request of activationRequests) {
@@ -730,6 +739,12 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
     await page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
     for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000], [1920, 1080]]) {
       await page.setViewportSize({ width, height });
+      const selectAll = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
+      await selectAll.click();
+      const footer = page.getByLabel("Selección y paginación de servicios");
+      assert.equal(await footer.locator("[data-service-bulk-actions]").count(), 0, `${theme} ${width}px: sin selección no hay grupo de acciones`);
+      assert.equal(await footer.locator(":scope > *").count(), 2, "Sin espacio reservado para acciones ocultas");
+      await selectAll.click();
       await page.evaluate(() => document.fonts.ready);
       // Cruzar el breakpoint del riel cambia su expansión con una transición. Medir durante
       // ella daba falsos positivos: a 1440 px la barra cabía antes de terminar de expandirse.

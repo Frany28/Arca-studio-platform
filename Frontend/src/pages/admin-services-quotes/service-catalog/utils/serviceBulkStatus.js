@@ -34,6 +34,24 @@ export function getServiceStatusSelection(items, selectedIds) {
 }
 
 /**
+ * Determina las acciones visibles del footer sin cambiar los destinos ni la validación previa.
+ * Sin selección no hay acciones; una selección mixta conserva ambas deshabilitadas y una
+ * homogénea solo muestra la acción que puede aplicarse al conjunto completo.
+ *
+ * @param {Object} selection - Selección y destinos calculados por getServiceStatusSelection.
+ * @param {number} selection.selectedCount - Cantidad seleccionada.
+ * @param {boolean} selection.mixed - La selección contiene estados activos e inactivos.
+ * @param {{activate: Array<Object>, deactivate: Array<Object>}} selection.targets - Destinos completos por acción.
+ * @returns {{activate: boolean, deactivate: boolean}} Visibilidad de cada acción.
+ */
+export function getServiceBulkActionVisibility({ selectedCount, mixed, targets }) {
+  return {
+    activate: selectedCount > 0 && (mixed || targets.activate.length === selectedCount),
+    deactivate: selectedCount > 0 && (mixed || targets.deactivate.length === selectedCount),
+  };
+}
+
+/**
  * Ejecuta una tarea por elemento con un máximo de tareas simultáneas y nunca rechaza: devuelve el
  * resultado de cada elemento (en el orden recibido) para tratar los fallos uno a uno.
  *

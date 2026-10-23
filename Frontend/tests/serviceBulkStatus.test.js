@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   SERVICE_BULK_STATUS_CONCURRENCY,
   describeBulkStatusResult,
+  getServiceBulkActionVisibility,
   getServiceStatusSelection,
   runWithConcurrency,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceBulkStatus.js";
@@ -53,6 +54,23 @@ test("selección incompleta o estado desconocido: no permite actuar sobre un sub
     getServiceStatusSelection(null, new Set(["1"])),
     getServiceStatusSelection([{ id: 1, isActive: null }], new Set(["1"])),
   ]) assert.deepEqual(state.targets, { activate: [], deactivate: [] });
+});
+
+test("footer: sin selección no hay acciones, homogéneas muestran una y mixtas mantienen ambas", () => {
+  const cases = [
+    { ids: [], expected: { activate: false, deactivate: false } },
+    { ids: ["1"], expected: { activate: false, deactivate: true } },
+    { ids: ["1", "3"], expected: { activate: false, deactivate: true } },
+    { ids: ["2"], expected: { activate: true, deactivate: false } },
+    { ids: ["1", "2"], expected: { activate: true, deactivate: true } },
+    { ids: ["1", "99"], expected: { activate: false, deactivate: false } },
+  ];
+  for (const { ids, expected } of cases) {
+    const selection = getServiceStatusSelection(ITEMS, new Set(ids));
+    assert.deepEqual(getServiceBulkActionVisibility({ ...selection, mixed: selection.isMixed }), expected, JSON.stringify(ids));
+  }
+  assert.deepEqual(getServiceBulkActionVisibility({ selectedCount: 0, mixed: true, targets: { activate: [], deactivate: [] } }),
+    { activate: false, deactivate: false }, "Sin selección tampoco se muestra una mezcla obsoleta");
 });
 
 test("concurrencia: respeta el límite, conserva el orden y devuelve cada fallo sin rechazar", async () => {
