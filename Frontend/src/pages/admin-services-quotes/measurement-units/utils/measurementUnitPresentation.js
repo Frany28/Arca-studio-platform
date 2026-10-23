@@ -28,6 +28,19 @@ export function validateDenominationText(value) {
 }
 
 /**
+ * Clave de equivalencia de una denominación dentro de su unidad base, la misma que usa el índice
+ * único de PostgreSQL (`lower(normalize(denomination, NFKC))` sobre el texto ya normalizado):
+ * «De Construcción», «DE CONSTRUCCIÓN» y «ｄｅ construcción» son la misma unidad. Sirve para
+ * avisar de duplicados evidentes antes de enviar; el backend sigue decidiendo (409).
+ *
+ * @param {string} value - Texto de la denominación.
+ * @returns {string} Clave comparable.
+ */
+export function denominationEquivalenceKey(value) {
+  return normalizeDenominationText(value).normalize("NFKC").toLowerCase();
+}
+
+/**
  * Previsualiza la etiqueta que compondrá la API (`m²` + `de construcción`). Solo es una ayuda
  * visual: la tabla siempre muestra el `label` devuelto por el backend.
  *

@@ -502,8 +502,8 @@ Validación, capturas y diferencias respecto a Figma:
 ### Servicios y cotizaciones
 
 - Referencia: Figma `5790:339391` (contenedor), `5771:487550` (Unidades, escritorio),
-  `5790:359521`/`5790:360030` (modal «Nueva unidad de medida») y `5767:342204` (menú de
-  acciones). Ruta administrativa `/servicios-cotizaciones/*`; `AdminServicesQuotesPage` resuelve
+  `5790:359521`/`5790:360030` (modal «Nueva unidad de medida») y `5767:342204` (variante del
+  formulario de servicios con «Crear unidad» desplegado). Ruta administrativa `/servicios-cotizaciones/*`; `AdminServicesQuotesPage` resuelve
   las subrutas `cotizaciones`, `tabulador` y `unidades`. La raíz y las subrutas desconocidas
   redirigen (con `replace`) a `unidades`. La pestaña activa se deriva de la URL
   (`utils/servicesQuotesTabs.js`), así que Atrás/Adelante y los enlaces directos funcionan.
@@ -581,10 +581,26 @@ Validación, capturas y diferencias respecto a Figma:
   - Unidad de medida: variante `Tags` de Input con selector de prefijo (abreviatura de la base)
     y la denominación como Tag con cierre; solo se sugieren denominaciones activas de la base
     elegida y cambiar de base retira la denominación, así que no hay combinaciones incompatibles.
-  - «+ Crear unidad» abre el formulario existente de Unidades (`MeasurementUnitFormModal`, con la
-    base del servicio preseleccionada). Los diálogos no se apilan: el flujo alterna entre ambos y
-    el borrador del servicio vive en `ServiceFormDialog`, así que se conserva al cancelar o crear;
-    crear selecciona la nueva denominación y devuelve el foco al campo de unidad.
+  - «+ Crear unidad» (Figma `5767:342334`) despliega dentro del mismo modal, debajo de Unidad y
+    Tarifa, la fila «Nombre de la unidad *» (`ServiceUnitCreateField`: Input «Prefix select» con la
+    abreviatura y el texto, y «Guardar» con borde a la derecha); el botón cede su lugar a la fila.
+    No abre otro diálogo: la fila ocupa su propio espacio, el formulario desplaza dentro del modal
+    con poca altura y el pie Cancelar/Crear sigue visible. Lógica en `useInlineDenominationCreator`,
+    que reutiliza las reglas de Unidades (`normalizeDenominationText`, `validateDenominationText`,
+    `getMeasurementUnitErrorFeedback`) y `POST /admin/measurement-unit-denominations`.
+    - Base: la del servicio si está permitida; si no, la primera del catálogo activo (m²). En
+      llave en mano solo m²: el selector queda fijado y deshabilitado.
+    - Guardar (o Enter en el campo) crea solo la denominación, nunca el servicio: se añade a las
+      opciones, queda elegida con su base, se confirma con discreción junto a la unidad y el foco
+      vuelve al campo de unidad. El borrador del servicio no cambia. Un doble clic envía una vez.
+    - Duplicados: antes de enviar se compara con las denominaciones activas de la base con la clave
+      del índice único (`denominationEquivalenceKey`: NFKC y minúsculas) y se ofrece «Usar «…»». El
+      409 `MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS` (p. ej. una equivalente inactiva) muestra
+      el mensaje del backend; otros 409, los 400 y los errores de red se explican sin confundirlos
+      con un duplicado y conservan lo escrito.
+    - Cancelar: Figma no lo dibuja; Escape en la fila (solo cierra la fila, no el modal) y un enlace
+      discreto «Cancelar» bajo ella. El foco vuelve a «+ Crear unidad». Nada se escribe.
+    - El módulo de Unidades conserva su propio `MeasurementUnitFormModal`.
   - Edición: solo se envían los campos cambiados con `expectedVersion`; cambiar la base envía
     también la denominación. Sin cambios no hay petición. Un 409 de versión no sobrescribe: se
     explica en el formulario, que conserva lo escrito, y se recarga el listado. Los 400 se

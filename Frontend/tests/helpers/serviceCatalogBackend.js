@@ -168,6 +168,11 @@ export function createServiceCatalogBackend(initial) {
       return json(route, 200, { unitDenominations: matches.slice(start, start + limit), nextCursor: start + limit < matches.length ? String(start + limit) : null });
     }
     if (path === "/api/admin/measurement-unit-denominations" && method === "POST") {
+      // Como el índice único de PostgreSQL: misma base y lower(normalize(texto, NFKC)), activa o no.
+      const key = (text) => text.trim().replace(/\s+/g, " ").normalize("NFKC").toLowerCase();
+      if (state.denominations.some((item) => item.measurementUnit.id === body.measurementUnitId && key(item.denomination) === key(body.denomination))) {
+        return json(route, 409, { code: "MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS", message: "Ya existe una denominación equivalente para esa unidad de medida." });
+      }
       const unitKey = Object.keys(UNITS).find((key) => UNITS[key].id === body.measurementUnitId);
       const created = denominationRecord({ id: state.nextDenominationId, denomination: body.denomination.trim(), unit: unitKey });
       state.nextDenominationId += 1;

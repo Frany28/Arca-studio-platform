@@ -8,7 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
-import { createServiceCatalogBackend, sampleCatalog } from "../helpers/serviceCatalogBackend.js";
+import { createServiceCatalogBackend, denominationRecord, sampleCatalog } from "../helpers/serviceCatalogBackend.js";
 
 // Formulario de servicios (Figma 5764:226084): un único modal de alta y edición y, desde él, el
 // alta de unidades con el formulario existente de Unidades, contra un backend simulado.
@@ -119,6 +119,47 @@ async function baseOptionNames(page) {
 }
 
 /**
+ * Despliega «+ Crear unidad» dentro del modal y devuelve la fila del alta contextual.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<import("playwright").Locator>} Fila «Nombre de la unidad».
+ */
+async function openUnitCreation(page) {
+  await page.locator("[data-service-form]").getByRole("button", { name: "Crear unidad" }).click();
+  const row = page.locator("[data-service-unit-create]");
+  await row.waitFor();
+  return row;
+}
+
+/**
+ * Opciones del selector de base de la fila de alta contextual (la abre y la cierra).
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<Array<string>>} Opciones visibles (abreviatura, nombre).
+ */
+async function newUnitBaseOptions(page) {
+  await page.getByRole("combobox", { name: /^Unidad base de la nueva unidad/ }).click();
+  const names = await page.getByRole("option").evaluateAll((options) => options.map((option) => option.getAttribute("aria-label") || option.textContent.trim()));
+  await page.keyboard.press("Escape");
+  return names;
+}
+
+/**
+ * Comprueba que el borrador del servicio no cambió.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @param {{name: string, description: string, rate: string, modality: string}} expected - Valores esperados.
+ * @returns {Promise<void>}
+ */
+async function assertDraftKept(page, expected) {
+  const dialog = page.locator("[data-service-form]");
+  assert.equal(await dialog.locator("#service-form-name").inputValue(), expected.name);
+  assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), expected.description);
+  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), expected.rate);
+  assert.match(await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).innerText(), new RegExp(expected.modality));
+}
+
+/**
  * Enfoca el campo de unidad y elige una denominación entre las sugerencias de la base.
  *
  * @param {import("playwright").Page} page - Página.
@@ -218,56 +259,233 @@ test("unidad: base y denominación coherentes, cambio de base sin combinaciones 
   await page.getByRole("tooltip").getByText("Descripción de prueba del formulario.", { exact: true }).waitFor();
 });
 
-test("crear unidad: reutiliza el formulario de Unidades, conserva el borrador y selecciona la nueva denominación", async (context) => {
-  const backend = createServiceCatalogBackend(sampleCatalog());
-  const page = await openTabulator(context, backend);
+const DRAFT = { name: "Borrador conservado", description: "Texto del borrador.", rate: "30.00", modality: "Detalle por detalle" };
+
+/**
+ * Abre «Nuevo servicio» con un borrador completo y la base m² elegida.
+ *
+ * @param {import("playwright").Page} page - Página del tabulador.
+ * @returns {Promise<import("playwright").Locator>} Diálogo.
+ */
+async function openDraft(page) {
   const dialog = await openCreate(page);
-  await dialog.locator("#service-form-name").fill("Borrador conservado");
-  await chooseModality(page, "Detalle por detalle");
-  await dialog.getByPlaceholder("Descripción del servicio.").fill("Texto del borrador.");
+  await dialog.locator("#service-form-name").fill(DRAFT.name);
+  await chooseModality(page, DRAFT.modality);
+  await dialog.getByPlaceholder("Descripción del servicio.").fill(DRAFT.description);
   await dialog.getByPlaceholder("0.00").fill("3000");
   await chooseBase(page, "m², Metro cuadrado");
+  return dialog;
+}
 
-  // Cancelar vuelve al servicio sin cambios y con el foco en «Crear unidad».
-  await dialog.getByRole("button", { name: "Crear unidad" }).click();
-  const unitDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
-  await unitDialog.waitFor();
-  assert.equal(await page.locator('[role="dialog"]').count(), 1, "Un solo diálogo: sin overlays ni focus traps apilados");
-  assert.match(await unitDialog.getByRole("combobox").textContent(), /m²/, "Abre con la base del servicio");
-  await unitDialog.getByRole("button", { name: "Cancelar" }).click();
-  await dialog.waitFor();
-  // El foco inicial llega cuando Modal termina de montar su contenido (unos frames).
-  await page.waitForFunction(() => document.activeElement?.matches("[data-service-create-unit]"));
-  assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
-  assert.match(await page.getByRole("button", { name: "Modalidad de contratación", exact: true }).innerText(), /Detalle por detalle/);
-  assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), "Texto del borrador.");
-  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30.00");
-  assert.equal(requestsOf(backend, "POST", /measurement-unit-denominations$/).length, 0, "Cancelar no crea unidades");
+test("crear unidad en el mismo modal: oculta al inicio, se despliega sin otro diálogo y se cancela conservando el borrador", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openDraft(page);
+  assert.equal(await page.locator("[data-service-unit-create]").count(), 0, "Oculta al inicio");
 
-  // Escape en el formulario de unidades solo cierra ese paso.
-  await dialog.getByRole("button", { name: "Crear unidad" }).click();
-  await unitDialog.waitFor();
+  const row = await openUnitCreation(page);
+  assert.equal(await page.getByRole("dialog").count(), 1, "Sin segundo modal ni overlay");
+  assert.equal(await page.getByRole("dialog", { name: "Nueva unidad de medida" }).count(), 0);
+  // Figma 5767:342334: el botón cede su lugar a la fila; el foco va al campo nuevo.
+  assert.equal(await dialog.getByRole("button", { name: "Crear unidad" }).count(), 0);
+  await page.waitForFunction(() => document.activeElement?.id === "service-form-new-unit");
+  assert.equal(await row.getByText("Nombre de la unidad", { exact: true }).count(), 1);
+  assert.equal(await row.getByPlaceholder("Ej. “de recorrido comercial”").count(), 1);
+  assert.equal(await row.getByRole("button", { name: "Guardar" }).isVisible(), true);
+  // La base del servicio se precarga y las opciones son las bases activas reales.
+  assert.match(await page.getByRole("combobox", { name: /^Unidad base de la nueva unidad/ }).innerText(), /m²/);
+  assert.equal((await newUnitBaseOptions(page)).length, 4);
+  // Ocupa su propio espacio debajo de la unidad y la tarifa, sin superponerse.
+  const geometry = await page.evaluate(() => {
+    const rate = document.querySelector('input[placeholder="0.00"]').getBoundingClientRect();
+    const created = document.querySelector("[data-service-unit-create]").getBoundingClientRect();
+    return { below: created.top >= rate.bottom };
+  });
+  assert.deepEqual(geometry, { below: true });
+
+  // Escape cierra solo la fila: el modal sigue abierto y el foco vuelve a «Crear unidad».
+  await row.getByPlaceholder("Ej. “de recorrido comercial”").fill("no se guarda");
   await page.keyboard.press("Escape");
-  await dialog.waitFor();
-  assert.equal(await page.locator('[role="dialog"]').count(), 1);
+  await row.waitFor({ state: "detached" });
+  assert.equal(await dialog.isVisible(), true);
+  await page.waitForFunction(() => document.activeElement?.matches("[data-service-create-unit]"));
+  await assertDraftKept(page, DRAFT);
+  assert.equal(await dialog.getByRole("combobox", { name: /^Unidad base del servicio/ }).innerText(), "m²");
 
-  // Crear la denominación vuelve al servicio con ella elegida y el foco en la unidad.
-  await dialog.getByRole("button", { name: "Crear unidad" }).click();
-  await unitDialog.waitFor();
-  await unitDialog.getByRole("textbox", { name: "Nombre de la unidad" }).fill("de prueba nueva");
-  await unitDialog.getByRole("button", { name: "Crear", exact: true }).click();
-  await dialog.waitFor();
+  // El enlace discreto «Cancelar» también la cierra sin escribir nada.
+  const again = await openUnitCreation(page);
+  await again.getByPlaceholder("Ej. “de recorrido comercial”").fill("tampoco");
+  await again.getByRole("button", { name: "Cancelar la creación de la unidad" }).click();
+  await again.waitFor({ state: "detached" });
+  await assertDraftKept(page, DRAFT);
+  assert.equal(requestsOf(backend, "POST", /measurement-unit-denominations$/).length, 0, "Cancelar no escribe");
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
+});
+
+test("crear unidad en el mismo modal: guarda con la API, la selecciona y el servicio se crea después", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openDraft(page);
+  const row = await openUnitCreation(page);
+
+  // Validación compartida con Unidades.
+  await row.getByRole("button", { name: "Guardar" }).click();
+  await row.getByText("Escribe el nombre de la unidad.", { exact: true }).waitFor();
+  assert.equal(requestsOf(backend, "POST", /measurement-unit-denominations$/).length, 0);
+
+  // Un doble clic con la petición en curso envía una sola vez.
+  backend.delays["POST /api/admin/measurement-unit-denominations"] = 400;
+  await row.getByPlaceholder("Ej. “de recorrido comercial”").fill("  de   prueba nueva ");
+  await row.getByRole("button", { name: "Guardar" }).dblclick();
+  await row.waitFor({ state: "detached" });
+  assert.deepEqual(requestsOf(backend, "POST", /measurement-unit-denominations$/).map((request) => request.body),
+    [{ denomination: "de prueba nueva", measurementUnitId: 1 }], "Una sola alta, normalizada como en Unidades");
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "Crear la unidad no guarda el servicio");
+
+  // Queda elegida, con confirmación discreta y el foco en la unidad; el modal sigue abierto.
   await dialog.getByRole("button", { name: "Quitar de prueba nueva" }).waitFor();
+  await dialog.getByRole("status").getByText("Unidad «m² de prueba nueva» creada y seleccionada.", { exact: true }).waitFor();
   await page.waitForFunction(() => document.activeElement?.id === "service-form-unit");
-  assert.deepEqual(requestsOf(backend, "POST", /measurement-unit-denominations$/).map((request) => request.body), [{ denomination: "de prueba nueva", measurementUnitId: 1 }]);
-  assert.equal(await dialog.locator("#service-form-name").inputValue(), "Borrador conservado");
-  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "30.00");
+  await dialog.getByRole("button", { name: "Crear unidad" }).waitFor();
+  await assertDraftKept(page, DRAFT);
 
+  // El servicio se crea después, con la denominación nueva.
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
   const [post] = requestsOf(backend, "POST", /^\/api\/admin\/services$/);
-  assert.equal(post.body.unitDenominationId, 14);
+  assert.deepEqual([post.body.measurementUnitId, post.body.unitDenominationId], [1, 14]);
   await rowFor(page, "SERV-006").getByText("m² de prueba nueva", { exact: true }).waitFor();
+});
+
+test("crear unidad en el mismo modal: Enter guarda la unidad y no envía el servicio", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openDraft(page);
+  const row = await openUnitCreation(page);
+  await row.getByPlaceholder("Ej. “de recorrido comercial”").fill("de teclado");
+  await page.keyboard.press("Enter");
+  await dialog.getByRole("button", { name: "Quitar de teclado" }).waitFor();
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
+  assert.equal(await dialog.isVisible(), true);
+});
+
+test("crear unidad en el mismo modal: duplicados, 400, otros 409 y error de red sin perder lo escrito", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  // Una denominación inactiva equivalente: no está entre las activas leídas, solo el backend la conoce.
+  backend.denominations.push(denominationRecord({ id: 90, denomination: "de archivo", isActive: false, unit: "m2" }));
+  const page = await openTabulator(context, backend);
+  const dialog = await openDraft(page);
+  let row = await openUnitCreation(page);
+  const text = row.getByPlaceholder("Ej. “de recorrido comercial”");
+  const save = row.getByRole("button", { name: "Guardar" });
+  const posts = () => requestsOf(backend, "POST", /measurement-unit-denominations$/).length;
+
+  // Duplicado evidente (misma clave que el índice de PostgreSQL): no se envía y se ofrece la existente.
+  await text.fill("DE CONSTRUCCIÓN");
+  await save.click();
+  await row.getByText("Ya existe «m² de construcción» en esta unidad base.", { exact: true }).waitFor();
+  assert.equal(posts(), 0);
+  assert.equal(await text.inputValue(), "DE CONSTRUCCIÓN");
+
+  // 409 de duplicado del backend (equivalente inactiva): mensaje del backend, sin ofrecer una opción que no existe.
+  await text.fill("De Archivo");
+  await save.click();
+  await row.getByText("Ya existe una denominación equivalente para esa unidad de medida.", { exact: true }).waitFor();
+  assert.equal(await row.getByRole("button", { name: /^Usar/ }).count(), 0);
+  assert.equal(posts(), 1);
+
+  // 400 con error de campo.
+  backend.failures["POST /api/admin/measurement-unit-denominations"] = { status: 400, body: { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { "body.denomination": "No admite ese texto." } } };
+  await text.fill("de otra prueba");
+  await save.click();
+  await row.getByText("No admite ese texto.", { exact: true }).waitFor();
+
+  // Otro 409 (no es un duplicado): mensaje general, sin ofrecer la existente.
+  backend.failures["POST /api/admin/measurement-unit-denominations"] = { status: 409, body: { code: "MEASUREMENT_UNIT_CONFLICT", message: "La unidad de medida entra en conflicto con un registro existente." } };
+  await save.click();
+  await row.getByRole("alert").getByText("La unidad de medida entra en conflicto con un registro existente.", { exact: true }).waitFor();
+  assert.equal(await row.getByRole("button", { name: /^Usar/ }).count(), 0);
+  delete backend.failures["POST /api/admin/measurement-unit-denominations"];
+
+  // Error de red: se explica y se conserva el texto.
+  await page.route("**/api/admin/measurement-unit-denominations", (route) => (route.request().method() === "POST" ? route.abort("failed") : route.fallback()));
+  await save.click();
+  await row.getByRole("alert").waitFor();
+  assert.equal(await text.inputValue(), "de otra prueba");
+  await page.unroute("**/api/admin/measurement-unit-denominations");
+  await assertDraftKept(page, DRAFT);
+
+  // «Usar» elige la existente equivalente sin crear nada.
+  await text.fill("de Construcción");
+  await save.click();
+  const postsBefore = posts();
+  await row.getByRole("button", { name: "Usar «m² de construcción»" }).click();
+  await row.waitFor({ state: "detached" });
+  await dialog.getByRole("button", { name: "Quitar de construcción" }).waitFor();
+  assert.equal(posts(), postsBefore);
+  await assertDraftKept(page, DRAFT);
+  row = page.locator("[data-service-unit-create]");
+  assert.equal(await row.count(), 0);
+});
+
+test("crear unidad en la edición: precarga la base del servicio, la crea y la guarda con expectedVersion", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  await page.getByRole("button", { name: "Editar TST-002 Diseño interior de prueba" }).click();
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+  await dialog.locator("#service-form-name").waitFor();
+  const row = await openUnitCreation(page);
+  assert.match(await page.getByRole("combobox", { name: /^Unidad base de la nueva unidad/ }).innerText(), /m²/);
+  await row.getByPlaceholder("Ej. “de recorrido comercial”").fill("de edición");
+  await row.getByRole("button", { name: "Guardar" }).click();
+  await dialog.getByRole("button", { name: "Quitar de edición" }).waitFor();
+  assert.equal(await dialog.locator("#service-form-name").inputValue(), "Diseño interior de prueba");
+  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/2$/).at(-1).body, { expectedVersion: 1, unitDenominationId: 14 });
+});
+
+test("crear unidad en el mismo modal: responsive, scroll interno con poca altura y pie visible (claro y oscuro)", async (context) => {
+  for (const theme of ["light", "dark"]) {
+    const backend = createServiceCatalogBackend(sampleCatalog());
+    const page = await openTabulator(context, backend, { theme, viewport: { width: 375, height: 560 } });
+    for (const [width, height] of [[375, 560], [375, 812], [768, 1024], [1024, 768], [1440, 700]]) {
+      await page.setViewportSize({ width, height });
+      const dialog = await openCreate(page);
+      await chooseBase(page, "m², Metro cuadrado");
+      const row = await openUnitCreation(page);
+      await page.waitForFunction(() => document.activeElement?.id === "service-form-new-unit");
+      const layout = await page.evaluate(() => {
+        const box = document.querySelector("[data-service-form]").getBoundingClientRect();
+        const form = document.querySelector("#service-form");
+        const footer = document.querySelector("[data-service-form] footer").getBoundingClientRect();
+        const field = document.querySelector("#service-form-new-unit").getBoundingClientRect();
+        const createRow = document.querySelector("[data-service-unit-create]").getBoundingClientRect();
+        const save = [...document.querySelectorAll("[data-service-unit-create] button")].find((button) => button.textContent.trim() === "Guardar").getBoundingClientRect();
+        const rate = document.querySelector('input[placeholder="0.00"]').getBoundingClientRect();
+        const formBox = form.getBoundingClientRect();
+        return {
+          inside: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight + 0.5,
+          noHorizontalOverflow: form.scrollWidth <= form.clientWidth && document.documentElement.scrollWidth <= window.innerWidth,
+          footerVisible: footer.top >= box.top && footer.bottom <= box.bottom + 0.5,
+          // Toda la fila (campo, Guardar y Cancelar) queda a la vista dentro del área con scroll.
+          fieldVisible: createRow.top >= formBox.top - 0.5 && createRow.bottom <= formBox.bottom + 0.5,
+          saveBesideField: save.left >= field.right - 0.5 && save.right <= box.right,
+          belowRate: field.top > rate.bottom,
+          scrolls: form.scrollHeight > form.clientHeight,
+        };
+      });
+      const label = `${theme} ${width}x${height}: ${JSON.stringify(layout)}`;
+      assert.deepEqual({ ...layout, scrolls: undefined }, { inside: true, noHorizontalOverflow: true, footerVisible: true, fieldVisible: true, saveBesideField: true, belowRate: true, scrolls: undefined }, label);
+      if (height <= 560) assert.equal(layout.scrolls, true, `${label}: con poca altura el contenido desplaza dentro del modal`);
+      assert.notEqual(await row.evaluate((element) => getComputedStyle(element.closest("[data-service-form]")).backgroundColor), "rgba(0, 0, 0, 0)");
+      // Escape cierra la fila; un segundo Escape cierra el modal.
+      await page.keyboard.press("Escape");
+      await row.waitFor({ state: "detached" });
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "detached" });
+    }
+  }
 });
 
 test("edición: mismo modal con datos reales, solo campos cambiados, expectedVersion y sin cambios no envía", async (context) => {
@@ -387,15 +605,14 @@ test("alta llave en mano: solo unidades m², retira la unidad incompatible y cre
   await dialog.getByText("Elige la unidad de medida.", { exact: true }).waitFor();
   assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
 
-  // «+ Crear unidad» en llave en mano solo permite la base m².
-  await dialog.getByRole("button", { name: "Crear unidad" }).click();
-  const unitDialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
-  await unitDialog.waitFor();
-  await unitDialog.getByRole("combobox").click();
-  assert.deepEqual(await page.getByRole("option").evaluateAll((options) => options.map((option) => option.getAttribute("aria-label") || option.textContent.trim())), ["m², Metro cuadrado"]);
-  await page.keyboard.press("Escape");
-  await unitDialog.getByRole("button", { name: "Cancelar" }).click();
-  await dialog.waitFor();
+  // «+ Crear unidad» en llave en mano solo permite la base m² (sin otro diálogo).
+  const unitRow = await openUnitCreation(page);
+  // Única base permitida: el selector queda fijado en m² (deshabilitado) y no ofrece otras.
+  const newUnitBase = page.getByRole("combobox", { name: /^Unidad base de la nueva unidad/ });
+  assert.match(await newUnitBase.innerText(), /m²/);
+  assert.equal(await newUnitBase.isDisabled(), true);
+  await unitRow.getByRole("button", { name: "Cancelar la creación de la unidad" }).click();
+  await unitRow.waitFor({ state: "detached" });
 
   await chooseBase(page, "m², Metro cuadrado");
   await chooseDenomination(page, "de construcción");

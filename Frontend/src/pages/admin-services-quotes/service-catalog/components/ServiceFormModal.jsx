@@ -1,4 +1,5 @@
 import { Add } from "iconsax-react";
+import { useEffect } from "react";
 
 import Button from "../../../../components/ui/Button/Button.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
@@ -10,27 +11,31 @@ import {
   rateFromPastedText, rateFromTypedValue, SERVICE_DESCRIPTION_MAX_LENGTH, SERVICE_NAME_MAX_LENGTH,
 } from "../utils/serviceFormValues.js";
 import ServiceModalityField from "./ServiceModalityField.jsx";
+import ServiceUnitCreateField from "./ServiceUnitCreateField.jsx";
 import ServiceUnitField from "./ServiceUnitField.jsx";
 
 const DIALOG_SELECTOR = "[data-service-form]";
-const FIELD_IDS = { name: "service-form-name", kind: "service-form-kind", unit: "service-form-unit" };
+const FIELD_IDS = { name: "service-form-name", kind: "service-form-kind", unit: "service-form-unit", newUnit: "service-form-new-unit" };
 // Anotación de Figma: el mismo modal edita, con los datos completos y el título «Servicio».
 const COPY = {
   create: { title: "Nuevo servicio", submit: "Crear", submitting: "Creando...", close: "Cerrar formulario de nuevo servicio" },
   edit: { title: "Servicio", submit: "Guardar", submitting: "Guardando...", close: "Cerrar formulario del servicio" },
 };
-// Elemento que recibe el foco al abrir o al volver de «+ Crear unidad».
+// Elementos que reciben el foco al abrir el modal y durante el alta contextual de una unidad.
 const FOCUS_SELECTORS = {
   name: `#${FIELD_IDS.name}`,
   unit: `#${FIELD_IDS.unit}`,
+  "new-unit": `#${FIELD_IDS.newUnit}`,
   "create-unit": "[data-service-create-unit]",
 };
 
 /**
  * Modal único de alta y edición de servicios (Figma 5764:226084): nombre, modalidad de
  * contratación, descripción opcional, unidad de medida (base + denominación), tarifa en USD y
- * «+ Crear unidad». No guarda estado propio: el borrador vive en ServiceFormDialog para
- * sobrevivir al paso por el formulario de unidades. El código no se muestra: lo genera el sistema.
+ * «+ Crear unidad», que despliega debajo, en el mismo modal, la fila de alta de una unidad
+ * (Figma 5767:342334). Esa fila ocupa su propio espacio: el contenido desplaza dentro del
+ * formulario y el pie con Cancelar/Crear queda siempre visible. No guarda estado propio: el
+ * borrador vive en ServiceFormDialog. El código no se muestra: lo genera el sistema.
  *
  * @param {Object} props - Modo, borrador, opciones y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
@@ -47,19 +52,35 @@ const FOCUS_SELECTORS = {
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.denominations
  * Denominaciones de la base elegida.
  * @param {string} props.unitHint - Ayuda del campo de unidad (carga o error del catálogo).
+ * @param {string} [props.unitNotice] - Confirmación discreta tras crear o elegir una unidad.
  * @param {boolean} props.catalogUnavailable - El catálogo de bases no está disponible.
- * @param {"name"|"unit"|"create-unit"} props.focusTarget - Elemento enfocado al abrir.
+ * @param {{target: "unit"|"new-unit"|"create-unit"}|null} [props.focusRequest] - Foco pedido tras
+ * desplegar, cancelar o completar el alta de unidad (cada petición es un objeto nuevo).
  * @param {() => void} props.onCancel - Cierra sin guardar.
  * @param {() => void} props.onSubmit - Valida y envía.
- * @param {() => void} props.onCreateUnit - Abre el formulario de unidades conservando el borrador.
+ * @param {{creator: Object, baseOptions: Array<Object>, hint: string, onStart: () => void,
+ * onCancel: () => void, onSave: () => void, onUseExisting: (denomination: Object) => void}} props.unitCreation
+ * Alta contextual de unidad (estado de useInlineDenominationCreator y acciones).
  * @returns {import("react").ReactElement} Modal en portal.
  */
 function ServiceFormModal({
-  baseOptions, catalogUnavailable, denominations, draft, fieldErrors, focusTarget, loadError, mode,
-  onCancel, onCreateUnit, onDraftChange, onKindChange, onRetryLoad, onSubmit, status, submitError, submitting, unitHint,
+  baseOptions, catalogUnavailable, denominations, draft, fieldErrors, focusRequest, loadError, mode,
+  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, status, submitError, submitting, unitCreation, unitHint, unitNotice,
 }) {
   const copy = COPY[mode === "edit" ? "edit" : "create"];
   const ready = status === "ready";
+  const { creator } = unitCreation;
+
+  // El foco sigue al alta contextual de unidad: el campo nuevo al desplegar, «+ Crear unidad» al
+  // cancelar y el campo de unidad al crear o elegir una existente. Se aplica tras el render que
+  // monta el destino. Con poca altura se desplaza hasta mostrar la fila de alta completa
+  // (campo, «Guardar» y «Cancelar»), no solo el campo enfocado.
+  useEffect(() => {
+    if (!focusRequest) return;
+    const element = document.querySelector(`${DIALOG_SELECTOR} ${FOCUS_SELECTORS[focusRequest.target]}`);
+    element?.focus({ preventScroll: true });
+    (element?.closest("[data-service-unit-create]") ?? element)?.scrollIntoView?.({ block: "nearest" });
+  }, [focusRequest]);
 
   useDialogKeyboard({
     open: true,
@@ -67,7 +88,7 @@ function ServiceFormModal({
     onEscape: () => {
       if (!submitting) onCancel();
     },
-    getInitialFocus: (elements) => elements.find((element) => element.matches(FOCUS_SELECTORS[focusTarget] ?? FOCUS_SELECTORS.name)),
+    getInitialFocus: (elements) => elements.find((element) => element.matches(FOCUS_SELECTORS.name)),
   });
 
   /**
@@ -163,25 +184,29 @@ function ServiceFormModal({
                     disabled={submitting || catalogUnavailable}
                     onChange={(changes) => onDraftChange(changes, "unit")}
                   />
+                  {unitNotice ? <p className="text-body-4 m-0 text-[var(--color-text-100)]" role="status">{unitNotice}</p> : null}
                   {denominations.error ? (
                     <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} onClick={denominations.retry}>
                       Reintentar carga de unidades
                     </Button>
                   ) : null}
-                  <Button
-                    theme="Primary"
-                    type="Outline"
-                    size="S"
-                    fitContent
-                    showLeftIcon
-                    iconLeft={<Add size="20" color="currentColor" />}
-                    showRightIcon={false}
-                    disabled={submitting || catalogUnavailable}
-                    data-service-create-unit
-                    onClick={onCreateUnit}
-                  >
-                    Crear unidad
-                  </Button>
+                  {/* Figma 5767:342334: al desplegar el alta, el botón cede su lugar a la fila. */}
+                  {creator.open ? null : (
+                    <Button
+                      theme="Primary"
+                      type="Outline"
+                      size="S"
+                      fitContent
+                      showLeftIcon
+                      iconLeft={<Add size="20" color="currentColor" />}
+                      showRightIcon={false}
+                      disabled={submitting || catalogUnavailable}
+                      data-service-create-unit
+                      onClick={unitCreation.onStart}
+                    >
+                      Crear unidad
+                    </Button>
+                  )}
                 </div>
                 <Input
                   type="Default input"
@@ -211,6 +236,18 @@ function ServiceFormModal({
                   }}
                 />
               </div>
+              {creator.open ? (
+                <ServiceUnitCreateField
+                  id={FIELD_IDS.newUnit}
+                  creator={creator}
+                  baseOptions={unitCreation.baseOptions}
+                  hint={unitCreation.hint}
+                  disabled={submitting}
+                  onCancel={unitCreation.onCancel}
+                  onSave={unitCreation.onSave}
+                  onUseExisting={unitCreation.onUseExisting}
+                />
+              ) : null}
               {submitError ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}
             </>
           ) : null}

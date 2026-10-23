@@ -18,6 +18,7 @@ import {
 import { getMeasurementUnitErrorFeedback } from "../src/pages/admin-services-quotes/measurement-units/utils/measurementUnitErrors.js";
 import {
   canEditBaseUnit,
+  denominationEquivalenceKey,
   getInUseReason,
   normalizeDenominationText,
   previewUnitLabel,
@@ -85,6 +86,14 @@ test("presentación: normaliza y valida como el contrato y previsualiza la etiqu
   assert.equal(getInUseReason({ activeServiceCount: 0 }), "");
   assert.equal(getInUseReason({ activeServiceCount: 1 }), "En uso por 1 servicio activo");
   assert.equal(getInUseReason({ activeServiceCount: 3 }), "En uso por 3 servicios activos");
+});
+
+test("denominaciones: la clave de equivalencia reproduce el índice único (mayúsculas, NFKC y espacios)", () => {
+  const key = denominationEquivalenceKey("de construcción");
+  for (const equivalent of ["De Construcción", "DE CONSTRUCCIÓN", "ｄｅ construcción", "  de   construcción "]) {
+    assert.equal(denominationEquivalenceKey(equivalent), key, equivalent);
+  }
+  assert.notEqual(denominationEquivalenceKey("de construccion"), key, "Las tildes distinguen, como en PostgreSQL");
 });
 
 test("presentación: la base solo es editable con el indicador explícito y conserva la base actual", () => {
