@@ -178,6 +178,7 @@ async function chooseDenomination(page, label) {
  * @returns {Promise<Array<string>>} Etiquetas sugeridas, ordenadas.
  */
 async function unitSuggestions(page) {
+  await page.waitForFunction(() => !document.querySelector("[data-service-form]")?.textContent.includes("Cargando unidades de medida"));
   await page.locator("#service-form-unit").focus();
   return (await page.locator("[data-service-form]").getByRole("button", { name: /^Seleccionar / }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label").replace(/^Seleccionar /, "")))).sort();
 }
@@ -231,18 +232,29 @@ test("unidad: solo unidades registradas, con su símbolo, búsqueda y una sola p
   await dialog.getByPlaceholder("Descripción del servicio.").fill("Descripción de prueba del formulario.");
   await dialog.getByPlaceholder("0.00").fill("12.50");
 
-  // Datos reales: GET de denominaciones activas de todas las bases (sin filtrar por una base).
+  const input = page.locator("#service-form-unit");
+  assert.equal(await input.getAttribute("placeholder"), "Selecciona un símbolo");
+  assert.equal(await input.evaluate((element) => element.readOnly), true);
+  await input.click();
+  await input.press("ArrowDown");
+  await input.press("Enter");
+  assert.deepEqual(await unitSuggestions(page), [], "Sin símbolo no se abre ninguna sugerencia");
+  assert.equal(requestsOf(backend, "GET", /measurement-unit-denominations$/).length, 0, "El clic sin base no consulta denominaciones");
+  // Todas las bases activas están disponibles, incluso m.l., que todavía no tiene unidades.
+  assert.deepEqual((await baseOptionNames(page)).sort(), ["m.l., Metro lineal", "m², Metro cuadrado", "m³, Metro cúbico", "pto., Punto"]);
+  await chooseBase(page, "m², Metro cuadrado");
+  assert.equal(await input.evaluate((element) => element.readOnly), false);
+  assert.equal(await input.getAttribute("placeholder"), "Buscar unidad");
+  // La lectura completa se reutiliza al cambiar de base o buscar, sin consultas por pulsación.
   await page.waitForFunction(() => !document.querySelector("[data-service-form]")?.textContent.includes("Cargando unidades de medida"));
   const reads = requestsOf(backend, "GET", /measurement-unit-denominations$/);
   assert.ok(reads.length >= 1 && reads.every((request) => request.params.status === "active" && !request.params.measurementUnitId), JSON.stringify(reads.map((r) => r.params)));
   // Sugerencias: solo las registradas activas, con símbolo y texto; nada de bases sueltas ni inactivas.
-  assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción", "m³ de excavación", "pto. eléctrico"]);
-  // Símbolos: solo las bases con unidades registradas (m.l. no tiene ninguna; el catálogo tiene 4 bases).
-  assert.deepEqual((await baseOptionNames(page)).sort(), ["m², Metro cuadrado", "m³, Metro cúbico", "pto., Punto"]);
+  assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción"]);
 
   // Búsqueda: escribir filtra las sugerencias.
-  await page.locator("#service-form-unit").fill("excav");
-  assert.deepEqual(await dialog.getByRole("button", { name: /^Seleccionar / }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))), ["Seleccionar m³ de excavación"]);
+  await page.locator("#service-form-unit").fill("constru");
+  assert.deepEqual(await dialog.getByRole("button", { name: /^Seleccionar / }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))), ["Seleccionar m² de construcción"]);
   await page.locator("#service-form-unit").fill("");
 
   // Elegir una unidad fija su base: el prefijo muestra su símbolo y el Tag su texto.
@@ -250,7 +262,9 @@ test("unidad: solo unidades registradas, con su símbolo, búsqueda y una sola p
   await dialog.getByRole("button", { name: "Quitar a intervenir" }).waitFor();
   assert.equal(await dialog.getByRole("combobox", { name: /^Unidad base del servicio/ }).innerText(), "m²");
   // Una sola unidad: elegir otra (de otra base) la sustituye junto con su símbolo.
+  await page.locator("#service-form-unit").fill("constru");
   await chooseBase(page, "m³, Metro cúbico");
+  assert.equal(await input.inputValue(), "", "Cambiar de símbolo vacía la consulta anterior");
   assert.equal(await dialog.getByRole("button", { name: "Quitar a intervenir" }).count(), 0);
   assert.deepEqual(await unitSuggestions(page), ["m³ de excavación"], "La base filtra las sugerencias");
   await chooseDenomination(page, "m³ de excavación");
@@ -261,6 +275,7 @@ test("unidad: solo unidades registradas, con su símbolo, búsqueda y una sola p
   await page.keyboard.press("Enter");
   assert.equal(await dialog.getByRole("button", { name: "Quitar inventada" }).count(), 0);
   await page.locator("#service-form-unit").fill("");
+  assert.equal(requestsOf(backend, "GET", /measurement-unit-denominations$/).length, reads.length, "La búsqueda y los cambios de base reutilizan el catálogo");
 
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
@@ -300,9 +315,69 @@ test("unidad: una base sin unidad registrada no basta y sin unidades registradas
   // Sin unidades registradas activas: estado vacío con la indicación de crear una.
   backend.denominations.splice(0, backend.denominations.length, denominationRecord({ id: 90, denomination: "de archivo", isActive: false, unit: "m2" }));
   const empty = await openCreate(page);
-  await empty.getByText("Aún no hay unidades de medida registradas. Crea una con «+ Crear unidad».", { exact: true }).waitFor();
   assert.deepEqual(await unitSuggestions(page), []);
+  await chooseBase(page, "m.l., Metro lineal");
+  await empty.getByText("No hay unidades registradas para este símbolo", { exact: true }).waitFor();
+  assert.deepEqual(await unitSuggestions(page), []);
+  assert.equal(await empty.getByText("No hay unidades registradas para este símbolo", { exact: true }).isVisible(), true, "El mensaje sigue visible con el buscador enfocado");
   assert.equal(await empty.getByRole("button", { name: "Crear unidad" }).isEnabled(), true);
+  await empty.locator("#service-form-unit").fill("consulta anterior");
+  const row = await openUnitCreation(page);
+  assert.equal(await row.getByRole("combobox", { name: /^Unidad base de la nueva unidad/ }).innerText(), "m.l.");
+  await row.locator("#service-form-new-unit").fill("de canalización");
+  await row.getByRole("button", { name: "Guardar", exact: true }).click();
+  await empty.getByRole("button", { name: "Quitar de canalización" }).waitFor();
+  assert.equal(await empty.getByRole("combobox", { name: /^Unidad base del servicio/ }).innerText(), "m.l.");
+  assert.equal(await empty.locator("#service-form-unit").inputValue(), "", "El alta contextual vacía la consulta");
+  await empty.getByRole("button", { name: "Quitar de canalización" }).click();
+  assert.equal(await empty.locator("#service-form-unit").inputValue(), "", "Quitar la unidad creada no recupera la consulta anterior");
+  await chooseDenomination(page, "m.l. de canalización");
+  assert.equal(requestsOf(backend, "POST", /measurement-unit-denominations$/).at(-1).body.measurementUnitId, 6);
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "Crear una unidad no crea el servicio");
+});
+
+test("unidad: teclado selecciona primero el símbolo y después una única denominación compatible", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = await openCreate(page);
+  const prefix = page.getByRole("combobox", { name: /^Unidad base del servicio/ });
+  await prefix.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.getByRole("listbox", { name: "Unidad base del servicio" }).waitFor();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Enter");
+  assert.equal(await prefix.innerText(), "m²");
+  assert.equal(await prefix.getAttribute("aria-expanded"), "false");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.locator("#service-form-unit").evaluate((element) => document.activeElement === element), true);
+  assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción"]);
+  await page.keyboard.type("intervenir");
+  await page.keyboard.press("Enter");
+  await dialog.getByRole("button", { name: "Quitar a intervenir" }).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: /^Quitar / }).count(), 1);
+  assert.equal(await page.locator("#service-form-unit").inputValue(), "");
+  await page.keyboard.press("Backspace");
+  assert.equal(await dialog.getByRole("button", { name: "Quitar a intervenir" }).count(), 0);
+  assert.equal(await prefix.innerText(), "m²", "Quitar la denominación conserva la base");
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "Enter selecciona sin enviar el servicio");
+});
+
+test("unidad: una lectura lenta y su reintento respetan la última base seleccionada", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  backend.delays["GET /api/admin/measurement-unit-denominations"] = 350;
+  backend.failures["GET /api/admin/measurement-unit-denominations"] = { status: 503, body: { code: "UNAVAILABLE", message: "Catálogo temporalmente no disponible" } };
+  const page = await openTabulator(context, backend);
+  const dialog = await openCreate(page);
+  await chooseBase(page, "m², Metro cuadrado");
+  await dialog.getByText("Cargando unidades de medida...", { exact: true }).waitFor();
+  await chooseBase(page, "m³, Metro cúbico");
+  await dialog.getByText("Catálogo temporalmente no disponible", { exact: true }).waitFor();
+  assert.deepEqual(await unitSuggestions(page), []);
+  delete backend.failures["GET /api/admin/measurement-unit-denominations"];
+  await dialog.getByRole("button", { name: "Reintentar carga de unidades" }).click();
+  await dialog.getByText("Cargando unidades de medida...", { exact: true }).waitFor();
+  assert.deepEqual(await unitSuggestions(page), ["m³ de excavación"], "La respuesta no repone sugerencias de la base anterior");
+  assert.equal(await dialog.getByRole("combobox", { name: /^Unidad base del servicio/ }).innerText(), "m³");
 });
 
 test("unidad en la edición: conserva la unidad guardada aunque esté inactiva y un servicio con solo la base", async (context) => {
@@ -322,6 +397,15 @@ test("unidad en la edición: conserva la unidad guardada aunque esté inactiva y
   await dialog.getByRole("button", { name: "Guardar" }).click();
   await dialog.waitFor({ state: "detached" });
   assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/7$/).at(-1).body, { expectedVersion: 1, name: "Archivo de prueba editado" });
+
+  // Si retira la guardada, la inactiva no vuelve a aparecer entre las nuevas opciones.
+  await page.getByRole("button", { name: "Editar TST-007 Archivo de prueba editado" }).click();
+  await dialog.getByRole("button", { name: "Quitar de archivo" }).click();
+  assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción"]);
+  await chooseBase(page, "m³, Metro cúbico");
+  assert.deepEqual(await unitSuggestions(page), ["m³ de excavación"]);
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
 
   // Servicio guardado solo con la base (TST-004, m.l.): se muestra y se puede guardar sin cambiarla.
   await page.getByRole("button", { name: "Editar TST-004 Canalizaciones de prueba" }).click();
@@ -672,15 +756,16 @@ test("alta llave en mano: solo unidades m², retira la unidad incompatible y cre
   const dialog = await openCreate(page);
   await dialog.locator("#service-form-name").fill("Residencial de prueba");
   await dialog.getByPlaceholder("0.00").fill("85000");
-  // Sin modalidad (y en individual) se ofrecen todas las unidades registradas.
-  assert.equal((await unitSuggestions(page)).length, 4);
+  assert.deepEqual(await unitSuggestions(page), [], "Sin base no se ofrecen denominaciones");
+  await chooseBase(page, "pto., Punto");
+  assert.deepEqual(await unitSuggestions(page), ["pto. eléctrico"]);
   await chooseDenomination(page, "pto. eléctrico");
 
   // Llave en mano: la unidad de puntos ya elegida es incompatible y se retira; solo quedan las de m².
   await chooseModality(page, "Llave en mano");
   assert.equal(await dialog.getByRole("button", { name: "Quitar eléctrico" }).count(), 0);
   assert.deepEqual(await baseOptionNames(page), ["m², Metro cuadrado"]);
-  assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción"]);
+  assert.deepEqual(await unitSuggestions(page), [], "Cambiar la modalidad no inventa una base seleccionada");
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.getByText("Elige la unidad de medida.", { exact: true }).waitFor();
   assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
@@ -695,6 +780,7 @@ test("alta llave en mano: solo unidades m², retira la unidad incompatible y cre
   await unitRow.waitFor({ state: "detached" });
 
   await chooseBase(page, "m², Metro cuadrado");
+  assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción"]);
   await chooseDenomination(page, "m² de construcción");
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
@@ -715,7 +801,7 @@ test("alta: cambiar de llave en mano a individual conserva la unidad m² elegida
   await chooseDenomination(page, "m² a intervenir");
   await chooseModality(page, "Detalle por detalle");
   await dialog.getByRole("button", { name: "Quitar a intervenir" }).waitFor();
-  assert.equal((await baseOptionNames(page)).length, 3, "Individual vuelve a ofrecer todas las bases con unidades registradas");
+  assert.equal((await baseOptionNames(page)).length, 4, "Individual vuelve a ofrecer todas las bases activas");
 });
 
 test("edición: la modalidad cambia solo por elección explícita y llave en mano exige m²", async (context) => {
@@ -743,6 +829,7 @@ test("edición: la modalidad cambia solo por elección explícita y llave en man
   await page.getByRole("button", { name: "Editar TST-005 Puntos eléctricos de prueba" }).click();
   await dialog.locator("#service-form-name").waitFor();
   await chooseModality(page, "Llave en mano");
+  await chooseBase(page, "m², Metro cuadrado");
   await chooseDenomination(page, "m² de construcción");
   await dialog.getByRole("button", { name: "Guardar" }).click();
   await dialog.waitFor({ state: "detached" });

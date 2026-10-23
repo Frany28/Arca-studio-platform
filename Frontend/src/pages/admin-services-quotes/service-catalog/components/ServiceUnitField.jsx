@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import Input from "../../../../components/ui/Input/Input.jsx";
-import { toDenominationOption, toDenominationTag } from "../utils/serviceFormValues.js";
+import HintText from "../../../../components/ui/HintText/HintText.jsx";
+import { filterDenominationsForBase, toDenominationOption, toDenominationTag } from "../utils/serviceFormValues.js";
 
 // Sugerencias visibles bajo el campo; escribir filtra el resto.
 const VISIBLE_SUGGESTIONS = 6;
@@ -13,14 +14,14 @@ const VISIBLE_SUGGESTIONS = 6;
  * dentro del campo (variante "Tags" del Input con prefijo).
  *
  * - Las sugerencias muestran símbolo y texto («m² de construcción»); escribir las filtra.
- * - Elegir una fija a la vez su base y su denominación: una sola unidad por servicio.
- * - El selector de prefijo solo lista las bases que tienen unidades registradas y filtra las
- *   sugerencias; cambiarlo retira una unidad de otra base.
+ * - Primero se elige una base; sin ella el texto es de solo lectura y no hay sugerencias.
+ * - El prefijo incluye bases sin denominaciones; elegir otra retira la selección incompatible.
+ * - Solo admite una denominación activa de la base elegida, comparada por identificador.
  * - Escribir y pulsar Enter nunca crea unidades; para eso está «+ Crear unidad».
  *
  * @param {Object} props - Selección, opciones y callbacks.
  * @param {string} props.id - Id del campo nativo (enfoque inicial y etiqueta).
- * @param {Array<{id: number, label: string, description: string}>} props.prefixOptions - Bases con unidades registradas.
+ * @param {Array<{id: number, label: string, description: string}>} props.prefixOptions - Bases permitidas.
  * @param {number|null} props.measurementUnitId - Base elegida.
  * @param {{id: number, denomination: string}|null} props.unitDenomination - Unidad elegida.
  * @param {Array<Object>} props.denominations - Unidades registradas que se ofrecen (forma del contrato).
@@ -32,9 +33,15 @@ const VISIBLE_SUGGESTIONS = 6;
  * @returns {import("react").ReactElement} Campo de unidad.
  */
 function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurementUnitId, onChange, prefixOptions, unitDenomination }) {
-  const [query, setQuery] = useState("");
+  // La consulta pertenece a esta combinación. Un cambio externo de base o unidad (modalidad,
+  // alta contextual) no puede reutilizar texto anterior ni necesita sincronizarlo con un efecto.
+  const searchKey = `${measurementUnitId}:${unitDenomination?.id ?? ""}`;
+  const [search, setSearch] = useState({ key: searchKey, text: "" });
+  const query = search.key === searchKey ? search.text : "";
   const selectedTags = unitDenomination ? [toDenominationTag(unitDenomination)] : [];
-  const suggestions = denominations.map(toDenominationOption);
+  const compatibleDenominations = filterDenominationsForBase(denominations, measurementUnitId);
+  const suggestions = compatibleDenominations.map(toDenominationOption);
+  const hintId = `${id}-unit-hint`;
 
   /**
    * Elige una unidad registrada, con su base, sustituyendo la anterior (selección única).
@@ -43,59 +50,75 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
    * @returns {void}
    */
   function selectDenomination(tag) {
-    const denomination = denominations.find((item) => item.id === tag.id);
+    const denomination = compatibleDenominations.find((item) => item.id === tag.id);
     if (!denomination) return;
-    setQuery("");
+    setSearch({ key: searchKey, text: "" });
     onChange({
-      measurementUnitId: denomination.measurementUnit?.id ?? measurementUnitId,
+      measurementUnitId,
       unitDenomination: { id: denomination.id, denomination: denomination.denomination },
     });
   }
 
   return (
-    <Input
-      id={id}
-      type="Tags"
-      size="M"
-      label="Unidad de medida"
-      required
-      showLabel
-      showLabelInfo={false}
-      showLeftIcon={false}
-      showRightIcon={false}
-      placeholder={unitDenomination ? "" : "Buscar unidad"}
-      value={query}
-      state={invalid ? "Error" : "Default"}
-      showHint={Boolean(hint)}
-      hintText={hint}
-      disabled={disabled}
-      prefixOptions={prefixOptions}
-      prefixValue={measurementUnitId}
-      prefixAriaLabel="Unidad base del servicio"
-      onPrefixChange={(option) => {
-        if (option.id === measurementUnitId) return;
-        setQuery("");
-        onChange({ measurementUnitId: option.id, unitDenomination: null });
-      }}
-      tags={selectedTags}
-      tagOptions={suggestions}
-      showTagOptionsOnFocus
-      maxVisibleTagOptions={VISIBLE_SUGGESTIONS}
-      tagGroupAriaLabel="Unidades de medida registradas"
-      // Controlado: solo se aceptan unidades registradas; Enter con texto libre propone una
-      // etiqueta nueva que aquí se descarta. Quitar la etiqueta deja el campo sin unidad.
-      onTagsChange={(nextTags) => {
-        if (nextTags.length === 0) {
-          onChange({ measurementUnitId, unitDenomination: null });
-          return;
-        }
-        selectDenomination(nextTags[nextTags.length - 1]);
-      }}
-      onTagOptionSelect={selectDenomination}
-      onChange={(event) => setQuery(event.target.value)}
-      className="max-w-none"
-      autoComplete="off"
-    />
+    <div className="flex w-full flex-col gap-[8px]">
+      <Input
+        id={id}
+        type="Tags"
+        size="M"
+        label="Unidad de medida"
+        required
+        showLabel
+        showLabelInfo={false}
+        showLeftIcon={false}
+        showRightIcon={false}
+        placeholder={!measurementUnitId ? "Selecciona un símbolo" : unitDenomination ? "" : "Buscar unidad"}
+        readOnly={!measurementUnitId}
+        value={query}
+        state={invalid ? "Error" : "Default"}
+        showHint={false}
+        aria-describedby={hint ? hintId : undefined}
+        disabled={disabled}
+        prefixOptions={prefixOptions}
+        prefixValue={measurementUnitId}
+        prefixAriaLabel="Unidad base del servicio"
+        onPrefixChange={(option) => {
+          if (option.id === measurementUnitId) return;
+          setSearch({ key: searchKey, text: "" });
+          onChange({ measurementUnitId: option.id, unitDenomination: null });
+        }}
+        tags={selectedTags}
+        tagOptions={suggestions}
+        showTagOptionsOnFocus={Boolean(measurementUnitId)}
+        maxVisibleTagOptions={VISIBLE_SUGGESTIONS}
+        tagGroupAriaLabel="Unidades de medida registradas"
+        // Controlado: solo se aceptan unidades registradas; Enter con texto libre propone una
+        // etiqueta nueva que aquí se descarta. Quitar la etiqueta deja el campo sin unidad.
+        onTagsChange={(nextTags) => {
+          if (nextTags.length === 0) {
+            setSearch({ key: searchKey, text: "" });
+            onChange({ measurementUnitId, unitDenomination: null });
+            return;
+          }
+          selectDenomination(nextTags[nextTags.length - 1]);
+        }}
+        onTagOptionSelect={selectDenomination}
+        onChange={(event) => {
+          if (measurementUnitId) setSearch({ key: searchKey, text: event.target.value });
+        }}
+        className="max-w-none"
+        autoComplete="off"
+      />
+      {/* El estado vacío debe seguir visible al enfocar, aunque Input oculte su hint de Tags. */}
+      {hint ? (
+        <HintText
+          id={hintId}
+          hintText={hint}
+          state={invalid ? "Error" : "Default"}
+          role={invalid ? "alert" : "status"}
+          className="w-full"
+        />
+      ) : null}
+    </div>
   );
 }
 

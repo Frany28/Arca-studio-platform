@@ -260,21 +260,15 @@ export function filterDenominationsForKind(denominations, kind) {
 }
 
 /**
- * Símbolos del selector compuesto «Unidad de medida»: solo las bases que tienen unidades
- * registradas (derivadas de las denominaciones, nunca el catálogo completo de bases), sin repetir y
- * en el orden de la API (base, texto). En la edición se añade al inicio la base guardada si no
- * figura (por ejemplo, un servicio con solo la base o con una denominación ya inactiva).
+ * Sugerencias activas de la base elegida, comparando identificadores internos y nunca símbolos.
+ * Sin base no hay sugerencias. La unidad guardada inactiva se conserva en el borrador de edición,
+ * pero no se ofrece como una selección nueva.
  *
- * @param {Array<{measurementUnit: {id: number, code: string, symbol: string, name: string}}>} denominations - Denominaciones permitidas.
- * @param {{id: number, code: string, symbol: string, name: string}|null} [currentUnit] - Base guardada (edición).
- * @returns {Array<{id: number, code: string, label: string, description: string}>} Opciones del prefijo.
+ * @param {Array<{isActive?: boolean, measurementUnit: {id: number}}>} denominations - Denominaciones registradas.
+ * @param {number|null} measurementUnitId - Identificador de la base seleccionada.
+ * @returns {Array<Object>} Denominaciones que pueden seleccionarse.
  */
-export function toUnitPrefixOptions(denominations, currentUnit = null) {
-  const bases = new Map();
-  for (const item of denominations || []) {
-    if (item.measurementUnit?.id && !bases.has(item.measurementUnit.id)) bases.set(item.measurementUnit.id, item.measurementUnit);
-  }
-  const options = [...bases.values()];
-  if (currentUnit && !bases.has(currentUnit.id)) options.unshift(currentUnit);
-  return options.map((unit) => ({ id: unit.id, code: unit.code, label: unit.symbol, description: unit.name }));
+export function filterDenominationsForBase(denominations, measurementUnitId) {
+  if (!measurementUnitId) return [];
+  return (denominations || []).filter((item) => item.isActive !== false && item.measurementUnit?.id === measurementUnitId);
 }

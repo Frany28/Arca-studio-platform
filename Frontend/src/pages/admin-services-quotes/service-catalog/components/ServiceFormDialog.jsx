@@ -7,8 +7,8 @@ import { useServiceDetail } from "../hooks/useServiceDetail.js";
 import { useServiceFormSubmit } from "../hooks/useServiceFormSubmit.js";
 import { getServiceFormErrorFeedback } from "../utils/serviceCatalogErrors.js";
 import {
-  SERVICE_KINDS, changeDraftKind, createServiceDraft, filterBaseOptionsForKind, filterDenominationsForKind,
-  toUnitPrefixOptions, validateServiceDraft,
+  changeDraftKind, createServiceDraft, filterBaseOptionsForKind, filterDenominationsForBase, filterDenominationsForKind,
+  validateServiceDraft,
 } from "../utils/serviceFormValues.js";
 import ServiceFormModal from "./ServiceFormModal.jsx";
 
@@ -16,8 +16,8 @@ const NO_ERRORS = Object.freeze({});
 
 /**
  * Flujo del formulario de servicios: alta o edición en un único modal. «Unidad de medida» solo
- * ofrece unidades registradas (denominaciones activas, useActiveDenominations), nunca las unidades
- * base sueltas; en la edición conserva la unidad guardada aunque esté inactiva. «+ Crear unidad»
+ * permite elegir primero una base y después una denominación activa de esa base; no admite una
+ * base suelta nueva. En la edición conserva la unidad guardada aunque esté inactiva. «+ Crear unidad»
  * despliega dentro del mismo modal la fila de alta de una unidad de medida (Figma 5767:342334;
  * useInlineDenominationCreator), sin abrir otro diálogo: el borrador del servicio no se toca.
  * Crear la unidad la añade a las opciones, la elige en el borrador y devuelve el foco al campo de
@@ -66,44 +66,28 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const creatableBaseOptions = useMemo(() => filterBaseOptionsForKind(baseUnits.options, draft.kind), [baseUnits.options, draft.kind]);
   const unitCode = baseOptions.find((option) => option.id === draft.measurementUnitId)?.code;
 
-  const activeDenominations = useActiveDenominations({ enabled: status === "ready" });
-  // Unidad guardada (edición) con la forma del contrato, para ofrecerla aunque esté inactiva.
-  const currentDenomination = useMemo(() => (service?.unitDenomination
-    ? { ...service.unitDenomination, label: service.unitLabel, measurementUnit: service.measurementUnit }
-    : null), [service]);
-  // Unidades registradas que admite la modalidad; en la edición, también la guardada.
-  const registeredUnits = useMemo(() => {
-    const allowed = filterDenominationsForKind(activeDenominations.options, draft.kind);
-    if (!currentDenomination || allowed.some((item) => item.id === currentDenomination.id)) return allowed;
-    return filterDenominationsForKind([currentDenomination], draft.kind).concat(allowed);
-  }, [activeDenominations.options, currentDenomination, draft.kind]);
-  // Símbolos: solo bases con unidades registradas (y la base guardada en la edición si la admite la modalidad).
-  const unitPrefixOptions = useMemo(() => {
-    const currentUnit = service && filterBaseOptionsForKind([service.measurementUnit], draft.kind).length ? service.measurementUnit : null;
-    return toUnitPrefixOptions(registeredUnits, currentUnit);
-  }, [draft.kind, registeredUnits, service]);
-  // Con una base elegida se sugieren sus unidades; sin ella, todas las registradas permitidas.
-  const unitSuggestions = useMemo(
-    () => (draft.measurementUnitId ? registeredUnits.filter((item) => item.measurementUnit.id === draft.measurementUnitId) : registeredUnits),
-    [draft.measurementUnitId, registeredUnits],
-  );
-  // Un servicio guardado solo con la base puede conservarla; cualquier cambio exige una unidad registrada.
-  const allowBaseOnly = Boolean(service && !service.unitDenomination && !draft.unitDenomination && draft.measurementUnitId === service.measurementUnit.id);
-  const noRegisteredUnits = status === "ready" && !activeDenominations.loading && !activeDenominations.error && registeredUnits.length === 0;
-
   const creator = useInlineDenominationCreator({
     baseOptions: creatableBaseOptions,
     preferredUnitId: draft.measurementUnitId,
     onCreated: selectCreatedDenomination,
   });
+  // La primera elección es la base, incluso si aún no tiene denominaciones registradas.
+  const unitPrefixOptions = useMemo(() => filterBaseOptionsForKind(baseOptions, draft.kind), [baseOptions, draft.kind]);
+  // Se lee una vez cuando hace falta buscar o comprobar duplicados del alta contextual.
+  const activeDenominations = useActiveDenominations({ enabled: status === "ready" && Boolean(draft.measurementUnitId || creator.open) });
+  // La unidad guardada se conserva en el borrador, pero una inactiva no vuelve a ofrecerse.
+  const unitSuggestions = useMemo(
+    () => filterDenominationsForBase(filterDenominationsForKind(activeDenominations.options, draft.kind), draft.measurementUnitId),
+    [activeDenominations.options, draft.kind, draft.measurementUnitId],
+  );
+  // Un servicio guardado solo con la base puede conservarla; cualquier cambio exige una unidad registrada.
+  const allowBaseOnly = Boolean(service && !service.unitDenomination && !draft.unitDenomination && draft.measurementUnitId === service.measurementUnit.id);
+  const noRegisteredUnits = status === "ready" && draft.measurementUnitId && !draft.unitDenomination
+    && !activeDenominations.loading && !activeDenominations.error && unitSuggestions.length === 0;
   const catalogUnavailable = !editing && (Boolean(baseUnits.error) || baseUnits.options.length === 0);
   const unitHint = activeDenominations.error
     || (activeDenominations.loading ? "Cargando unidades de medida..." : "")
-    || (noRegisteredUnits
-      ? (draft.kind === SERVICE_KINDS.TURNKEY
-        ? "No hay unidades de metros cuadrados registradas. Crea una con «+ Crear unidad»."
-        : "Aún no hay unidades de medida registradas. Crea una con «+ Crear unidad».")
-      : "");
+    || (noRegisteredUnits ? "No hay unidades registradas para este símbolo" : "");
   const createUnitHint = baseUnits.error
     || (baseUnits.loading ? "Cargando unidades base..." : "")
     || (creatableBaseOptions.length === 0 && !baseUnits.loading ? "No hay una unidad base activa disponible para esta modalidad." : "");

@@ -5,13 +5,13 @@ import { api } from "../../../../api/http.js";
 /**
  * Unidades de medida registradas (denominaciones activas de todas las bases) para el formulario de
  * servicios: son las únicas opciones del campo «Unidad de medida», nunca las unidades base sueltas.
- * Se leen una vez al abrir el formulario recorriendo todas las páginas de GET
+ * Se leen una vez al elegir una base o abrir el alta contextual, recorriendo las páginas de GET
  * /admin/measurement-unit-denominations?status=active, y se conservan mientras está montado (el
  * formulario es de vida corta y las nuevas altas se incorporan con `add`). Cerrar el formulario
  * aborta la lectura; un error permite reintentar sin cerrarlo.
  *
  * @param {Object} params - Activación.
- * @param {boolean} params.enabled - Permite la lectura (formulario listo).
+ * @param {boolean} params.enabled - Formulario listo con base elegida o alta contextual abierta.
  * @returns {{options: Array<Object>, loading: boolean, error: string, retry: () => void,
  * add: (denomination: Object) => void}} Denominaciones activas y acciones.
  */

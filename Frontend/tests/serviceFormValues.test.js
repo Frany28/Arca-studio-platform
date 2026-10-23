@@ -7,6 +7,7 @@ import {
   changeDraftKind,
   createServiceDraft,
   filterBaseOptionsForKind,
+  filterDenominationsForBase,
   filterDenominationsForKind,
   isBaseUnitAllowedForKind,
   rateFromPastedText,
@@ -14,7 +15,6 @@ import {
   toCreateServicePayload,
   toDenominationOption,
   toDenominationTag,
-  toUnitPrefixOptions,
   toUpdateServiceChanges,
   validateServiceDraft,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
@@ -102,20 +102,26 @@ test("unidad: se exige una unidad registrada; solo la edición conserva una base
   assert.deepEqual(validateServiceDraft(REGISTERED), {});
 });
 
-test("unidades registradas: modalidad, símbolos derivados y sugerencias con símbolo", () => {
+test("unidades registradas: modalidad y sugerencias con símbolo", () => {
   assert.equal(filterDenominationsForKind(REGISTERED_UNITS, "individual"), REGISTERED_UNITS);
   assert.deepEqual(filterDenominationsForKind(REGISTERED_UNITS, "turnkey").map((item) => item.id), [10, 11], "Llave en mano: solo base square_meter");
   assert.deepEqual(filterDenominationsForKind(null, "turnkey"), []);
-  // Solo bases con unidades registradas, sin repetir y en el orden de la API.
-  assert.deepEqual(toUnitPrefixOptions(REGISTERED_UNITS), [
-    { id: 1, code: "square_meter", label: "m²", description: "Metro cuadrado" },
-    { id: 6, code: "linear_meter", label: "m.l.", description: "Metro lineal" },
-  ]);
-  // La base guardada sin unidades registradas se añade al inicio (edición).
-  assert.deepEqual(toUnitPrefixOptions([], { id: 30, code: "point", symbol: "pto.", name: "Punto" }).map((option) => option.label), ["pto."]);
-  assert.deepEqual(toUnitPrefixOptions(REGISTERED_UNITS, M2).map((option) => option.label), ["m²", "m.l."]);
+  assert.equal(filterBaseOptionsForKind(BASE_OPTIONS, "individual"), BASE_OPTIONS, "Se ofrecen incluso bases sin denominaciones");
   assert.deepEqual(toDenominationOption(REGISTERED_UNITS[0]), { id: 10, label: "m² de construcción", avatar: false, closeIcon: true });
   assert.equal(toDenominationOption({ id: 5, denomination: "de obra", measurementUnit: M2 }).label, "m² de obra", "Sin label, compone símbolo y texto");
+});
+
+test("denominaciones: sin base no hay opciones y el filtro usa identificadores, no símbolos", () => {
+  const sameSymbol = { id: 77, denomination: "otra base", isActive: true, measurementUnit: { ...M2, id: 99 } };
+  const inactive = { ...REGISTERED_UNITS[0], id: 90, isActive: false };
+  const catalog = [...REGISTERED_UNITS, sameSymbol, inactive];
+  assert.deepEqual(filterDenominationsForBase(catalog, null), []);
+  assert.deepEqual(filterDenominationsForBase(catalog, undefined), []);
+  assert.deepEqual(filterDenominationsForBase(catalog, 1).map((item) => item.id), [10, 11]);
+  assert.deepEqual(filterDenominationsForBase(catalog, 6).map((item) => item.id), [40]);
+  assert.deepEqual(filterDenominationsForBase(catalog, 99).map((item) => item.id), [77]);
+  assert.deepEqual(filterDenominationsForBase(catalog, 30), [], "Base sin denominaciones activas");
+  assert.deepEqual(filterDenominationsForBase(null, 1), []);
 });
 
 test("tarifa: comparación canónica como texto, sin Number", () => {
