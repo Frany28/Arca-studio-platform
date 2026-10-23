@@ -6,26 +6,21 @@ import { useDialogKeyboard } from "../../../../hooks/useDialogKeyboard.js";
 const DIALOG_SELECTOR = "[data-service-status-modal]";
 
 /**
- * Textos de la confirmación de varios servicios: cuántos cambiarán, cuántos seleccionados se
- * excluyen por estar ya en ese estado y que cada uno se procesa por separado (no es atómico).
+ * Textos breves de servicios para el diálogo compacto compartido: singular o plural según
+ * la selección completa, sin exclusiones ni textos de administración de usuarios.
  *
- * @param {{isActive: boolean, services: Array<Object>, selectedCount: number}} change - Cambio masivo.
+ * @param {Object|null} change - Cambio individual o selección homogénea pendiente.
  * @returns {{title: string, description: string}} Textos.
  */
-function describeBulkChange({ isActive, selectedCount, services }) {
-  const count = services.length;
-  const skipped = selectedCount - count;
-  const noun = count === 1 ? "1 servicio" : `${count} servicios`;
-  const title = `¿Deseas ${isActive ? "activar" : "desactivar"} ${noun}?`;
-  const effect = isActive
-    ? "volverán a estar disponibles en el tabulador"
-    : "dejarán de estar disponibles en el tabulador; no se eliminan y podrás activarlos de nuevo";
-  const skippedText = skipped > 0
-    ? ` ${skipped} de los ${selectedCount} seleccionados ya ${isActive ? "están activos" : "están inactivos"} y no cambian.`
-    : "";
+function describeServiceChange(change) {
+  const count = change?.services?.length ?? 1;
+  const plural = count > 1;
+  const activating = Boolean(change?.isActive);
+  const verb = activating ? "activar" : "desactivar";
+  const question = plural ? `${count} servicios${activating ? " seleccionados" : ""}` : "este servicio";
   return {
-    title,
-    description: `Los servicios ${effect}.${skippedText} Cada servicio se procesa por separado: si alguno no puede cambiar, los demás se aplican igualmente.`,
+    title: `${activating ? "Activar" : "Desactivar"} ${plural ? "servicios" : "servicio"}`,
+    description: `¿Deseas ${verb} ${question}?${activating ? "" : ` No ${plural ? "estarán disponibles" : "estará disponible"} para nuevas cotizaciones.`}`,
   };
 }
 
@@ -36,7 +31,7 @@ function describeBulkChange({ isActive, selectedCount, services }) {
  * se bloquean mientras la petición está en curso.
  *
  * @param {Object} props - Cambio pendiente y callbacks.
- * @param {{service: Object, isActive: boolean}|{services: Array<Object>, isActive: boolean, selectedCount: number}|null} props.change
+ * @param {{service: Object, isActive: boolean}|{services: Array<Object>, isActive: boolean}|null} props.change
  * Cambio solicitado: un servicio (menú de la fila) o varios (pie de la tabla).
  * @param {boolean} props.submitting - Petición en curso.
  * @param {() => void} props.onCancel - Cierra sin cambios.
@@ -45,14 +40,7 @@ function describeBulkChange({ isActive, selectedCount, services }) {
  */
 function ServiceStatusModal({ change, onCancel, onConfirm, submitting }) {
   const activating = Boolean(change?.isActive);
-  const bulk = Array.isArray(change?.services);
-  const name = change && !bulk ? `${change.service.code} · ${change.service.name}` : "";
-  const texts = bulk ? describeBulkChange(change) : {
-    title: activating ? "¿Deseas activar el servicio?" : "¿Deseas desactivar el servicio?",
-    description: activating
-      ? `${name} volverá a estar disponible en el tabulador.`
-      : `${name} dejará de estar disponible en el tabulador. No se elimina y podrás activarlo de nuevo.`,
-  };
+  const texts = describeServiceChange(change);
 
   useDialogKeyboard({
     open: Boolean(change),

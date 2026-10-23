@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   SERVICE_BULK_STATUS_CONCURRENCY,
   describeBulkStatusResult,
-  getServiceStatusTargets,
+  getServiceStatusSelection,
   runWithConcurrency,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceBulkStatus.js";
 
@@ -14,14 +14,45 @@ const ITEMS = [
   { id: 3, code: "TST-003", isActive: true },
 ];
 
-test("destinos: solo los seleccionados que cambiarían; la selección mixta se reparte por acción", () => {
-  const mixed = new Set(["1", "2"]);
-  assert.deepEqual(getServiceStatusTargets(ITEMS, mixed, false).map((item) => item.id), [1], "Desactivar: solo activos");
-  assert.deepEqual(getServiceStatusTargets(ITEMS, mixed, true).map((item) => item.id), [2], "Activar: solo inactivos");
-  assert.deepEqual(getServiceStatusTargets(ITEMS, new Set(["1", "3"]), true), [], "Ya activos: nada que activar");
-  // Ids seleccionados que no están en la página visible no cuentan.
-  assert.deepEqual(getServiceStatusTargets(ITEMS, new Set(["99"]), false), []);
-  assert.deepEqual(getServiceStatusTargets(null, mixed, false), []);
+test("selección vacía: ambas acciones sin destinos", () => {
+  const state = getServiceStatusSelection(ITEMS, new Set());
+  assert.equal(state.selectedCount, 0);
+  assert.equal(state.isMixed, false);
+  assert.deepEqual(state.targets, { activate: [], deactivate: [] });
+});
+
+test("selección homogénea: desactivar todos activos o activar todos inactivos", () => {
+  const active = getServiceStatusSelection(ITEMS, new Set(["1", "3"]));
+  assert.equal(active.selectedActiveCount, 2);
+  assert.equal(active.selectedInactiveCount, 0);
+  assert.deepEqual(active.targets.deactivate.map((item) => item.id), [1, 3]);
+  assert.deepEqual(active.targets.activate, []);
+  const inactive = getServiceStatusSelection(ITEMS, new Set(["2"]));
+  assert.equal(inactive.selectedInactiveCount, 1);
+  assert.deepEqual(inactive.targets.activate.map((item) => item.id), [2]);
+  assert.deepEqual(inactive.targets.deactivate, []);
+});
+
+test("selección mixta: se cuentan TODOS los registros y se bloquean ambas acciones, incluso 9 inactivos y 1 activo", () => {
+  for (const activeIndex of [0, 5, 9]) {
+    const items = Array.from({ length: 10 }, (_, id) => ({ id, isActive: id === activeIndex }));
+    for (const ordered of [items, items.toReversed()]) {
+      const state = getServiceStatusSelection(ordered, new Set(items.map((item) => String(item.id))));
+      assert.equal(state.selectedCount, 10);
+      assert.equal(state.selectedActiveCount, 1);
+      assert.equal(state.selectedInactiveCount, 9);
+      assert.equal(state.isMixed, true);
+      assert.deepEqual(state.targets, { activate: [], deactivate: [] });
+    }
+  }
+});
+
+test("selección incompleta o estado desconocido: no permite actuar sobre un subconjunto", () => {
+  for (const state of [
+    getServiceStatusSelection(ITEMS, new Set(["1", "99"])),
+    getServiceStatusSelection(null, new Set(["1"])),
+    getServiceStatusSelection([{ id: 1, isActive: null }], new Set(["1"])),
+  ]) assert.deepEqual(state.targets, { activate: [], deactivate: [] });
 });
 
 test("concurrencia: respeta el límite, conserva el orden y devuelve cada fallo sin rechazar", async () => {
@@ -55,4 +86,7 @@ test("resumen: éxito total, parcial y total fallido, sin presentarlo como atóm
   assert.equal(describeBulkStatusResult({ failures: failures.slice(0, 1), isActive: false, succeeded: 0 }).title, "No se pudo desactivar el servicio");
   const many = Array.from({ length: 5 }, (_, index) => ({ message: "Error.", service: { code: `S-${index}` } }));
   assert.match(describeBulkStatusResult({ failures: many, isActive: true, succeeded: 0 }).message, /Y 2 más\.$/);
+  const stopped = describeBulkStatusResult({ failures: failures.slice(0, 1), isActive: true, succeeded: 2, cancelled: 4 });
+  assert.match(stopped.title, /2 de 7/);
+  assert.match(stopped.message, /Fallidos: 1\. Cancelados sin enviar: 4\./);
 });

@@ -257,8 +257,10 @@ test("paginación y selección: cursor real, contador, todos, indeterminado y re
   await footer.getByText("10 de 10 seleccionados").waitFor();
   await header.click();
   await footer.getByText("0 de 10 seleccionados").waitFor();
-  // Como la variante sin selección de Figma, no se muestran las acciones masivas.
-  assert.equal(await footer.getByRole("button", { name: /Desactivar|Activar/ }).count(), 0);
+  // Ambas acciones permanecen visibles sin selección y no se pueden ejecutar.
+  const actions = footer.getByRole("button", { name: /Desactivar|Activar/ });
+  assert.equal(await actions.count(), 2);
+  for (const action of await actions.all()) assert.equal(await action.isDisabled(), true);
 
   await page.getByRole("checkbox", { name: "Seleccionar TST-002 Servicio de prueba 2" }).click();
   await page.getByRole("button", { name: "Siguiente pág." }).click();
@@ -288,7 +290,7 @@ test("acciones: desactivar y activar con confirmación, versión esperada, fila 
   // Cancelar no envía nada.
   await page.getByRole("button", { name: "Más opciones para TST-001" }).click();
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
-  const dialog = page.getByRole("dialog", { name: "¿Deseas desactivar el servicio?" });
+  const dialog = page.getByRole("dialog", { name: "Desactivar servicio" });
   await dialog.getByRole("button", { name: "Cancelar" }).click();
   await dialog.waitFor({ state: "detached" });
   assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 0);
@@ -308,7 +310,7 @@ test("acciones: desactivar y activar con confirmación, versión esperada, fila 
   // Reactivar usa la versión nueva leída de la respuesta.
   await page.getByRole("button", { name: "Más opciones para TST-001" }).click();
   await page.getByRole("menuitem", { name: "Activar" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas activar el servicio?" }).getByRole("button", { name: "Activar" }).click();
+  await page.getByRole("dialog", { name: "Activar servicio" }).getByRole("button", { name: "Activar" }).click();
   await rowFor(page, "TST-001").getByText("Activo", { exact: true }).waitFor();
   assert.deepEqual(backend.requests.filter((request) => request.method === "PATCH").at(-1).body, { expectedVersion: 2, isActive: true });
 
@@ -333,15 +335,15 @@ test("errores HTTP: conflicto de versión recarga, reactivación bloqueada por u
   const readsBefore = tableGets(backend).length;
   await page.getByRole("button", { name: "Más opciones para TST-001" }).click();
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas desactivar el servicio?" }).getByRole("button", { name: "Desactivar" }).click();
-  await page.getByRole("alert").getByText(/Otro administrador modificó este servicio/).waitFor();
+  await page.getByRole("dialog", { name: "Desactivar servicio" }).getByRole("button", { name: "Desactivar" }).click();
+  await page.getByRole("alert").getByText(/cambiaron desde que se cargó la tabla/).waitFor();
   await waitFor(() => tableGets(backend).length > readsBefore, "La tabla se vuelve a leer tras el 409");
   await rowFor(page, "TST-001").getByText("Activo", { exact: true }).waitFor();
 
   // Reactivar con la unidad de medida inactiva: 400 sin cambios en la fila.
   await page.getByRole("button", { name: "Más opciones para TST-004" }).click();
   await page.getByRole("menuitem", { name: "Activar" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas activar el servicio?" }).getByRole("button", { name: "Activar" }).click();
+  await page.getByRole("dialog", { name: "Activar servicio" }).getByRole("button", { name: "Activar" }).click();
   await page.getByRole("alert").getByText(/No se puede activar: su unidad de medida está inactiva/).waitFor();
   assert.equal(await rowFor(page, "TST-004").getByText("Inactivo", { exact: true }).count(), 1);
 
@@ -352,7 +354,7 @@ test("errores HTTP: conflicto de versión recarga, reactivación bloqueada por u
     backend.failures["PATCH /api/admin/services/:id/status"] = { status, body: { code, message: "Texto técnico del backend" } };
     await page.getByRole("button", { name: "Más opciones para TST-002" }).click();
     await page.getByRole("menuitem", { name: "Desactivar" }).click();
-    await page.getByRole("dialog", { name: "¿Deseas desactivar el servicio?" }).getByRole("button", { name: "Desactivar" }).click();
+    await page.getByRole("dialog", { name: "Desactivar servicio" }).getByRole("button", { name: "Desactivar" }).click();
     await page.getByRole("alert").getByText(message, { exact: true }).waitFor();
     assert.equal(await rowFor(page, "TST-002").getByText("Activo", { exact: true }).count(), 1);
   }
@@ -452,22 +454,36 @@ test("capas: seleccionar descarta ayudas, un menú bloquea todos los tooltips y 
   await tooltip.getByText("Primera propuesta del espacio.").waitFor();
 });
 
-test("footer mixto: destinos reales, cancelar, desactivar y activar con versiones nuevas, sin doble envío", async (context) => {
+test("footer: selección vacía y mixta deshabilitan ambas acciones; homogéneas permiten cancelar, desactivar y activar sin doble envío", async (context) => {
   const backend = createBackend(sampleCatalog());
   backend.delays["PATCH /api/admin/services/:id/status"] = 200;
   const page = await openTabulator(context, backend);
   const footer = page.getByLabel("Selección y paginación de servicios");
   const patches = () => backend.requests.filter((request) => request.method === "PATCH");
   const selectAll = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
+  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
+  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
   await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
   assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
   assert.equal(await footer.getByRole("button", { name: "Desactivar 1 servicio seleccionado" }).isEnabled(), true);
   await selectAll.click();
   await footer.getByText("5 de 5 seleccionados").waitFor();
+  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
+  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
+  const explanation = footer.getByRole("status");
+  await explanation.getByText("Selecciona solo servicios activos o solo inactivos.").waitFor();
+  for (const action of await footer.getByRole("button", { name: /Desactivar|Activar/ }).all()) {
+    assert.equal(await action.getAttribute("aria-describedby"), await explanation.getAttribute("id"));
+    await action.evaluate((element) => element.click());
+  }
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(patches().length, 0);
+  // Deseleccionar el inactivo habilita desactivar TODOS los cuatro activos restantes.
+  await page.getByRole("checkbox", { name: "Seleccionar TST-004 Canalizaciones de prueba" }).click();
+  assert.equal(await explanation.count(), 0);
   await footer.getByRole("button", { name: "Desactivar 4 servicios seleccionados" }).click();
-  const dialog = page.getByRole("dialog", { name: "¿Deseas desactivar 4 servicios?" });
-  await dialog.getByText(/1 de los 5 seleccionados ya están inactivos/).waitFor();
-  await dialog.getByText(/Cada servicio se procesa por separado/).waitFor();
+  const dialog = page.getByRole("dialog", { name: "Desactivar servicios" });
+  await dialog.getByText("¿Deseas desactivar 4 servicios? No estarán disponibles para nuevas cotizaciones.", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "Cancelar" }).click();
   await dialog.waitFor({ state: "detached" });
   assert.equal(patches().length, 0);
@@ -483,7 +499,7 @@ test("footer mixto: destinos reales, cancelar, desactivar y activar con versione
   await selectAll.click();
   assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
   await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas activar 5 servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
   await page.getByRole("alert").getByText("5 servicios activados", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
   const activationRequests = patches().slice(4);
@@ -495,44 +511,177 @@ test("footer mixto: destinos reales, cancelar, desactivar y activar con versione
   await page.waitForFunction(() => document.querySelector('[aria-label="Indicadores de servicios y cotizaciones"]')?.textContent.includes("Servicios activos5"));
 });
 
-test("masiva parcial: unidad y denominación inactivas, conflicto 409 y fallo 500 conservan motivos y no repiten éxitos", async (context) => {
+test("reactivación: unidad o denominación inactiva cancela toda la selección antes de enviar cambios", async (context) => {
   const catalog = sampleCatalog().map((item) => ({ ...item, isActive: false }));
   catalog[0].measurementUnit = { ...catalog[0].measurementUnit, isActive: false };
   catalog[1].unitDenomination = { ...catalog[1].unitDenomination, isActive: false };
   const backend = createBackend(catalog);
-  backend.failures["PATCH /api/admin/services/4/status"] = { status: 500, body: { code: "INTERNAL_ERROR", message: "No se pudo completar el cambio." } };
   const page = await openTabulator(context, backend);
-  backend.items[2].currentVersion = 8;
   const header = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
   const footer = page.getByLabel("Selección y paginación de servicios");
   await header.click();
   await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas activar 5 servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
   const alert = page.getByRole("alert");
-  await alert.getByText("Se activaron 1 de 5 servicios", { exact: true }).waitFor();
-  const message = await alert.innerText();
-  assert.match(message, /Cambios correctos: 1\. Fallidos: 4\./);
-  assert.match(message, /TST-001: No se puede activar: su unidad base está inactiva/);
-  assert.match(message, /TST-002: No se puede activar: su unidad de medida está inactiva/);
-  assert.match(message, /TST-003: Otro administrador modificó este servicio/);
-  assert.match(message, /Y 1 más/);
+  await alert.getByText(/TST-001: No se puede activar: su unidad base está inactiva/).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
-  await rowFor(page, "TST-005").getByText("Activo", { exact: true }).waitFor();
-  assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 5);
+  assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 0);
+  assert.equal(backend.items.every((item) => !item.isActive), true);
 
-  // El usuario vuelve a elegir; el éxito previo se excluye y el 409 usa la versión recargada.
-  delete backend.failures["PATCH /api/admin/services/4/status"];
+  // Reparar la primera referencia permite detectar la segunda, sin escribir sobre las otras.
   backend.items[0].measurementUnit.isActive = true;
+  await header.click();
+  await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await alert.getByText(/TST-002: No se puede activar: su unidad de medida está inactiva/).waitFor();
+  await footer.getByText("0 de 5 seleccionados").waitFor();
+  assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 0);
   backend.items[1].unitDenomination.isActive = true;
   await header.click();
-  await footer.getByRole("button", { name: "Activar 4 servicios seleccionados" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas activar 4 servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
-  await alert.getByText("4 servicios activados", { exact: true }).waitFor();
+  await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await alert.getByText("5 servicios activados", { exact: true }).waitFor();
   await footer.getByText("0 de 5 seleccionados").waitFor();
-  const retry = backend.requests.filter((request) => request.method === "PATCH").slice(5);
-  assert.equal(retry.length, 4);
-  assert.equal(retry.some((request) => request.path.includes("/5/")), false);
-  assert.equal(retry.find((request) => request.path.includes("/3/")).body.expectedVersion, 8);
+  assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 5);
+});
+
+test("9 inactivos y 1 activo: bloquea activar hasta deseleccionar el activo", async (context) => {
+  const items = Array.from({ length: 10 }, (_, index) => service(index + 1, {
+    code: `TEST-${index + 1}`, name: `Prueba ${index + 1}`, isActive: index === 9,
+  }));
+  const backend = createBackend(items);
+  const page = await openTabulator(context, backend);
+  const footer = page.getByLabel("Selección y paginación de servicios");
+  await page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
+  for (const action of await footer.getByRole("button", { name: /Activar|Desactivar/ }).all()) assert.equal(await action.isDisabled(), true);
+  await page.getByRole("checkbox", { name: "Seleccionar TEST-10 Prueba 10" }).click();
+  await footer.getByRole("button", { name: "Activar 9 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByText("¿Deseas activar 9 servicios seleccionados?", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(backend.requests.some((request) => request.method === "PATCH"), false);
+});
+
+test("comprobación masiva: cambios antes de confirmar o durante las lecturas cancelan todo sin PATCH", async (context) => {
+  for (const phase of ["antes", "durante", "versión"]) {
+    const items = Array.from({ length: 10 }, (_, index) => service(index + 1, {
+      code: `TEST-${index + 1}`, name: `Prueba ${index + 1}`, isActive: false,
+    }));
+    const backend = createBackend(items);
+    const page = await openTabulator(context, backend);
+    const footer = page.getByLabel("Selección y paginación de servicios");
+    await page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
+    await footer.getByRole("button", { name: "Activar 10 servicios seleccionados" }).click();
+    const dialog = page.getByRole("dialog", { name: "Activar servicios" });
+    if (phase === "durante") {
+      backend.delays["GET /api/admin/services/:id"] = 100;
+      await dialog.getByRole("button", { name: "Activar", exact: true }).click();
+      await waitFor(() => backend.requests.some((request) => request.path === "/api/admin/services/1"), "Comenzó la comprobación");
+    }
+    backend.items[9].currentVersion += 1;
+    if (phase !== "versión") backend.items[9].isActive = true;
+    if (phase !== "durante") await dialog.getByRole("button", { name: "Activar", exact: true }).click();
+    await page.getByRole("alert").getByText(/cambiaron desde que se cargó la tabla/).waitFor();
+    await footer.getByText("0 de 10 seleccionados").waitFor();
+    assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 0, phase);
+    assert.equal(backend.requests.filter((request) => request.method === "GET" && /\/services\/\d+$/.test(request.path)).length, 10);
+    assert.equal(backend.items.slice(0, 9).every((item) => !item.isActive), true);
+  }
+});
+
+test("lectura previa fallida cancela el conjunto y no presenta éxito", async (context) => {
+  const backend = createBackend(sampleCatalog().map((item) => ({ ...item, isActive: false })));
+  const page = await openTabulator(context, backend);
+  backend.failures["GET /api/admin/services/2"] = { status: 403, body: { code: "FORBIDDEN", message: "Sin acceso" } };
+  await page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
+  await page.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await page.getByRole("alert").getByText(/No tienes permisos para gestionar el tabulador/).waitFor();
+  assert.equal(backend.requests.some((request) => request.method === "PATCH"), false);
+  assert.equal(backend.items.every((item) => !item.isActive), true);
+});
+
+test("conflicto posterior a la comprobación: conserva expectedVersion, detiene pendientes e informa resultados reales", async (context) => {
+  const backend = createBackend(Array.from({ length: 7 }, (_, index) => service(index + 1, {
+    code: `TEST-${index + 1}`, name: `Prueba ${index + 1}`, isActive: false,
+  })));
+  const page = await openTabulator(context, backend);
+  backend.delays["PATCH /api/admin/services/2/status"] = 250;
+  backend.delays["PATCH /api/admin/services/3/status"] = 250;
+  backend.beforeStatusChange = (item) => {
+    if (item.id === 1) {
+      item.isActive = true;
+      item.currentVersion += 1;
+    }
+  };
+  const header = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
+  const footer = page.getByLabel("Selección y paginación de servicios");
+  await header.click();
+  await footer.getByRole("button", { name: "Activar 7 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await page.getByRole("alert").getByText(/Cancelados sin enviar: 4/).waitFor();
+  await footer.getByText("0 de 7 seleccionados").waitFor();
+  const patches = () => backend.requests.filter((request) => request.method === "PATCH");
+  assert.deepEqual(patches().map((request) => request.path).sort(), [1, 2, 3].map((id) => `/api/admin/services/${id}/status`));
+  assert.equal(patches().every((request) => request.body.expectedVersion === 1), true);
+  const firstWrite = backend.requests.findIndex((request) => request.method === "PATCH");
+  assert.equal(backend.requests.slice(0, firstWrite).filter((request) => /\/services\/\d+$/.test(request.path)).length, 7);
+  assert.equal(backend.items.slice(3).every((item) => !item.isActive), true);
+
+  // Una selección nueva es mixta: exige retirar los activos y no repite cambios aplicados.
+  backend.beforeStatusChange = null;
+  await header.click();
+  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
+  for (const id of [1, 2, 3]) await page.getByRole("checkbox", { name: `Seleccionar TEST-${id} Prueba ${id}` }).click();
+  await footer.getByRole("button", { name: "Activar 4 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "Activar servicios" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await page.getByRole("alert").getByText("4 servicios activados", { exact: true }).waitFor();
+  assert.deepEqual(patches().slice(3).map((request) => request.path).sort(), [4, 5, 6, 7].map((id) => `/api/admin/services/${id}/status`));
+});
+
+test("menú individual: funciona con selección mixta y cancela si el estado cambia durante su comprobación", async (context) => {
+  const backend = createBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  for (const name of ["Seleccionar TST-001 Anteproyecto de prueba", "Seleccionar TST-004 Canalizaciones de prueba"]) await page.getByRole("checkbox", { name }).click();
+  await page.getByRole("button", { name: "Más opciones para TST-001" }).click();
+  await page.getByRole("menuitem", { name: "Desactivar", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Desactivar servicio" });
+  await dialog.getByText("¿Deseas desactivar este servicio? No estará disponible para nuevas cotizaciones.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("menu").count(), 0);
+  assert.equal(await page.getByRole("tooltip").count(), 0);
+  backend.delays["GET /api/admin/services/1"] = 100;
+  await dialog.getByRole("button", { name: "Desactivar", exact: true }).click();
+  await waitFor(() => backend.requests.some((request) => request.path === "/api/admin/services/1"), "Lectura individual iniciada");
+  backend.items[0].isActive = false;
+  backend.items[0].currentVersion += 1;
+  await page.getByRole("alert").getByText(/cambiaron desde que se cargó la tabla/).waitFor();
+  await rowFor(page, "TST-001").getByText("Inactivo", { exact: true }).waitFor();
+  assert.equal(backend.requests.some((request) => request.method === "PATCH"), false);
+  await page.getByRole("button", { name: "Más opciones para TST-001" }).click();
+  await page.getByRole("menuitem", { name: "Activar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Activar servicio" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await rowFor(page, "TST-001").getByText("Activo", { exact: true }).waitFor();
+  assert.deepEqual(backend.requests.find((request) => request.method === "PATCH").body, { expectedVersion: 2, isActive: true });
+});
+
+test("confirmación compacta de servicios: responsive, ambos temas y cancelación sin escrituras", async (context) => {
+  for (const theme of ["light", "dark"]) {
+    const backend = createBackend(sampleCatalog());
+    const page = await openTabulator(context, backend, { theme });
+    await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
+    await page.getByRole("checkbox", { name: "Seleccionar TST-002 Diseño interior de prueba" }).click();
+    await page.getByRole("button", { name: "Desactivar 2 servicios seleccionados" }).click();
+    const dialog = page.getByRole("dialog", { name: "Desactivar servicios" });
+    for (const width of [375, 768, 1024, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 812 });
+      const box = await dialog.getByText("Desactivar servicios", { exact: true }).evaluate((element) => element.closest(".overflow-hidden").getBoundingClientRect().toJSON());
+      assert.ok(box.width <= 400 && box.height < 330 && box.x >= 0 && box.right <= width && box.y >= 0 && box.bottom <= 812, `${theme} ${width}: ${JSON.stringify(box)}`);
+      assert.doesNotMatch(await dialog.innerText(), /Deshabilitar usuario|Asignaciones de usuario/);
+    }
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(backend.requests.some((request) => request.method === "PATCH"), false);
+    assert.equal(backend.requests.some((request) => /\/services\/\d+$/.test(request.path)), false, "Cancelar no inicia la comprobación");
+  }
 });
 
 test("menú en límite inferior: abre arriba en portal, cierra con Escape/clic fuera y no bloquea ayudas tras paginar", async (context) => {

@@ -45,6 +45,7 @@ function getReactivationMessage(fields) {
  * @returns {{message: string, shouldReload: boolean}} Retroalimentación.
  */
 export function getServiceStatusErrorFeedback(error, fallback) {
+  if (error?.code === "SERVICE_SELECTION_CHANGED") return { message: error.message, shouldReload: true };
   if (STALE_CODES[error?.code]) return { message: STALE_CODES[error.code], shouldReload: true };
   const reactivationMessage = error?.code === "VALIDATION_ERROR" ? getReactivationMessage(error.fields) : null;
   return {

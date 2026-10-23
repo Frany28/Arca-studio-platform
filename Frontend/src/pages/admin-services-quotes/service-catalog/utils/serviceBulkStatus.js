@@ -8,17 +8,29 @@ export const SERVICE_BULK_STATUS_CONCURRENCY = 3;
 const MAX_DETAILED_FAILURES = 3;
 
 /**
- * Servicios seleccionados de la página visible que realmente cambiarían al estado pedido: los que
- * ya están en ese estado se excluyen para no enviar cambios sin efecto. Una selección mixta
- * devuelve solo los que corresponden a la acción.
+ * Cuenta todos los servicios seleccionados de la página visible y habilita únicamente cambios
+ * homogéneos. Una selección mixta, incompleta o con estados desconocidos nunca ofrece destinos.
  *
  * @param {Array<{id: number, isActive: boolean}>} items - Filas visibles.
  * @param {Set<string>} selectedIds - Ids seleccionados (texto, como usePageSelection).
- * @param {boolean} isActive - Estado pedido.
- * @returns {Array<Object>} Servicios afectados, en el orden de la tabla.
+ * @returns {Object} Conteos reales, indicador de mezcla y destinos completos de cada acción.
  */
-export function getServiceStatusTargets(items, selectedIds, isActive) {
-  return (items || []).filter((item) => selectedIds.has(String(item.id)) && Boolean(item.isActive) !== isActive);
+export function getServiceStatusSelection(items, selectedIds) {
+  const services = (items || []).filter((item) => selectedIds.has(String(item.id)));
+  const selectedCount = services.length;
+  const selectedActiveCount = services.filter((item) => item.isActive === true).length;
+  const selectedInactiveCount = services.filter((item) => item.isActive === false).length;
+  const complete = selectedCount > 0 && selectedCount === selectedIds.size;
+  return {
+    selectedCount,
+    selectedActiveCount,
+    selectedInactiveCount,
+    isMixed: selectedActiveCount > 0 && selectedInactiveCount > 0,
+    targets: {
+      activate: complete && selectedInactiveCount === selectedCount ? services : [],
+      deactivate: complete && selectedActiveCount === selectedCount ? services : [],
+    },
+  };
 }
 
 /**
@@ -61,14 +73,15 @@ export async function runWithConcurrency(items, limit, worker) {
  * @param {Object} params - Resultado y textos.
  * @param {boolean} params.isActive - Estado pedido.
  * @param {number} params.succeeded - Servicios cambiados.
+ * @param {number} [params.cancelled=0] - Servicios cancelados antes de enviar su cambio.
  * @param {Array<{service: {code: string}, message: string}>} params.failures - Fallos con su motivo.
  * @returns {{tone: "success"|"danger", title: string, message: string}} Aviso.
  */
-export function describeBulkStatusResult({ failures, isActive, succeeded }) {
-  const total = succeeded + failures.length;
+export function describeBulkStatusResult({ cancelled = 0, failures, isActive, succeeded }) {
+  const total = succeeded + failures.length + cancelled;
   const verb = isActive ? "activ" : "desactiv";
   const plural = (count, singular, pluralText) => (count === 1 ? singular : pluralText);
-  if (!failures.length) {
+  if (!failures.length && !cancelled) {
     return {
       tone: "success",
       title: `${succeeded} ${plural(succeeded, `servicio ${verb}ado`, `servicios ${verb}ados`)}`,
@@ -82,6 +95,6 @@ export function describeBulkStatusResult({ failures, isActive, succeeded }) {
     title: succeeded
       ? `Se ${verb}aron ${succeeded} de ${total} servicios`
       : `No se ${plural(total, `pudo ${verb}ar el servicio`, `pudieron ${verb}ar los ${total} servicios`)}`,
-    message: `Cambios correctos: ${succeeded}. Fallidos: ${failures.length}. ${detail}${rest}`,
+    message: `Cambios correctos: ${succeeded}. Fallidos: ${failures.length}.${cancelled ? ` Cancelados sin enviar: ${cancelled}.` : ""} ${detail}${rest}`,
   };
 }

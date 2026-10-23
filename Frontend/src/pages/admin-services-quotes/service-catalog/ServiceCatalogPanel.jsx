@@ -166,6 +166,7 @@ function ServiceCatalogPanel({ summary }) {
           selectedCount={selection.selectedCount}
           total={items.length}
           targets={bulk.targets}
+          mixed={bulk.selectionState.isMixed}
           busy={statusBusy}
           onStatusRequest={(isActive) => { overlays.dismiss(); bulk.request(isActive); }}
           pagination={pagination}

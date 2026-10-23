@@ -574,20 +574,29 @@ Validación, capturas y diferencias respecto a Figma:
   - Selección de la página visible con contador «X de Y seleccionados»; se reinicia al cambiar
     de página, búsqueda o filtros y se conserva al cambiar el estado de una fila.
   - Footer (`5790:351653`): contador a la izquierda, «Desactivar» (`CloseCircle`) y «Activar»
-    (`TickCircle`) como `Button` Primary/Ghost/M al seleccionar filas, y Anterior/Siguiente a la
-    derecha. Cada acción solo se habilita si cambiaría algún seleccionado. Los grupos pasan a
+    (`TickCircle`) como `Button` Primary/Ghost/M siempre visibles, y Anterior/Siguiente a la
+    derecha. Sin selección ambas acciones están deshabilitadas. Solo una selección completamente
+    activa habilita Desactivar y solo una completamente inactiva habilita Activar. Una mezcla
+    bloquea ambas, con una ayuda visible asociada mediante `aria-describedby`; se cuentan todos
+    los registros, nunca solo el primero. Los grupos pasan a
     filas sucesivas si no caben; se conservan los tokens y los temas del sistema.
   - Las operaciones masivas usan el endpoint individual de estado, con `expectedVersion` y un
-    máximo de tres peticiones concurrentes. El modal cuenta solo los destinos que cambiarán,
-    explica las exclusiones y que el conjunto no es atómico. Al terminar se recargan las filas,
-    se limpia la selección y se informa de éxitos y errores individuales sin repetir éxitos.
+    máximo de tres peticiones concurrentes. Antes de cualquier PATCH se releen todos los destinos
+    por GET, sin caché: cualquier cambio de estado o versión, lectura fallida o referencia inactiva
+    para reactivar cancela toda la selección sin escrituras y pide seleccionarla de nuevo.
+    Un fallo posterior detiene los envíos pendientes; los ya iniciados se esperan y se informan
+    con sus resultados reales, sin reintentos ni promesas de atomicidad. Al terminar se recargan
+    las filas, se limpia la selección y se distinguen éxitos, fallos y cancelados sin envío.
   - `useServiceTableOverlays` coordina las ayudas únicamente dentro del tabulador: seleccionar
     cierra el tooltip activo, abrir un menú impide superponer otras ayudas y pedir una acción
     descarta la ayuda anterior. Hover, foco y toque vuelven a funcionar después del cierre;
     cambiar de página invalida también las capas pertenecientes a las filas desmontadas.
-  - Desactivar y activar desde «Más opciones» con confirmación (`Modal`, como en Unidades) y
-    `expectedVersion`; un 409 de versión recarga la página y reactivar con una unidad inactiva
-    explica el bloqueo. Nunca se elimina un servicio.
+  - Desactivar y activar desde «Más opciones» conserva su funcionamiento individual y comparte la
+    comprobación previa de estado, versión y referencias. Tanto esta acción como la masiva usan
+    `ServiceStatusModal`, con el diálogo estándar compacto de `Modal` (máximo 400 px), iconos de
+    estado y texto exclusivo de servicios: «Activar/Desactivar servicio(s)», cantidad completa y
+    disponibilidad para nuevas cotizaciones. Cancelar no inicia lecturas ni escrituras; confirmar
+    bloquea el diálogo hasta terminar. Un 409 recarga la página. Nunca se elimina un servicio.
   - Formulario (Figma `5764:226084`): un único modal (`ServiceFormDialog` + `ServiceFormModal`)
     para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
     leídos de `GET /admin/services/:id`). Campos implementados: nombre (Input, 150), descripción

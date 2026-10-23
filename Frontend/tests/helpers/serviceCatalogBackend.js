@@ -148,7 +148,7 @@ export function createServiceCatalogBackend(initial) {
     const failureKey = `${method} ${path.replace(/\d+/g, ":id")}`;
     // Un fallo por ruta exacta (un servicio concreto) tiene prioridad sobre el del patrón.
     const failure = state.failures[`${method} ${path}`] ?? state.failures[failureKey];
-    const delay = state.delays[failureKey] ?? state.delays[params.search ?? (params.limit === "100" ? "summary" : "")];
+    const delay = state.delays[`${method} ${path}`] ?? state.delays[failureKey] ?? state.delays[params.search ?? (params.limit === "100" ? "summary" : "")];
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
 
     if (path === "/api/auth/me") return json(route, 200, { user: { id: 1, firstName: "Ana", lastName: "Admin", email: "ana@example.test", role: "admin", status: "active" } });
@@ -220,6 +220,8 @@ export function createServiceCatalogBackend(initial) {
       if (!item) return json(route, 404, { code: "SERVICE_NOT_FOUND", message: "El servicio no existe." });
       if (method === "GET" && !match[2]) return json(route, 200, { service: { ...item } });
       if (method === "PATCH") {
+        // Simula a otro administrador entre la comprobación previa y la escritura versionada.
+        if (match[2]) state.beforeStatusChange?.(item, body);
         if (body.expectedVersion !== item.currentVersion) return json(route, 409, { code: "SERVICE_VERSION_CONFLICT", message: "Versión desactualizada." });
         if (match[2] && body.isActive && !item.measurementUnit.isActive) {
           return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { measurementUnitId: "La unidad base está inactiva." } });
