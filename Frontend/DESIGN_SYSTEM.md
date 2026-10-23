@@ -161,8 +161,10 @@ el outline profundiza el verde en claro mezclándolo con el neutral oscuro exist
 
 `AlertToast` y `Alert` admiten `content` opcional para separar el dato principal del título y la
 descripción. Se limita a dos líneas con el texto completo accesible mediante `Tooltip` (hover,
-foco y toque); la consecuencia permanece visible. Textos y códigos sin espacios se envuelven
+foco y pulsación larga táctil); la consecuencia permanece visible. Textos y códigos sin espacios se envuelven
 sin desbordar el ancho disponible. La altura se adapta al contenido.
+El autoocultado se pausa mientras el aviso contiene el foco o el puntero, y concede otro
+intervalo completo al salir. El botón de cierre mantiene su funcionamiento durante la consulta.
 
 No simular un botón con un `div`. Las acciones solo con icono necesitan nombre accesible mediante `aria-label` y un `Tooltip` descriptivo visible tanto por hover como por foco. El tooltip debe usar portal, la capa flotante global y ajuste al viewport para sobreponerse sin quedar recortado; su incorporación no puede alterar la posición ni las dimensiones del botón.
 

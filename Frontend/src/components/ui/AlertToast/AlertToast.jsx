@@ -85,6 +85,24 @@ function AlertToast({
   const resolvedDescription = theme === "Danger"
     ? getUserFacingErrorMessage(description)
     : description;
+  /**
+   * Mantiene el aviso mientras se lee o se consulta su contenido con ratón o teclado.
+   * Solo cancela el autoocultado; el cierre explícito y su animación siguen disponibles.
+   * @returns {void}
+   */
+  const pauseAutoHide = () => window.clearTimeout(hideTimerRef.current);
+
+  /**
+   * Da un nuevo intervalo de lectura cuando el foco y el puntero abandonan el aviso.
+   * Moverse entre sus controles no reinicia el cierre mientras exista interacción dentro.
+   * @param {import("react").SyntheticEvent<HTMLElement>} event - Salida de foco o puntero.
+   * @returns {void}
+   */
+  const resumeAutoHide = (event) => {
+    if (!visible || event.currentTarget.contains(document.activeElement) || event.currentTarget.matches(":hover")) return;
+    window.clearTimeout(hideTimerRef.current);
+    if (autoHideMs > 0) hideTimerRef.current = window.setTimeout(dismiss, autoHideMs);
+  };
   const handleSecondaryAction = () => {
     onSecondaryAction?.();
     dismiss();
@@ -113,6 +131,10 @@ function AlertToast({
         onSecondaryAction={handleSecondaryAction}
         onPrimaryAction={handlePrimaryAction}
         onDismiss={dismiss}
+        onMouseEnter={pauseAutoHide}
+        onMouseLeave={resumeAutoHide}
+        onFocusCapture={pauseAutoHide}
+        onBlurCapture={resumeAutoHide}
         aria-label={ariaLabel}
         className={`pointer-events-auto w-full ${showActions ? "max-w-[722px]" : "max-w-[372px]"} shadow-[var(--shadow-e3)] ${
           visible ? "auth-toast auth-toast--visible" : "auth-toast"

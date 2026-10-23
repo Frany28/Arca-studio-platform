@@ -345,6 +345,7 @@ test("errores HTTP: conflicto de versión recarga, reactivación bloqueada por u
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
   await page.getByRole("dialog", { name: "¿Desactivar servicio?" }).getByRole("button", { name: "Desactivar" }).click();
   await page.getByRole("alert").getByText(/cambiaron desde que se cargó la tabla/).waitFor();
+  assert.equal(await page.getByRole("alert").getAttribute("data-node-id"), "2068:22253");
   await waitFor(() => tableGets(backend).length > readsBefore, "La tabla se vuelve a leer tras el 409");
   await rowFor(page, "TST-001").getByText("Activo", { exact: true }).waitFor();
 
@@ -353,6 +354,7 @@ test("errores HTTP: conflicto de versión recarga, reactivación bloqueada por u
   await page.getByRole("menuitem", { name: "Activar" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicio?" }).getByRole("button", { name: "Activar" }).click();
   await page.getByRole("alert").getByText(/No se puede activar: su unidad de medida está inactiva/).waitFor();
+  assert.equal(await page.getByRole("alert").getAttribute("data-node-id"), "2068:22253");
   assert.equal(await rowFor(page, "TST-004").getByText("Inactivo", { exact: true }).count(), 1);
 
   for (const [status, code, message] of [
@@ -640,6 +642,7 @@ test("conflicto posterior a la comprobación: conserva expectedVersion, detiene 
   await footer.getByRole("button", { name: "Activar 7 servicios seleccionados" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
   await page.getByRole("alert").getByText(/Cancelados sin enviar: 4/).waitFor();
+  assert.equal(await page.getByRole("alert").getAttribute("data-node-id"), "2068:22253", "Un éxito parcial conserva Danger");
   await footer.getByText("0 de 7 seleccionados").waitFor();
   const patches = () => backend.requests.filter((request) => request.method === "PATCH");
   assert.deepEqual(patches().map((request) => request.path).sort(), [1, 2, 3].map((id) => `/api/admin/services/${id}/status`));
@@ -773,6 +776,9 @@ test("confirmación Figma de servicios: cuatro variantes, iconos, colores, foco,
     await page.mouse.move(4, 4);
     await page.mouse.up();
     await dialog.getByRole("button", { name: "Cancelar", exact: true }).focus();
+    // focus-visible depende de interacción por teclado, no de foco programático tras el ratón.
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     assert.notEqual(await dialog.getByRole("button", { name: "Cancelar", exact: true }).evaluate((element) => getComputedStyle(element).boxShadow), "none");
     assert.deepEqual({ radius: palette.radius, footerBorder: palette.footerBorder, padding: palette.footerPadding, gap: palette.footerGap, iconSize: palette.iconSize },
       { radius: "12px", footerBorder: "1px", padding: "16px", gap: "16px", iconSize: [20, 20] });
@@ -821,6 +827,11 @@ test("avisos de Servicios: nombre largo consultable, código largo omitido y con
       const consequence = `${activating ? "Vuelve a estar disponible" : "Ya no está disponible"} para nuevas cotizaciones`;
       await alert.getByText(`Servicio ${activating ? "activado" : "desactivado"} correctamente`, { exact: true }).waitFor();
       await alert.getByText(consequence, { exact: true }).waitFor();
+      await alert.evaluate(async (element) => {
+        await Promise.allSettled(element.getAnimations({ subtree: true }).map((animation) => animation.finished));
+      });
+      // Mantiene el aviso durante los cambios de viewport y ejercita lectura por teclado.
+      await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).focus();
       assert.equal((await alert.innerText()).includes(code), false);
       assert.equal(await alert.getAttribute("data-node-id"), "2068:22275");
       for (const width of [375, 768, 1024, 1440]) {
@@ -835,6 +846,8 @@ test("avisos de Servicios: nombre largo consultable, código largo omitido y con
       const subject = alert.getByText(name, { exact: true });
       assert.equal(await subject.evaluate((element) => element.scrollHeight > element.clientHeight), true, "El nombre se limita a dos líneas");
       await subject.focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
       await page.getByRole("tooltip").getByText(name, { exact: true }).waitFor();
       await page.keyboard.press("Escape");
       await page.getByRole("tooltip").waitFor({ state: "detached" });
@@ -842,13 +855,49 @@ test("avisos de Servicios: nombre largo consultable, código largo omitido y con
       await subject.hover();
       await page.getByRole("tooltip").getByText(name, { exact: true }).waitFor();
       await page.mouse.move(4, 4);
+      if (theme === "dark" && activating) {
+        await page.waitForTimeout(5200);
+        assert.equal(await alert.isVisible(), true, "No desaparece mientras se consulta el nombre con foco");
+      }
       if (process.env.ARCA_SERVICE_STATUS_SCREENSHOTS) {
         await alert.screenshot({ path: join(tmpdir(), `arca-service-toast-${theme}-${activating ? "activate" : "deactivate"}.png`) });
       }
-      await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).click();
-      await alert.waitFor({ state: "detached" });
+      if (theme === "dark" && activating) {
+        await subject.hover();
+        await page.getByRole("button", { name: "Añadir servicio", exact: true }).focus();
+        await page.waitForTimeout(5200);
+        assert.equal(await alert.isVisible(), true, "El puntero también pausa el cierre aunque el foco salga");
+        await page.mouse.move(4, 4);
+        await alert.waitFor({ state: "detached", timeout: 7000 });
+      } else {
+        await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).click();
+        await alert.waitFor({ state: "detached" });
+      }
     }
   }
+});
+
+test("aviso móvil oscuro: nombre completo por pulsación larga sin perder la consecuencia", async (context) => {
+  const name = "Servicio de prueba con nombre extenso ".repeat(4);
+  const backend = createBackend([service(1, { name, code: "TEST-TOUCH", isActive: true })]);
+  const page = await openTabulator(context, backend, { theme: "dark", hasTouch: true, viewport: { width: 375, height: 812 } });
+  await page.getByRole("button", { name: "Más opciones para TEST-TOUCH", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Desactivar", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Desactivar", exact: true }).click();
+  const alert = page.getByRole("alert");
+  const subject = alert.getByText(name.trim(), { exact: true });
+  await subject.waitFor();
+  await alert.evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations({ subtree: true }).map((animation) => animation.finished));
+  });
+  await subject.dispatchEvent("pointerdown", { pointerType: "touch", clientX: 120, clientY: 700 });
+  await page.getByRole("tooltip").getByText(name.trim(), { exact: true }).waitFor();
+  await subject.dispatchEvent("pointerup", { pointerType: "touch", clientX: 120, clientY: 700 });
+  assert.equal(await alert.getByText("Ya no está disponible para nuevas cotizaciones", { exact: true }).isVisible(), true);
+  const box = await page.getByRole("tooltip").boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 375 && box.y >= 0 && box.y + box.height <= 812, JSON.stringify(box));
+  await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).tap();
+  await alert.waitFor({ state: "detached" });
 });
 
 test("confirmación Servicios: overlay cancela y la operación en curso bloquea cierre y doble envío", async (context) => {

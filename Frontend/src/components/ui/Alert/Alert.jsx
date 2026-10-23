@@ -217,6 +217,7 @@ function Alert({
   ...props
 }) {
   const [internalVisible, setInternalVisible] = useState(defaultVisible);
+  const [contentTooltipOpen, setContentTooltipOpen] = useState(false);
   const isVisibleControlled = typeof visible === "boolean";
   const isVisible = isVisibleControlled ? visible : internalVisible;
   const resolvedTheme = getResolvedTheme(theme);
@@ -296,8 +297,25 @@ function Alert({
               {title}
             </p>
             {content ? (
-              <Tooltip asChild portal text={content} showTip>
-                <span tabIndex={0} className="line-clamp-2 text-body-3 text-[var(--color-text-50)] rounded-[var(--radius-1)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary-300)]">
+              <Tooltip
+                asChild
+                portal
+                text={content}
+                showTip
+                className="[&>p]:text-[var(--color-text-50)]"
+                open={contentTooltipOpen}
+                onOpenChange={setContentTooltipOpen}
+              >
+                <span
+                  tabIndex={0}
+                  className="line-clamp-2 text-body-3 text-[var(--color-text-50)] rounded-[var(--radius-1)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary-300)]"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && contentTooltipOpen) {
+                      event.stopPropagation();
+                      setContentTooltipOpen(false);
+                    }
+                  }}
+                >
                   {content}
                 </span>
               </Tooltip>
