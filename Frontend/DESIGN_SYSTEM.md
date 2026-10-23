@@ -637,6 +637,13 @@ Validación, capturas y diferencias respecto a Figma:
     (TextArea de 130 px, 2000; alimenta el tooltip), unidad de medida y tarifa USD (125 px, texto
     decimal NUMERIC(14,2) sin conversión a Number), además de la modalidad (ver «Modalidad en el
     formulario»). No hay campo de código: el sistema genera `SERV-001`.
+  - Carga de la edición: mientras se lee el servicio, el mismo modal muestra `Loader`
+    `serviceForm` con el título real y el pie real (Cancelar y cerrar funcionan; Guardar
+    deshabilitado). Replica la geometría del formulario: etiquetas de 17 px y controles de 42, 41,
+    134 y, en dos columnas, 44 px (+ «Crear unidad», 36 px) y tarifa de 125 × 42 px, con 16 px entre
+    campos; el diálogo mide lo mismo antes y después de la carga. Sin textos ni controles
+    interactivos. Un 404 recarga la lista y solo ofrece cerrar; otros errores permiten reintentar.
+    El alta no muestra este skeleton porque no lee ningún servicio.
   - Unidad de medida: primero se elige el símbolo de una base y después una denominación activa
     registrada para ella. Crear y Editar comparten `ServiceFormDialog`, `ServiceFormModal` y
     `ServiceUnitField`, sin selectores diferentes. El catálogo se lee una vez al abrir con

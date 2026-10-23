@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import { toEditBaseUnitOptions } from "../../measurement-units/utils/measurementUnitPresentation.js";
 import { useActiveDenominations } from "../hooks/useActiveDenominations.js";
@@ -46,6 +46,14 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const detail = useServiceDetail(editing ? serviceId : null);
   const service = detail.service;
   const status = !editing || service ? "ready" : detail.error ? "error" : "loading";
+  const loadError = detail.error ? getServiceFormErrorFeedback(detail.error, "No se pudo cargar el servicio.") : null;
+  // Un servicio inexistente no se recupera reintentando: su mensaje anuncia que la lista se
+  // actualiza, así que se recarga una vez y el formulario solo ofrece cerrar.
+  const loadNotFound = Boolean(loadError?.notFound);
+  const reloadStaleList = useEffectEvent(onStale);
+  useEffect(() => {
+    if (loadNotFound) reloadStaleList();
+  }, [loadNotFound]);
   const [draftState, setDraftState] = useState(null);
   // El borrador nace de la lectura del servicio (edición) o vacío (alta) y después es del usuario.
   const draft = draftState ?? createServiceDraft(service);
@@ -184,8 +192,8 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
     <ServiceFormModal
       mode={mode}
       status={status}
-      loadError={detail.error ? getServiceFormErrorFeedback(detail.error, "No se pudo cargar el servicio.").message : ""}
-      onRetryLoad={detail.retry}
+      loadError={loadError?.message ?? ""}
+      onRetryLoad={loadNotFound ? undefined : detail.retry}
       draft={draft}
       onDraftChange={changeDraft}
       onKindChange={changeKind}

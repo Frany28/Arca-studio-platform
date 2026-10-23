@@ -317,6 +317,41 @@ function ServiceCatalogTableSkeleton({ rows }) {
   );
 }
 
+// Etiqueta (heading-8, 17 px) y control de un campo del formulario de servicios, separados 8 px
+// como Input, DropdownMenu y TextArea.
+function ServiceFormFieldSkeleton({ controlHeight, delay, labelWidth }) {
+  return (
+    <div className="flex w-full flex-col gap-[8px]">
+      <SkeletonBlock className="h-[17px] max-w-full rounded-[var(--radius-1)]" delay={delay} style={{ width: labelWidth }} tone="text" />
+      <SkeletonBlock className="w-full rounded-[var(--radius-2)]" delay={delay + 30} style={{ height: controlHeight }} />
+    </div>
+  );
+}
+
+// Formulario «Servicio» (Figma 5764:226084) mientras se lee el servicio editado: nombre,
+// modalidad, descripción y, en dos columnas, unidad de medida con «+ Crear unidad» y tarifa USD
+// de 125 px. Las alturas son las de los controles reales (42, 41, 134, 44 y 42 px; botón de
+// 36 px) con 16 px entre campos, para que el formulario ocupe lo mismo al terminar la carga. El
+// título y el pie reales del modal permanecen fuera del skeleton.
+function ServiceFormSkeleton() {
+  return (
+    <div className="flex w-full flex-col gap-[16px]" data-skeleton-preset="serviceForm">
+      <ServiceFormFieldSkeleton controlHeight={42} delay={0} labelWidth={125} />
+      <ServiceFormFieldSkeleton controlHeight={41} delay={50} labelWidth={160} />
+      <ServiceFormFieldSkeleton controlHeight={134} delay={100} labelWidth={135} />
+      <div className="flex items-start gap-[16px]">
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-[8px]">
+          <ServiceFormFieldSkeleton controlHeight={44} delay={150} labelWidth={115} />
+          <SkeletonBlock className="h-[36px] w-[124px] rounded-[var(--radius-2)]" delay={210} tone="muted" />
+        </div>
+        <div className="w-[125px] shrink-0">
+          <ServiceFormFieldSkeleton controlHeight={42} delay={180} labelWidth={70} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminUserDetailsSkeleton() {
   return (
     <div className="flex w-full flex-col gap-[24px]">
@@ -602,6 +637,8 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <MeasurementUnitTableSkeleton rows={itemCount} />;
   } else if (preset === "serviceCatalogTable") {
     content = <ServiceCatalogTableSkeleton rows={itemCount} />;
+  } else if (preset === "serviceForm") {
+    content = <ServiceFormSkeleton />;
   } else if (preset === "adminUserDetails") {
     content = <AdminUserDetailsSkeleton />;
   } else if (preset === "adminRequestDetails") {

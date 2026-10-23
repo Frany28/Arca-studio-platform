@@ -41,7 +41,7 @@ const FOCUS_SELECTORS = {
  * @param {"create"|"edit"} props.mode - Alta o edición.
  * @param {"loading"|"error"|"ready"} props.status - Lectura del servicio en la edición.
  * @param {string} [props.loadError] - Mensaje si la lectura falló.
- * @param {() => void} [props.onRetryLoad] - Repite la lectura.
+ * @param {() => void} [props.onRetryLoad] - Repite la lectura; sin ella (servicio inexistente) no se ofrece reintentar.
  * @param {Object} props.draft - Borrador (createServiceDraft).
  * @param {(patch: Object) => void} props.onDraftChange - Aplica cambios parciales al borrador.
  * @param {(kind: string) => void} props.onKindChange - Aplica la modalidad elegida (y sus efectos en la unidad).
@@ -120,11 +120,14 @@ function ServiceFormModal({
           </div>
           <h2 id="service-form-title" className="text-heading-6 m-0 pr-[28px] text-[var(--color-text-300)]">{copy.title}</h2>
 
-          {status === "loading" ? <Loader preset="detailValue" label="Cargando servicio" /> : null}
+          {/* Mismo alto que el formulario cargado: título, pie y animación del modal no cambian al terminar. */}
+          {status === "loading" ? <Loader preset="serviceForm" label="Cargando servicio" /> : null}
           {status === "error" ? (
             <div className="flex flex-col items-start gap-[8px]">
               <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{loadError}</p>
-              <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} onClick={onRetryLoad}>Reintentar</Button>
+              {onRetryLoad ? (
+                <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} onClick={onRetryLoad}>Reintentar</Button>
+              ) : null}
             </div>
           ) : null}
 

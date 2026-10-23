@@ -1149,3 +1149,162 @@ test("responsive y accesibilidad: modal dentro del viewport en 375–1440 px, cl
     }
   }
 });
+
+const SERVICE_FORM_SKELETON = "[data-service-form] [data-skeleton-preset='serviceForm']";
+const serviceDetailGets = (backend) => requestsOf(backend, "GET", /^\/api\/admin\/services\/\d+$/);
+
+/**
+ * Registra en el navegador cuántos formularios de servicio llegan a coexistir y marca el diálogo
+ * visible, para comprobar después que la carga lo sustituye sin desmontarlo ni abrir otro.
+ *
+ * @param {import("playwright").Page} page - Página con el formulario abierto.
+ * @returns {Promise<() => Promise<{maxInstances: number, sameDialog: boolean, open: boolean}>>} Lectura.
+ */
+async function trackServiceFormDialog(page) {
+  await page.evaluate(() => {
+    const state = { maxInstances: 1, marked: document.querySelector("[data-service-form]") };
+    new MutationObserver(() => {
+      state.maxInstances = Math.max(state.maxInstances, document.querySelectorAll("[data-service-form]").length);
+    }).observe(document.body, { childList: true, subtree: true });
+    window.__serviceFormDialog = state;
+  });
+  return () => page.evaluate(() => {
+    const state = window.__serviceFormDialog;
+    const current = document.querySelector("[data-service-form]");
+    return { maxInstances: state.maxInstances, sameDialog: current === state.marked, open: Boolean(current) };
+  });
+}
+
+/**
+ * Mide el diálogo del formulario y su pie para comparar el skeleton con el formulario cargado.
+ *
+ * @param {import("playwright").Page} page - Página con el formulario abierto.
+ * @returns {Promise<{dialog: Array<number>, footer: Array<number>}>} Cajas redondeadas.
+ */
+function measureServiceFormDialog(page) {
+  return page.evaluate(() => {
+    const rect = (element) => {
+      const box = element.getBoundingClientRect();
+      return [box.x, box.y, box.width, box.height].map((value) => Math.round(value));
+    };
+    return { dialog: rect(document.querySelector("[data-service-form]")), footer: rect(document.querySelector("[data-service-form] footer")) };
+  });
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`edición con lectura lenta (${theme}): skeleton del formulario con sus medidas, pie real y sin otro diálogo, 375–1440 px`, async (context) => {
+    const backend = createServiceCatalogBackend(sampleCatalog());
+    const page = await openTabulator(context, backend, { theme, viewport: { width: 375, height: 812 } });
+    backend.delays["GET /api/admin/services/1"] = 900;
+    for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000]]) {
+      await page.setViewportSize({ width, height });
+      await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+      const dialog = page.getByRole("dialog", { name: "Servicio" });
+      const skeleton = page.locator(SERVICE_FORM_SKELETON);
+      await skeleton.waitFor();
+      const readDialog = await trackServiceFormDialog(page);
+      // El título real se mantiene; el skeleton no muestra textos ni valores de ejemplo.
+      assert.equal(await dialog.getByRole("heading", { level: 2 }).innerText(), "Servicio");
+      assert.equal(await dialog.getAttribute("aria-busy"), "true");
+      assert.equal(await dialog.getByRole("status").getByText("Cargando servicio", { exact: true }).count(), 1);
+      assert.equal((await skeleton.innerText()).trim(), "");
+      assert.equal(await skeleton.locator("button, input, textarea, [tabindex]").count(), 0, "Los bloques no son controles");
+      assert.equal(await dialog.getByRole("button", { name: "Guardar", exact: true }).isDisabled(), true);
+      assert.equal(await dialog.getByRole("button", { name: "Cancelar", exact: true }).isEnabled(), true);
+      // Cada bloque replica un campo real: etiqueta de 17 px y controles de 42/41/134/44/42 px.
+      const blocks = await skeleton.evaluate((element) => [...element.querySelectorAll(".skeleton-shimmer")].map((block) => Math.round(block.getBoundingClientRect().height)));
+      assert.deepEqual(blocks, [17, 42, 17, 41, 17, 134, 17, 44, 36, 17, 42]);
+      const loadingBox = await measureServiceFormDialog(page);
+
+      await dialog.locator("#service-form-name").waitFor();
+      assert.equal(await page.locator(SERVICE_FORM_SKELETON).count(), 0);
+      assert.equal(await dialog.locator("#service-form-name").inputValue(), "Anteproyecto de prueba");
+      assert.equal(await dialog.getAttribute("aria-busy"), null);
+      assert.deepEqual(await measureServiceFormDialog(page), loadingBox, `${width}x${height}: mismas dimensiones al cargar`);
+      assert.deepEqual(await readDialog(), { maxInstances: 1, sameDialog: true, open: true }, "Mismo diálogo, sin remontaje ni segunda instancia");
+      const layout = await page.evaluate(() => {
+        const box = document.querySelector("[data-service-form]").getBoundingClientRect();
+        return { inside: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight, overflow: document.documentElement.scrollWidth - window.innerWidth };
+      });
+      assert.deepEqual(layout, { inside: true, overflow: 0 }, `${width}x${height}`);
+      await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+    }
+    // StrictMode (desarrollo) repite el efecto y aborta la primera lectura; solo se lee el servicio editado.
+    assert.equal(serviceDetailGets(backend).every((request) => request.path === "/api/admin/services/1"), true);
+  });
+}
+
+test("edición durante la carga: Cancelar y cerrar descartan la respuesta tardía y otra edición no recibe datos ajenos", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  backend.delays["GET /api/admin/services/1"] = 1200;
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+
+  // Cancelar con la lectura en curso: la respuesta posterior no vuelve a abrir el formulario.
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  await page.locator(SERVICE_FORM_SKELETON).waitFor();
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.locator("[data-service-form]").count(), 0, "La respuesta tardía no reabre el modal");
+
+  // El botón de cierre también funciona durante la carga; otra edición muestra solo sus datos.
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  await page.locator(SERVICE_FORM_SKELETON).waitFor();
+  await dialog.getByRole("button", { name: "Cerrar formulario del servicio", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Editar TST-002 Diseño interior de prueba" }).click();
+  await dialog.locator("#service-form-name").waitFor();
+  assert.equal(await dialog.locator("#service-form-name").inputValue(), "Diseño interior de prueba");
+  await page.waitForTimeout(1500);
+  assert.equal(await dialog.locator("#service-form-name").inputValue(), "Diseño interior de prueba", "La lectura atrasada de TST-001 no sustituye a TST-002");
+  assert.equal(await page.locator("[data-service-form]").count(), 1);
+  assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/\d+$/).length, 0);
+});
+
+test("edición con error de lectura: 500 permite reintentar y 404 recarga la lista sin ofrecer reintento ni guardar", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+
+  backend.failures["GET /api/admin/services/:id"] = { status: 500, body: { code: "INTERNAL_SERVER_ERROR", message: "Ocurrió un error inesperado." } };
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  await dialog.getByRole("alert").waitFor();
+  assert.equal(await page.locator(SERVICE_FORM_SKELETON).count(), 0);
+  assert.equal(await dialog.locator("#service-form-name").count(), 0, "Sin formulario con datos incompletos");
+  assert.equal(await dialog.getByRole("button", { name: "Guardar", exact: true }).isDisabled(), true);
+  delete backend.failures["GET /api/admin/services/:id"];
+  await dialog.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await dialog.locator("#service-form-name").waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Guardar", exact: true }).isEnabled(), true);
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+
+  const listReads = () => requestsOf(backend, "GET", /^\/api\/admin\/services$/).filter((request) => request.params.limit === "10").length;
+  const readsBefore = listReads();
+  backend.failures["GET /api/admin/services/:id"] = { status: 404, body: { code: "SERVICE_NOT_FOUND", message: "El servicio no existe." } };
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  await dialog.getByText("Este servicio ya no existe. Actualizamos la lista.", { exact: true }).waitFor();
+  for (let attempt = 0; attempt < 40 && listReads() === readsBefore; attempt += 1) await page.waitForTimeout(50);
+  assert.equal(listReads(), readsBefore + 1, "La lista se recarga una sola vez");
+  assert.equal(await dialog.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
+  assert.equal(await dialog.getByRole("button", { name: "Guardar", exact: true }).isDisabled(), true);
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+});
+
+test("alta: no muestra el skeleton de detalle ni lee un servicio", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  await page.evaluate(() => {
+    window.__serviceFormSkeletonSeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector("[data-skeleton-preset='serviceForm']")) window.__serviceFormSkeletonSeen = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  const dialog = await openCreate(page);
+  await dialog.locator("#service-form-name").waitFor();
+  assert.equal(await page.evaluate(() => window.__serviceFormSkeletonSeen), false);
+  assert.equal(serviceDetailGets(backend).length, 0);
+});
