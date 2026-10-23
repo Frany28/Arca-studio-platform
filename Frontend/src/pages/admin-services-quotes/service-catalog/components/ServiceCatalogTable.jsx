@@ -35,12 +35,13 @@ function getStatusActions(service) {
  * @param {Object} props - Filas, selección y callbacks.
  * @param {Array<Object>} props.items - Servicios de la página visible.
  * @param {Object} props.selection - Estado de usePageSelection.
- * @param {boolean} props.actionsDisabled - Bloquea las acciones mientras hay un cambio en curso.
+ * @param {Object} props.overlays - Coordinación local de ayudas y menús.
+ * @param {boolean} props.actionsDisabled - Bloquea las acciones y la selección mientras hay un cambio en curso.
  * @param {(service: Object) => void} props.onEdit - Abre el formulario del servicio (Figma: «Servicio»).
  * @param {(service: Object, isActive: boolean) => void} props.onStatusChange - Solicita un cambio de estado.
  * @returns {import("react").ReactElement} Tabla.
  */
-function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, selection }) {
+function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, overlays, selection }) {
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
       <div className="w-full overflow-x-auto">
@@ -53,7 +54,7 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
           <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
             <tr className="text-heading-8 h-[49px]">
               <th scope="col" className="p-[16px]">
-                <Checkbox size="S" checked={selection.headerChecked} interactive={items.length > 0} aria-label="Seleccionar todos los servicios visibles" onCheckedChange={selection.toggleAll} />
+                <Checkbox size="S" checked={selection.headerChecked} interactive={items.length > 0 && !actionsDisabled} aria-label="Seleccionar todos los servicios visibles" onCheckedChange={() => { overlays.dismiss(); selection.toggleAll(); }} />
               </th>
               <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel>N°</TableHeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px]">Servicio</th>
@@ -71,6 +72,8 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
               const status = getServiceStatusBadge(service);
               const modality = getServiceModalityBadge(service);
               const rate = formatReferenceRate(service.referenceRate, service.currency);
+              const editTooltip = overlays.tooltipProps(`edit:${service.id}`);
+              const menuTooltip = overlays.tooltipProps(`menu:${service.id}`);
               return (
                 <tr
                   key={service.id}
@@ -78,13 +81,13 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
                   data-selected={selected ? "true" : undefined}
                 >
                   <td className="p-[16px]">
-                    <Checkbox size="S" checked={selected ? "Yes" : "No"} aria-label={`Seleccionar ${service.code} ${service.name}`} onCheckedChange={() => selection.toggle(service.id)} />
+                    <Checkbox size="S" checked={selected ? "Yes" : "No"} interactive={!actionsDisabled} aria-label={`Seleccionar ${service.code} ${service.name}`} onCheckedChange={() => { overlays.dismiss(); selection.toggle(service.id); }} />
                   </td>
                   <th scope="row" className="text-heading-8 truncate px-[24px] py-[16px] font-medium text-[var(--color-text-300)]">{service.code}</th>
                   <td className="px-[24px] py-[16px]">
                     <div className="flex min-w-0 items-center gap-[2px]">
                       <span className="text-heading-8 truncate text-[var(--color-text-300)]" title={service.name}>{service.name}</span>
-                      {description ? <ServiceDescriptionHint serviceName={service.name} description={description} /> : null}
+                      {description ? <ServiceDescriptionHint serviceName={service.name} description={description} {...overlays.tooltipProps(`description:${service.id}`)} /> : null}
                     </div>
                   </td>
                   {/* Etiquetas cerradas y cortas: sin truncado; como en Figma, «Detalle por detalle» puede usar el padding derecho. */}
@@ -126,14 +129,19 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
                         showRightIcon={false}
                         disabled={actionsDisabled}
                         tooltip="Editar servicio"
+                        tooltipOpen={editTooltip.open}
+                        onTooltipOpenChange={editTooltip.onOpenChange}
                         aria-label={`Editar ${service.code} ${service.name}`}
-                        onClick={() => onEdit(service)}
+                        onClick={() => { overlays.dismiss(); onEdit(service); }}
                       />
                       <ActionMenu
                         items={getStatusActions(service)}
                         triggerLabel={`Más opciones para ${service.code}`}
                         menuLabel={`Acciones para ${service.code}`}
                         tooltip="Más opciones"
+                        tooltipOpen={menuTooltip.open}
+                        onTooltipOpenChange={menuTooltip.onOpenChange}
+                        onOpenChange={(open) => overlays.menuChanged(service.id, open)}
                         menuWidthClassName="w-[183px]"
                         disabled={actionsDisabled}
                         onSelect={(action) => onStatusChange(service, action.id === "activate")}

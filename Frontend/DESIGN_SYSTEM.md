@@ -156,6 +156,11 @@ Usar `Button` y sus propiedades existentes:
 
 No simular un botón con un `div`. Las acciones solo con icono necesitan nombre accesible mediante `aria-label` y un `Tooltip` descriptivo visible tanto por hover como por foco. El tooltip debe usar portal, la capa flotante global y ajuste al viewport para sobreponerse sin quedar recortado; su incorporación no puede alterar la posición ni las dimensiones del botón.
 
+`Button` permite coordinar el tooltip mediante `tooltipOpen` y `onTooltipOpenChange` (opciones
+equivalentes a `open`/`onOpenChange` de `Tooltip`). `ActionMenu` admite las mismas opciones y
+notifica sus cambios mediante `onOpenChange`; descarta la ayuda del disparador al abrir o cerrar
+el menú. Sin estas propiedades los componentes conservan su interacción autónoma.
+
 Todo botón o control con `role="button"` que esté habilitado debe mostrar obligatoriamente `cursor: pointer`. Esta conducta se define de forma global y no debe eliminarse ni sobrescribirse con `cursor: default` o `cursor: auto`. Los controles deshabilitados deben usar `cursor: not-allowed` y declarar el estado mediante `disabled` o `aria-disabled="true"`.
 
 Los botones cuyo único contenido visual sea una `X` para cerrar o quitar contenido conservan un `aria-label` descriptivo, pero no muestran `Tooltip`.
@@ -567,8 +572,19 @@ Validación, capturas y diferencias respecto a Figma:
     restaura la consulta inicial. En escritorio, «Añadir servicio» comparte la fila; con menos
     ancho pasa debajo y en móvil ocupa todo el ancho.
   - Selección de la página visible con contador «X de Y seleccionados»; se reinicia al cambiar
-    de página, búsqueda o filtros y se conserva al cambiar el estado de una fila. Sin acciones
-    masivas: el backend no tiene un endpoint para ellas.
+    de página, búsqueda o filtros y se conserva al cambiar el estado de una fila.
+  - Footer (`5790:351653`): contador a la izquierda, «Desactivar» (`CloseCircle`) y «Activar»
+    (`TickCircle`) como `Button` Primary/Ghost/M al seleccionar filas, y Anterior/Siguiente a la
+    derecha. Cada acción solo se habilita si cambiaría algún seleccionado. Los grupos pasan a
+    filas sucesivas si no caben; se conservan los tokens y los temas del sistema.
+  - Las operaciones masivas usan el endpoint individual de estado, con `expectedVersion` y un
+    máximo de tres peticiones concurrentes. El modal cuenta solo los destinos que cambiarán,
+    explica las exclusiones y que el conjunto no es atómico. Al terminar se recargan las filas,
+    se limpia la selección y se informa de éxitos y errores individuales sin repetir éxitos.
+  - `useServiceTableOverlays` coordina las ayudas únicamente dentro del tabulador: seleccionar
+    cierra el tooltip activo, abrir un menú impide superponer otras ayudas y pedir una acción
+    descarta la ayuda anterior. Hover, foco y toque vuelven a funcionar después del cierre;
+    cambiar de página invalida también las capas pertenecientes a las filas desmontadas.
   - Desactivar y activar desde «Más opciones» con confirmación (`Modal`, como en Unidades) y
     `expectedVersion`; un 409 de versión recarga la página y reactivar con una unidad inactiva
     explica el bloqueo. Nunca se elimina un servicio.

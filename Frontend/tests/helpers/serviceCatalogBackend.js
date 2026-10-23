@@ -146,7 +146,8 @@ export function createServiceCatalogBackend(initial) {
     const params = Object.fromEntries(url.searchParams);
     state.requests.push({ method, path, params, body });
     const failureKey = `${method} ${path.replace(/\d+/g, ":id")}`;
-    const failure = state.failures[failureKey];
+    // Un fallo por ruta exacta (un servicio concreto) tiene prioridad sobre el del patrón.
+    const failure = state.failures[`${method} ${path}`] ?? state.failures[failureKey];
     const delay = state.delays[failureKey] ?? state.delays[params.search ?? (params.limit === "100" ? "summary" : "")];
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
 
@@ -220,6 +221,9 @@ export function createServiceCatalogBackend(initial) {
       if (method === "GET" && !match[2]) return json(route, 200, { service: { ...item } });
       if (method === "PATCH") {
         if (body.expectedVersion !== item.currentVersion) return json(route, 409, { code: "SERVICE_VERSION_CONFLICT", message: "Versión desactualizada." });
+        if (match[2] && body.isActive && !item.measurementUnit.isActive) {
+          return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { measurementUnitId: "La unidad base está inactiva." } });
+        }
         if (match[2] && body.isActive && item.unitDenomination && !item.unitDenomination.isActive) {
           return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { unitDenominationId: "La denominación está inactiva." } });
         }

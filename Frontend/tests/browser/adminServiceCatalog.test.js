@@ -257,7 +257,7 @@ test("paginación y selección: cursor real, contador, todos, indeterminado y re
   await footer.getByText("10 de 10 seleccionados").waitFor();
   await header.click();
   await footer.getByText("0 de 10 seleccionados").waitFor();
-  // Sin acciones masivas: el backend no tiene un endpoint para ellas.
+  // Como la variante sin selección de Figma, no se muestran las acciones masivas.
   assert.equal(await footer.getByRole("button", { name: /Desactivar|Activar/ }).count(), 0);
 
   await page.getByRole("checkbox", { name: "Seleccionar TST-002 Servicio de prueba 2" }).click();
@@ -408,12 +408,177 @@ test("tooltip táctil (móvil, oscuro): un toque lo abre dentro del viewport y u
   await tooltip.waitFor({ state: "detached" });
 });
 
+test("capas: seleccionar descarta ayudas, un menú bloquea todos los tooltips y cerrar permite consultarlos de nuevo", async (context) => {
+  const page = await openTabulator(context, createBackend(sampleCatalog()));
+  const hint = page.getByRole("button", { name: "Ver descripción de Anteproyecto de prueba" });
+  const checkbox = page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" });
+  const header = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
+  const tooltip = page.getByRole("tooltip");
+  // Click programático: conserva el hover y evita que mouseleave/blur oculten el defecto.
+  for (const target of [checkbox, checkbox, header, header]) {
+    await page.mouse.move(5, 5);
+    await hint.hover();
+    await tooltip.getByText("Primera propuesta del espacio.").waitFor();
+    await target.evaluate((element) => element.click());
+    await tooltip.waitFor({ state: "detached" });
+  }
+  await page.mouse.move(5, 5);
+  await hint.hover();
+  await tooltip.waitFor();
+  const trigger = page.getByRole("button", { name: "Más opciones para TST-001" });
+  await trigger.evaluate((element) => element.click());
+  const menu = page.getByRole("menu", { name: "Acciones para TST-001" });
+  await menu.waitFor();
+  await tooltip.waitFor({ state: "detached" });
+  // Ni otra descripción ni un botón de otra fila pueden superponerse al menú.
+  await page.getByRole("button", { name: "Ver descripción de Paisajismo de prueba" }).hover();
+  await page.getByRole("button", { name: "Editar TST-002 Diseño interior de prueba" }).hover();
+  assert.equal(await tooltip.count(), 0);
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
+  assert.equal(await tooltip.count(), 0, "Escape no restaura la ayuda del disparador");
+  await hint.hover();
+  await tooltip.getByText("Primera propuesta del espacio.").waitFor();
+  await page.mouse.move(5, 5);
+  await trigger.hover();
+  await tooltip.getByText("Más opciones", { exact: true }).waitFor();
+  await trigger.click();
+  await menu.waitFor();
+  await tooltip.waitFor({ state: "detached" });
+  await page.getByRole("heading", { name: "Servicios y cotizaciones", level: 1 }).click();
+  await menu.waitFor({ state: "detached" });
+  await hint.hover();
+  await tooltip.getByText("Primera propuesta del espacio.").waitFor();
+});
+
+test("footer mixto: destinos reales, cancelar, desactivar y activar con versiones nuevas, sin doble envío", async (context) => {
+  const backend = createBackend(sampleCatalog());
+  backend.delays["PATCH /api/admin/services/:id/status"] = 200;
+  const page = await openTabulator(context, backend);
+  const footer = page.getByLabel("Selección y paginación de servicios");
+  const patches = () => backend.requests.filter((request) => request.method === "PATCH");
+  const selectAll = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
+  await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
+  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
+  assert.equal(await footer.getByRole("button", { name: "Desactivar 1 servicio seleccionado" }).isEnabled(), true);
+  await selectAll.click();
+  await footer.getByText("5 de 5 seleccionados").waitFor();
+  await footer.getByRole("button", { name: "Desactivar 4 servicios seleccionados" }).click();
+  const dialog = page.getByRole("dialog", { name: "¿Deseas desactivar 4 servicios?" });
+  await dialog.getByText(/1 de los 5 seleccionados ya están inactivos/).waitFor();
+  await dialog.getByText(/Cada servicio se procesa por separado/).waitFor();
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(patches().length, 0);
+  await footer.getByRole("button", { name: "Desactivar 4 servicios seleccionados" }).click();
+  // Dos eventos en el mismo turno ejercitan la guarda síncrona, antes del rerender del disabled.
+  await dialog.getByRole("button", { name: "Desactivar", exact: true }).evaluate((element) => { element.click(); element.click(); });
+  await page.getByRole("alert").getByText("4 servicios desactivados", { exact: true }).waitFor();
+  await footer.getByText("0 de 5 seleccionados").waitFor();
+  assert.deepEqual(patches().map((request) => request.path).sort(), [1, 2, 3, 5].map((id) => `/api/admin/services/${id}/status`));
+  for (const request of patches()) assert.deepEqual(request.body, { expectedVersion: 1, isActive: false });
+  assert.equal(backend.items.every((item) => !item.isActive), true);
+
+  await selectAll.click();
+  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
+  await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "¿Deseas activar 5 servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await page.getByRole("alert").getByText("5 servicios activados", { exact: true }).waitFor();
+  await footer.getByText("0 de 5 seleccionados").waitFor();
+  const activationRequests = patches().slice(4);
+  assert.equal(activationRequests.length, 5);
+  for (const request of activationRequests) {
+    assert.deepEqual(request.body, { expectedVersion: request.path.includes("/4/") ? 1 : 2, isActive: true });
+  }
+  await waitFor(() => backend.items.every((item) => item.isActive), "Todos los cambios terminaron");
+  await page.waitForFunction(() => document.querySelector('[aria-label="Indicadores de servicios y cotizaciones"]')?.textContent.includes("Servicios activos5"));
+});
+
+test("masiva parcial: unidad y denominación inactivas, conflicto 409 y fallo 500 conservan motivos y no repiten éxitos", async (context) => {
+  const catalog = sampleCatalog().map((item) => ({ ...item, isActive: false }));
+  catalog[0].measurementUnit = { ...catalog[0].measurementUnit, isActive: false };
+  catalog[1].unitDenomination = { ...catalog[1].unitDenomination, isActive: false };
+  const backend = createBackend(catalog);
+  backend.failures["PATCH /api/admin/services/4/status"] = { status: 500, body: { code: "INTERNAL_ERROR", message: "No se pudo completar el cambio." } };
+  const page = await openTabulator(context, backend);
+  backend.items[2].currentVersion = 8;
+  const header = page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" });
+  const footer = page.getByLabel("Selección y paginación de servicios");
+  await header.click();
+  await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "¿Deseas activar 5 servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
+  const alert = page.getByRole("alert");
+  await alert.getByText("Se activaron 1 de 5 servicios", { exact: true }).waitFor();
+  const message = await alert.innerText();
+  assert.match(message, /Cambios correctos: 1\. Fallidos: 4\./);
+  assert.match(message, /TST-001: No se puede activar: su unidad base está inactiva/);
+  assert.match(message, /TST-002: No se puede activar: su unidad de medida está inactiva/);
+  assert.match(message, /TST-003: Otro administrador modificó este servicio/);
+  assert.match(message, /Y 1 más/);
+  await footer.getByText("0 de 5 seleccionados").waitFor();
+  await rowFor(page, "TST-005").getByText("Activo", { exact: true }).waitFor();
+  assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 5);
+
+  // El usuario vuelve a elegir; el éxito previo se excluye y el 409 usa la versión recargada.
+  delete backend.failures["PATCH /api/admin/services/4/status"];
+  backend.items[0].measurementUnit.isActive = true;
+  backend.items[1].unitDenomination.isActive = true;
+  await header.click();
+  await footer.getByRole("button", { name: "Activar 4 servicios seleccionados" }).click();
+  await page.getByRole("dialog", { name: "¿Deseas activar 4 servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
+  await alert.getByText("4 servicios activados", { exact: true }).waitFor();
+  await footer.getByText("0 de 5 seleccionados").waitFor();
+  const retry = backend.requests.filter((request) => request.method === "PATCH").slice(5);
+  assert.equal(retry.length, 4);
+  assert.equal(retry.some((request) => request.path.includes("/5/")), false);
+  assert.equal(retry.find((request) => request.path.includes("/3/")).body.expectedVersion, 8);
+});
+
+test("menú en límite inferior: abre arriba en portal, cierra con Escape/clic fuera y no bloquea ayudas tras paginar", async (context) => {
+  const items = Array.from({ length: 11 }, (_, index) => service(index + 1, {
+    code: `TST-${String(index + 1).padStart(3, "0")}`, name: `Prueba ${index + 1}`, description: `Descripción ${index + 1}`,
+  }));
+  const page = await openTabulator(context, createBackend(items), { viewport: { width: 1440, height: 600 } });
+  const trigger = page.getByRole("button", { name: "Más opciones para TST-010" });
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.evaluate((element) => {
+    let scroller = element.parentElement;
+    while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /(auto|scroll)/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+    // Sitúa el ancla a 16 px del borde: scrollIntoViewIfNeeded la centraba y sí cabía debajo.
+    scroller.scrollTop += element.getBoundingClientRect().bottom - (window.innerHeight - 16);
+  });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const menu = page.getByRole("menu", { name: "Acciones para TST-010" });
+  await menu.waitFor();
+  const [anchorBox, menuBox] = await Promise.all([trigger.boundingBox(), menu.boundingBox()]);
+  assert.ok(menuBox.y + menuBox.height <= anchorBox.y, JSON.stringify({ anchorBox, menuBox }));
+  assert.ok(menuBox.y >= 0 && menuBox.x + menuBox.width <= 1440);
+  assert.equal(await menu.evaluate((element) => Boolean(element.closest("table"))), false);
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
+  await page.keyboard.press("Enter");
+  await menu.waitFor();
+  await page.getByRole("heading", { name: "Servicios y cotizaciones", level: 1 }).click();
+  await menu.waitFor({ state: "detached" });
+  // Navegar por teclado mientras el menú está abierto desmonta la fila sin su evento de cierre.
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
+  await page.getByRole("button", { name: "Siguiente pág." }).evaluate((element) => element.click());
+  await page.getByText("TST-011", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Ver descripción de Prueba 11" }).hover();
+  await page.getByRole("tooltip").getByText("Descripción 11", { exact: true }).waitFor();
+});
+
 test("responsive: sin desborde de página, tabla con scroll propio y barra según Figma (claro y oscuro)", async (context) => {
   for (const theme of ["light", "dark"]) {
     // Los casos más anchos previstos: código generado de cuatro cifras, tarifa de cuatro cifras
     // enteras con céntimos y «Inactivo». Tarifas mayores se truncan con el valor en `title`.
     const backend = createBackend([...sampleCatalog(), service(1000, { code: "SERV-1000", name: "Servicio de prueba con código largo", rate: "9999.99", isActive: false })]);
     const page = await openTabulator(context, backend, { theme, viewport: { width: 375, height: 812 } });
+    await page.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
     for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000], [1920, 1080]]) {
       await page.setViewportSize({ width, height });
       await page.evaluate(() => document.fonts.ready);
@@ -453,6 +618,10 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
           // oculta recortes de menos de un píxel, que la elipsis sí muestra.
           truncatedCodes: [...document.querySelectorAll("tbody th[scope=row]")].filter(textOverflows).map((cell) => cell.textContent),
           truncatedRates: [...document.querySelectorAll("tbody td:nth-child(6)")].filter(textOverflows).map((cell) => cell.textContent),
+          footerGroups: [...document.querySelector("[data-service-catalog-footer]").children].map((element) => {
+            const box = element.getBoundingClientRect();
+            return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+          }),
         };
       });
       assert.deepEqual([...new Set(layout.overflowingCells)], [], `${theme} ${width}px: celdas desbordadas`);
@@ -470,6 +639,14 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
       if (width >= 1440) assert.equal(layout.addSameRow, true, `${theme} ${width}px: «Añadir servicio» en la fila de la búsqueda`);
       if (width < 768) assert.equal(layout.addFullWidth, true, `${theme} ${width}px: «Añadir servicio» a todo el ancho`);
       assert.notEqual(layout.rowBackground, "rgba(0, 0, 0, 0)");
+      assert.equal(layout.footerGroups.length, 3, "Contador, acciones masivas y paginación");
+      for (const [index, group] of layout.footerGroups.entries()) {
+        assert.ok(group.left >= 0 && group.right <= width, `${theme} ${width}px: grupo fuera del viewport`);
+        for (const next of layout.footerGroups.slice(index + 1)) {
+          assert.ok(group.right <= next.left || next.right <= group.left || group.bottom <= next.top || next.bottom <= group.top,
+            `${theme} ${width}px: grupos del footer superpuestos`);
+        }
+      }
     }
     // Menú de acciones dentro del viewport en móvil.
     await page.setViewportSize({ width: 375, height: 812 });

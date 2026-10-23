@@ -26,7 +26,8 @@ function MenuDivider() {
  * Menú de acciones (patrón "Dropdown button" de Figma) abierto desde un botón de icono.
  * Se monta en un portal para no quedar recortado por drawers con overflow, alinea su borde
  * derecho con el disparador y se abre hacia arriba si no cabe debajo. Gestiona teclado
- * (flechas, Home/End, Tab, Escape), cierre por clic exterior y devolución del foco.
+ * (flechas, Home/End, Tab, Escape), cierre por clic exterior y devolución del foco. Mientras el
+ * menú está abierto, el tooltip del disparador no se muestra para no superponerse a él.
  *
  * @param {Object} props - Acciones, textos accesibles y apariencia del disparador.
  * @param {ActionMenuItem[]} props.items - Acciones disponibles.
@@ -35,6 +36,9 @@ function MenuDivider() {
  * @param {string} [props.title] - Encabezado opcional no interactivo del menú.
  * @param {string} [props.menuLabel] - Nombre accesible del menú; usa `title` o `triggerLabel` por defecto.
  * @param {string} [props.tooltip] - Tooltip del disparador.
+ * @param {boolean} [props.tooltipOpen] - Apertura controlada del tooltip dentro de una tabla.
+ * @param {(open: boolean) => void} [props.onTooltipOpenChange] - Coordina el tooltip con otras capas.
+ * @param {(open: boolean) => void} [props.onOpenChange] - Notifica la apertura y el cierre del menú.
  * @param {boolean} [props.disabled=false] - Desactiva el disparador.
  * @param {string} [props.size="S"] - Tamaño del botón disparador.
  * @param {string} [props.type="Ghost"] - Tipo del botón disparador.
@@ -48,10 +52,13 @@ function ActionMenu({
   items,
   menuLabel,
   menuWidthClassName = "w-[230px]",
+  onOpenChange,
+  onTooltipOpenChange,
   onSelect,
   size = "S",
   title,
   tooltip,
+  tooltipOpen,
   triggerLabel,
   type = "Ghost",
 }) {
@@ -62,6 +69,22 @@ function ActionMenu({
   const focusFirstItemOnOpenRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState(null);
+  const [internalTooltipOpen, setInternalTooltipOpen] = useState(false);
+
+  /** Cambia la capa activa y descarta el tooltip antes de mover el foco al menú o al disparador. */
+  const changeOpen = (nextOpen) => {
+    setInternalTooltipOpen(false);
+    onTooltipOpenChange?.(false);
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
+
+  // Los listeners conservan su suscripción mientras el menú está abierto; leen los callbacks
+  // actuales para no capturar la selección o el estado de otra capa de un render anterior.
+  const changeOpenRef = useRef(changeOpen);
+  useLayoutEffect(() => {
+    changeOpenRef.current = changeOpen;
+  });
 
   useLayoutEffect(() => {
     if (!open) return undefined;
@@ -92,14 +115,19 @@ function ActionMenu({
     let focusFrameId;
     const closeOnOutsidePress = (event) => {
       if (triggerRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) return;
-      setOpen(false);
+      changeOpenRef.current(false);
+      // Si el foco estaba dentro del portal que se desmonta, vuelve al disparador. El pointerdown
+      // conserva después su comportamiento nativo si el usuario pulsó otro control enfocable.
+      if (menuRef.current?.contains(document.activeElement)) {
+        triggerRef.current?.querySelector("button")?.focus();
+      }
     };
     const closeOnEscape = (event) => {
       if (event.key !== "Escape") return;
       // Evita que el Escape también cierre la capa contenedora (drawer o modal),
       // cuyos listeners están en window y reciben el evento después de document.
       event.stopPropagation();
-      setOpen(false);
+      changeOpenRef.current(false);
       triggerRef.current?.querySelector("button")?.focus();
     };
 
@@ -121,20 +149,20 @@ function ActionMenu({
 
   const toggleMenu = (event) => {
     focusFirstItemOnOpenRef.current = event.detail === 0;
-    setOpen((current) => !current);
+    changeOpen(!open);
   };
 
   // Devuelve el foco al disparador antes de notificar, como el patrón WAI-ARIA de menu button;
   // así un diálogo abierto por la acción lo captura y lo restaura al cerrarse.
   const selectItem = (item) => {
-    setOpen(false);
+    changeOpen(false);
     triggerRef.current?.querySelector("button")?.focus();
     onSelect(item);
   };
 
   const handleMenuKeyDown = (event) => {
     if (event.key === "Tab") {
-      setOpen(false);
+      changeOpen(false);
       return;
     }
     const enabledItems = [...menuRef.current.querySelectorAll('[role="menuitem"]:not([disabled])')];
@@ -163,6 +191,12 @@ function ActionMenu({
           showRightIcon={false}
           disabled={disabled}
           tooltip={tooltip}
+          tooltipOpen={!open && (tooltipOpen ?? internalTooltipOpen)}
+          onTooltipOpenChange={(nextOpen) => {
+            if (nextOpen && open) return;
+            setInternalTooltipOpen(nextOpen);
+            onTooltipOpenChange?.(nextOpen);
+          }}
           aria-label={triggerLabel}
           aria-haspopup="menu"
           aria-expanded={open}

@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 
 import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
-import Button from "../../../components/ui/Button/Button.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
+import ServiceCatalogFooter from "./components/ServiceCatalogFooter.jsx";
 import ServiceCatalogTable from "./components/ServiceCatalogTable.jsx";
 import ServiceFormDialog from "./components/ServiceFormDialog.jsx";
 import ServiceCatalogToolbar from "./components/ServiceCatalogToolbar.jsx";
@@ -11,14 +11,17 @@ import ServiceStatusModal from "./components/ServiceStatusModal.jsx";
 import { useMeasurementUnitBaseOptions } from "../measurement-units/hooks/useMeasurementUnitBaseOptions.js";
 import { useAlertFeedback } from "./hooks/useAlertFeedback.js";
 import { usePageSelection } from "./hooks/usePageSelection.js";
+import { useServiceBulkStatusActions } from "./hooks/useServiceBulkStatusActions.js";
 import { SERVICE_CATALOG_PAGE_SIZE, useServiceCatalogList } from "./hooks/useServiceCatalogList.js";
 import { useServiceStatusActions } from "./hooks/useServiceStatusActions.js";
+import { useServiceTableOverlays } from "./hooks/useServiceTableOverlays.js";
 import { buildUnitFilterItems } from "./utils/serviceCatalogPresentation.js";
 
 /**
  * Pestaña «Tabulador de servicios» del módulo (Figma 5790:332031): búsqueda y filtros en la API,
  * tabla con selección de la página visible, descripción en tooltip, activación y desactivación
- * individual y paginación Anterior/Siguiente por cursor. Las filas son los servicios reales del
+ * individual (menú de la fila) o de los seleccionados (pie, Figma 5790:351653) y paginación
+ * Anterior/Siguiente por cursor. Las filas son los servicios reales del
  * backend; sin servicios se muestra el estado vacío. «Añadir servicio» y «Editar» abren el mismo
  * formulario (ServiceFormDialog); guardar recarga el listado y los indicadores.
  *
@@ -42,6 +45,16 @@ function ServiceCatalogPanel({ summary }) {
     reload: list.reload,
     replaceItem: list.replaceItem,
   });
+  const bulk = useServiceBulkStatusActions({
+    items,
+    notify: feedback.notify,
+    onCatalogChanged: summary.reload,
+    reload: list.reload,
+    selection,
+  });
+  // Un cambio de estado (individual o masivo) bloquea las demás acciones y la selección hasta terminar.
+  const statusBusy = status.submitting || bulk.submitting;
+  const overlays = useServiceTableOverlays(Boolean(statusBusy || status.pending || bulk.pending || formRequest || loading), list.pageKey);
   const unitItems = useMemo(() => buildUnitFilterItems(summary.services), [summary.services]);
   const alert = feedback.value;
 
@@ -94,7 +107,8 @@ function ServiceCatalogPanel({ summary }) {
       <ServiceCatalogTable
         items={items}
         selection={selection}
-        actionsDisabled={status.submitting}
+        overlays={overlays}
+        actionsDisabled={statusBusy}
         onEdit={(service) => setFormRequest({ mode: "edit", serviceId: service.id })}
         onStatusChange={status.request}
       />
@@ -148,15 +162,14 @@ function ServiceCatalogPanel({ summary }) {
       {content}
 
       {!loading && !error && (items.length || pagination.hasPrevious) ? (
-        <footer className="flex flex-wrap items-center justify-between gap-[12px]" aria-label="Selección y paginación de servicios">
-          <span className="text-heading-8 text-[var(--color-text-300)]" aria-live="polite">
-            {selection.selectedCount} de {items.length} seleccionados
-          </span>
-          <nav className="flex items-center gap-[8px]" aria-label="Paginación de servicios">
-            <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasPrevious} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
-            <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasNext} onClick={pagination.next}>Siguiente pág.</Button>
-          </nav>
-        </footer>
+        <ServiceCatalogFooter
+          selectedCount={selection.selectedCount}
+          total={items.length}
+          targets={bulk.targets}
+          busy={statusBusy}
+          onStatusRequest={(isActive) => { overlays.dismiss(); bulk.request(isActive); }}
+          pagination={pagination}
+        />
       ) : null}
 
       {formRequest ? (
@@ -176,10 +189,10 @@ function ServiceCatalogPanel({ summary }) {
         />
       ) : null}
       <ServiceStatusModal
-        change={status.pending}
-        submitting={status.submitting}
-        onCancel={status.cancel}
-        onConfirm={status.confirm}
+        change={status.pending ?? bulk.pending}
+        submitting={statusBusy}
+        onCancel={status.pending ? status.cancel : bulk.cancel}
+        onConfirm={status.pending ? status.confirm : bulk.confirm}
       />
       <AlertToast
         trigger={alert}

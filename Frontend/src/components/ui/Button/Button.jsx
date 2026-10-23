@@ -27,6 +27,9 @@ function Button({
   style,
   tooltip,
   tooltipPosition = "Top center",
+  // Opcionales: permiten coordinar las capas de una tabla sin desactivar los tooltips globales.
+  tooltipOpen,
+  onTooltipOpenChange,
   "aria-label": ariaLabel,
   ...props
 }) {
@@ -124,6 +127,8 @@ function Button({
       showTip
       text={tooltipText}
       tipPosition={tooltipPosition}
+      open={tooltipOpen}
+      onOpenChange={onTooltipOpenChange}
     >
       {button}
     </Tooltip>

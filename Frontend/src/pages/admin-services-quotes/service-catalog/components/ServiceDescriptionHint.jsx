@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { InfoCircleIcon } from "../../../../components/ui/Label/LabelIcons.jsx";
 import Tooltip from "../../../../components/ui/Tooltip/Tooltip.jsx";
@@ -16,19 +16,20 @@ import Tooltip from "../../../../components/ui/Tooltip/Tooltip.jsx";
  * @param {Object} props - Servicio descrito.
  * @param {string} props.serviceName - Nombre del servicio, para el nombre accesible.
  * @param {string} props.description - Descripción no vacía.
+ * @param {boolean} props.open - Ayuda activa según la coordinación de la tabla.
+ * @param {(open: boolean) => void} props.onOpenChange - Solicita abrir o cerrar la ayuda.
  * @returns {import("react").ReactElement} Botón informativo con su tooltip.
  */
-function ServiceDescriptionHint({ description, serviceName }) {
-  const [open, setOpen] = useState(false);
+function ServiceDescriptionHint({ description, onOpenChange, open, serviceName }) {
   const buttonRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") onOpenChange(false);
     };
     const closeOnOutsidePress = (event) => {
-      if (!buttonRef.current?.contains(event.target)) setOpen(false);
+      if (!buttonRef.current?.contains(event.target)) onOpenChange(false);
     };
     document.addEventListener("keydown", closeOnEscape);
     document.addEventListener("pointerdown", closeOnOutsidePress, true);
@@ -36,7 +37,7 @@ function ServiceDescriptionHint({ description, serviceName }) {
       document.removeEventListener("keydown", closeOnEscape);
       document.removeEventListener("pointerdown", closeOnOutsidePress, true);
     };
-  }, [open]);
+  }, [onOpenChange, open]);
 
   return (
     <Tooltip
@@ -45,7 +46,7 @@ function ServiceDescriptionHint({ description, serviceName }) {
       showTip
       tipPosition="Top center"
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
       text={description}
       className="max-w-[min(224px,calc(100vw-16px))]"
     >
@@ -56,7 +57,7 @@ function ServiceDescriptionHint({ description, serviceName }) {
         aria-expanded={open}
         data-service-description-hint
         className="inline-flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--color-neutral-400)] transition-colors hover:text-[var(--color-text-100)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]"
-        onClick={() => setOpen(true)}
+        onClick={() => onOpenChange(true)}
       >
         <InfoCircleIcon className="size-[15px]" />
       </button>
