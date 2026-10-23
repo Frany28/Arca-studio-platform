@@ -153,6 +153,7 @@ function MeasurementUnitsPanel() {
       <AlertToast
         trigger={feedback}
         title={feedback?.title || "Unidad de medida"}
+        content={feedback?.content}
         description={feedback?.message || ""}
         theme={feedback?.tone === "danger" ? "Danger" : "Success"}
         aria-label={feedback?.tone === "danger" ? "Error en unidades de medida" : "Unidades de medida actualizadas"}

@@ -12,6 +12,7 @@ import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
 import { SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../src/config/serviceCatalogTable.js";
 import { LONG_DESCRIPTION, createServiceCatalogBackend as createBackend, sampleCatalog, service } from "../helpers/serviceCatalogBackend.js";
+import { observeStatusDialog } from "../helpers/statusConfirmationDialog.js";
 
 // Tabulador de servicios (Figma 5790:332031) contra un backend simulado con estado. Los servicios
 // son datos de prueba con la forma del contrato: nunca se usan Supabase ni el catálogo comercial.
@@ -931,38 +932,7 @@ test("confirmación Servicios: overlay cancela y la operación en curso bloquea 
   assert.equal(backend.requests.filter((request) => request.method === "PATCH").length, 1);
 });
 
-/**
- * Observa en el navegador el ciclo de vida del diálogo de estado: montajes y desmontajes de su
- * portal, instancias simultáneas, animaciones de entrada (scale-[0.985] → scale-100) y cada
- * título, icono y etiqueta principal mostrados, también durante la animación de salida.
- *
- * @param {import("playwright").Page} page - Página del tabulador.
- * @returns {Promise<() => Promise<Object>>} Lectura del registro acumulado.
- */
-async function observeStatusDialog(page) {
-  await page.evaluate(() => {
-    const log = { mounts: 0, unmounts: 0, entries: 0, maxInstances: 0, titles: [], icons: [], labels: [] };
-    const isDialog = (node) => node.nodeType === 1 && node.matches("[data-service-status-modal]");
-    const pushChange = (list, value) => {
-      if (value && list.at(-1) !== value) list.push(value);
-    };
-    new MutationObserver((records) => {
-      for (const record of records) {
-        log.mounts += [...record.addedNodes].filter(isDialog).length;
-        log.unmounts += [...record.removedNodes].filter(isDialog).length;
-        if (record.type === "attributes" && record.target.classList.contains("scale-100") && record.oldValue?.includes("scale-[0.985]")) log.entries += 1;
-      }
-      const dialogs = document.querySelectorAll("[data-service-status-modal]");
-      log.maxInstances = Math.max(log.maxInstances, dialogs.length);
-      if (!dialogs[0]) return;
-      pushChange(log.titles, dialogs[0].querySelector("[id$='-title']")?.textContent);
-      pushChange(log.icons, dialogs[0].querySelector("[data-service-status-icon]")?.dataset.serviceStatusIcon);
-      pushChange(log.labels, [...dialogs[0].querySelectorAll("button")].at(-1)?.textContent.trim());
-    }).observe(document.body, { attributeFilter: ["class"], attributeOldValue: true, attributes: true, characterData: true, childList: true, subtree: true });
-    window.__serviceStatusDialogLog = log;
-  });
-  return () => page.evaluate(() => structuredClone(window.__serviceStatusDialogLog));
-}
+const observeServiceDialog = (page) => observeStatusDialog(page, { dialogAttribute: "data-service-status-modal", iconAttribute: "data-service-status-icon" });
 
 for (const scenario of [
   { label: "individual activar (claro, escritorio)", bulk: false, activating: true, theme: "light", viewport: { width: 1440, height: 1000 } },
@@ -977,7 +947,7 @@ for (const scenario of [
       code, name: `Servicio de prueba ${index + 1}`, isActive: !activating,
     })));
     const page = await openTabulator(context, backend, { theme: scenario.theme, viewport: scenario.viewport });
-    const readLog = await observeStatusDialog(page);
+    const readLog = await observeServiceDialog(page);
     const action = activating ? "Activar" : "Desactivar";
     const title = `¿${action} ${bulk ? "servicios" : "servicio"}?`;
     for (let id = 1; id <= codes.length; id += 1) backend.delays[`PATCH /api/admin/services/${id}/status`] = 600;
@@ -1026,7 +996,7 @@ for (const scenario of [
 test("ciclo del diálogo: cancelar y errores de API (500, 409) cierran una vez, sin aviso de éxito ni mensajes duplicados", async (context) => {
   const backend = createBackend(sampleCatalog());
   const page = await openTabulator(context, backend);
-  const readLog = await observeStatusDialog(page);
+  const readLog = await observeServiceDialog(page);
   const openDeactivation = async () => {
     await page.getByRole("button", { name: "Más opciones para TST-001", exact: true }).click();
     await page.getByRole("menuitem", { name: "Desactivar", exact: true }).click();

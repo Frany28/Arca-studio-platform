@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 
 import { api } from "../../../../api/http.js";
-import { getMeasurementUnitErrorFeedback } from "../utils/measurementUnitErrors.js";
+import { describeMeasurementUnitError } from "../utils/measurementUnitErrors.js";
+import { describeMeasurementUnitSuccess } from "../utils/measurementUnitFeedback.js";
 
 /**
  * Coordina las mutaciones de unidades de medida y su retroalimentación: abrir el formulario de
@@ -25,13 +26,11 @@ export function useMeasurementUnitActions({ reload, reloadFromStart, replaceItem
   /**
    * Publica un aviso con un identificador nuevo para que AlertToast lo vuelva a mostrar.
    *
-   * @param {"success"|"danger"} tone - Tono del aviso.
-   * @param {string} title - Título.
-   * @param {string} message - Descripción.
+   * @param {{tone: "success"|"danger", title: string, message: string, content?: string}} result - Aviso.
    * @returns {void}
    */
-  function notify(tone, title, message) {
-    setFeedback({ id: Date.now(), message, title, tone });
+  function notify({ content, message, title, tone }) {
+    setFeedback({ id: Date.now(), content, message, title, tone });
   }
 
   /**
@@ -55,18 +54,18 @@ export function useMeasurementUnitActions({ reload, reloadFromStart, replaceItem
       setForm(null);
       if (editing) {
         if (saved) replaceItem(saved);
-        notify("success", response?.changed === false ? "Sin cambios" : "Unidad actualizada", saved ? `${saved.publicCode} · ${saved.label}` : "");
+        notify(describeMeasurementUnitSuccess(response?.changed === false ? "unchanged" : "update", saved));
       } else {
         reloadFromStart();
-        notify("success", "Unidad creada", saved ? `${saved.publicCode} · ${saved.label}` : "");
+        notify(describeMeasurementUnitSuccess("create", saved));
       }
       return { ok: true };
     } catch (error) {
-      const result = getMeasurementUnitErrorFeedback(error, editing ? "No se pudo actualizar la unidad." : "No se pudo crear la unidad.");
+      const result = describeMeasurementUnitError(error, editing ? "update" : "create");
       if (result.shouldReload) {
         setForm(null);
         reload();
-        notify("danger", "No se pudo guardar", result.message);
+        notify({ tone: "danger", title: result.title, message: result.message });
       } else if (result.baseUnitLocked) {
         // El formulario sigue abierto; la fila recargada ya no ofrecerá cambiar la base.
         reload();
@@ -91,11 +90,11 @@ export function useMeasurementUnitActions({ reload, reloadFromStart, replaceItem
     try {
       const response = await api.measurementUnits.changeDenominationStatus({ denominationId: denomination.id, isActive });
       if (response?.unitDenomination) replaceItem(response.unitDenomination);
-      notify("success", isActive ? "Unidad activada" : "Unidad desactivada", `${denomination.publicCode} · ${denomination.label}`);
+      notify(describeMeasurementUnitSuccess(isActive ? "activate" : "deactivate", response?.unitDenomination ?? denomination));
     } catch (error) {
-      const result = getMeasurementUnitErrorFeedback(error, "No se pudo cambiar el estado de la unidad.");
+      const result = describeMeasurementUnitError(error, isActive ? "activate" : "deactivate");
       if (result.shouldReload) reload();
-      notify("danger", isActive ? "No se pudo activar" : "No se pudo desactivar", result.message);
+      notify({ tone: "danger", title: result.title, message: result.message });
     } finally {
       busyRef.current = false;
       setStatusSubmitting(false);

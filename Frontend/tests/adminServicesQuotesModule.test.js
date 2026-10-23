@@ -114,7 +114,7 @@ test("errores: 400 por campo, duplicado sobre el texto, 401/403/404/429 comprens
   assert.equal(validation.message, "Revisa los datos marcados.");
 
   const duplicate = getMeasurementUnitErrorFeedback({ status: 409, code: "MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS", message: "Ya existe una denominación equivalente para esa unidad de medida." }, "x");
-  assert.deepEqual(duplicate.fieldErrors, { denomination: "Ya existe una denominación equivalente para esa unidad de medida." });
+  assert.deepEqual(duplicate.fieldErrors, { denomination: "Ya hay una denominación equivalente para la unidad base seleccionada" });
 
   const inUse = getMeasurementUnitErrorFeedback({ status: 409, code: "MEASUREMENT_UNIT_IN_USE", message: "La denominación está asignada a 2 servicio(s) activo(s)." }, "x");
   assert.equal(inUse.message, "La denominación está asignada a 2 servicio(s) activo(s).");

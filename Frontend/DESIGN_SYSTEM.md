@@ -163,6 +163,7 @@ el outline profundiza el verde en claro mezclándolo con el neutral oscuro exist
 descripción. Se limita a dos líneas con el texto completo accesible mediante `Tooltip` (hover,
 foco y pulsación larga táctil); la consecuencia permanece visible. Textos y códigos sin espacios se envuelven
 sin desbordar el ancho disponible. La altura se adapta al contenido.
+Sin descripción (por ejemplo, título y contenido), `AlertToast` no reserva un párrafo vacío.
 El autoocultado se pausa mientras el aviso contiene el foco o el puntero, y concede otro
 intervalo completo al salir. El botón de cierre mantiene su funcionamiento durante la consulta.
 
@@ -606,7 +607,8 @@ Validación, capturas y diferencias respecto a Figma:
     cambiar de página invalida también las capas pertenecientes a las filas desmontadas.
   - Desactivar y activar desde «Más opciones» conserva su funcionamiento individual y comparte la
     comprobación previa de estado, versión y referencias. Tanto esta acción como la masiva usan
-    `ServiceStatusModal`, reutilizando el patrón de `Modal` de Figma `3727:686871` (retiro de
+    `ServiceStatusModal`, que adapta la confirmación compartida `StatusConfirmationModal`
+    (`admin-services-quotes/components`, también usada por Unidades), reutilizando el patrón de `Modal` de Figma `3727:686871` (retiro de
     responsables): máximo 400 px, centrado, radio de 12 px, icono superior de 20 px dentro de
     `IconContainer` M Outline, padding/gap de 16 px, título h6, descripción b3 y footer separado
     por borde con dos botones iguales de 41 px. Activar usa `TickCircle` con `success-200` y
@@ -684,7 +686,8 @@ Validación, capturas y diferencias respecto a Figma:
       con un duplicado y conservan lo escrito.
     - Cancelar: Figma no lo dibuja; Escape en la fila (solo cierra la fila, no el modal) y un enlace
       discreto «Cancelar» bajo ella. El foco vuelve a «+ Crear unidad». Nada se escribe.
-    - Crear la unidad muestra la alerta de éxito compartida del tabulador («Unidad creada»),
+    - Crear la unidad muestra el mismo aviso que el alta en Unidades («Unidad creada correctamente»,
+      código y nombre de la API y «Ya está disponible para asignarla a servicios»),
       sin añadir una descripción bajo el campo. El modal permanece abierto y crear el servicio
       después muestra su propia alerta «Servicio creado».
     - El módulo de Unidades conserva su propio `MeasurementUnitFormModal`.
@@ -703,6 +706,20 @@ Validación, capturas y diferencias respecto a Figma:
   Editar y Desactivar se bloquean cuando `activeServiceCount > 0`. El menú muestra únicamente
   «Desactivar» deshabilitado, sin el encabezado «En uso por…»; Editar conserva su motivo accesible.
   El backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.
+- Confirmación de estado: `MeasurementUnitStatusModal` adapta `StatusConfirmationModal`, la misma
+  de Servicios (variantes Success/Danger, «Confirmando...», bloqueo y salida sin repintar otra
+  variante). Títulos «¿Activar/Desactivar unidad de medida?»; desactivar explica que «dejará de
+  estar disponible para nuevas asignaciones. Podrás activarla nuevamente» y activar que «volverá a
+  estar disponible». Bajo la descripción, discreto (`text-50`) y envolviendo códigos largos, va
+  «código público · nombre». La estructura y el padding de su `Modal` no cambian.
+- Avisos (`utils/measurementUnitFeedback.js`): título «Unidad creada/actualizada/activada/
+  desactivada correctamente», contenido con el código y el nombre devueltos por la API y la
+  consecuencia («Ya está disponible para asignarla a servicios», «Vuelve a estar disponible…» o
+  «Ya no está disponible para nuevas asignaciones»; la edición no lleva descripción). Los errores
+  (`describeMeasurementUnitError`) usan Danger con el título de la operación fallida y el motivo
+  del código real: `IN_USE` → «Está siendo utilizada por servicios activos», unicidad →
+  «Esta unidad ya existe», concurrencia/conflictos → «La información cambió…», red → «No se pudo
+  completar la operación». En el formulario el error sigue junto al campo, sin aviso duplicado.
 - El listado de abreviaturas comparte con el selector de país la carcasa, filas, ScrollBar y
   estados (`Input/options/`): tres filas de 35 px, Body/b4, `neutral-200` al seleccionar o con
   hover y anillo `primary-10` con teclado. Se abre como extensión del segmento `m²` (mismo

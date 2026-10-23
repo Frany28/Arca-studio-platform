@@ -122,7 +122,8 @@ function AlertToast({
         content={content}
         description={resolvedDescription}
         showIcon
-        showText
+        // Un aviso sin descripción (p. ej. solo título y contenido) no reserva un párrafo vacío.
+        showText={Boolean(resolvedDescription)}
         showActions={showActions}
         showCloseButton
         secondaryActionLabel={secondaryActionLabel}

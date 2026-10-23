@@ -66,6 +66,17 @@ export function getInUseReason(denomination) {
   return `En uso por ${count} servicio${count === 1 ? "" : "s"} activo${count === 1 ? "" : "s"}`;
 }
 
+/**
+ * Identifica una unidad de medida con los datos del backend: código público generado («UNID-001»)
+ * y nombre compuesto («m² de construcción»). Lo comparten la confirmación de estado y los avisos.
+ *
+ * @param {{publicCode?: string, label?: string}|null|undefined} denomination - Unidad de la API.
+ * @returns {string} «Código · nombre», solo el dato disponible o cadena vacía.
+ */
+export function formatMeasurementUnitIdentity(denomination) {
+  return [denomination?.publicCode, denomination?.label].filter(Boolean).join(" · ");
+}
+
 // Motivo visible cuando la abreviatura de una unidad existente está bloqueada en la edición.
 export const BASE_UNIT_LOCKED_REASON = "La abreviatura no se puede cambiar porque esta unidad ya se usa en servicios o en su historial.";
 

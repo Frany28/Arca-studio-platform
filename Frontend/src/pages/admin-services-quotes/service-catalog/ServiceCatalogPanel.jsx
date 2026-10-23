@@ -15,6 +15,7 @@ import { useServiceBulkStatusActions } from "./hooks/useServiceBulkStatusActions
 import { SERVICE_CATALOG_PAGE_SIZE, useServiceCatalogList } from "./hooks/useServiceCatalogList.js";
 import { useServiceStatusActions } from "./hooks/useServiceStatusActions.js";
 import { useServiceTableOverlays } from "./hooks/useServiceTableOverlays.js";
+import { describeMeasurementUnitSuccess } from "../measurement-units/utils/measurementUnitFeedback.js";
 import { buildUnitFilterItems } from "./utils/serviceCatalogPresentation.js";
 
 /**
@@ -181,7 +182,11 @@ function ServiceCatalogPanel({ summary }) {
           serviceId={formRequest.serviceId}
           onClose={() => setFormRequest(null)}
           onSaved={handleSaved}
-          onUnitCreated={(unit) => feedback.notify("success", "Unidad creada", unit.label ?? unit.denomination)}
+          onUnitCreated={(unit) => {
+            // Mismo aviso que el alta desde Unidades: código público y nombre devueltos por la API.
+            const result = describeMeasurementUnitSuccess("create", unit);
+            feedback.notify(result.tone, result.title, result.message, result.content);
+          }}
           onStale={list.reload}
           onNotFound={(message) => {
             setFormRequest(null);

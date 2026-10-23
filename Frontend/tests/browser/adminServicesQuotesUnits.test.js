@@ -8,6 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
+import { observeStatusDialog, readStatusDialogPalette } from "../helpers/statusConfirmationDialog.js";
 
 // Módulo «Servicios y cotizaciones» (Figma 5790:339391, 5771:487550, 5790:359521) contra un
 // backend simulado con estado: nunca se usan Supabase ni datos reales.
@@ -102,13 +103,15 @@ function createBackend(initial) {
     const path = url.pathname;
     const body = request.postData() ? JSON.parse(request.postData()) : null;
     state.requests.push({ method, path, search: url.search, body });
-    const failure = state.failures[`${method} ${path.replace(/\d+/g, ":id")}`];
-    const delay = state.delays[url.searchParams.get("search") ?? ""];
+    const operation = `${method} ${path.replace(/\d+/g, ":id")}`;
+    const failure = state.failures[operation];
+    const delay = state.delays[operation] ?? state.delays[url.searchParams.get("search") ?? ""];
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
 
     if (path === "/api/auth/me") return json(route, 200, { user: { id: 1, firstName: "Ana", lastName: "Admin", email: "ana@example.test", role: "admin", status: "active" } });
     if (path === "/api/projects") return json(route, 200, { projects: [], nextCursor: null });
-    if (failure) return json(route, failure.status, failure.body);
+    // `abort` simula un fallo de red: fetch rechaza sin respuesta HTTP.
+    if (failure) return failure.abort ? route.abort("failed") : json(route, failure.status, failure.body);
     if (path === "/api/admin/services") return json(route, 200, { services: SERVICES, nextCursor: null });
     if (path === "/api/admin/measurement-units") return json(route, 200, { measurementUnits: state.baseUnits });
     // Gestión de usuarios: solo para abrir el selector telefónico de referencia del modal «Nuevo usuario».
@@ -422,7 +425,7 @@ test("alta: un duplicado 409 marca el campo, conserva lo escrito y no cierra el 
   const text = dialog.getByRole("textbox", { name: "Nombre de la unidad" });
   await text.fill("DE CONSTRUCCIÓN");
   await dialog.getByRole("button", { name: "Crear" }).click();
-  await dialog.getByText("Ya existe una denominación equivalente para esa unidad de medida.").waitFor();
+  await dialog.getByText("Ya hay una denominación equivalente para la unidad base seleccionada", { exact: true }).waitFor();
   assert.equal(await text.inputValue(), "DE CONSTRUCCIÓN");
   assert.equal(await text.getAttribute("aria-invalid"), "true");
   assert.equal(await dialog.getByRole("button", { name: "Crear" }).isEnabled(), true);
@@ -577,7 +580,7 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
 
   await page.getByRole("button", { name: "Más opciones para UNID-001" }).click();
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
-  const confirm = page.getByRole("dialog", { name: "¿Deseas desactivar la unidad de medida?" });
+  const confirm = page.getByRole("dialog", { name: "¿Desactivar unidad de medida?" });
   await confirm.waitFor();
   await confirm.getByRole("button", { name: "Desactivar" }).click();
   await page.locator("tbody tr", { hasText: "UNID-001" }).getByText("Inactiva", { exact: true }).waitFor();
@@ -586,7 +589,7 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
   // Una unidad inactiva ofrece Activar.
   await page.getByRole("button", { name: "Más opciones para UNID-001" }).click();
   await page.getByRole("menuitem", { name: "Activar" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas activar la unidad de medida?" }).getByRole("button", { name: "Activar" }).click();
+  await page.getByRole("dialog", { name: "¿Activar unidad de medida?" }).getByRole("button", { name: "Activar" }).click();
   await page.waitForFunction(() => !document.querySelector("tbody tr")?.textContent?.includes("Inactiva"));
 
   // En uso: solo se muestra la opción deshabilitada, sin encabezado informativo.
@@ -601,7 +604,7 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
   };
   await page.getByRole("button", { name: "Más opciones para UNID-001" }).click();
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas desactivar la unidad de medida?" }).getByRole("button", { name: "Desactivar" }).click();
+  await page.getByRole("dialog", { name: "¿Desactivar unidad de medida?" }).getByRole("button", { name: "Desactivar" }).click();
   await page.getByText("Realizaste demasiados cambios en poco tiempo. Espera unos minutos e inténtalo de nuevo.").waitFor();
   backend.failures["PATCH /api/admin/measurement-unit-denominations/:id/status"] = {
     status: 409,
@@ -609,10 +612,198 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
   };
   await page.getByRole("button", { name: "Más opciones para UNID-001" }).click();
   await page.getByRole("menuitem", { name: "Desactivar" }).click();
-  await page.getByRole("dialog", { name: "¿Deseas desactivar la unidad de medida?" }).getByRole("button", { name: "Desactivar" }).click();
-  await page.getByText(/asignada a 1 servicio\(s\) activo\(s\)/).waitFor();
+  await page.getByRole("dialog", { name: "¿Desactivar unidad de medida?" }).getByRole("button", { name: "Desactivar" }).click();
+  // El 409 IN_USE se traduce con su motivo real, sin presentarlo como duplicado.
+  await page.getByRole("alert").getByText("No se pudo desactivar la unidad", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Está siendo utilizada por servicios activos", { exact: true }).waitFor();
   // Ninguna llamada de eliminación física.
   assert.equal(backend.requests.some((request) => request.method === "DELETE"), false);
+});
+
+const UNIT_DIALOG = { dialogAttribute: "data-measurement-unit-status-modal", iconAttribute: "data-measurement-unit-status-icon" };
+const STATUS_PATCH = "PATCH /api/admin/measurement-unit-denominations/:id/status";
+const SUCCESS_NODE = "2068:22275";
+const DANGER_NODE = "2068:22253";
+
+/**
+ * Abre la confirmación de estado de una unidad desde su menú «Más opciones» y espera su entrada.
+ *
+ * @param {import("playwright").Page} page - Página del módulo.
+ * @param {string} code - Código público de la fila.
+ * @param {"Activar"|"Desactivar"} action - Acción del menú.
+ * @returns {Promise<import("playwright").Locator>} Diálogo visible.
+ */
+async function openUnitStatusDialog(page, code, action) {
+  await page.getByRole("button", { name: `Más opciones para ${code}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: action, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: `¿${action} unidad de medida?`, exact: true });
+  await dialog.waitFor();
+  await dialog.evaluate(async (element) => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.allSettled(element.getAnimations({ subtree: true }).map((animation) => animation.finished));
+  });
+  return dialog;
+}
+
+/**
+ * Cierra el aviso visible con su botón y espera a que se desmonte.
+ *
+ * @param {import("playwright").Page} page - Página del módulo.
+ * @returns {Promise<void>}
+ */
+async function closeAlert(page) {
+  const alert = page.getByRole("alert");
+  await alert.getByRole("button", { name: "Cerrar alerta", exact: true }).click();
+  await alert.waitFor({ state: "detached" });
+}
+
+for (const variant of [
+  { label: "claro, escritorio", theme: "light", viewport: { width: 1440, height: 1000 } },
+  { label: "oscuro, móvil", theme: "dark", viewport: { width: 375, height: 812 } },
+]) {
+  test(`estado unificado con Servicios (${variant.label}): variantes, identidad larga, carga, un cierre y avisos reales`, async (context) => {
+    const code = "UNID-0000000000123456789";
+    const text = "de supervisión técnica extendida para obras de restauración patrimonial";
+    const backend = createBackend([denomination(1, 1, text, { publicCode: code })]);
+    const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", theme: variant.theme, viewport: variant.viewport });
+    await page.getByText(code, { exact: true }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+    const readLog = await observeStatusDialog(page, UNIT_DIALOG);
+    const identity = `${code} · m² ${text}`;
+    const patches = () => backend.requests.filter((request) => request.method === "PATCH");
+    backend.delays[STATUS_PATCH] = 600;
+
+    // Desactivar: variante Danger, textos de Unidades e identidad discreta que no desborda.
+    let dialog = await openUnitStatusDialog(page, code, "Desactivar");
+    await dialog.getByText("Esta unidad dejará de estar disponible para nuevas asignaciones. Podrás activarla nuevamente").waitFor();
+    const detail = dialog.locator("[data-status-confirmation-detail]");
+    assert.equal(await detail.innerText(), identity);
+    assert.equal(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth), true, "El código largo se envuelve");
+    assert.doesNotMatch(await dialog.innerText(), /elimina/i);
+    let palette = await readStatusDialogPalette(dialog, UNIT_DIALOG.iconAttribute, false);
+    assert.deepEqual([palette.icon, palette.iconColor, palette.buttonColor, palette.cancelColor, palette.cancelBorder],
+      ["deactivate", palette.expectedMain, palette.expectedMain, palette.expectedCancel, palette.expectedCancel]);
+    // Cancelar no envía nada.
+    await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(patches().length, 0);
+
+    dialog = await openUnitStatusDialog(page, code, "Desactivar");
+    await dialog.getByRole("button", { name: "Desactivar", exact: true }).dblclick();
+    await dialog.getByRole("button", { name: "Confirmando...", exact: true }).waitFor();
+    assert.equal(await dialog.getAttribute("aria-busy"), "true");
+    for (const button of await dialog.getByRole("button").all()) assert.equal(await button.isDisabled(), true);
+    assert.equal(await page.getByRole("alert").count(), 0, "Sin aviso antes de la respuesta de la API");
+    let alert = page.getByRole("alert");
+    await alert.getByText("Unidad desactivada correctamente", { exact: true }).waitFor();
+    await alert.getByText(identity, { exact: true }).waitFor();
+    await alert.getByText("Ya no está disponible para nuevas asignaciones", { exact: true }).waitFor();
+    assert.equal(await alert.getAttribute("data-node-id"), SUCCESS_NODE);
+    await page.locator(`[${UNIT_DIALOG.dialogAttribute}]`).waitFor({ state: "detached" });
+    assert.equal(patches().length, 1, "Un doble clic envía un solo cambio");
+    await page.locator("tbody tr", { hasText: code }).getByText("Inactiva", { exact: true }).waitFor();
+    await closeAlert(page);
+
+    // Activar: variante Success, sin colores destructivos.
+    dialog = await openUnitStatusDialog(page, code, "Activar");
+    await dialog.getByText("Esta unidad volverá a estar disponible para nuevas asignaciones").waitFor();
+    palette = await readStatusDialogPalette(dialog, UNIT_DIALOG.iconAttribute, true);
+    assert.deepEqual([palette.icon, palette.iconColor, palette.buttonColor, palette.cancelColor, palette.cancelBorder],
+      ["activate", palette.expectedMain, palette.expectedMain, palette.expectedCancel, palette.expectedCancel]);
+    await dialog.getByRole("button", { name: "Activar", exact: true }).click();
+    alert = page.getByRole("alert");
+    await alert.getByText("Unidad activada correctamente", { exact: true }).waitFor();
+    await alert.getByText("Vuelve a estar disponible para nuevas asignaciones", { exact: true }).waitFor();
+    await page.locator(`[${UNIT_DIALOG.dialogAttribute}]`).waitFor({ state: "detached" });
+    assert.deepEqual(patches().map((request) => request.body), [{ isActive: false }, { isActive: true }]);
+
+    // Una instancia por apertura, una entrada y una salida que nunca repinta otra variante.
+    const log = await readLog();
+    assert.deepEqual({ mounts: log.mounts, unmounts: log.unmounts, entries: log.entries, maxInstances: log.maxInstances },
+      { mounts: 3, unmounts: 3, entries: 3, maxInstances: 1 }, JSON.stringify(log));
+    assert.deepEqual(log.titles, ["¿Desactivar unidad de medida?", "¿Activar unidad de medida?"]);
+    assert.deepEqual(log.icons, ["deactivate", "activate"]);
+    assert.deepEqual(log.labels, ["Desactivar", "Confirmando...", "Activar", "Confirmando..."]);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `Sin desborde horizontal (${overflow}px)`);
+  });
+}
+
+test("avisos de alta y edición: título, código y nombre devueltos por la API y consecuencia", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+  await page.getByText("UNID-001", { exact: true }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+
+  await page.getByRole("button", { name: "Añadir unidad" }).click();
+  const create = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("m²"));
+  await create.getByRole("textbox", { name: "Nombre de la unidad" }).fill("de prueba nueva");
+  await create.getByRole("button", { name: "Crear" }).click();
+  let alert = page.getByRole("alert");
+  await alert.getByText("Unidad creada correctamente", { exact: true }).waitFor();
+  await alert.getByText("UNID-002 · m² de prueba nueva", { exact: true }).waitFor();
+  await alert.getByText("Ya está disponible para asignarla a servicios", { exact: true }).waitFor();
+  assert.equal(await alert.getAttribute("data-node-id"), SUCCESS_NODE);
+  await closeAlert(page);
+
+  const edit = await openEditDialog(page);
+  await edit.getByRole("textbox", { name: "Nombre de la unidad" }).fill("de obra nueva");
+  await edit.getByRole("button", { name: "Guardar" }).click();
+  alert = page.getByRole("alert");
+  await alert.getByText("Unidad actualizada correctamente", { exact: true }).waitFor();
+  await alert.getByText("UNID-001 · m² de obra nueva", { exact: true }).waitFor();
+  // La edición solo informa el nombre vigente: no reserva una descripción vacía.
+  assert.deepEqual((await alert.innerText()).split("\n").filter(Boolean), ["Unidad actualizada correctamente", "UNID-001 · m² de obra nueva"]);
+});
+
+test("errores reales: en uso, conflicto, validación y red sin aviso de éxito; duplicado y red del formulario junto al campo", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción"), denomination(2, 6, "de canalización", { isActive: false })]);
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
+  await page.getByText("UNID-001", { exact: true }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+
+  for (const [code, action, failure, title, message] of [
+    ["UNID-001", "Desactivar", { status: 409, body: { code: "MEASUREMENT_UNIT_IN_USE", message: "La denominación está asignada a 2 servicio(s) activo(s)." } },
+      "No se pudo desactivar la unidad", "Está siendo utilizada por servicios activos"],
+    ["UNID-001", "Desactivar", { status: 409, body: { code: "MEASUREMENT_UNIT_CONCURRENT_UPDATE", message: "La unidad de medida se está modificando en este momento." } },
+      "No se pudo desactivar la unidad", "La información cambió. Actualiza el listado e inténtalo nuevamente"],
+    ["UNID-002", "Activar", { status: 400, body: { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { measurementUnitId: "La unidad de medida está inactiva." } } },
+      "No se pudo activar la unidad", "La unidad de medida está inactiva."],
+    ["UNID-002", "Activar", { abort: true }, "No se pudo completar la operación", "Comprueba tu conexión e inténtalo nuevamente"],
+  ]) {
+    backend.failures[STATUS_PATCH] = failure;
+    const dialog = await openUnitStatusDialog(page, code, action);
+    await dialog.getByRole("button", { name: action, exact: true }).click();
+    const alert = page.getByRole("alert");
+    await alert.getByText(title, { exact: true }).waitFor();
+    await alert.getByText(message, { exact: true }).waitFor();
+    assert.equal(await alert.getAttribute("data-node-id"), DANGER_NODE);
+    assert.equal(await page.getByRole("alert").count(), 1, "Un único aviso por error");
+    assert.doesNotMatch(await alert.innerText(), /correctamente|ya existe/i, `${failure.body?.code ?? "red"} no es éxito ni duplicado`);
+    await page.locator(`[${UNIT_DIALOG.dialogAttribute}]`).waitFor({ state: "detached" });
+    await closeAlert(page);
+  }
+  delete backend.failures[STATUS_PATCH];
+  // Los fallos no cambian el estado: solo las inactivas muestran su insignia.
+  assert.equal(await page.locator("tbody tr", { hasText: "UNID-001" }).getByText("Inactiva", { exact: true }).count(), 0);
+  await page.locator("tbody tr", { hasText: "UNID-002" }).getByText("Inactiva", { exact: true }).waitFor();
+
+  // En el formulario, el duplicado y la red se muestran junto al campo, sin duplicarlos en un aviso.
+  await page.getByRole("button", { name: "Añadir unidad" }).click();
+  const create = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  await page.waitForFunction(() => document.querySelector('[role="combobox"]')?.textContent?.includes("m²"));
+  const textbox = create.getByRole("textbox", { name: "Nombre de la unidad" });
+  await textbox.fill("de construcción nueva");
+  for (const [failure, message] of [
+    [{ status: 409, body: { code: "MEASUREMENT_UNIT_DENOMINATION_ALREADY_EXISTS", message: "Ya existe una denominación equivalente para esa unidad de medida." } },
+      "Ya hay una denominación equivalente para la unidad base seleccionada"],
+    [{ abort: true }, "Comprueba tu conexión e inténtalo nuevamente"],
+  ]) {
+    backend.failures["POST /api/admin/measurement-unit-denominations"] = failure;
+    await create.getByRole("button", { name: "Crear" }).click();
+    await create.getByText(message, { exact: true }).waitFor();
+    // La pista del campo usa role=alert; el aviso flotante (AlertToast) se identifica por su nodo de Figma.
+    assert.equal(await page.locator(`[role="alert"][data-node-id="${DANGER_NODE}"]`).count(), 0, "Sin aviso duplicado del error del formulario");
+    assert.equal(await textbox.inputValue(), "de construcción nueva");
+  }
 });
 
 test("menú compartido: descarta su tooltip al abrir, no lo restaura al cerrar y conserva hover y foco", async (context) => {

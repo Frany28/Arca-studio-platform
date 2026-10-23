@@ -707,8 +707,8 @@ test("crear unidad en el mismo modal: guarda con la API, la selecciona y el serv
 
   // Queda elegida, con alerta de éxito y el foco en la unidad; el modal sigue abierto.
   await dialog.getByRole("button", { name: "Quitar de prueba nueva" }).waitFor();
-  await page.getByRole("alert").getByText("Unidad creada", { exact: true }).waitFor();
-  await page.getByRole("alert").getByText("m² de prueba nueva", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Unidad creada correctamente", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText(/^UNID-\d+ · m² de prueba nueva$/).waitFor();
   assert.equal(await dialog.getByText(/creada y seleccionada/).count(), 0);
   await page.waitForFunction(() => document.activeElement?.id === "service-form-unit");
   await dialog.getByRole("button", { name: "Crear unidad" }).waitFor();
@@ -756,7 +756,7 @@ test("crear unidad en el mismo modal: duplicados, 400, otros 409 y error de red 
   // 409 de duplicado del backend (equivalente inactiva): mensaje del backend, sin ofrecer una opción que no existe.
   await text.fill("De Archivo");
   await save.click();
-  await row.getByText("Ya existe una denominación equivalente para esa unidad de medida.", { exact: true }).waitFor();
+  await row.getByText("Ya hay una denominación equivalente para la unidad base seleccionada", { exact: true }).waitFor();
   assert.equal(await row.getByRole("button", { name: /^Usar/ }).count(), 0);
   assert.equal(posts(), 1);
 
