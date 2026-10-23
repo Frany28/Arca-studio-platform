@@ -75,7 +75,6 @@ function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange 
                       />
                       <ActionMenu
                         items={getStatusActions(item)}
-                        title={inUseReason || undefined}
                         triggerLabel={`Más opciones para ${item.publicCode}`}
                         menuLabel={`Acciones para ${item.publicCode}`}
                         tooltip="Más opciones"

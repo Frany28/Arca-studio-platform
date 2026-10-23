@@ -589,10 +589,10 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
   await page.getByRole("dialog", { name: "¿Deseas activar la unidad de medida?" }).getByRole("button", { name: "Activar" }).click();
   await page.waitForFunction(() => !document.querySelector("tbody tr")?.textContent?.includes("Inactiva"));
 
-  // En uso: la opción aparece bloqueada con el motivo como encabezado del menú.
+  // En uso: solo se muestra la opción deshabilitada, sin encabezado informativo.
   await page.getByRole("button", { name: "Más opciones para UNID-002" }).click();
   assert.equal(await page.getByRole("menuitem", { name: "Desactivar" }).isDisabled(), true);
-  await page.getByRole("menu").getByText("En uso por 1 servicio activo").waitFor();
+  assert.equal(await page.getByRole("menu").innerText(), "Desactivar");
   await page.keyboard.press("Escape");
 
   backend.failures["PATCH /api/admin/measurement-unit-denominations/:id/status"] = {

@@ -650,8 +650,9 @@ Validación, capturas y diferencias respecto a Figma:
   no tiene selección de filas (sin checkbox ni contador): columnas N°, Unidad y Acciones, con
   «Unidad» ocupando el ancho libre; las operaciones son individuales por fila (editar y el menú
   «Más opciones»). Las etiquetas usan `Badge` `Brand 2` con `truncate`.
-  Editar y Desactivar se bloquean con el motivo visible cuando `activeServiceCount > 0`; el
-  backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.
+  Editar y Desactivar se bloquean cuando `activeServiceCount > 0`. El menú muestra únicamente
+  «Desactivar» deshabilitado, sin el encabezado «En uso por…»; Editar conserva su motivo accesible.
+  El backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.
 - El listado de abreviaturas comparte con el selector de país la carcasa, filas, ScrollBar y
   estados (`Input/options/`): tres filas de 35 px, Body/b4, `neutral-200` al seleccionar o con
   hover y anillo `primary-10` con teclado. Se abre como extensión del segmento `m²` (mismo
