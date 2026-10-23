@@ -276,6 +276,38 @@ test("edición: mismo modal con datos reales, solo campos cambiados, expectedVer
   assert.deepEqual(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).at(-1).body, { expectedVersion: 3, measurementUnitId: 6, unitDenominationId: null });
 });
 
+test("edición: el mismo modal valida los campos y Cancelar descarta lo escrito sin enviar nada", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend);
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  const dialog = page.getByRole("dialog", { name: "Servicio" });
+  await dialog.locator("#service-form-name").waitFor();
+  // Un único modal: en edición cambian título y acción, no el formulario.
+  assert.equal(await page.getByRole("dialog").count(), 1);
+  assert.equal(await dialog.getByRole("button", { name: "Crear", exact: true }).count(), 0);
+  assert.equal(await dialog.getByRole("button", { name: "Guardar" }).isVisible(), true);
+
+  // Las validaciones del alta también se aplican al editar.
+  await dialog.locator("#service-form-name").fill("");
+  await dialog.getByPlaceholder("0.00").fill("");
+  await dialog.getByRole("button", { name: "Guardar" }).click();
+  for (const message of ["Escribe el nombre del servicio.", "Indica la tarifa."]) {
+    await dialog.getByText(message, { exact: true }).waitFor();
+  }
+  assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).length, 0, "No se envía una edición inválida");
+
+  // Cancelar descarta lo escrito: no hay PATCH, la fila no cambia y al reabrir se leen los datos vigentes.
+  await dialog.locator("#service-form-name").fill("Nombre que no se guarda");
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).length, 0);
+  await rowFor(page, "TST-001").getByText("Anteproyecto de prueba", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+  await dialog.locator("#service-form-name").waitFor();
+  await page.waitForFunction(() => document.querySelector("#service-form-name")?.value === "Anteproyecto de prueba");
+  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "12.00");
+});
+
 test("edición de un servicio llave en mano: no envía el tipo y la fila conserva su modalidad", async (context) => {
   const backend = createServiceCatalogBackend(sampleCatalog());
   const page = await openTabulator(context, backend);

@@ -4,6 +4,7 @@ import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import Checkbox from "../../../../components/ui/Checkbox/Checkbox.jsx";
+import { SERVICE_CATALOG_COLUMN_WIDTHS, SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../../../config/serviceCatalogTable.js";
 import TableHeaderLabel from "../../components/TableHeaderLabel.jsx";
 import {
   formatReferenceRate,
@@ -43,15 +44,11 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, s
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
       <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[1104px] table-fixed border-collapse text-left">
+        {/* Anchos y mínimo compartidos con el skeleton; su relación con Figma está en config/serviceCatalogTable.js. */}
+        <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: SERVICE_CATALOG_TABLE_MIN_WIDTH }}>
           <caption className="sr-only">Tabulador de servicios</caption>
-          {/* Modalidad (140) y Unidad (190) como en Figma. N° (100), Tarifa y Estado (82) se
-              ensanchan para que quepan `SERV-1000`, tarifas de hasta cuatro cifras enteras y los
-              iconos de cabecera; Acciones conserva 128 px mientras «Ver» siga omitido. Servicio
-              ocupa el resto (246 px a 1104 en lugar de 290) y su nombre se trunca con `title`. */}
           <colgroup>
-            <col className="w-[48px]" /><col className="w-[120px]" /><col /><col className="w-[140px]" />
-            <col className="w-[190px]" /><col className="w-[116px]" /><col className="w-[116px]" /><col className="w-[128px]" />
+            {SERVICE_CATALOG_COLUMN_WIDTHS.map((width, index) => <col key={index} style={width ? { width } : undefined} />)}
           </colgroup>
           <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
             <tr className="text-heading-8 h-[49px]">

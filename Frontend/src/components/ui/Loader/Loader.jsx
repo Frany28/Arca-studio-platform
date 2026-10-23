@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { ADMIN_PROJECT_COLUMN_WIDTHS, ADMIN_PROJECT_TABLE_MIN_WIDTH } from "../../../config/adminProjectTable.js";
+import { getServiceCatalogGridTemplate, SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../../config/serviceCatalogTable.js";
 
 function SkeletonBlock({ className, delay = 0, style, tone = "surface" }) {
   return (
@@ -289,23 +290,25 @@ function MeasurementUnitTableSkeleton({ rows }) {
   );
 }
 
-// Tabulador de servicios (Figma 5790:332039): selección, código, servicio, unidad, tarifa, estado
-// y acciones. Conserva el ancho mínimo de la tabla para no saltar al terminar la carga.
+// Tabulador de servicios (Figma 5790:332039): selección, código, servicio, modalidad, unidad,
+// tarifa, estado y acciones. Usa la geometría de la tabla (config/serviceCatalogTable.js) para
+// no saltar al terminar la carga.
 function ServiceCatalogTableSkeleton({ rows }) {
   return (
     <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
       <div className="w-full overflow-x-auto">
-        <div className="min-w-[1104px]">
+        <div style={{ minWidth: SERVICE_CATALOG_TABLE_MIN_WIDTH }}>
           <SkeletonBlock className="h-[49px] w-full rounded-none" />
           {Array.from({ length: rows }, (_, rowIndex) => (
-            <div key={rowIndex} className="grid h-[68px] grid-cols-[16px_106px_242px_142px_92px_minmax(0,1fr)_80px] items-center gap-[48px] border-b border-[var(--color-neutral-200)] px-[16px] last:border-b-0">
-              <SkeletonBlock className="size-[16px] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="muted" />
-              <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
-              <SkeletonBlock className="h-[17px] w-[85%] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 30} tone="text" />
-              <SkeletonBlock className="h-[20px] w-[130px] max-w-full rounded-[var(--radius-full)]" delay={rowIndex * 35 + 45} />
-              <SkeletonBlock className="ml-auto h-[17px] w-[48px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 60} tone="text" />
-              <SkeletonBlock className="h-[20px] w-[56px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 75} />
-              <SkeletonBlock className="h-[20px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 90} tone="muted" />
+            <div key={rowIndex} className="grid h-[68px] items-center border-b border-[var(--color-neutral-200)] last:border-b-0" style={{ gridTemplateColumns: getServiceCatalogGridTemplate() }}>
+              <SkeletonBlock className="mx-[16px] size-[16px] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="muted" />
+              <SkeletonBlock className="mx-[24px] h-[17px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[75%] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 30} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[20px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 40} />
+              <SkeletonBlock className="mx-[24px] h-[20px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 50} />
+              <SkeletonBlock className="ml-auto mr-[24px] h-[17px] w-[48px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 60} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[20px] w-[56px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 75} />
+              <SkeletonBlock className="mx-[24px] h-[20px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 90} tone="muted" />
             </div>
           ))}
         </div>

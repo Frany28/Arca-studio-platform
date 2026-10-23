@@ -8,6 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
+import { SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../src/config/serviceCatalogTable.js";
 import { LONG_DESCRIPTION, createServiceCatalogBackend as createBackend, sampleCatalog, service } from "../helpers/serviceCatalogBackend.js";
 
 // Tabulador de servicios (Figma 5790:332031) contra un backend simulado con estado. Los servicios
@@ -61,6 +62,14 @@ async function openTabulator(context, backend, { theme = "light", viewport = { w
   // El primer render compila en frío la ruta: se espera con el límite de navegación.
   await page.getByRole("heading", { name: "Tabulador de servicios", level: 2 }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   if (waitForRows) await page.locator("tbody tr").first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+  // Layout estable antes de interactuar. Al aparecer las filas aún puede cargar Inter (el nombre
+  // se ensancha y el icono informativo se movía ~13 px en horizontal) y sigue la entrada del panel
+  // (`content-reveal`, ~7 px en vertical). Un hover en ese instante quedaba fuera del icono y
+  // cerraba el tooltip: era el fallo intermitente de la prueba de tooltip.
+  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((animation) => animation.animationName === "content-reveal")
+    .map((animation) => animation.finished)));
   return page;
 }
 
@@ -138,6 +147,23 @@ test("modalidad sin `kind` o con un valor fuera del contrato: estado controlado,
   // El valor recibido queda disponible para diagnosticar la incompatibilidad con el contrato.
   assert.equal(await cells.nth(2).locator("[title]").getAttribute("title"), "Modalidad no reconocida: bundle");
   assert.equal(await page.getByText(/Llave en mano|Detalle por detalle/).count(), 0);
+});
+
+test("skeleton: mismas ocho columnas que la tabla y sin desplazamiento residual en escritorio", async (context) => {
+  const backend = createBackend(sampleCatalog());
+  backend.delays[""] = 1500;
+  // 1920 px: el contenido mide 1104 px con la barra lateral expandida o plegada, así que la tabla cabe.
+  const page = await openTabulator(context, backend, { waitForRows: false, viewport: { width: 1920, height: 1080 } });
+  await page.getByText("Cargando tabulador de servicios", { exact: true }).waitFor();
+  const skeleton = await page.evaluate(() => {
+    const row = document.querySelector("[style*=\"grid-template-columns\"]");
+    const scroller = row.closest(".overflow-x-auto");
+    return { columns: getComputedStyle(row).gridTemplateColumns.split(" ").length, overflow: scroller.scrollWidth - scroller.clientWidth };
+  });
+  assert.deepEqual(skeleton, { columns: 8, overflow: 0 });
+  await page.getByText("TST-001", { exact: true }).waitFor();
+  // Mismo ancho en carga y con datos: la tabla no salta al terminar.
+  assert.equal(await page.locator("table").evaluate((table) => table.closest(".overflow-x-auto").scrollWidth - table.closest(".overflow-x-auto").clientWidth), 0);
 });
 
 test("vacío, carga y error: estados del Design System con reintento", async (context) => {
@@ -388,7 +414,7 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
     // enteras con céntimos y «Inactivo». Tarifas mayores se truncan con el valor en `title`.
     const backend = createBackend([...sampleCatalog(), service(1000, { code: "SERV-1000", name: "Servicio de prueba con código largo", rate: "9999.99", isActive: false })]);
     const page = await openTabulator(context, backend, { theme, viewport: { width: 375, height: 812 } });
-    for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000]]) {
+    for (const [width, height] of [[375, 812], [768, 1024], [1024, 768], [1440, 1000], [1920, 1080]]) {
       await page.setViewportSize({ width, height });
       await page.evaluate(() => document.fonts.ready);
       const layout = await page.evaluate(() => {
@@ -406,6 +432,8 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
         return {
           pageOverflow: Math.max(scroller.scrollWidth - scroller.clientWidth, document.documentElement.scrollWidth - window.innerWidth),
           tableScrollsInside: table.scrollWidth >= table.clientWidth && table.getBoundingClientRect().right <= window.innerWidth + 0.5,
+          tableHorizontalOverflow: table.scrollWidth - table.clientWidth,
+          tableAreaWidth: table.clientWidth,
           addSameRow: Math.abs(add.top + add.height / 2 - (search.top + search.height / 2)) < 4,
           addFullWidth: Math.abs(add.width - document.querySelector("[data-service-add-action]").parentElement.getBoundingClientRect().width) < 1,
           rowBackground: getComputedStyle(document.querySelector("tbody tr")).backgroundColor,
@@ -433,6 +461,12 @@ test("responsive: sin desborde de página, tabla con scroll propio y barra segú
       assert.equal(layout.squashedIcons, 0, `${theme} ${width}px: iconos comprimidos`);
       assert.equal(layout.pageOverflow, 0, `${theme} ${width}px: ${JSON.stringify(layout)}`);
       assert.equal(layout.tableScrollsInside, true, `${theme} ${width}px`);
+      // Si la tabla cabe (1102 px de área: 1104 de Figma menos el borde) no hay desplazamiento
+      // residual (antes 2 px); si no cabe, desplaza dentro de su contenedor.
+      if (layout.tableAreaWidth >= SERVICE_CATALOG_TABLE_MIN_WIDTH) assert.equal(layout.tableHorizontalOverflow, 0, `${theme} ${width}px: desplazamiento residual`);
+      else assert.ok(layout.tableHorizontalOverflow > 0, `${theme} ${width}px: la tabla debe desplazar`);
+      if (width >= 1920) assert.ok(layout.tableAreaWidth >= SERVICE_CATALOG_TABLE_MIN_WIDTH, `${theme} ${width}px: en escritorio amplio la tabla cabe`);
+      if (width <= 768) assert.ok(layout.tableHorizontalOverflow > 0, `${theme} ${width}px: en móvil y tablet la tabla desplaza`);
       if (width >= 1440) assert.equal(layout.addSameRow, true, `${theme} ${width}px: «Añadir servicio» en la fila de la búsqueda`);
       if (width < 768) assert.equal(layout.addFullWidth, true, `${theme} ${width}px: «Añadir servicio» a todo el ancho`);
       assert.notEqual(layout.rowBackground, "rgba(0, 0, 0, 0)");

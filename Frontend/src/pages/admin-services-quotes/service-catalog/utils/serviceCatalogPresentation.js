@@ -1,5 +1,6 @@
 // Presentación del tabulador de servicios. Los datos se muestran tal como los entrega la API:
-// el código lo define el administrador al crear el servicio (no se genera en el frontend),
+// el código público lo genera el sistema al crear el servicio (`SERV-001`, en el backend; el
+// frontend ni lo envía ni lo compone),
 // `kind` define la modalidad, `unitLabel` es la etiqueta oficial de la unidad y
 // `referenceRate` es texto decimal.
 

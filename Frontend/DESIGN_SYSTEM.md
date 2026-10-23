@@ -519,10 +519,16 @@ Validación, capturas y diferencias respecto a Figma:
 - Tabulador de servicios (Figma `5790:332031`, tooltip `5790:332129`, menú `5790:332135`):
   filas reales del backend, nunca los ejemplos de Figma; sin servicios se muestra el estado
   vacío. Columnas: selección (48 px), N° (120 px; `code` generado por el backend, el frontend no
-  genera `SERV-xxx`), Servicio (resto, 246 px a 1104), Modalidad (140 px), Unidad (190 px,
-  `unitLabel` en `Badge` `Brand 2`), Tarifa (116 px, derecha), Estado (116 px; `Badge`
-  `Success`/`Disabled` según `isActive`) y Acciones (128 px). La tabla mide al menos 1104 px y
-  desplaza dentro de su contenedor.
+  genera `SERV-xxx`), Servicio (resto, 244 px con el mínimo), Modalidad (140 px), Unidad
+  (190 px, `unitLabel` en `Badge` `Brand 2`), Tarifa (116 px, derecha), Estado (116 px; `Badge`
+  `Success`/`Disabled` según `isActive`) y Acciones (128 px). La geometría vive en
+  `config/serviceCatalogTable.js` y la comparten la tabla y su skeleton (`Loader`
+  `serviceCatalogTable`), que tiene las mismas ocho columnas para no saltar al cargar.
+  - Ancho mínimo 1102 px: el frame de Figma mide 1104 px con el borde por dentro; en CSS el borde
+    de 1 px del contenedor resta 2 px al área de desplazamiento, así que con 1104 px quedaba un
+    desplazamiento horizontal residual de 2 px en escritorio. Si la tabla cabe no desplaza; si no
+    cabe (móvil, tablet o 1440 px con la barra lateral expandida, ~1032 px útiles) desplaza dentro
+    de su contenedor.
   - Anchos: Figma `5790:332040` fija N° 100, Servicio 290, Tarifa y Estado 82 y Acciones 172,
     pero con datos reales recortaba `SERV-1000`, tarifas como `$1,250.50` y comprimía los iconos
     de cabecera. Se conservan Modalidad y Unidad; N° cabe hasta `SERV-1000`, Tarifa hasta cuatro
@@ -533,12 +539,15 @@ Validación, capturas y diferencias respecto a Figma:
     (texto de Figma) y `turnkey` → «Llave en mano». Sin `kind` muestra «Sin modalidad» y un valor
     fuera del contrato «No reconocida» (tema `Disabled`, con el valor recibido en `title`). La
     lógica vive en `getServiceModalityBadge` (`utils/serviceCatalogPresentation.js`).
-  - Filtro por modalidad: pendiente de diseño. Figma no lo incluye en la barra ni en la cabecera,
-    aunque `GET /admin/services` ya admite `kind=individual|turnkey`.
-  - Formulario: el diseño aprobado no tiene campo Modalidad; el alta sigue creando `individual` y
-    la edición no envía `kind`, así que un servicio llave en mano conserva su modalidad. Crear o
-    cambiar servicios llave en mano desde el tabulador queda pendiente de una variante aprobada
-    del formulario y de autorizar `kind` en el alta (hoy la API lo rechaza con 400).
+  - Filtro por modalidad: pendiente de diseño. Ninguna variante del tabulador (component set
+    `5764:218615`) lo incluye en la barra ni en la cabecera, aunque `GET /admin/services` ya admite
+    `kind=individual|turnkey`.
+  - Modalidad en el formulario: Figma `5764:226084` incluye ya «Modalidad de Contratación»
+    (`5924:439642`, desplegable «Llave en mano» / «Detalle por Detalle» entre Nombre y Descripción),
+    pero no se implementa: `POST /admin/services` rechaza `kind` (400) y el alta es siempre
+    `individual` por contrato. Falta decidir si el alta debe aceptar `kind` (con la regla de m²
+    para llave en mano) y cómo se crean las tres categorías comerciales. Hasta entonces el alta
+    crea `individual` y la edición no envía `kind`, así que un servicio llave en mano la conserva.
   - `referenceRate` se formatea como texto, sin `Number`: miles agrupados y céntimos solo si no
     son cero (`$12`, `$1,250.50`). El valor almacenado no cambia.
   - Descripción: icono informativo (`InfoCircleIcon` de `Label/LabelIcons.jsx`, `neutral-400`)
@@ -558,10 +567,11 @@ Validación, capturas y diferencias respecto a Figma:
     explica el bloqueo. Nunca se elimina un servicio.
   - Formulario (Figma `5764:226084`): un único modal (`ServiceFormDialog` + `ServiceFormModal`)
     para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
-    leídos de `GET /admin/services/:id`). Campos de Figma: nombre (Input, 150), descripción
+    leídos de `GET /admin/services/:id`). Campos implementados: nombre (Input, 150), descripción
     (TextArea de 130 px, 2000; alimenta el tooltip), unidad de medida y tarifa USD (125 px, texto
-    decimal NUMERIC(14,2) sin conversión a Number). No hay campos de código ni tipo: el sistema
-    genera `SERV-001` y los servicios del tabulador son `individual`.
+    decimal NUMERIC(14,2) sin conversión a Number). No hay campo de código (el sistema genera
+    `SERV-001`) y la «Modalidad de Contratación» de Figma está bloqueada por el contrato (ver
+    «Modalidad en el formulario»): los servicios creados desde el tabulador son `individual`.
   - Unidad de medida: variante `Tags` de Input con selector de prefijo (abreviatura de la base)
     y la denominación como Tag con cierre; solo se sugieren denominaciones activas de la base
     elegida y cambiar de base retira la denominación, así que no hay combinaciones incompatibles.
@@ -573,7 +583,9 @@ Validación, capturas y diferencias respecto a Figma:
     también la denominación. Sin cambios no hay petición. Un 409 de versión no sobrescribe: se
     explica en el formulario, que conserva lo escrito, y se recarga el listado. Los 400 se
     muestran junto a su campo.
-  - El botón «Ver» (ojo) se omite hasta que exista el diseño del detalle.
+  - El botón «Ver» (ojo) se omite: el tabulador lo muestra en Acciones, pero no existe un diseño
+    del detalle de un servicio. Los «Ver» con visor de PDF del component set (`5812:280752`,
+    `5925:478671`, `5925:476589`) son de Cotizaciones (`COT-001`), no del tabulador.
 - Unidades: búsqueda en la API (debounce de 300 ms, cada lectura aborta la anterior), diez
   filas por página, Anterior/Siguiente por cursor sin totales ni números de página. La tabla
   no tiene selección de filas (sin checkbox ni contador): columnas N°, Unidad y Acciones, con
