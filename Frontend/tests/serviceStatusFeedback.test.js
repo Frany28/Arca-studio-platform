@@ -12,16 +12,18 @@ for (const isActive of [true, false]) {
       tone: "success",
       title: `Servicio ${state} correctamente`,
       content: service.name,
-      message: `${isActive ? "Vuelve a estar disponible" : "Ya no está disponible"} para nuevas cotizaciones`,
+      message: `${isActive ? "Ya está disponible" : "Ya no está disponible"} para nuevas cotizaciones`,
     });
     assert.equal(JSON.stringify(result).includes(service.code), false);
   });
 
-  test(`resultado ${state}: cantidad real en plural sin nombres de ejemplo`, () => {
-    assert.deepEqual(describeServiceStatusSuccess({ isActive, count: 7 }), {
+  test(`resultado ${state}: cantidad real en plural sin nombres de ejemplo ni contadores redundantes`, () => {
+    const result = describeServiceStatusSuccess({ isActive, count: 7 });
+    assert.deepEqual(result, {
       tone: "success",
-      title: `Servicios ${state}s correctamente`,
-      message: `Se ${isActive ? "activaron" : "desactivaron"} 7 servicios`,
+      title: `7 servicios ${state}s correctamente`,
+      message: `${isActive ? "Ya están disponibles" : "Ya no están disponibles"} para nuevas cotizaciones`,
     });
+    assert.doesNotMatch(JSON.stringify(result), /Fallidos|Cambios correctos|Actualizando/);
   });
 }

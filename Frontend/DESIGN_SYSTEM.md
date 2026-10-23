@@ -618,10 +618,15 @@ Validación, capturas y diferencias respecto a Figma:
     foco inicial en Cancelar, Tab cíclico y devolución al disparador de fila o footer.
     Escape, Cancelar y overlay cierran sin lecturas ni escrituras. Confirmar bloquea las acciones,
     incluido cerrar, y muestra «Confirmando...»/`aria-busy` hasta terminar. Un 409 recarga la página.
+    El ciclo es Cerrado → Abierto → Confirmando → Cerrado sobre la misma instancia: la animación
+    de salida conserva el último cambio mostrado (título, icono, tema y «Confirmando...» con las
+    acciones bloqueadas) y nunca repinta la variante por defecto.
   - Los avisos de estado usan `AlertToast` Success solo después de la confirmación de la API:
-    «Servicio activado/desactivado correctamente», nombre real y consecuencia para nuevas
-    cotizaciones. Con varios, «Servicios activados/desactivados correctamente» y cantidad aplicada.
-    Los errores y resultados parciales conservan Danger y el detalle real de fallos/cancelaciones.
+    «Servicio activado/desactivado correctamente», nombre real y «Ya está / Ya no está disponible
+    para nuevas cotizaciones». Con varios, «N servicios activados/desactivados correctamente» (N
+    confirmado por la API) y «Ya están / Ya no están disponibles para nuevas cotizaciones».
+    Los errores y resultados parciales conservan Danger: título «Se activaron X de N servicios» y
+    solo el motivo de cada fallo y los cambios no enviados, sin contadores redundantes ni ceros.
   - Formulario (Figma `5764:226084`): un único modal (`ServiceFormDialog` + `ServiceFormModal`)
     para «Añadir servicio» («Nuevo servicio», Crear) y «Editar» («Servicio», Guardar, con los datos
     leídos de `GET /admin/services/:id`). Campos implementados: nombre (Input, 150), descripción

@@ -91,22 +91,26 @@ test("concurrencia: respeta el límite, conserva el orden y devuelve cada fallo 
 
 test("resumen: éxito total, parcial y total fallido, sin presentarlo como atómico", () => {
   assert.deepEqual(describeBulkStatusResult({ failures: [], isActive: false, succeeded: 4 }), {
-    tone: "success", title: "Servicios desactivados correctamente", message: "Se desactivaron 4 servicios",
+    tone: "success", title: "4 servicios desactivados correctamente", message: "Ya no están disponibles para nuevas cotizaciones",
   });
   assert.deepEqual(describeBulkStatusResult({ failures: [], isActive: true, succeeded: 1, service: { name: "Servicio confirmado" } }), {
-    tone: "success", title: "Servicio activado correctamente", content: "Servicio confirmado", message: "Vuelve a estar disponible para nuevas cotizaciones",
+    tone: "success", title: "Servicio activado correctamente", content: "Servicio confirmado", message: "Ya está disponible para nuevas cotizaciones",
   });
   const failures = [
     { message: "Unidad inactiva.", service: { code: "TST-002" } },
     { message: "Versión desactualizada.", service: { code: "TST-003" } },
   ];
   assert.deepEqual(describeBulkStatusResult({ failures, isActive: true, succeeded: 1 }), {
-    tone: "danger", title: "Se activaron 1 de 3 servicios", message: "Cambios correctos: 1. Fallidos: 2. TST-002: Unidad inactiva. TST-003: Versión desactualizada.",
+    tone: "danger", title: "Se activaron 1 de 3 servicios", message: "TST-002: Unidad inactiva. TST-003: Versión desactualizada.",
   });
   assert.equal(describeBulkStatusResult({ failures: failures.slice(0, 1), isActive: false, succeeded: 0 }).title, "No se pudo desactivar el servicio");
   const many = Array.from({ length: 5 }, (_, index) => ({ message: "Error.", service: { code: `S-${index}` } }));
   assert.match(describeBulkStatusResult({ failures: many, isActive: true, succeeded: 0 }).message, /Y 2 más\.$/);
   const stopped = describeBulkStatusResult({ failures: failures.slice(0, 1), isActive: true, succeeded: 2, cancelled: 4 });
   assert.match(stopped.title, /2 de 7/);
-  assert.match(stopped.message, /Fallidos: 1\. Cancelados sin enviar: 4\./);
+  assert.equal(stopped.message, "TST-002: Unidad inactiva. 4 cambios no se enviaron tras el error.");
+  const oneNotSent = describeBulkStatusResult({ failures: failures.slice(0, 1), isActive: false, succeeded: 0, cancelled: 1 });
+  assert.equal(oneNotSent.title, "No se pudieron desactivar los 2 servicios");
+  assert.match(oneNotSent.message, /1 cambio no se envió tras el error\.$/);
+  for (const result of [stopped, oneNotSent]) assert.doesNotMatch(result.message, /Fallidos|Cambios correctos|: 0/);
 });

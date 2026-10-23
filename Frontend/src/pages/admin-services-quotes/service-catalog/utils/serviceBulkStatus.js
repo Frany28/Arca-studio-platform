@@ -84,8 +84,10 @@ export async function runWithConcurrency(items, limit, worker) {
 }
 
 /**
- * Resume el resultado de una operación masiva para el aviso: cuántos cambiaron, cuántos fallaron
- * y por qué (código del servicio y motivo), sin presentarla como atómica.
+ * Resume el resultado de una operación masiva para el aviso sin presentarla como atómica. Un
+ * éxito total usa el aviso de éxito con la cantidad confirmada. Con fallos, el título indica
+ * cuántos cambiaron del total y el mensaje solo el motivo de cada fallo (código del servicio) y
+ * los cambios que no llegaron a enviarse; no repite contadores ya expresados ni ceros.
  *
  * @param {Object} params - Resultado y textos.
  * @param {boolean} params.isActive - Estado pedido.
@@ -104,11 +106,14 @@ export function describeBulkStatusResult({ cancelled = 0, failures, isActive, su
   }
   const detail = failures.slice(0, MAX_DETAILED_FAILURES).map(({ message, service }) => `${service.code}: ${message}`).join(" ");
   const rest = failures.length > MAX_DETAILED_FAILURES ? ` Y ${failures.length - MAX_DETAILED_FAILURES} más.` : "";
+  const notSent = cancelled
+    ? ` ${plural(cancelled, "1 cambio no se envió", `${cancelled} cambios no se enviaron`)} tras el error.`
+    : "";
   return {
     tone: "danger",
     title: succeeded
       ? `Se ${verb}aron ${succeeded} de ${total} servicios`
       : `No se ${plural(total, `pudo ${verb}ar el servicio`, `pudieron ${verb}ar los ${total} servicios`)}`,
-    message: `Cambios correctos: ${succeeded}. Fallidos: ${failures.length}.${cancelled ? ` Cancelados sin enviar: ${cancelled}.` : ""} ${detail}${rest}`,
+    message: `${detail}${rest}${notSent}`.trim(),
   };
 }
