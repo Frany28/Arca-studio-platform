@@ -1,8 +1,6 @@
 import { CloseCircle, TickCircle } from "iconsax-react";
-import { useId } from "react";
 
 import Button from "../../../../components/ui/Button/Button.jsx";
-import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import { getServiceBulkActionVisibility } from "../utils/serviceBulkStatus.js";
 
 // Figma 5790:351653: los controles de texto miden 41 px, las acciones con icono 44 px.
@@ -16,9 +14,9 @@ const FOOTER_BUTTON_GEOMETRY = {
 
 /**
  * Pie del tabulador (Figma 5790:351653): contador de la selección a la izquierda, acciones
- * masivas solo con selección y la paginación a la derecha. Una selección homogénea muestra
- * únicamente su acción: desactivar activos o activar inactivos; una mixta muestra ambas
- * deshabilitadas. Una ayuda visible explica la mezcla y describe ambos botones. Los grupos
+ * masivas solo con selección y la paginación a la derecha. Ambas acciones permanecen visibles
+ * al seleccionar; una selección homogénea habilita desactivar activos o activar inactivos y
+ * una mixta deshabilita ambas, sin añadir texto bajo las acciones. Los grupos
  * mantienen ese orden y pasan a filas sucesivas cuando no caben (flex-wrap).
  *
  * @param {Object} props - Selección, destinos, paginación y callbacks.
@@ -32,8 +30,7 @@ const FOOTER_BUTTON_GEOMETRY = {
  * @returns {import("react").ReactElement} Pie de la tabla.
  */
 function ServiceCatalogFooter({ busy, mixed, onStatusRequest, pagination, selectedCount, targets, total }) {
-  const mixedHintId = useId();
-  const visibility = getServiceBulkActionVisibility({ selectedCount, mixed, targets });
+  const visibility = getServiceBulkActionVisibility({ selectedCount });
   const actions = [
     { visible: visibility.deactivate, icon: CloseCircle, isActive: false, label: "Desactivar", count: targets.deactivate.length, geometry: FOOTER_BUTTON_GEOMETRY.deactivate },
     { visible: visibility.activate, icon: TickCircle, isActive: true, label: "Activar", count: targets.activate.length, geometry: FOOTER_BUTTON_GEOMETRY.activate },
@@ -45,34 +42,30 @@ function ServiceCatalogFooter({ busy, mixed, onStatusRequest, pagination, select
         {selectedCount} de {total} seleccionados
       </span>
       {actions.length > 0 ? (
-        <div role="group" className="flex min-w-0 max-w-full flex-col items-start gap-[4px]" aria-label="Acciones para servicios seleccionados" aria-describedby={mixed ? mixedHintId : undefined} data-service-bulk-actions>
-          <div className="flex flex-wrap items-center gap-[8px]">
-            {actions.map((action) => {
-              const ActionIcon = action.icon;
-              return (
-                <Button
-                  key={action.label}
-                  theme="Primary"
-                  type="Ghost"
-                  size="M"
-                  fitContent
-                  style={action.geometry}
-                  showLeftIcon
-                  iconLeft={<ActionIcon size="20" color="currentColor" />}
-                  showRightIcon={false}
-                  disabled={busy || mixed || action.count === 0}
-                  aria-describedby={mixed ? mixedHintId : undefined}
-                  aria-label={action.count
-                    ? `${action.label} ${action.count} ${action.count === 1 ? "servicio seleccionado" : "servicios seleccionados"}`
-                    : `${action.label}: acción no disponible para esta selección`}
-                  onClick={() => onStatusRequest(action.isActive)}
-                >
-                  {action.label}
-                </Button>
-              );
-            })}
-          </div>
-          {mixed ? <HintText id={mixedHintId} role="status" className="max-w-[260px]" hintText="Selecciona solo servicios activos o solo inactivos." hintIcon={false} /> : null}
+        <div role="group" className="flex min-w-0 max-w-full flex-wrap items-center gap-[8px]" aria-label="Acciones para servicios seleccionados" data-service-bulk-actions>
+          {actions.map((action) => {
+            const ActionIcon = action.icon;
+            return (
+              <Button
+                key={action.label}
+                theme="Primary"
+                type="Ghost"
+                size="M"
+                fitContent
+                style={action.geometry}
+                showLeftIcon
+                iconLeft={<ActionIcon size="20" color="currentColor" />}
+                showRightIcon={false}
+                disabled={busy || mixed || action.count === 0}
+                aria-label={action.count
+                  ? `${action.label} ${action.count} ${action.count === 1 ? "servicio seleccionado" : "servicios seleccionados"}`
+                  : `${action.label}: acción no disponible para esta selección`}
+                onClick={() => onStatusRequest(action.isActive)}
+              >
+                {action.label}
+              </Button>
+            );
+          })}
         </div>
       ) : null}
       <nav className="flex items-center gap-[8px] max-[1023px]:ml-auto" aria-label="Paginación de servicios">

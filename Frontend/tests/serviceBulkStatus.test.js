@@ -56,14 +56,14 @@ test("selección incompleta o estado desconocido: no permite actuar sobre un sub
   ]) assert.deepEqual(state.targets, { activate: [], deactivate: [] });
 });
 
-test("footer: sin selección no hay acciones, homogéneas muestran una y mixtas mantienen ambas", () => {
+test("footer: sin selección no hay acciones; con selección siempre se muestran ambas", () => {
   const cases = [
     { ids: [], expected: { activate: false, deactivate: false } },
-    { ids: ["1"], expected: { activate: false, deactivate: true } },
-    { ids: ["1", "3"], expected: { activate: false, deactivate: true } },
-    { ids: ["2"], expected: { activate: true, deactivate: false } },
+    { ids: ["1"], expected: { activate: true, deactivate: true } },
+    { ids: ["1", "3"], expected: { activate: true, deactivate: true } },
+    { ids: ["2"], expected: { activate: true, deactivate: true } },
     { ids: ["1", "2"], expected: { activate: true, deactivate: true } },
-    { ids: ["1", "99"], expected: { activate: false, deactivate: false } },
+    { ids: ["1", "99"], expected: { activate: true, deactivate: true } },
   ];
   for (const { ids, expected } of cases) {
     const selection = getServiceStatusSelection(ITEMS, new Set(ids));

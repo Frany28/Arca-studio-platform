@@ -458,7 +458,7 @@ test("capas: seleccionar descarta ayudas, un menú bloquea todos los tooltips y 
   await tooltip.getByText("Primera propuesta del espacio.").waitFor();
 });
 
-test("footer: sin selección oculta acciones, homogéneas muestran solo la válida y mixtas bloquean ambas", async (context) => {
+test("footer: con selección muestra ambos botones sin ayuda y habilita solo acciones homogéneas", async (context) => {
   const backend = createBackend(sampleCatalog());
   backend.delays["PATCH /api/admin/services/:id/status"] = 200;
   const page = await openTabulator(context, backend);
@@ -470,25 +470,29 @@ test("footer: sin selección oculta acciones, homogéneas muestran solo la váli
   assert.equal(await footer.locator("[data-service-bulk-actions]").count(), 0, "No queda un grupo vacío que reserve espacio");
   assert.equal(await footer.locator(":scope > *").count(), 2, "Solo contador y paginación");
   await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
-  assert.equal(await footer.getByRole("button", { name: /Activar/ }).count(), 0);
+  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
   assert.equal(await footer.getByRole("button", { name: "Desactivar 1 servicio seleccionado" }).isEnabled(), true);
+  // Seleccionar solo un inactivo mantiene los dos botones, con Activar habilitado.
+  await page.getByRole("checkbox", { name: "Seleccionar TST-001 Anteproyecto de prueba" }).click();
+  await page.getByRole("checkbox", { name: "Seleccionar TST-004 Canalizaciones de prueba" }).click();
+  assert.equal(await footer.getByRole("button", { name: "Activar 1 servicio seleccionado" }).isEnabled(), true);
+  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
   await selectAll.click();
   await footer.getByText("5 de 5 seleccionados").waitFor();
   assert.equal(await footer.getByRole("button", { name: /Activar|Desactivar/ }).count(), 2);
   assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
   assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
-  const explanation = footer.getByRole("status");
-  await explanation.getByText("Selecciona solo servicios activos o solo inactivos.").waitFor();
+  assert.equal(await footer.getByRole("status").count(), 0);
+  assert.equal(await footer.getByText("Selecciona solo servicios activos o solo inactivos.", { exact: true }).count(), 0);
   for (const action of await footer.getByRole("button", { name: /Desactivar|Activar/ }).all()) {
-    assert.equal(await action.getAttribute("aria-describedby"), await explanation.getAttribute("id"));
+    assert.equal(await action.getAttribute("aria-describedby"), null);
     await action.evaluate((element) => element.click());
   }
   assert.equal(await page.getByRole("dialog").count(), 0);
   assert.equal(patches().length, 0);
   // Deseleccionar el inactivo habilita desactivar TODOS los cuatro activos restantes.
   await page.getByRole("checkbox", { name: "Seleccionar TST-004 Canalizaciones de prueba" }).click();
-  assert.equal(await explanation.count(), 0);
-  assert.equal(await footer.getByRole("button", { name: /Activar/ }).count(), 0);
+  assert.equal(await footer.getByRole("button", { name: /^Activar:/ }).isDisabled(), true);
   await footer.getByRole("button", { name: "Desactivar 4 servicios seleccionados" }).click();
   const dialog = page.getByRole("dialog", { name: "¿Desactivar servicios?" });
   await dialog.getByText("Los 4 servicios seleccionados dejarán de estar disponibles para nuevas cotizaciones", { exact: true }).waitFor();
@@ -506,7 +510,7 @@ test("footer: sin selección oculta acciones, homogéneas muestran solo la váli
   assert.equal(backend.items.every((item) => !item.isActive), true);
 
   await selectAll.click();
-  assert.equal(await footer.getByRole("button", { name: /Desactivar/ }).count(), 0);
+  assert.equal(await footer.getByRole("button", { name: /^Desactivar:/ }).isDisabled(), true);
   assert.equal(await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).isEnabled(), true);
   await footer.getByRole("button", { name: "Activar 5 servicios seleccionados" }).click();
   await page.getByRole("dialog", { name: "¿Activar servicios?" }).getByRole("button", { name: "Activar", exact: true }).click();
