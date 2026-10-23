@@ -52,7 +52,7 @@ const FOCUS_SELECTORS = {
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.denominations
  * Unidades de medida registradas que ofrece el campo (filtradas por modalidad y base).
  * @param {string} props.unitHint - Ayuda del campo de unidad (carga o error del catálogo).
- * @param {string} [props.unitNotice] - Confirmación discreta tras crear o elegir una unidad.
+ * @param {string} [props.unitNotice] - Confirmación discreta al reutilizar una unidad existente tras un duplicado.
  * @param {boolean} props.catalogUnavailable - El catálogo de bases no está disponible.
  * @param {{target: "unit"|"new-unit"|"create-unit"}|null} [props.focusRequest] - Foco pedido tras
  * desplegar, cancelar o completar el alta de unidad (cada petición es un objeto nuevo).

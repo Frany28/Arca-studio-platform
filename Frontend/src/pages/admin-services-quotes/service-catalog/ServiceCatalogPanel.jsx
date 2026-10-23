@@ -180,6 +180,7 @@ function ServiceCatalogPanel({ summary }) {
           serviceId={formRequest.serviceId}
           onClose={() => setFormRequest(null)}
           onSaved={handleSaved}
+          onUnitCreated={(unit) => feedback.notify("success", "Unidad creada", unit.label ?? unit.denomination)}
           onStale={list.reload}
           onNotFound={(message) => {
             setFormRequest(null);

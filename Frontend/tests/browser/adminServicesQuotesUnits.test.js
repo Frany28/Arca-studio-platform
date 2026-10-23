@@ -22,7 +22,6 @@ const BASE_UNITS = [
 const SERVICES = [{ id: 1, isActive: true }, { id: 2, isActive: true }, { id: 3, isActive: false }];
 const BASE_IN_USE_MESSAGE = "La unidad base no se puede cambiar porque la denominación ya se usa en servicios o en su historial. Crea otra denominación con la unidad deseada.";
 const BASE_LOCKED_NOTE = "UNID-001 · La abreviatura no se puede cambiar porque esta unidad ya se usa en servicios o en su historial.";
-const EDITABLE_NOTE = "UNID-001 · Puedes cambiar la abreviatura mientras ningún servicio use esta unidad.";
 
 let browser;
 let server;
@@ -466,7 +465,7 @@ test("edición: sin referencias la abreviatura se cambia, se previsualiza y solo
   await waitForEnabledBaseSelector(page);
   assert.equal(baseUnitGets(backend).length, 1);
   assert.equal((await combobox.textContent()).startsWith("m²"), true);
-  await dialog.getByText(EDITABLE_NOTE).waitFor();
+  assert.equal(await dialog.getByText(/Puedes cambiar la abreviatura/).count(), 0);
   await dialog.getByText("Se mostrará como «m² de construcción».").waitFor();
 
   await combobox.click();
@@ -561,7 +560,7 @@ test("edición responsive: en móvil y tema oscuro el selector editable cabe y a
   const box = await dialog.boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 375, `Diálogo dentro del viewport: ${JSON.stringify(box)}`);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-  await dialog.getByText(EDITABLE_NOTE).waitFor();
+  assert.equal(await dialog.getByText(/Puedes cambiar la abreviatura/).count(), 0);
   await dialog.getByRole("combobox", { name: /Abreviatura de la unidad base/ }).click();
   const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
   await listbox.waitFor();

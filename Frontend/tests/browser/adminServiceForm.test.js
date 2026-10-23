@@ -416,9 +416,11 @@ test("crear unidad en el mismo modal: guarda con la API, la selecciona y el serv
     [{ denomination: "de prueba nueva", measurementUnitId: 1 }], "Una sola alta, normalizada como en Unidades");
   assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "Crear la unidad no guarda el servicio");
 
-  // Queda elegida, con confirmación discreta y el foco en la unidad; el modal sigue abierto.
+  // Queda elegida, con alerta de éxito y el foco en la unidad; el modal sigue abierto.
   await dialog.getByRole("button", { name: "Quitar de prueba nueva" }).waitFor();
-  await dialog.getByRole("status").getByText("Unidad «m² de prueba nueva» creada y seleccionada.", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("Unidad creada", { exact: true }).waitFor();
+  await page.getByRole("alert").getByText("m² de prueba nueva", { exact: true }).waitFor();
+  assert.equal(await dialog.getByText(/creada y seleccionada/).count(), 0);
   await page.waitForFunction(() => document.activeElement?.id === "service-form-unit");
   await dialog.getByRole("button", { name: "Crear unidad" }).waitFor();
   await assertDraftKept(page, DRAFT);
@@ -426,6 +428,7 @@ test("crear unidad en el mismo modal: guarda con la API, la selecciona y el serv
   // El servicio se crea después, con la denominación nueva.
   await dialog.getByRole("button", { name: "Crear", exact: true }).click();
   await dialog.waitFor({ state: "detached" });
+  await page.getByRole("alert").getByText("Servicio creado", { exact: true }).waitFor();
   const [post] = requestsOf(backend, "POST", /^\/api\/admin\/services$/);
   assert.deepEqual([post.body.measurementUnitId, post.body.unitDenominationId], [1, 14]);
   await rowFor(page, "SERV-006").getByText("m² de prueba nueva", { exact: true }).waitFor();

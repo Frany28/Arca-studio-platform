@@ -616,7 +616,7 @@ Validación, capturas y diferencias respecto a Figma:
     - Base: la del servicio si está permitida; si no, la primera del catálogo activo (m²). En
       llave en mano solo m²: el selector queda fijado y deshabilitado.
     - Guardar (o Enter en el campo) crea solo la denominación, nunca el servicio: se añade a las
-      opciones, queda elegida con su base, se confirma con discreción junto a la unidad y el foco
+      opciones, queda elegida con su base, se confirma con la alerta de éxito compartida y el foco
       vuelve al campo de unidad. El borrador del servicio no cambia. Un doble clic envía una vez.
     - Duplicados: antes de enviar se compara con las denominaciones activas de la base con la clave
       del índice único (`denominationEquivalenceKey`: NFKC y minúsculas) y se ofrece «Usar «…»». El
@@ -625,6 +625,9 @@ Validación, capturas y diferencias respecto a Figma:
       con un duplicado y conservan lo escrito.
     - Cancelar: Figma no lo dibuja; Escape en la fila (solo cierra la fila, no el modal) y un enlace
       discreto «Cancelar» bajo ella. El foco vuelve a «+ Crear unidad». Nada se escribe.
+    - Crear la unidad muestra la alerta de éxito compartida del tabulador («Unidad creada»),
+      sin añadir una descripción bajo el campo. El modal permanece abierto y crear el servicio
+      después muestra su propia alerta «Servicio creado».
     - El módulo de Unidades conserva su propio `MeasurementUnitFormModal`.
   - Edición: solo se envían los campos cambiados con `expectedVersion`; cambiar la base envía
     también la denominación. Sin cambios no hay petición. Un 409 de versión no sobrescribe: se
@@ -662,6 +665,8 @@ Validación, capturas y diferencias respecto a Figma:
   se envía si cambia; si no, queda bloqueada con el motivo bajo el campo, y un 409
   `MEASUREMENT_UNIT_BASE_IN_USE` la vuelve a bloquear conservando el texto. Tabulador y
   Cotizaciones conservan un `EmptyState` provisional.
+  No se muestra la explicación «Puedes cambiar la abreviatura…» cuando la base es editable;
+  se conservan la previsualización, los errores y el motivo cuando está bloqueada.
 
 ### Dashboard administrativo móvil
 

@@ -160,11 +160,9 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
             className="max-w-none"
             autoComplete="off"
           />
-          {editing ? (
+          {editing && !baseEditable ? (
             <p className="text-body-4 m-0 text-[var(--color-text-100)]">
-              {denomination.publicCode} · {baseEditable
-                ? "Puedes cambiar la abreviatura mientras ningún servicio use esta unidad."
-                : BASE_UNIT_LOCKED_REASON}
+              {denomination.publicCode} · {BASE_UNIT_LOCKED_REASON}
             </p>
           ) : null}
           {baseUnits.error && needsCatalog ? (

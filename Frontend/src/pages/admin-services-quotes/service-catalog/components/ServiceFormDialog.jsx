@@ -22,7 +22,7 @@ const NO_ERRORS = Object.freeze({});
  * useInlineDenominationCreator), sin abrir otro diálogo: el borrador del servicio no se toca.
  * Crear la unidad la añade a las opciones, la elige en el borrador y devuelve el foco al campo de
  * unidad; cancelar cierra solo la fila con el foco en «+ Crear unidad». Crear la unidad no guarda
- * el servicio.
+ * el servicio; el panel confirma su creación con la alerta de éxito compartida.
  *
  * Modalidad: llave en mano solo ofrece unidades base de m² (también al crear una unidad) y, al
  * elegirla, retira una unidad incompatible ya elegida. La modalidad solo cambia por una elección
@@ -35,11 +35,12 @@ const NO_ERRORS = Object.freeze({});
  * @param {number|null} [props.serviceId] - Servicio editado.
  * @param {() => void} props.onClose - Cierra sin guardar.
  * @param {(result: {mode: string, service: Object|null, changed: boolean}) => void} props.onSaved - Guardado correcto.
+ * @param {(unit: Object) => void} props.onUnitCreated - Notifica al panel la unidad creada para mostrar su alerta.
  * @param {(message: string) => void} props.onNotFound - El servicio editado ya no existe.
  * @param {() => void} props.onStale - La versión editada quedó desactualizada (recargar el listado).
  * @returns {import("react").ReactElement} Modal del formulario.
  */
-function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onStale, serviceId = null }) {
+function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onStale, onUnitCreated, serviceId = null }) {
   const editing = mode === "edit";
   const detail = useServiceDetail(editing ? serviceId : null);
   const service = detail.service;
@@ -49,7 +50,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const draft = draftState ?? createServiceDraft(service);
   const [fieldErrors, setFieldErrors] = useState(NO_ERRORS);
   const [submitError, setSubmitError] = useState("");
-  // Confirmación discreta de la unidad recién creada, junto al campo de unidad.
+  // Confirmación discreta al reutilizar una unidad existente tras detectar un duplicado.
   const [unitNotice, setUnitNotice] = useState("");
   // Foco tras desplegar, cancelar o completar el alta de unidad (cada petición es un objeto nuevo).
   const [focusRequest, setFocusRequest] = useState(null);
@@ -135,13 +136,14 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   }
 
   /**
-   * Elige en el borrador una denominación (creada o existente) con su base y avisa con discreción.
+   * Elige en el borrador una denominación con su base y devuelve el foco al campo.
+   * Solo reutilizar una existente tras un duplicado necesita una confirmación junto al campo.
    *
    * @param {{id: number, denomination: string, label?: string, measurementUnit: {id: number}}} denomination - Denominación elegida.
-   * @param {string} notice - Confirmación que se muestra junto al campo de unidad.
+   * @param {string} [notice] - Confirmación opcional al reutilizar una unidad existente.
    * @returns {void}
    */
-  function selectDenomination(denomination, notice) {
+  function selectDenomination(denomination, notice = "") {
     changeDraft({
       measurementUnitId: denomination.measurementUnit.id,
       unitDenomination: { id: denomination.id, denomination: denomination.denomination },
@@ -152,13 +154,15 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
 
   /**
    * Incorpora la denominación recién creada a las opciones de su base y la elige.
+   * Notifica al panel para mostrar la alerta de éxito, sin añadir una descripción al campo.
    *
    * @param {Object} created - Denominación devuelta por la API.
    * @returns {void}
    */
   function selectCreatedDenomination(created) {
     activeDenominations.add(created);
-    selectDenomination(created, `Unidad «${created.label ?? created.denomination}» creada y seleccionada.`);
+    selectDenomination(created);
+    onUnitCreated(created);
   }
 
   /**
