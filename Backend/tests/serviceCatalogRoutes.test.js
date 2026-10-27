@@ -74,6 +74,7 @@ test("datos inválidos responden 400 VALIDATION_ERROR antes de consultar el cat�
 const UNIT_ROWS = {
   1: { allows_decimals: true, code: "square_meter", id: "1", is_active: true, name: "Metro cuadrado", sort_order: 101, symbol: "m²" },
   6: { allows_decimals: true, code: "linear_meter", id: "6", is_active: true, name: "Metro lineal", sort_order: 201, symbol: "m.l." },
+  30: { allows_decimals: false, code: "point", id: "30", is_active: false, name: "Punto", sort_order: 401, symbol: "pto." },
 };
 
 /**
@@ -123,6 +124,8 @@ test("alta: crea servicios individuales y llave en mano con código generado y v
     [VALID_CREATE, "individual"],
     [{ ...VALID_CREATE, kind: "individual", measurementUnitId: 6 }, "individual"],
     [{ ...VALID_CREATE, kind: "turnkey", measurementUnitId: 1, referenceRate: "850.50" }, "turnkey"],
+    // La modalidad no restringe la unidad: llave en mano también admite metros lineales.
+    [{ ...VALID_CREATE, kind: "turnkey", measurementUnitId: 6 }, "turnkey"],
   ]) {
     const database = createCatalogDatabase();
     const server = await startServer(context, database.respond);
@@ -142,17 +145,19 @@ test("alta: crea servicios individuales y llave en mano con código generado y v
   }
 });
 
-test("alta: llave en mano con una unidad que no es m² responde 400 y no inserta nada", async (context) => {
-  const database = createCatalogDatabase();
-  const server = await startServer(context, database.respond);
-  server.setUser(ADMIN);
-  const response = await server.send("POST", "", { ...VALID_CREATE, kind: "turnkey", measurementUnitId: 6 });
-  assert.equal(response.status, 400);
-  assert.equal(response.body.code, "VALIDATION_ERROR");
-  assert.equal(response.body.fields.measurementUnitId, "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.");
-  assert.deepEqual(database.inserts, []);
-  assert.ok(server.queries.includes("rollback"));
-  assert.ok(!server.queries.some((sql) => sql.includes("nextval(")), "No reserva código si la modalidad es incompatible");
+test("alta: una unidad inactiva responde 400 en ambas modalidades y no inserta nada", async (context) => {
+  for (const kind of ["individual", "turnkey"]) {
+    const database = createCatalogDatabase();
+    const server = await startServer(context, database.respond);
+    server.setUser(ADMIN);
+    const response = await server.send("POST", "", { ...VALID_CREATE, kind, measurementUnitId: 30 });
+    assert.equal(response.status, 400, kind);
+    assert.equal(response.body.code, "VALIDATION_ERROR");
+    assert.equal(response.body.fields.measurementUnitId, "La unidad de medida está inactiva.");
+    assert.deepEqual(database.inserts, []);
+    assert.ok(server.queries.includes("rollback"));
+    assert.ok(!server.queries.some((sql) => sql.includes("nextval(")), "No reserva código si la unidad no es asignable");
+  }
 });
 
 test("un servicio inexistente responde 404 SERVICE_NOT_FOUND en consulta, edición y estado", async (context) => {

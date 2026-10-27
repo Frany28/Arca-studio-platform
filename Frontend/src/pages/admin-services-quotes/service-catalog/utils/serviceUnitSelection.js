@@ -1,17 +1,14 @@
-import { filterBaseOptionsForKind } from "./serviceFormValues.js";
-
 /**
- * Construye el mismo catálogo seleccionable para Crear y Editar: bases activas permitidas
- * que tienen denominaciones activas registradas. La referencia histórica se muestra aparte;
- * nunca se incorpora al catálogo como si fuera una nueva asignación válida.
+ * Construye el mismo catálogo seleccionable para Crear y Editar, con cualquier modalidad: bases
+ * activas que tienen denominaciones activas registradas. La referencia histórica se muestra
+ * aparte; nunca se incorpora al catálogo como si fuera una nueva asignación válida.
  *
  * @param {Array<Object>} baseOptions - Opciones de bases activas obtenidas de la API.
  * @param {Array<Object>} denominations - Denominaciones registradas.
- * @param {string} kind - Modalidad actual del borrador.
  * @returns {{prefixOptions: Array<Object>, denominations: Array<Object>}} Opciones de nuevas asignaciones.
  */
-export function getServiceUnitCatalog(baseOptions, denominations, kind) {
-  const bases = filterBaseOptionsForKind(baseOptions, kind).filter((base) => base.isActive !== false);
+export function getServiceUnitCatalog(baseOptions, denominations) {
+  const bases = (Array.isArray(baseOptions) ? baseOptions : []).filter((base) => base.isActive !== false);
   const baseIds = new Set(bases.map((base) => base.id));
   const selectable = (denominations || []).filter((item) => item.isActive !== false
     && item.measurementUnit?.isActive !== false && baseIds.has(item.measurementUnit?.id));

@@ -3,7 +3,6 @@ import test from "node:test";
 
 import {
   formatGeneratedServiceCode,
-  isUnitCompatibleWithKind,
   listChangedServiceFields,
   mergeServiceChanges,
 } from "../src/domain/serviceCatalog.js";
@@ -67,7 +66,7 @@ test("alta: la modalidad admite solo individual y turnkey", () => {
     const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind } });
     assert.equal(result.data.body.kind, kind);
   }
-  // La regla de m² de turnkey la aplica el servicio con la unidad bloqueada, no el esquema.
+  // La modalidad no restringe la unidad: el esquema acepta llave en mano con cualquier base.
   assert.equal(serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind: "turnkey", measurementUnitId: 6 } }).success, true);
   for (const kind of ["", "Turnkey", "llave en mano", "bundle", null, 1, ["turnkey"]]) {
     const result = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, kind } });
@@ -148,14 +147,6 @@ test("estado, detalle y listado validan identificadores, filtros y cursor", () =
     { cursor: encodeCursor(["2026-01-01", "1"]) }, { cursor: encodeCursor([-1, "1"]) }, { measurementUnitId: "0" }]) {
     assert.equal(serviceListSchema.safeParse({ query }).success, false, JSON.stringify(query));
   }
-});
-
-test("dominio: llave en mano solo admite unidades de superficie por código estable", () => {
-  assert.equal(isUnitCompatibleWithKind("individual", { code: "point" }), true);
-  assert.equal(isUnitCompatibleWithKind("turnkey", { code: "square_meter" }), true);
-  // El nombre o el símbolo visibles no bastan.
-  assert.equal(isUnitCompatibleWithKind("turnkey", { code: "metro_cuadrado", name: "Metro cuadrado", symbol: "m²" }), false);
-  assert.equal(isUnitCompatibleWithKind("turnkey", null), false);
 });
 
 test("dominio: detecta solo cambios efectivos en los campos versionados", () => {

@@ -177,15 +177,16 @@ test("unidades base: solo activas por defecto e inactivas bajo petición explíc
   assert.deepEqual(sortOrders, [...sortOrders].sort((a, b) => a - b));
 });
 
-test("tabulador 3.2: las unidades de sus 19 servicios existen y llave en mano sigue aceptando m²", { skip }, async () => {
+test("tabulador 3.2: las unidades de sus 19 servicios existen y llave en mano acepta m² y otras bases activas", { skip }, async () => {
   const tabulatorCodes = ["square_meter", "linear_meter", "point", "project", "space", "month"];
   const available = await rows("select code, is_active from public.measurement_units where code = any($1)", [tabulatorCodes]);
   assert.deepEqual(available.map((unit) => unit.code).sort(), [...tabulatorCodes].sort());
   assert.ok(available.every((unit) => unit.is_active));
   const turnkey = await createService({ code: "LLAVE-TABULADOR", kind: "turnkey", referenceRate: "850.00" });
   assert.equal(turnkey.measurementUnit.code, "square_meter");
-  await assert.rejects(createService({ code: "LLAVE-HECTAREA", kind: "turnkey", measurementUnitId: ids.units.hectare }),
-    (error) => error.code === "VALIDATION_ERROR" && /llave en mano/.test(error.fields.measurementUnitId));
+  // La modalidad no restringe la unidad: también se acepta otra superficie (hectárea).
+  const hectare = await createService({ code: "LLAVE-HECTAREA", kind: "turnkey", measurementUnitId: ids.units.hectare });
+  assert.equal(hectare.measurementUnit.code, "hectare");
 });
 
 test("denominaciones: creación, etiqueta, duplicados equivalentes y unidades base no válidas", { skip }, async () => {
@@ -235,9 +236,9 @@ test("servicios: denominación de la misma base, llave en mano por m² y copia h
     (error) => error.code === "VALIDATION_ERROR" && /no pertenece/.test(error.fields.unitDenominationId));
   await assert.rejects(rows("update public.services set unit_denomination_id = $1 where id = $2", [canalization.id, turnkey.id]),
     { code: "23503", constraint: "fk_services_unit_denomination" });
-  // La regla llave en mano depende del código de la base, no de la denominación.
-  await assert.rejects(createService({ code: "LLAVE-ML", kind: "turnkey", measurementUnitId: ids.units.linear_meter, unitDenominationId: canalization.id }),
-    (error) => error.code === "VALIDATION_ERROR" && /llave en mano/.test(error.fields.measurementUnitId));
+  // La modalidad no restringe la unidad: llave en mano también usa una denominación de m.l.
+  const linearTurnkey = await createService({ code: "LLAVE-ML", kind: "turnkey", measurementUnitId: ids.units.linear_meter, unitDenominationId: canalization.id });
+  assert.equal(linearTurnkey.unitLabel, canalization.label);
   const [inactive] = (await units.getDenominationsPage({ search: "integral" })).unitDenominations;
   await units.changeDenominationStatus({ denominationId: inactive.id, payload: { isActive: false }, user: { id: ids.admin } });
   await assert.rejects(createService({ code: "SEMANAL", measurementUnitId: ids.units.week, unitDenominationId: inactive.id }),

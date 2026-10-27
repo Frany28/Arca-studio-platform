@@ -6,10 +6,7 @@ import { useInlineDenominationCreator } from "../hooks/useInlineDenominationCrea
 import { useServiceDetail } from "../hooks/useServiceDetail.js";
 import { useServiceFormSubmit } from "../hooks/useServiceFormSubmit.js";
 import { getServiceFormErrorFeedback } from "../utils/serviceCatalogErrors.js";
-import {
-  changeDraftKind, createServiceDraft, filterBaseOptionsForKind,
-  validateServiceDraft,
-} from "../utils/serviceFormValues.js";
+import { createServiceDraft, validateServiceDraft } from "../utils/serviceFormValues.js";
 import { getServiceUnitCatalog, preservesServiceUnit } from "../utils/serviceUnitSelection.js";
 import ServiceFormModal from "./ServiceFormModal.jsx";
 
@@ -25,9 +22,9 @@ const NO_ERRORS = Object.freeze({});
  * unidad; cancelar cierra solo la fila con el foco en «+ Crear unidad». Crear la unidad no guarda
  * el servicio; el panel confirma su creación con la alerta de éxito compartida.
  *
- * Modalidad: llave en mano solo ofrece unidades base de m² (también al crear una unidad) y, al
- * elegirla, retira una unidad incompatible ya elegida. La modalidad solo cambia por una elección
- * explícita del administrador; en la edición se precarga la guardada.
+ * Modalidad: no restringe la unidad. Ambas ofrecen todas las unidades registradas y activas
+ * (también al crear una unidad) y cambiarla conserva la unidad elegida. La modalidad solo cambia
+ * por una elección explícita del administrador; en la edición se precarga la guardada.
  *
  * @param {Object} props - Solicitud y callbacks.
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.baseUnits
@@ -65,25 +62,23 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const [focusRequest, setFocusRequest] = useState(null);
   const form = useServiceFormSubmit({ mode, service });
 
-  // Catálogo de bases (con su código): fuente del alta contextual y de las reglas de modalidad.
-  // En la edición incluye la base actual aunque esté inactiva.
+  // Catálogo de bases: fuente del símbolo de la unidad elegida. En la edición incluye la base
+  // actual aunque esté inactiva.
   const baseOptions = useMemo(
     () => (service ? toEditBaseUnitOptions(baseUnits.options, service.measurementUnit) : baseUnits.options),
     [baseUnits.options, service],
   );
-  // Una unidad nueva solo puede crearse en una base activa (catálogo) permitida por la modalidad.
-  const creatableBaseOptions = useMemo(() => filterBaseOptionsForKind(baseUnits.options, draft.kind), [baseUnits.options, draft.kind]);
-  const unitCode = baseOptions.find((option) => option.id === draft.measurementUnitId)?.code;
 
+  // Una unidad nueva puede crearse en cualquier base activa del catálogo, con cualquier modalidad.
   const creator = useInlineDenominationCreator({
-    baseOptions: creatableBaseOptions,
+    baseOptions: baseUnits.options,
     preferredUnitId: draft.measurementUnitId,
     onCreated: selectCreatedDenomination,
   });
   // Ambos modos necesitan las denominaciones al abrir para construir los símbolos seleccionables.
   const activeDenominations = useActiveDenominations({ enabled: status === "ready" });
-  const unitCatalog = useMemo(() => getServiceUnitCatalog(baseUnits.options, activeDenominations.options, draft.kind),
-    [activeDenominations.options, baseUnits.options, draft.kind]);
+  const unitCatalog = useMemo(() => getServiceUnitCatalog(baseUnits.options, activeDenominations.options),
+    [activeDenominations.options, baseUnits.options]);
   // La base guardada puede mostrarse sin estar disponible para otra asignación.
   const selectedBaseOption = baseOptions.find((option) => option.id === draft.measurementUnitId) ?? null;
   // Un servicio guardado solo con la base puede conservarla; cualquier cambio exige una unidad registrada.
@@ -94,7 +89,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
     || (status === "ready" && unitCatalog.denominations.length === 0 ? "No hay unidades de medida registradas. Crea una con «+ Crear unidad»." : "");
   const createUnitHint = baseUnits.error
     || (baseUnits.loading ? "Cargando unidades base..." : "")
-    || (creatableBaseOptions.length === 0 && !baseUnits.loading ? "No hay una unidad base activa disponible para esta modalidad." : "");
+    || (baseUnits.options.length === 0 && !baseUnits.loading ? "No hay una unidad base activa disponible." : "");
 
   /**
    * Aplica cambios al borrador y retira el error del campo editado.
@@ -111,16 +106,14 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   }
 
   /**
-   * Aplica la modalidad elegida. Si la unidad base ya elegida no la admite, la retira junto con
-   * su denominación (y su error), para que el administrador elija una compatible.
+   * Aplica la modalidad elegida conservando la unidad y la denominación: cualquier modalidad
+   * admite cualquier unidad registrada.
    *
    * @param {string} kind - Modalidad elegida.
    * @returns {void}
    */
   function changeKind(kind) {
-    const patch = changeDraftKind(draft, kind, baseOptions);
-    changeDraft(patch, "kind");
-    if ("measurementUnitId" in patch) setFieldErrors((current) => (current.unit ? { ...current, unit: undefined } : current));
+    changeDraft({ kind }, "kind");
   }
 
   /**
@@ -159,7 +152,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
    * @returns {Promise<void>}
    */
   async function submit() {
-    const errors = validateServiceDraft(draft, { availableDenominations: unitCatalog.denominations, originalKind: service?.kind, preserveStoredUnit, unitCode });
+    const errors = validateServiceDraft(draft, { availableDenominations: unitCatalog.denominations, preserveStoredUnit });
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
       return;
@@ -202,7 +195,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       onSubmit={submit}
       unitCreation={{
         creator,
-        baseOptions: creatableBaseOptions,
+        baseOptions: baseUnits.options,
         hint: createUnitHint,
         onStart: () => {
           creator.start();

@@ -572,10 +572,9 @@ Validación, capturas y diferencias respecto a Figma:
     detalle) muestra la modalidad deshabilitada con el motivo («La modalidad no se puede modificar
     porque este servicio ya está incluido en una cotización»); un 409 `SERVICE_MODALITY_IN_USE`
     muestra el mismo motivo junto al campo sin perder el borrador (Backend/ARCHITECTURE.md).
-  - Llave en mano solo admite la unidad base de código `square_meter` (nunca por el símbolo):
-    el selector de base y «+ Crear unidad» solo ofrecen m², y elegir llave en mano retira una
-    unidad incompatible ya elegida (con su denominación). Volver a individual conserva la unidad.
-    El backend aplica la misma regla y es la autoridad.
+  - La modalidad no restringe la unidad: individual y llave en mano ofrecen todas las unidades
+    registradas y activas (también «+ Crear unidad», con cualquier base activa) y cambiar de
+    modalidad en cualquier sentido conserva la unidad elegida. El backend es la autoridad.
   - `referenceRate` se formatea como texto, sin `Number`: miles agrupados y céntimos solo si no
     son cero (`$12`, `$1,250.50`). El valor almacenado no cambia.
   - Descripción: icono informativo (`InfoCircleIcon` de `Label/LabelIcons.jsx`, `neutral-400`)
@@ -677,8 +676,8 @@ Validación, capturas y diferencias respecto a Figma:
       unido al campo completo.
     - Búsqueda sin coincidencias: el listado se cierra y el campo indica crear la unidad con
       «Crear unidad». `getServiceUnitCatalog` ofrece solo denominaciones activas de bases
-      activas, nunca las 48 bases sueltas; llave en mano solo ofrece las de base `square_meter`.
-      El alta contextual conserva todas las bases activas permitidas, para crear la primera
+      activas, nunca las 48 bases sueltas, con cualquier modalidad.
+      El alta contextual conserva todas las bases activas, para crear la primera
       denominación de un símbolo, y su resultado queda elegido con su símbolo y su Tag. Sin
       catálogo se indica crear una unidad; siempre sigue disponible «+ Crear unidad» si hay bases
       activas.
@@ -688,8 +687,8 @@ Validación, capturas y diferencias respecto a Figma:
       inactiva o sin denominaciones activas se presenta mediante `prefixSelectedOption` del Input,
       sin añadirla al listado ni a la navegación por opciones. Sin denominación guardada no se
       fabrica un Tag. `preservesServiceUnit` permite editar otros campos conservando esos ids,
-      incluso históricos. Cambiar la modalidad revalida compatibilidad; cambiar los ids exige
-      una denominación activa válida de una base activa.
+      incluso históricos, también al cambiar solo la modalidad; cambiar los ids exige una
+      denominación activa válida de una base activa.
       El PATCH envía solo cambios efectivos con `expectedVersion`; restaurar los valores originales
       no genera cambios de unidad ni versiones innecesarias. El backend conserva la autoridad.
     - Las sugerencias usan la tira horizontal del Input (scroll con la barra oculta): con muchas
@@ -701,8 +700,8 @@ Validación, capturas y diferencias respecto a Figma:
     con poca altura y el pie Cancelar/Crear sigue visible. Lógica en `useInlineDenominationCreator`,
     que reutiliza las reglas de Unidades (`normalizeDenominationText`, `validateDenominationText`,
     `getMeasurementUnitErrorFeedback`) y `POST /admin/measurement-unit-denominations`.
-    - Base: la del servicio si está permitida; si no, la primera del catálogo activo (m²). En
-      llave en mano solo m²: el selector queda fijado y deshabilitado.
+    - Base: la del servicio si está en el catálogo activo; si no, la primera de ese catálogo (m²).
+      Cualquier base activa, sea cual sea la modalidad.
     - Guardar (o Enter en el campo) crea solo la denominación, nunca el servicio: se añade a las
       opciones, queda elegida con su base, se confirma con la alerta de éxito compartida y el foco
       vuelve al campo de unidad. El borrador del servicio no cambia. Un doble clic envía una vez.

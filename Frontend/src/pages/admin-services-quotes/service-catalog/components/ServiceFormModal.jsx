@@ -44,7 +44,7 @@ const FOCUS_SELECTORS = {
  * @param {() => void} [props.onRetryLoad] - Repite la lectura; sin ella (servicio inexistente) no se ofrece reintentar.
  * @param {Object} props.draft - Borrador (createServiceDraft).
  * @param {(patch: Object) => void} props.onDraftChange - Aplica cambios parciales al borrador.
- * @param {(kind: string) => void} props.onKindChange - Aplica la modalidad elegida (y sus efectos en la unidad).
+ * @param {(kind: string) => void} props.onKindChange - Aplica la modalidad elegida (conserva la unidad).
  * @param {boolean} [props.kindLocked=false] - El servicio está en alguna cotización y su modalidad no cambia.
  * @param {Object} props.fieldErrors - Errores por campo (name, kind, description, unit, referenceRate).
  * @param {string} props.submitError - Error general del envío.

@@ -1,15 +1,12 @@
 // Valores del formulario de servicios (Figma 5764:226084): las reglas reproducen el esquema del
-// backend (serviceCreateSchema / serviceUpdateSchema) y su regla de llave en mano para avisar
-// antes de enviar; el backend sigue siendo la autoridad. El código no se edita: lo genera el sistema.
+// backend (serviceCreateSchema / serviceUpdateSchema) para avisar antes de enviar; el backend
+// sigue siendo la autoridad. El código no se edita: lo genera el sistema.
 
 export const SERVICE_NAME_MAX_LENGTH = 150;
-// Modalidades del contrato (`kind`). Llave en mano solo admite la unidad base de superficie con
-// código estable `square_meter` (cualquier denominación de esa base), como
-// TURNKEY_COMPATIBLE_UNIT_CODES en el dominio del backend; nunca se decide por el símbolo visible.
+// Modalidades del contrato (`kind`). Ninguna restringe la unidad: ambas admiten cualquier unidad
+// registrada y activa.
 export const SERVICE_KINDS = Object.freeze({ INDIVIDUAL: "individual", TURNKEY: "turnkey" });
 const SERVICE_KIND_VALUES = Object.freeze(Object.values(SERVICE_KINDS));
-const TURNKEY_UNIT_CODES = Object.freeze(["square_meter"]);
-const TURNKEY_UNIT_MESSAGE = "Llave en mano requiere una unidad en metros cuadrados (m²).";
 export const SERVICE_DESCRIPTION_MAX_LENGTH = 2000;
 // NUMERIC(14,2): hasta 12 enteros y 2 decimales, sin signo.
 const REFERENCE_RATE_PATTERN = /^\d{1,12}(\.\d{1,2})?$/;
@@ -39,62 +36,20 @@ export function createServiceDraft(service) {
 }
 
 /**
- * Indica si una unidad base puede usarse con la modalidad: individual admite cualquiera y llave
- * en mano solo la de código `square_meter`.
- *
- * @param {string} kind - Modalidad (`individual` o `turnkey`).
- * @param {string|undefined} unitCode - Código estable de la unidad base.
- * @returns {boolean} true si la combinación es válida.
- */
-export function isBaseUnitAllowedForKind(kind, unitCode) {
-  return kind !== SERVICE_KINDS.TURNKEY || TURNKEY_UNIT_CODES.includes(unitCode);
-}
-
-/**
- * Unidades base que el selector ofrece para la modalidad: todas en individual (o sin modalidad
- * elegida) y solo m² en llave en mano.
- *
- * @param {Array<{id: number, code?: string}>} options - Unidades base disponibles.
- * @param {string} kind - Modalidad del borrador.
- * @returns {Array<Object>} Opciones permitidas (la misma lista si no hay restricción).
- */
-export function filterBaseOptionsForKind(options, kind) {
-  const list = Array.isArray(options) ? options : [];
-  return kind === SERVICE_KINDS.TURNKEY ? list.filter((option) => isBaseUnitAllowedForKind(kind, option.code)) : list;
-}
-
-/**
- * Cambio de modalidad del borrador: conserva la unidad y la denominación si siguen siendo válidas
- * y, si la base no admite la nueva modalidad (o se desconoce su código), las retira para que el
- * administrador elija una compatible. Solo responde a una elección explícita del administrador.
- *
- * @param {Object} draft - Borrador actual.
- * @param {string} kind - Modalidad elegida.
- * @param {Array<{id: number, code?: string}>} baseOptions - Unidades base conocidas (con su código).
- * @returns {{kind: string, measurementUnitId?: null, unitDenomination?: null}} Cambios del borrador.
- */
-export function changeDraftKind(draft, kind, baseOptions) {
-  if (!draft.measurementUnitId) return { kind };
-  const unitCode = (baseOptions || []).find((option) => option.id === draft.measurementUnitId)?.code;
-  return isBaseUnitAllowedForKind(kind, unitCode) ? { kind } : { kind, measurementUnitId: null, unitDenomination: null };
-}
-
-/**
  * Valida el borrador con las reglas del contrato. Devuelve un mensaje por campo inválido.
  *
- * La unidad es una denominación activa registrada; la edición puede conservar la combinación
- * histórica guardada (`preserveStoredUnit`) sin sustituirla ni reenviarla a la API.
+ * La unidad es una denominación activa registrada, con cualquier modalidad; la edición puede
+ * conservar la combinación histórica guardada (`preserveStoredUnit`) sin sustituirla ni
+ * reenviarla a la API, también al cambiar solo la modalidad.
  *
  * @param {Object} draft - Borrador del formulario.
  * @param {Object} [context] - Datos que dependen del catálogo.
- * @param {string} [context.unitCode] - Código estable de la unidad base elegida.
  * @param {boolean} [context.allowBaseOnly] - La base sin denominación es la guardada del servicio.
  * @param {boolean} [context.preserveStoredUnit] - No cambió la base ni denominación guardada.
- * @param {string} [context.originalKind] - Modalidad guardada; cambiarla revalida compatibilidad.
  * @param {Array<Object>} [context.availableDenominations] - Catálogo de nuevas asignaciones activas.
  * @returns {{name?: string, kind?: string, description?: string, unit?: string, referenceRate?: string}} Errores.
  */
-export function validateServiceDraft(draft, { allowBaseOnly = false, availableDenominations, originalKind, preserveStoredUnit = false, unitCode } = {}) {
+export function validateServiceDraft(draft, { allowBaseOnly = false, availableDenominations, preserveStoredUnit = false } = {}) {
   const errors = {};
   const name = draft.name.trim();
   if (!name) errors.name = "Escribe el nombre del servicio.";
@@ -109,11 +64,6 @@ export function validateServiceDraft(draft, { allowBaseOnly = false, availableDe
       && !filterDenominationsForBase(availableDenominations, draft.measurementUnitId).some((item) => item.id === draft.unitDenomination.id)) {
       errors.unit = "Elige una unidad activa registrada para este símbolo.";
     }
-  }
-  // Como PATCH: cambiar modalidad revalida su compatibilidad, pero no reasigna una unidad que
-  // conserva sus ids. Una combinación histórica intacta puede editar otros campos.
-  if (!errors.unit && (!preserveStoredUnit || draft.kind !== originalKind) && !isBaseUnitAllowedForKind(draft.kind, unitCode)) {
-    errors.unit = TURNKEY_UNIT_MESSAGE;
   }
   const rate = draft.referenceRate.trim();
   if (!rate) errors.referenceRate = "Indica la tarifa.";
@@ -256,19 +206,6 @@ export function toDenominationTag(denomination) {
 export function toDenominationOption(denomination) {
   const label = denomination.label || `${denomination.measurementUnit?.symbol ?? ""} ${denomination.denomination}`.trim();
   return { id: denomination.id, label, avatar: false, closeIcon: true };
-}
-
-/**
- * Unidades de medida registradas que admite la modalidad: todas en individual (o sin modalidad
- * elegida) y solo las de base `square_meter` en llave en mano (por código, nunca por símbolo).
- *
- * @param {Array<{measurementUnit: {code: string}}>} denominations - Denominaciones activas.
- * @param {string} kind - Modalidad del borrador.
- * @returns {Array<Object>} Denominaciones permitidas (la misma lista si no hay restricción).
- */
-export function filterDenominationsForKind(denominations, kind) {
-  const list = Array.isArray(denominations) ? denominations : [];
-  return kind === SERVICE_KINDS.TURNKEY ? list.filter((item) => isBaseUnitAllowedForKind(kind, item.measurementUnit?.code)) : list;
 }
 
 /**

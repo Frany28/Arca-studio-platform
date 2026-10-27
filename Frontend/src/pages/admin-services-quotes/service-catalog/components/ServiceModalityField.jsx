@@ -10,8 +10,8 @@ import { SERVICE_MODALITY_LOCKED_MESSAGE } from "../utils/serviceCatalogErrors.j
  * Campo «Modalidad de Contratación» del formulario de servicios (Figma 5764:226084, nodo
  * 5924:439642): etiqueta y Dropdown menu con «Detalle por detalle» (`individual`) y «Llave en
  * mano» (`turnkey`). Sin modalidad elegida muestra una indicación y el formulario exige elegirla;
- * un valor fuera del contrato tampoco se preselecciona. Solo informa la elección: las reglas de
- * unidad que dependen de ella las aplica el formulario. Un servicio incluido en alguna cotización
+ * un valor fuera del contrato tampoco se preselecciona. Solo informa la elección: la modalidad no
+ * restringe la unidad de medida. Un servicio incluido en alguna cotización
  * (`kindLocked` de la API, regla SERVICE_MODALITY_IN_USE) muestra su modalidad bloqueada y el motivo.
  *
  * @param {Object} props - Valor, estado y callback.

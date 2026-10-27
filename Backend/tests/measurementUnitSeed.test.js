@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
-import { TURNKEY_COMPATIBLE_UNIT_CODES } from "../src/domain/serviceCatalog.js";
 import { backendDirectory, listMigrations, readMigrationStatements } from "./helpers/migrationSchema.js";
 
 const SEED_PATH = path.join(backendDirectory, "prisma", "seeds", "measurement_units.sql");
@@ -136,8 +135,6 @@ test("conserva las 11 unidades originales con sus códigos, nombres, símbolos y
       code,
     );
   }
-  // La regla llave en mano sigue apoyándose en un código presente en el catálogo.
-  for (const code of TURNKEY_COMPATIBLE_UNIT_CODES) assert.ok(byCode.has(code), code);
 });
 
 test("códigos, nombres y símbolos únicos con la misma equivalencia que PostgreSQL", () => {

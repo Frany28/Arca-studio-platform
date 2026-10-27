@@ -4,7 +4,6 @@ import {
   DEFAULT_SERVICE_KIND,
   SERVICE_CURRENCY,
   formatGeneratedServiceCode,
-  isUnitCompatibleWithKind,
   listChangedServiceFields,
   mergeServiceChanges,
 } from "../domain/serviceCatalog.js";
@@ -69,35 +68,28 @@ export async function getService(serviceId) {
 }
 
 /**
- * Comprueba en la transacción que una unidad pueda usarse con el tipo de servicio y la bloquea
- * con FOR SHARE hasta el COMMIT. Exige que esté activa al asignarla o al reactivar el servicio;
- * un cambio de tipo con la misma unidad solo verifica la compatibilidad.
+ * Comprueba en la transacción que una unidad exista y esté activa al asignarla o al reactivar el
+ * servicio, y la bloquea con FOR SHARE hasta el COMMIT. Cualquier modalidad admite cualquier
+ * unidad base registrada y activa: la modalidad no interviene.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la asignación.
  * @param {number} options.measurementUnitId - Unidad elegida.
- * @param {string} options.kind - Tipo de servicio.
- * @param {boolean} options.requireActive - Exige que la unidad esté activa.
  * @returns {Promise<void>}
- * @throws {ValidationError} Si la unidad no existe, está inactiva o es incompatible con el tipo.
+ * @throws {ValidationError} Si la unidad no existe o está inactiva.
  */
-async function assertAssignableUnit(client, { kind, measurementUnitId, requireActive }) {
+async function assertAssignableUnit(client, { measurementUnitId }) {
   const unit = await findMeasurementUnitById(measurementUnitId, { executor: client, lockForShare: true });
   if (!unit) throw new ValidationError(undefined, { measurementUnitId: "La unidad de medida no existe." });
-  if (requireActive && !unit.isActive) {
+  if (!unit.isActive) {
     throw new ValidationError(undefined, { measurementUnitId: "La unidad de medida está inactiva." });
-  }
-  if (!isUnitCompatibleWithKind(kind, unit)) {
-    throw new ValidationError(undefined, {
-      measurementUnitId: "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.",
-    });
   }
 }
 
 /**
  * Comprueba que una denominación exista, esté activa y sea de la unidad base del servicio, y
  * la bloquea con FOR SHARE hasta el COMMIT para que nadie la desactive o edite mientras se
- * asigna. La compatibilidad con el tipo de servicio la decide la unidad base.
+ * asigna.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la asignación.
@@ -118,8 +110,8 @@ async function assertAssignableDenomination(client, { measurementUnitId, unitDen
 }
 
 /**
- * Valida unidad y denominación cuando cambian, cuando cambia el tipo o al reactivar el servicio
- * (pudieron desactivarse mientras estuvo inactivo), bloqueándolas con FOR SHARE hasta el COMMIT.
+ * Valida unidad y denominación cuando cambian o al reactivar el servicio, bloqueándolas con FOR SHARE
+ * hasta el COMMIT; cambiar solo la modalidad no las revalida (no restringe la unidad, ni histórica).
  * Cambiar la base conservando la denominación anterior se rechaza: pertenece a la otra base.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
@@ -142,12 +134,8 @@ async function assertServiceUnitChanges(client, { changedFields, next, payload }
       unitDenominationId: "La denominación actual pertenece a otra unidad. Indica una denominación de la nueva unidad o null.",
     });
   }
-  if (unitChanged || reactivating || changedFields.includes("kind")) {
-    await assertAssignableUnit(client, {
-      kind: next.kind,
-      measurementUnitId: next.measurementUnitId,
-      requireActive: unitChanged || reactivating,
-    });
+  if (unitChanged || reactivating) {
+    await assertAssignableUnit(client, { measurementUnitId: next.measurementUnitId });
   }
   if ((unitChanged || denominationChanged || reactivating) && next.unitDenominationId !== null) {
     await assertAssignableDenomination(client, { measurementUnitId: next.measurementUnitId, unitDenominationId: next.unitDenominationId });
@@ -179,23 +167,23 @@ async function reserveGeneratedServiceCode(client) {
  * Crea un servicio y su versión 1 en una única transacción: si falla cualquiera de las dos
  * escrituras no queda ningún registro. El código `SERV-001` lo genera siempre el sistema a
  * partir del id reservado (el cuerpo validado no admite código) y la unicidad la garantiza
- * además PostgreSQL (uq_services_code). La modalidad (`kind`) la elige el administrador: un
- * servicio `turnkey` exige una unidad base de superficie `square_meter` (con cualquier
- * denominación activa de esa base), comprobada aquí con la unidad bloqueada.
+ * además PostgreSQL (uq_services_code). La modalidad (`kind`) la elige el administrador y
+ * admite cualquier unidad base activa (con una denominación activa de esa base), comprobada
+ * aquí con la unidad bloqueada.
  *
  * @param {object} options - Datos de la operación.
  * @param {object} options.payload - Cuerpo validado por serviceCreateSchema (`kind` ya resuelto;
  *   `individual` si se omite).
  * @param {{ id: number }} options.user - Administrador autenticado.
  * @returns {Promise<object>} Servicio creado con currentVersion = 1.
- * @throws {ValidationError} Si la unidad no es válida para el servicio o su modalidad.
+ * @throws {ValidationError} Si la unidad o la denominación no existen, están inactivas o no corresponden.
  * @throws {ConflictError} SERVICE_CODE_ALREADY_EXISTS si no hay código libre.
  */
 export async function createService({ payload, user }) {
   const kind = payload.kind ?? DEFAULT_SERVICE_KIND;
   try {
     return await withTransaction(async (client) => {
-      await assertAssignableUnit(client, { kind, measurementUnitId: payload.measurementUnitId, requireActive: true });
+      await assertAssignableUnit(client, { measurementUnitId: payload.measurementUnitId });
       if (payload.unitDenominationId) {
         await assertAssignableDenomination(client, { measurementUnitId: payload.measurementUnitId, unitDenominationId: payload.unitDenominationId });
       }

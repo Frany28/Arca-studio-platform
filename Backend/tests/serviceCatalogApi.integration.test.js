@@ -112,18 +112,21 @@ test("alta: sin código ni tipo genera SERV- con el id, es individual y la versi
   ]);
 });
 
-test("llave en mano: el alta elegida por el administrador conserva el tipo y su regla de m², con código generado", { skip }, async () => {
+test("llave en mano: el alta elegida por el administrador conserva el tipo, admite cualquier unidad activa y genera el código", { skip }, async () => {
   const llave = await create({ kind: "turnkey", name: "Llave premium", referenceRate: "900.00", sortOrder: 2 });
   created.llave = llave.id;
   assert.equal(llave.kind, "turnkey");
   assert.match(llave.code, GENERATED_CODE);
   assert.equal(llave.currentVersion, 1);
   assert.deepEqual((await versionsOf(llave.id)).map((version) => [version.version_number, version.kind]), [[1, "turnkey"]]);
-  await assert.rejects(create({ kind: "turnkey", name: "Llave por punto", measurementUnitId: ids.point }), (error) => {
-    assert.equal(error.code, "VALIDATION_ERROR");
-    assert.equal(error.fields.measurementUnitId, "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.");
-    return true;
-  });
+  // La modalidad no restringe la unidad: llave en mano también se crea con puntos.
+  const porPunto = await create({ kind: "turnkey", name: "Llave por punto", measurementUnitId: ids.point });
+  created.llavePunto = porPunto.id;
+  assert.equal(porPunto.kind, "turnkey");
+  assert.equal(porPunto.measurementUnit.id, ids.point);
+  // Una unidad inactiva sigue rechazándose en cualquier modalidad.
+  await assert.rejects(create({ kind: "turnkey", name: "Llave retirada", measurementUnitId: ids.legacy }),
+    (error) => error.code === "VALIDATION_ERROR" && error.fields.measurementUnitId === "La unidad de medida está inactiva.");
 });
 
 test("concurrencia: veinte altas simultáneas reciben códigos únicos y permanentes con su versión 1", { skip }, async () => {
@@ -258,23 +261,23 @@ test("reversión: un fallo a mitad de la edición no deja cambios ni pierde la v
   assert.deepEqual(await versionsOf(id), versionsBefore);
 });
 
-test("edición: unidad inactiva o llave en mano con unidad incompatible se rechazan; el tipo existente se conserva", { skip }, async () => {
+test("edición: unidad inactiva se rechaza; cambiar a llave en mano conserva la unidad y el tipo existente se conserva", { skip }, async () => {
   const service = await create({ name: "Puntos eléctricos", measurementUnitId: ids.point, referenceRate: "45.00", sortOrder: 3 });
   created.puntos = service.id;
   await assert.rejects(
     catalog.updateService({ payload: { expectedVersion: 1, measurementUnitId: ids.legacy }, serviceId: service.id, user: { id: ids.adminA } }),
     (error) => error.code === "VALIDATION_ERROR" && error.fields.measurementUnitId === "La unidad de medida está inactiva.",
   );
-  await assert.rejects(
-    catalog.updateService({ payload: { expectedVersion: 1, kind: "turnkey" }, serviceId: service.id, user: { id: ids.adminA } }),
-    (error) => error.code === "VALIDATION_ERROR" && /llave en mano/.test(error.fields.measurementUnitId),
-  );
+  // Cambiar solo la modalidad conserva la unidad de puntos: la modalidad no la restringe.
+  const turnkey = await catalog.updateService({ payload: { expectedVersion: 1, kind: "turnkey" }, serviceId: service.id, user: { id: ids.adminA } });
+  assert.deepEqual(turnkey.changedFields, ["kind"]);
+  assert.equal(turnkey.service.measurementUnit.id, ids.point);
   const moved = await catalog.updateService({
-    payload: { expectedVersion: 1, kind: "turnkey", measurementUnitId: ids.squareMeter }, serviceId: service.id, user: { id: ids.adminA },
+    payload: { expectedVersion: 2, measurementUnitId: ids.squareMeter }, serviceId: service.id, user: { id: ids.adminA },
   });
-  assert.deepEqual(moved.changedFields, ["kind", "measurementUnitId"]);
+  assert.deepEqual(moved.changedFields, ["measurementUnitId"]);
   assert.equal(moved.service.code, service.code);
-  assert.deepEqual((await versionsOf(service.id)).map((v) => v.unit_symbol), ["pt.", "m²"]);
+  assert.deepEqual((await versionsOf(service.id)).map((v) => v.unit_symbol), ["pt.", "pt.", "m²"]);
   // Editar otro campo de un servicio llave en mano no cambia su tipo.
   const llave = await catalog.getService(created.llave);
   const renamed = await catalog.updateService({ payload: { expectedVersion: llave.currentVersion, name: "Llave premium 2026" }, serviceId: llave.id, user: { id: ids.adminA } });
@@ -288,7 +291,7 @@ test("listado: búsqueda literal por nombre o código generado, filtros y pagina
   // % y _ se buscan literalmente, no como comodines.
   assert.deepEqual((await catalog.getServicesPage({ search: "%" })).services, []);
   assert.deepEqual((await catalog.getServicesPage({ search: "_" })).services, []);
-  assert.deepEqual((await catalog.getServicesPage({ kind: "turnkey" })).services.map((s) => s.id).sort((a, b) => a - b), [created.llave, created.puntos].sort((a, b) => a - b));
+  assert.deepEqual((await catalog.getServicesPage({ kind: "turnkey" })).services.map((s) => s.id).sort((a, b) => a - b), [created.llave, created.llavePunto, created.puntos].sort((a, b) => a - b));
   assert.ok((await catalog.getServicesPage({ measurementUnitId: ids.point })).services.every((s) => s.measurementUnit.id === ids.point));
 
   const all = await rows("select id::int, sort_order from public.services order by sort_order, id");

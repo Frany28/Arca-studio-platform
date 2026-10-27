@@ -18,19 +18,16 @@ export const LONG_DESCRIPTION = "Diseña las áreas exteriores de prueba, con ve
 
 const unitById = (id) => Object.values(UNITS).find((unit) => unit.id === Number(id));
 const SERVICE_KIND_VALUES = ["individual", "turnkey"];
-const TURNKEY_UNIT_MESSAGE = "Las modalidades llave en mano requieren una unidad de superficie en metros cuadrados.";
 
 /**
- * Regla del backend para la modalidad: individual admite cualquier unidad y llave en mano solo la
- * base de código `square_meter`. Devuelve los errores por campo como el VALIDATION_ERROR real.
+ * Validación del backend para la modalidad: solo `individual` o `turnkey`, y ninguna restringe la
+ * unidad. Devuelve los errores por campo como el VALIDATION_ERROR real.
  *
  * @param {string} kind - Modalidad resultante.
- * @param {number} measurementUnitId - Unidad base resultante.
  * @returns {Object|null} Errores por campo o null si es válida.
  */
-function kindUnitErrors(kind, measurementUnitId) {
+function kindErrorsFor(kind) {
   if (!SERVICE_KIND_VALUES.includes(kind)) return { "body.kind": "Elige una modalidad de contratación válida: individual o llave en mano." };
-  if (kind === "turnkey" && unitById(measurementUnitId)?.code !== "square_meter") return { measurementUnitId: TURNKEY_UNIT_MESSAGE };
   return null;
 }
 
@@ -117,8 +114,8 @@ function composeUnitLabel(item) {
 
 /**
  * Backend simulado con estado: búsqueda literal, filtros y cursor del listado; detalle; alta con
- * código generado (`SERV-` + id) y modalidad elegida (individual si se omite; llave en mano solo
- * con m²); edición versionada (409 si la versión no
+ * código generado (`SERV-` + id) y modalidad elegida (individual si se omite; ninguna
+ * restringe la unidad); edición versionada (409 si la versión no
  * coincide, `changed=false` sin cambios); cambio de estado; unidades base; denominaciones por
  * base y su alta. Admite fallos y retrasos inyectados por operación.
  *
@@ -200,7 +197,7 @@ export function createServiceCatalogBackend(initial) {
         return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { "body.code": "El código del servicio lo genera el sistema." } });
       }
       const kind = body.kind === undefined ? "individual" : body.kind;
-      const kindErrors = kindUnitErrors(kind, body.measurementUnitId);
+      const kindErrors = kindErrorsFor(kind);
       if (kindErrors) return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: kindErrors });
       const id = state.nextServiceId;
       state.nextServiceId += 1;
@@ -232,9 +229,9 @@ export function createServiceCatalogBackend(initial) {
         if (match[2] && body.isActive && item.unitDenomination && !item.unitDenomination.isActive) {
           return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: { unitDenominationId: "La denominación está inactiva." } });
         }
-        // Como updateService: cambiar la modalidad o la unidad revalida la regla de llave en mano.
-        if (body.kind !== undefined || body.measurementUnitId !== undefined) {
-          const kindErrors = kindUnitErrors(body.kind ?? item.kind, body.measurementUnitId ?? item.measurementUnit.id);
+        // Como updateService: la modalidad enviada debe ser válida; no restringe la unidad.
+        if (body.kind !== undefined) {
+          const kindErrors = kindErrorsFor(body.kind);
           if (kindErrors) return json(route, 400, { code: "VALIDATION_ERROR", message: "Datos inválidos.", fields: kindErrors });
         }
         const before = JSON.stringify(item);

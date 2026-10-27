@@ -3,8 +3,8 @@
  *
  * - Modalidades de contratación: `individual` («Detalle por detalle») y `turnkey` («Llave en
  *   mano»). El administrador la elige al crear el servicio; omitida, es `individual`.
- * - Las modalidades llave en mano se cotizan por superficie: su unidad debe identificarse
- *   por un código estable de superficie, nunca por el nombre o símbolo visibles.
+ * - La modalidad no restringe la unidad: ambas admiten cualquier unidad base registrada y activa
+ *   (m², m³, m.l., und., pto., hrs...), con las mismas reglas de estado y referencias.
  * - Moneda única USD en esta fase (restricción también presente en PostgreSQL).
  * - Código visible generado por el sistema a partir del id (`SERV-001`, `SERV-1000`), como el
  *   `publicCode` de las unidades.
@@ -36,30 +36,10 @@ export function formatGeneratedServiceCode(serviceId) {
   return formatGeneratedCode(GENERATED_CODE_PREFIX, serviceId, "service_catalog: el id del servicio");
 }
 
-/**
- * Códigos estables de unidades de superficie compatibles con m². La carga inicial de
- * unidades debe registrar el metro cuadrado con el código `square_meter`.
- */
-export const TURNKEY_COMPATIBLE_UNIT_CODES = Object.freeze(["square_meter"]);
-
 /** Campos editables que forman parte de cada versión del servicio. */
 export const SERVICE_EDITABLE_FIELDS = Object.freeze([
   "name", "description", "kind", "measurementUnitId", "unitDenominationId", "referenceRate", "isActive", "sortOrder",
 ]);
-
-/**
- * Indica si una unidad de medida puede asignarse a un servicio del tipo indicado.
- * Los servicios individuales admiten cualquier unidad; los llave en mano solo unidades de
- * superficie identificadas por su código estable.
- *
- * @param {string} kind - Tipo del servicio (`individual` o `turnkey`).
- * @param {{ code: string }} unit - Unidad de medida con su código estable.
- * @returns {boolean} true si la combinación es válida.
- */
-export function isUnitCompatibleWithKind(kind, unit) {
-  if (kind !== SERVICE_KINDS.TURNKEY) return true;
-  return TURNKEY_COMPATIBLE_UNIT_CODES.includes(unit?.code);
-}
 
 /**
  * Combina el estado vigente de un servicio con los campos enviados en una edición.

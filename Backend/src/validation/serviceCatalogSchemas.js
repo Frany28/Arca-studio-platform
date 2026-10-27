@@ -59,8 +59,8 @@ export const serviceDetailSchema = z.object({ params: serviceIdParams });
 // Alta del tabulador: el código (`SERV-001`) lo genera el sistema y se rechaza con un mensaje
 // propio (400 en `body.code`); cualquier otro campo desconocido lo rechaza `.strict()`. La
 // modalidad (`kind`) la elige el administrador; omitida es `individual`, como antes de admitirla,
-// para no romper clientes existentes. La regla de m² de `turnkey` la aplica el servicio, que
-// necesita leer la unidad en la transacción.
+// para no romper clientes existentes. La modalidad no restringe la unidad; su existencia y estado
+// los comprueba el servicio, que necesita leer la unidad en la transacción.
 /**
  * Campo que gestiona el sistema y que el cliente no puede enviar: ausente es válido y cualquier
  * valor responde 400 en su propia ruta (`body.code`) con un mensaje explicativo.
