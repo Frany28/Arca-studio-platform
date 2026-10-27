@@ -232,7 +232,8 @@ function ServiceFormModal({
                   disabled={submitting}
                   // Figma: 125 px. `!` porque la raíz de Input fija `w-full`, que ganaría al ancho propio.
                   className="!w-[125px] !max-w-[125px] shrink-0"
-                  inputClassName="text-right tabular-nums"
+                  // Figma: valor y placeholder alineados a la izquierda, como el resto de campos.
+                  inputClassName="tabular-nums"
                   autoComplete="off"
                   onChange={(event) => onDraftChange({ referenceRate: rateFromTypedValue(event.target.value, draft.referenceRate) }, "referenceRate")}
                   onPaste={(event) => {

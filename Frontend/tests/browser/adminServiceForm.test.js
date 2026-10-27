@@ -1209,7 +1209,8 @@ test("precisión y errores: tarifa decimal exacta, 400 por campo y 409 de versi�
   // Caja registradora: los dígitos entran por la derecha con dos céntimos fijos; letras y signos
   // se ignoran, Backspace quita el último dígito y no se superan 12 enteros y 2 decimales.
   const rate = dialog.getByPlaceholder("0.00");
-  assert.equal(await rate.evaluate((input) => getComputedStyle(input).textAlign), "right");
+  // Figma 5764:226084: la tarifa se alinea a la izquierda, como el resto de campos.
+  assert.equal(await rate.evaluate((input) => getComputedStyle(input).textAlign), "start");
   await rate.fill("");
   const typed = [];
   for (const key of ["1", "0", "0", "a", "-", "."]) {
