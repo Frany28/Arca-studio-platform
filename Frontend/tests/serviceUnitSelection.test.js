@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createServiceDraft, validateServiceDraft, toUpdateServiceChanges } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
-import { getServiceUnitCatalog, preservesServiceUnit } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceUnitSelection.js";
+import {
+  filterServiceUnitOptions, getServiceUnitCatalog, normalizeUnitSearchText, preservesServiceUnit, toServiceUnitOption,
+} from "../src/pages/admin-services-quotes/service-catalog/utils/serviceUnitSelection.js";
 
 const BASES = Array.from({ length: 48 }, (_, index) => ({ id: index + 1, code: index === 0 ? "square_meter" : "other", label: `base-${index + 1}` }));
 const DENOMINATIONS = [
@@ -56,4 +58,38 @@ test("nuevas asignaciones: exigen denominación activa de esa base y revalidan c
     "Cambiar modalidad sin reasignar una unidad histórica compatible no obliga a activarla");
   assert.ok(validateServiceDraft({ ...draft, kind: "turnkey" }, { availableDenominations: [], originalKind: "individual", preserveStoredUnit: true, unitCode: "other" }).unit);
   assert.deepEqual(validateServiceDraft(draft, { availableDenominations: DENOMINATIONS }), {});
+});
+
+const UNIT_OPTIONS = [
+  { id: 1, denomination: "de construcción", label: "m² de construcción", measurementUnit: { id: 1, symbol: "m²", name: "Metro cuadrado" } },
+  { id: 2, denomination: "de área", measurementUnit: { id: 1, symbol: "m²", name: "Metro cuadrado" } },
+  { id: 3, denomination: "de recorrido", label: "m.l. de recorrido", measurementUnit: { id: 2, symbol: "m.l.", name: "Metro lineal" } },
+  { id: 4, denomination: "de visita técnica", label: "h de visita técnica", measurementUnit: { id: 3, symbol: "h", name: "Hora" } },
+].map(toServiceUnitOption);
+
+test("combobox de unidad: la opción deriva símbolo, categoría y base de la denominación", () => {
+  const [first, second] = UNIT_OPTIONS;
+  assert.equal(first.symbol, "m²");
+  assert.equal(first.category, "de construcción");
+  assert.equal(first.baseName, "Metro cuadrado");
+  // Sin etiqueta del backend se compone símbolo + categoría.
+  assert.equal(second.label, "m² de área");
+});
+
+test("combobox de unidad: busca por símbolo, categoría o base sin distinguir mayúsculas ni acentos", () => {
+  const ids = (query) => filterServiceUnitOptions(UNIT_OPTIONS, query).map((option) => option.id);
+  assert.deepEqual(ids(""), [1, 2, 3, 4], "Sin texto se ofrecen todas en el orden del catálogo");
+  assert.deepEqual(ids("   "), [1, 2, 3, 4]);
+  assert.deepEqual(ids("CONSTRUCCION"), [1]);
+  assert.deepEqual(ids("tecnica"), [4]);
+  assert.deepEqual(ids("m2"), [1, 2], "El superíndice se encuentra escribiendo la cifra");
+  assert.deepEqual(ids("m²"), [1, 2]);
+  assert.deepEqual(ids("lineal"), [3]);
+  assert.deepEqual(ids("cuadrado área"), [2], "Cada palabra debe coincidir, en cualquier orden");
+  assert.deepEqual(ids("volumen"), []);
+});
+
+test("combobox de unidad: normalización de la búsqueda", () => {
+  assert.equal(normalizeUnitSearchText("  Metro   Cuadrádo ²  "), "metro cuadrado 2");
+  assert.equal(normalizeUnitSearchText(null), "");
 });

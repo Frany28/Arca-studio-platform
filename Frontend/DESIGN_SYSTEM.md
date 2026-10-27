@@ -645,25 +645,34 @@ Validación, capturas y diferencias respecto a Figma:
     campos; el diálogo mide lo mismo antes y después de la carga. Sin textos ni controles
     interactivos. Un 404 recarga la lista y solo ofrece cerrar; otros errores permiten reintentar.
     El alta no muestra este skeleton porque no lee ningún servicio.
-  - Unidad de medida: primero se elige el símbolo de una base y después una denominación activa
-    registrada para ella. Crear y Editar comparten `ServiceFormDialog`, `ServiceFormModal` y
-    `ServiceUnitField`, sin selectores diferentes. El catálogo se lee una vez al abrir con
-    `GET /admin/measurement-unit-denominations?status=active` (`useActiveDenominations`),
-    nunca las unidades base sueltas. Conserva la composición de Figma: variante `Tags` de Input con
-    la abreviatura en el prefijo y la unidad elegida como Tag con cierre. Las sugerencias muestran
-    símbolo y texto («m² de construcción») y escribir las filtra. Sin base, el texto es de solo
-    lectura con «Selecciona un símbolo», sin sugerencias ni consultas adicionales al hacer clic.
-    Elegir, cambiar o volver a elegir el mismo símbolo (Crear y Editar; p. ej. m² en llave en mano
-    tras quitar la unidad) enfoca la búsqueda y muestra sus denominaciones
-    bajo el campo sin otro clic; abrir la edición no las despliega.
-    `getServiceUnitCatalog` deriva el prefijo solo de bases activas con denominaciones activas
-    registradas, nunca de las 48 bases sueltas. El alta contextual sí conserva todas las bases
-    activas permitidas, para crear la primera denominación de un símbolo. Las sugerencias se
-    filtran por `measurementUnitId`, nunca por símbolo. Cambiar de base retira la denominación y
-    la consulta anterior (una sola por servicio), conservando los otros campos. Llave en mano solo
-    ofrece la base `square_meter`. Sin denominaciones activas para la base histórica seleccionada
-    se muestra «No hay unidades registradas para este símbolo», también al enfocar. Sin catálogo
-    se indica crear una unidad; siempre sigue disponible «+ Crear unidad» si hay bases activas.
+  - Unidad de medida: un único combobox editable (`ServiceUnitField`), sin selector de símbolo
+    ni buscador aparte. Crear y Editar comparten `ServiceFormDialog`, `ServiceFormModal` y
+    `ServiceUnitField`. El catálogo se lee una vez al abrir con
+    `GET /admin/measurement-unit-denominations?status=active` (`useActiveDenominations`) y la
+    búsqueda filtra en memoria, sin una consulta por pulsación. Conserva la composición de Figma:
+    variante `Tags` de Input con el símbolo de la base en el prefijo (`prefixReadOnly`, sin
+    listado propio) y la categoría (la denominación, p. ej. «de construcción») como Tag con
+    cierre, ambos derivados de la unidad elegida.
+    - Un clic en el campo (texto, símbolo o Tag) despliega las unidades registradas de todas las
+      bases; escribir en el mismo campo filtra por símbolo, categoría o nombre de la base, sin
+      distinguir mayúsculas ni acentos y con los superíndices como cifras («m2» encuentra «m²»;
+      `filterServiceUnitOptions`). Elegir una opción fija base y denominación y cierra el listado;
+      volver a hacer clic o escribir busca otra, que la sustituye (una sola por servicio).
+    - Quitar el Tag (cierre o Retroceso con el campo vacío) retira también el símbolo y despliega
+      el listado. Abrir la edición, enfocar con Tab o volver al campo tras crear una unidad no lo
+      despliega: solo se abre por clic, escritura o flechas.
+    - Teclado (`useServiceUnitCombobox`, el foco queda en el campo con `aria-activedescendant`):
+      flechas (circulares), Home/End, Enter elige sin enviar el formulario, Escape cierra solo el
+      listado y Tab lo cierra y continúa. El listado (`ServiceUnitOptionsList`) reutiliza la
+      carcasa, filas de 35 px, posición en portal y scroll del selector de prefijo del Input,
+      unido al campo completo.
+    - Búsqueda sin coincidencias: el listado se cierra y el campo indica crear la unidad con
+      «Crear unidad». `getServiceUnitCatalog` ofrece solo denominaciones activas de bases
+      activas, nunca las 48 bases sueltas; llave en mano solo ofrece las de base `square_meter`.
+      El alta contextual conserva todas las bases activas permitidas, para crear la primera
+      denominación de un símbolo, y su resultado queda elegido con su símbolo y su Tag. Sin
+      catálogo se indica crear una unidad; siempre sigue disponible «+ Crear unidad» si hay bases
+      activas.
     - Se exige una unidad registrada; en la edición se conservan la unidad guardada aunque esté
       inactiva y un servicio guardado solo con la base, mientras no se cambie. La unidad inactiva
       permanece como Tag guardado, pero no vuelve a ofrecerse como una nueva selección. Una base

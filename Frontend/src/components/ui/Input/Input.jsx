@@ -74,6 +74,9 @@ function hasTextValue(value) {
  * la del valor vigente, después de `onPrefixChange`.
  * @param {string} [props.prefixAriaLabel] Nombre accesible del selector de prefijo.
  * @param {boolean} [props.prefixDisabled=false] Bloquea solo el prefijo y deja editable el texto.
+ * @param {boolean} [props.prefixReadOnly=false] El prefijo solo presenta `prefixSelectedOption`
+ * (mismo aspecto, sin listado propio) y un clic en él enfoca el campo: para combobox que eligen
+ * prefijo y etiqueta en una única lista. Sin opción elegida no se dibuja el segmento.
  * @returns {import("react").ReactElement} Campo accesible con sus adornos y ayudas.
  */
 function Input({
@@ -108,6 +111,7 @@ function Input({
   onPrefixSelect,
   prefixAriaLabel = "Prefijo",
   prefixDisabled = false,
+  prefixReadOnly = false,
   tags = [],
   tagOptions = INPUT_TAG_DEFAULT_ITEMS,
   tagGroupAriaLabel,
@@ -302,8 +306,10 @@ function Input({
     .join(" ") || undefined;
   const resolvedAriaInvalid =
     ariaInvalid ?? (resolvedState === "Error" ? true : undefined);
-  const hasPrefixSelect = resolvedType === "Prefix select"
-    || (resolvedType === "Tags" && Array.isArray(prefixOptions) && (prefixOptions.length > 0 || Boolean(prefixSelectedOption)));
+  const hasPrefixSelect = prefixReadOnly
+    ? ["Prefix select", "Tags"].includes(resolvedType) && Boolean(prefixSelectedOption)
+    : resolvedType === "Prefix select"
+      || (resolvedType === "Tags" && Array.isArray(prefixOptions) && (prefixOptions.length > 0 || Boolean(prefixSelectedOption)));
   // Teléfono y prefijo seleccionable comparten la estructura de selector + campo nativo.
   const leadingSelector = resolvedType === "Phone number" ? (
     <PhoneCountrySelector
@@ -316,11 +322,13 @@ function Input({
   ) : hasPrefixSelect ? (
     <InputPrefixSelect
       inputId={inputId}
-      options={prefixOptions}
-      value={prefixValue}
+      options={prefixReadOnly ? [] : prefixOptions}
+      value={prefixReadOnly ? prefixSelectedOption?.id : prefixValue}
       selectedOption={prefixSelectedOption}
       ariaLabel={prefixAriaLabel}
-      disabled={isDisabled || prefixDisabled || (Boolean(prefixSelectedOption) && prefixOptions.length === 0)}
+      readOnly={prefixReadOnly}
+      onActivate={() => resolvedInputRef.current?.focus()}
+      disabled={isDisabled || prefixDisabled || (!prefixReadOnly && Boolean(prefixSelectedOption) && prefixOptions.length === 0)}
       sizing={sizing}
       stateStyles={stateStyles}
       onChange={onPrefixChange}

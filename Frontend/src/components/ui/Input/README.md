@@ -28,6 +28,12 @@ dentro del campo, junto al texto. Sin `prefixOptions` conserva su presentación 
 el formulario de servicios: unidad base en el prefijo y la denominación como Tag, con
 `onTagsChange` controlado para aceptar solo opciones existentes.
 
+Con `prefixReadOnly`, el prefijo solo presenta `prefixSelectedOption` (mismo aspecto, con su
+flecha) sin listado ni rol propio: es decorativo (`aria-hidden`) y un clic en él enfoca el campo.
+Sirve a combobox que eligen prefijo y etiqueta en una única lista, como «Unidad de medida»
+(símbolo de la base + categoría); el consumidor expone la selección de forma accesible. Sin
+opción elegida no se dibuja el segmento.
+
 `prefixSelectedOption` permite mostrar una selección guardada que ya no está entre las opciones,
 como una unidad histórica inactiva. Solo presenta la opción cuyo id coincide con `prefixValue`;
 no la añade al listado ni a la navegación por teclado. Sin otras opciones el prefijo queda

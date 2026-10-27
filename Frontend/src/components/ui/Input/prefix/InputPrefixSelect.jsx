@@ -24,16 +24,43 @@ import usePrefixSelect from "./usePrefixSelect.js";
  * @param {Object} props.stateStyles - Estilos del estado visual del Input.
  * @param {(option: Object) => void} [props.onChange] - Recibe la opción elegida.
  * @param {(option: Object) => void} [props.onSelect] - Recibe toda elección, también la del valor vigente.
+ * @param {boolean} [props.readOnly=false] - Solo presenta la opción guardada: sin listado ni rol de
+ * combobox (lo asume el campo nativo) y oculto a tecnologías de apoyo, que leen la selección en el campo.
+ * @param {() => void} [props.onActivate] - En `readOnly`, recibe el clic para enfocar el campo.
  * @returns {import("react").ReactElement} Disparador y, abierto, el listado en portal.
  */
-export default function InputPrefixSelect({ inputId, options, value, selectedOption: storedOption = null, ariaLabel, disabled, sizing, stateStyles, onChange, onSelect }) {
-  const select = usePrefixSelect({ options, value, disabled, onChange, onSelect });
+export default function InputPrefixSelect({ inputId, options, value, selectedOption: storedOption = null, ariaLabel, disabled, readOnly = false, sizing, stateStyles, onActivate, onChange, onSelect }) {
+  const select = usePrefixSelect({ options, value, disabled: disabled || readOnly, onChange, onSelect });
   const { activeIndex, highlightedIndex, isOpen, listboxRef, position, triggerRef } = select;
   // Solo afecta al disparador; las opciones y la navegación siguen usando el catálogo permitido.
   const selectedOption = select.selectedOption ?? (storedOption && String(storedOption.id) === String(value) ? storedOption : null);
   const listboxId = `${inputId}-prefix-options`;
   const optionId = (index) => `${inputId}-prefix-option-${index}`;
   const selectedLabel = selectedOption?.label ?? "";
+
+  if (readOnly) {
+    return (
+      <span
+        aria-hidden="true"
+        data-input-prefix-display
+        className={clsx(
+          "relative flex shrink-0 items-center gap-[4px] self-stretch rounded-l-[inherit] border-r border-[var(--color-neutral-200)]",
+          disabled ? "cursor-not-allowed" : "cursor-pointer",
+          sizing.prefixSelect,
+        )}
+        // Conserva el foco en el campo nativo, que es el combobox, en lugar de moverlo al segmento.
+        onMouseDown={(event) => {
+          event.preventDefault();
+          if (!disabled) onActivate?.();
+        }}
+      >
+        <span className={clsx("text-body-3 whitespace-nowrap", disabled ? stateStyles.prefix : "text-[var(--color-text-300)]")}>
+          {selectedLabel}
+        </span>
+        <ChevronDownIcon className={clsx("size-5", stateStyles.trailingIcon)} />
+      </span>
+    );
+  }
 
   return (
     <>

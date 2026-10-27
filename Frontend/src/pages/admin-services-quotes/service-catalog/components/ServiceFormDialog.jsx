@@ -7,7 +7,7 @@ import { useServiceDetail } from "../hooks/useServiceDetail.js";
 import { useServiceFormSubmit } from "../hooks/useServiceFormSubmit.js";
 import { getServiceFormErrorFeedback } from "../utils/serviceCatalogErrors.js";
 import {
-  changeDraftKind, createServiceDraft, filterBaseOptionsForKind, filterDenominationsForBase,
+  changeDraftKind, createServiceDraft, filterBaseOptionsForKind,
   validateServiceDraft,
 } from "../utils/serviceFormValues.js";
 import { getServiceUnitCatalog, preservesServiceUnit } from "../utils/serviceUnitSelection.js";
@@ -84,23 +84,14 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const activeDenominations = useActiveDenominations({ enabled: status === "ready" });
   const unitCatalog = useMemo(() => getServiceUnitCatalog(baseUnits.options, activeDenominations.options, draft.kind),
     [activeDenominations.options, baseUnits.options, draft.kind]);
-  const unitPrefixOptions = unitCatalog.prefixOptions;
   // La base guardada puede mostrarse sin estar disponible para otra asignación.
   const selectedBaseOption = baseOptions.find((option) => option.id === draft.measurementUnitId) ?? null;
-  // La unidad guardada se conserva en el borrador, pero una inactiva no vuelve a ofrecerse.
-  const unitSuggestions = useMemo(
-    () => filterDenominationsForBase(unitCatalog.denominations, draft.measurementUnitId),
-    [draft.measurementUnitId, unitCatalog.denominations],
-  );
   // Un servicio guardado solo con la base puede conservarla; cualquier cambio exige una unidad registrada.
   const preserveStoredUnit = preservesServiceUnit(draft, service);
-  const noRegisteredUnits = status === "ready" && draft.measurementUnitId && !draft.unitDenomination
-    && !activeDenominations.loading && !activeDenominations.error && unitSuggestions.length === 0;
   const catalogUnavailable = !editing && (Boolean(baseUnits.error) || baseUnits.options.length === 0);
   const unitHint = activeDenominations.error
     || (activeDenominations.loading ? "Cargando unidades de medida..." : "")
-    || (!draft.measurementUnitId && unitPrefixOptions.length === 0 ? "No hay unidades de medida registradas. Crea una con «+ Crear unidad»." : "")
-    || (noRegisteredUnits ? "No hay unidades registradas para este símbolo" : "");
+    || (status === "ready" && unitCatalog.denominations.length === 0 ? "No hay unidades de medida registradas. Crea una con «+ Crear unidad»." : "");
   const createUnitHint = baseUnits.error
     || (baseUnits.loading ? "Cargando unidades base..." : "")
     || (creatableBaseOptions.length === 0 && !baseUnits.loading ? "No hay una unidad base activa disponible para esta modalidad." : "");
@@ -201,9 +192,8 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       fieldErrors={fieldErrors}
       submitError={submitError}
       submitting={form.submitting}
-      unitPrefixOptions={unitPrefixOptions}
       selectedBaseOption={selectedBaseOption}
-      denominations={{ ...activeDenominations, options: unitSuggestions }}
+      denominations={{ ...activeDenominations, options: unitCatalog.denominations }}
       unitHint={unitHint}
       unitNotice={unitNotice}
       catalogUnavailable={catalogUnavailable}

@@ -31,3 +31,59 @@ export function preservesServiceUnit(draft, service) {
   return Boolean(service && draft.measurementUnitId === service.measurementUnit.id
     && (draft.unitDenomination?.id ?? null) === (service.unitDenomination?.id ?? null));
 }
+
+/**
+ * Normaliza un texto para la búsqueda del campo de unidad: sin distinguir mayúsculas ni acentos,
+ * con los superíndices como cifras (NFKD: «m²» se encuentra escribiendo «m2») y espacios simples.
+ *
+ * @param {*} value - Texto escrito o dato de una unidad.
+ * @returns {string} Texto comparable.
+ */
+export function normalizeUnitSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLocaleLowerCase("es")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Opción del combobox «Unidad de medida» a partir de una denominación registrada: símbolo de su
+ * base («m²»), categoría (la denominación, «de construcción») y nombre de la base («Metro
+ * cuadrado»). La búsqueda se precalcula sobre esos tres datos y la etiqueta del backend.
+ *
+ * @param {{id: number, denomination: string, label?: string, measurementUnit: {id: number, symbol: string, name?: string}}} denomination
+ * Denominación con la forma del contrato.
+ * @returns {{id: number, symbol: string, category: string, baseName: string, label: string, searchText: string, denomination: Object}}
+ * Opción presentable y su texto de búsqueda.
+ */
+export function toServiceUnitOption(denomination) {
+  const symbol = denomination.measurementUnit?.symbol ?? "";
+  const baseName = denomination.measurementUnit?.name ?? "";
+  const label = denomination.label || `${symbol} ${denomination.denomination}`.trim();
+  return {
+    id: denomination.id,
+    symbol,
+    category: denomination.denomination,
+    baseName,
+    label,
+    searchText: normalizeUnitSearchText([symbol, denomination.denomination, baseName, label].join(" ")),
+    denomination,
+  };
+}
+
+/**
+ * Filtra las opciones por lo escrito: cada palabra debe aparecer en el símbolo, la categoría o el
+ * nombre de la base, en cualquier orden («cuadrado constru» encuentra «m² de construcción»).
+ * Sin texto devuelve todas, en el orden del catálogo.
+ *
+ * @param {Array<{searchText: string}>} options - Opciones de toServiceUnitOption.
+ * @param {string} query - Texto escrito en el campo.
+ * @returns {Array<Object>} Opciones coincidentes.
+ */
+export function filterServiceUnitOptions(options, query) {
+  const terms = normalizeUnitSearchText(query).split(" ").filter(Boolean);
+  if (terms.length === 0) return options;
+  return options.filter((option) => terms.every((term) => option.searchText.includes(term)));
+}
