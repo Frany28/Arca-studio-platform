@@ -27,6 +27,9 @@ const EMPTY_COLLECTION = { nextCursor: null };
 const API_FIXTURES = {
   "/api/projects": { ...EMPTY_COLLECTION, projects: [] },
   "/api/admin/services": { ...EMPTY_COLLECTION, services: [] },
+  // Servicios y cotizaciones abre en Cotizaciones: listado e indicador «Cotizaciones totales».
+  "/api/admin/quotes": { ...EMPTY_COLLECTION, quotes: [] },
+  "/api/admin/quotes/summary": { summary: { total: 0 } },
   "/api/admin/measurement-unit-denominations": { ...EMPTY_COLLECTION, unitDenominations: [] },
   "/api/project-requests": { ...EMPTY_COLLECTION, projectRequests: [] },
   "/api/project-requests/review-queue": { ...EMPTY_COLLECTION, projectRequests: [] },

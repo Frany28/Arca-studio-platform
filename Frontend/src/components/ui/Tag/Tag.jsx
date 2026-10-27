@@ -132,7 +132,9 @@ function Tag({
           sizing.text,
         )}
       >
-        {label}
+        {/* text-ellipsis no actúa sobre el texto de un contenedor flex: el elemento de bloque
+            interior es el que trunca con «…» cuando el Tag está limitado por su contenedor. */}
+        <span className="min-w-0 truncate">{label}</span>
       </span>
       {count ? (
         <span className="inline-flex w-4 items-center justify-center rounded-[2px] bg-[var(--color-neutral-200)] px-[2px]">

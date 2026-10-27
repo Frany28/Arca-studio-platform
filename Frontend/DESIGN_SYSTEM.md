@@ -658,6 +658,15 @@ Validación, capturas y diferencias respecto a Figma:
       distinguir mayúsculas ni acentos y con los superíndices como cifras («m2» encuentra «m²»;
       `filterServiceUnitOptions`). Elegir una opción fija base y denominación y cierra el listado;
       volver a hacer clic o escribir busca otra, que la sustituye (una sola por servicio).
+    - Estados: sin unidad, el texto ocupa el segmento derecho con «Buscar unidad». Con unidad, el
+      símbolo y el Tag se ven siempre, con o sin foco; el campo nativo sigue enfocable sin ancho
+      propio detrás del Tag, de modo que el contenedor de Tags no se desplaza y nunca oculta la
+      selección (un clic en cualquier punto del campo lo enfoca). Buscando (hay texto), el texto
+      sustituye temporalmente al Tag y el símbolo se conserva: la unidad del borrador
+      (`measurementUnitId` + `unitDenomination`, única fuente de verdad) no cambia hasta elegir otra
+      opción. Escape, vaciar el texto o salir del campo descartan la búsqueda y restauran el Tag.
+      El símbolo se deriva de los ids (`resolveSelectedUnitSymbol`): de la base del catálogo de
+      bases o, si aún no la contiene, de la denominación elegida.
     - Quitar el Tag (cierre o Retroceso con el campo vacío) retira también el símbolo y despliega
       el listado. Abrir la edición, enfocar con Tab o volver al campo tras crear una unidad no lo
       despliega: solo se abre por clic, escritura o flechas.

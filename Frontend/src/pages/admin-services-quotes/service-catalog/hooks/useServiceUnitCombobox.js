@@ -20,9 +20,12 @@ import { observeAnchorLayout } from "../../../../components/ui/Input/options/obs
  * @param {Array<{id: number}>} params.options - Opciones ya filtradas por lo escrito.
  * @param {boolean} params.disabled - Bloquea apertura y selección.
  * @param {(option: Object) => void} params.onSelect - Recibe la opción elegida.
+ * @param {boolean} [params.searching=false] - Hay texto de búsqueda temporal en el campo.
+ * @param {() => void} [params.onCancelSearch] - Descarta la búsqueda temporal (Escape); la
+ * selección del formulario no cambia.
  * @returns {Object} Estado, refs y manejadores del campo y del listado.
  */
-export function useServiceUnitCombobox({ disabled, onSelect, options }) {
+export function useServiceUnitCombobox({ disabled, onCancelSearch, onSelect, options, searching = false }) {
   const anchorRef = useRef(null);
   const listboxRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -92,8 +95,10 @@ export function useServiceUnitCombobox({ disabled, onSelect, options }) {
   /**
    * Teclado del combobox, en fase de captura para adelantarse al teclado de Tags del Input (que
    * con texto convertiría Enter en una etiqueta libre). Solo consume las teclas que maneja:
-   * flechas, Home/End, Enter (con el listado abierto, sin enviar el formulario) y Escape (cierra
-   * sin cerrar el diálogo). Tab cierra y deja seguir el foco.
+   * flechas, Home/End, Enter (con el listado abierto, sin enviar el formulario) y Escape. Escape
+   * cierra el listado y descarta la búsqueda temporal, también si el listado ya se cerró por no
+   * haber resultados, sin cerrar el diálogo; sin listado ni búsqueda deja pasar la tecla (el
+   * diálogo se cierra como siempre). Tab cierra y deja seguir el foco.
    *
    * @param {import("react").KeyboardEvent} event - Tecla pulsada en el campo.
    * @returns {void}
@@ -101,6 +106,13 @@ export function useServiceUnitCombobox({ disabled, onSelect, options }) {
   function handleKeyDownCapture(event) {
     if (disabled) return;
     const { key } = event;
+    if (key === "Escape" && (visible || searching)) {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsOpen(false);
+      onCancelSearch?.();
+      return;
+    }
     if (key === "ArrowDown" || key === "ArrowUp") {
       event.preventDefault();
       event.stopPropagation();
@@ -122,10 +134,6 @@ export function useServiceUnitCombobox({ disabled, onSelect, options }) {
       event.preventDefault();
       event.stopPropagation();
       select(resolvedActiveIndex);
-    } else if (key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      setIsOpen(false);
     } else if (key === "Tab") {
       setIsOpen(false);
     }

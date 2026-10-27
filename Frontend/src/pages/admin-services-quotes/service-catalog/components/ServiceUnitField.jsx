@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import Input from "../../../../components/ui/Input/Input.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import { useServiceUnitCombobox } from "../hooks/useServiceUnitCombobox.js";
 import { toDenominationTag } from "../utils/serviceFormValues.js";
-import { filterServiceUnitOptions, toServiceUnitOption } from "../utils/serviceUnitSelection.js";
+import { filterServiceUnitOptions, resolveSelectedUnitSymbol, toServiceUnitOption } from "../utils/serviceUnitSelection.js";
 import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
 
 /**
@@ -15,8 +15,18 @@ import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
  * el prefijo («m²») y la categoría como Tag con cierre («de construcción»), ambos derivados de
  * la unidad elegida.
  *
- * - Elegir una opción fija base y denominación a la vez y cierra el listado.
- * - Volver a hacer clic o escribir busca otra unidad, que sustituye a la anterior.
+ * Tres estados, con la unidad del borrador (`measurementUnitId` + `unitDenomination`) como única
+ * fuente de verdad y la búsqueda como estado temporal de interfaz:
+ *
+ * - Sin unidad: el texto ocupa el segmento derecho con «Buscar unidad».
+ * - Unidad elegida: símbolo y Tag, siempre visibles con o sin foco. El campo nativo sigue
+ *   enfocable pero sin ancho detrás del Tag, para que el contenedor de Tags nunca se desplace
+ *   y oculte la selección (antes el texto y el Tag compartían ese desplazamiento).
+ * - Buscando (hay texto): el texto sustituye temporalmente al Tag; el símbolo y la unidad del
+ *   borrador no cambian hasta elegir otra opción. Escape, vaciar el texto o salir del campo
+ *   descartan la búsqueda y restauran el Tag.
+ *
+ * - Elegir una opción (clic o Enter) fija base y denominación a la vez y cierra el listado.
  * - Quitar el Tag (cierre o Retroceso con el campo vacío) deja el campo sin unidad.
  * - La unidad guardada se muestra aunque sea histórica, pero solo se ofrecen las disponibles.
  * - Escribir y pulsar Enter nunca crea unidades; para eso está «+ Crear unidad».
@@ -43,16 +53,20 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   const searchKey = `${measurementUnitId}:${unitDenomination?.id ?? ""}`;
   const [search, setSearch] = useState({ key: searchKey, text: "" });
   const query = search.key === searchKey ? search.text : "";
+  const searching = query !== "";
+  const inputRef = useRef(null);
   const allOptions = useMemo(() => (denominations || []).map(toServiceUnitOption), [denominations]);
   const options = useMemo(() => filterServiceUnitOptions(allOptions, query), [allOptions, query]);
   const {
     activeIndex, anchorRef, close, handleKeyDownCapture, highlightedIndex, hoverOption, isOpen, listboxRef, open, position, select,
-  } = useServiceUnitCombobox({ disabled, options, onSelect: selectOption });
+  } = useServiceUnitCombobox({ disabled, options, onSelect: selectOption, searching, onCancelSearch: clearSearch });
   const listboxId = `${id}-options`;
   const optionId = (index) => `${id}-option-${index}`;
   const hintId = `${id}-unit-hint`;
   const selectionId = `${id}-selection`;
-  const symbol = selectedBaseOption?.id === measurementUnitId ? selectedBaseOption?.label ?? "" : "";
+  const symbol = resolveSelectedUnitSymbol({ denominations, measurementUnitId, selectedBaseOption, unitDenomination });
+  // El Tag solo cede su lugar mientras hay texto de búsqueda.
+  const showSelectionTag = Boolean(unitDenomination) && !searching;
   const noResults = Boolean(query.trim()) && options.length === 0 && allOptions.length > 0;
   const visibleHint = hint || (noResults ? `No hay unidades que coincidan con «${query.trim()}». Puedes crearla con «Crear unidad».` : "");
   // El prefijo es decorativo (aria-hidden): el nombre accesible de la selección vive aquí.
@@ -73,6 +87,15 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   }
 
   /**
+   * Descarta el texto de búsqueda temporal sin tocar la unidad elegida (Escape o salir del campo).
+   *
+   * @returns {void}
+   */
+  function clearSearch() {
+    setSearch({ key: searchKey, text: "" });
+  }
+
+  /**
    * Retira la unidad elegida junto con su símbolo y su Tag, y despliega el listado para elegir
    * otra: quitarla es una acción explícita sobre el campo (cierre del Tag o Retroceso), y el clic
    * del cierre no llega a abrirlo porque su botón ya no está en el DOM.
@@ -86,14 +109,17 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   }
 
   return (
-    // El clic en cualquier punto del campo (prefijo, Tag o texto) despliega el listado. Los clics
+    // El clic en cualquier punto del campo (prefijo, Tag o hueco) enfoca el texto y despliega el
+    // listado: con una unidad elegida el campo nativo no tiene ancho propio que pulsar. Los clics
     // del listado también llegan aquí (React propaga a través del portal), pero no están en este
     // nodo del DOM: elegir una opción no vuelve a abrirlo.
     <div
       ref={anchorRef}
       className="flex w-full flex-col gap-[8px]"
       onClick={(event) => {
-        if (event.currentTarget.querySelector("[data-input-shell]")?.contains(event.target)) open();
+        if (!event.currentTarget.querySelector("[data-input-shell]")?.contains(event.target)) return;
+        inputRef.current?.focus({ preventScroll: true });
+        open();
       }}
     >
       <Input
@@ -107,14 +133,17 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         showLeftIcon={false}
         showRightIcon={false}
         placeholder={unitDenomination ? "" : measurementUnitId ? "Sin denominación guardada" : "Buscar unidad"}
+        inputRef={inputRef}
+        // Con el Tag visible, el texto (vacío) no ocupa espacio: el Tag dispone de todo el segmento.
+        inputClassName={showSelectionTag ? "!w-0 !min-w-0 !flex-none" : undefined}
         value={query}
         state={invalid ? "Error" : "Default"}
         showHint={false}
         aria-describedby={[selectionText ? selectionId : null, visibleHint ? hintId : null].filter(Boolean).join(" ") || undefined}
         disabled={disabled}
         prefixReadOnly
-        prefixSelectedOption={symbol ? selectedBaseOption : null}
-        tags={unitDenomination ? [toDenominationTag(unitDenomination)] : []}
+        prefixSelectedOption={symbol ? { id: measurementUnitId, label: symbol } : null}
+        tags={showSelectionTag ? [toDenominationTag(unitDenomination)] : []}
         tagOptions={[]}
         // Controlado: Enter con texto libre propone una etiqueta nueva que aquí se descarta; quitar
         // la etiqueta deja el campo sin unidad.
@@ -127,7 +156,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         }}
         onBlur={() => {
           close();
-          setSearch({ key: searchKey, text: "" });
+          clearSearch();
         }}
         onKeyDownCapture={handleKeyDownCapture}
         role="combobox"

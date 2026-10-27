@@ -149,15 +149,26 @@ function escapeRegExp(text) {
 }
 
 /**
+ * Contenedor visible del campo de unidad (prefijo, Tag y texto). Con una unidad elegida el campo
+ * nativo no ocupa ancho, así que el usuario (y las pruebas) pulsan el contenedor.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {import("playwright").Locator} Contenedor del campo.
+ */
+function unitShell(page) {
+  return page.locator("[data-service-form] [data-input-shell]", { has: page.locator("#service-form-unit") });
+}
+
+/**
  * Espera a que el catálogo de unidades termine de cargar y hace clic en el combobox de unidad.
  *
  * @param {import("playwright").Page} page - Página.
  * @returns {Promise<void>}
  */
 async function openUnitList(page) {
-  await page.locator("#service-form-unit").waitFor();
+  await page.locator("#service-form-unit").waitFor({ state: "attached" });
   await page.waitForFunction(() => !document.querySelector("[data-service-form]")?.textContent.includes("Cargando unidades de medida"));
-  await page.locator("#service-form-unit").click();
+  await unitShell(page).click();
 }
 
 /**
@@ -310,19 +321,22 @@ test("unidad: un único combobox con búsqueda en el campo, símbolo y categorí
   assert.equal(await input.inputValue(), "");
   assert.equal(await page.locator("#service-form-unit-selection").innerText(), "Seleccionada: m² a intervenir");
   // Volver a hacer clic permite buscar otra; la vigente figura como seleccionada.
-  await input.click();
+  await unitShell(page).click();
   assert.equal(await listbox.getByRole("option", { name: /^m² a intervenir/ }).getAttribute("aria-selected"), "true");
-  await input.fill("excav");
+  await page.keyboard.type("excav");
   await listbox.getByRole("option", { name: /^m³ de excavación/ }).click();
   await dialog.getByRole("button", { name: "Quitar de excavación" }).waitFor();
   assert.equal(await dialog.getByRole("button", { name: /^Quitar / }).count(), 1, "Una sola unidad por servicio");
   assert.equal(await unitSymbol(page), "m³", "El símbolo acompaña a la nueva unidad");
-  // Escribir y pulsar Enter con un texto que no existe no crea unidades.
-  await input.fill("inventada");
+  // Escribir y pulsar Enter con un texto que no existe no crea unidades; Escape descarta la
+  // búsqueda y vuelve a mostrar la unidad elegida.
+  await page.keyboard.type("inventada");
   await page.keyboard.press("Enter");
   assert.equal(await dialog.getByRole("button", { name: "Quitar inventada" }).count(), 0);
+  await page.keyboard.press("Escape");
   await dialog.getByRole("button", { name: "Quitar de excavación" }).waitFor();
-  await input.fill("");
+  assert.equal(await input.inputValue(), "");
+  assert.equal(await dialog.isVisible(), true, "Escape con búsqueda no cierra el modal");
   assert.equal(requestsOf(backend, "GET", /measurement-unit-denominations$/).length, reads.length, "La búsqueda reutiliza el catálogo leído");
   assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0, "Enter en la búsqueda no envía el servicio");
 
@@ -345,6 +359,112 @@ test("unidad: un único combobox con búsqueda en el campo, símbolo y categorí
   await row.getByRole("button", { name: "Ver descripción de Servicio de prueba del formulario" }).hover();
   await page.getByRole("tooltip").getByText("Descripción de prueba del formulario.", { exact: true }).waitFor();
 });
+
+/**
+ * Mide la presentación de la unidad elegida dentro del campo: el símbolo en el segmento
+ * izquierdo y el Tag en el derecho, ambos visibles (el punto central de cada uno pertenece al
+ * propio elemento, no a otro que lo tape o lo recorte) y dentro del borde del campo.
+ *
+ * @param {import("playwright").Page} page - Página con el formulario abierto.
+ * @returns {Promise<Object>} Geometría y textos visibles.
+ */
+function measureUnitSelection(page) {
+  return page.evaluate(() => {
+    const input = document.querySelector("#service-form-unit");
+    const shell = input.closest("[data-input-shell]");
+    const prefix = shell.querySelector("[data-input-prefix-display]");
+    const close = shell.querySelector("button[aria-label^='Quitar']");
+    const tag = close?.parentElement ?? null;
+    const box = (element) => element?.getBoundingClientRect() ?? null;
+    const visibleAt = (element) => {
+      const rect = box(element);
+      if (!rect || !rect.width || !rect.height) return false;
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return Boolean(hit && (element === hit || element.contains(hit)));
+    };
+    const shellBox = box(shell);
+    const prefixBox = box(prefix);
+    const tagBox = box(tag);
+    const inside = (rect) => Boolean(rect) && rect.left >= shellBox.left - 0.5 && rect.right <= shellBox.right + 0.5
+      && rect.top >= shellBox.top - 0.5 && rect.bottom <= shellBox.bottom + 0.5;
+    return {
+      symbol: prefix?.innerText.trim() ?? "",
+      tag: tag?.querySelector("span.truncate")?.textContent ?? "",
+      symbolVisible: visibleAt(prefix) && inside(prefixBox),
+      tagVisible: visibleAt(tag) && inside(tagBox),
+      symbolBeforeTag: Boolean(prefixBox && tagBox) && prefixBox.right <= tagBox.left + 0.5,
+      notScrolled: input.parentElement.scrollLeft === 0,
+      placeholder: input.placeholder,
+      value: input.value,
+    };
+  });
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`unidad (${theme}): «m² de construcción» muestra símbolo y Tag visibles en 375 y 1440 px, también al buscar, cancelar y salir del campo`, async (context) => {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 375, height: 812 }]) {
+      const backend = createServiceCatalogBackend(sampleCatalog());
+      backend.denominations.push(denominationRecord({ id: 77, denomination: "de construcción con acabados", unit: "m2" }));
+      const page = await openTabulator(context, backend, { theme, viewport });
+      const label = `${theme} ${viewport.width}px`;
+      const selected = (tag) => ({ notScrolled: true, placeholder: "", symbol: "m²", symbolBeforeTag: true, symbolVisible: true, tag, tagVisible: true, value: "" });
+      const listbox = page.getByRole("listbox", UNIT_LISTBOX);
+      const dialog = await openCreate(page);
+
+      // Clic: ambos segmentos visibles en su lugar, con y sin foco.
+      await chooseUnit(page, "m² de construcción");
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción"), `${label}: tras elegir`);
+      await dialog.locator("#service-form-name").click();
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción"), `${label}: sin foco`);
+
+      // Buscar sustituye temporalmente el Tag por el texto; Escape lo restaura sin perder la unidad.
+      await unitShell(page).click();
+      await page.keyboard.type("acabados");
+      const searching = await measureUnitSelection(page);
+      assert.equal(searching.symbol, "m²", `${label}: el símbolo se conserva al buscar`);
+      assert.equal(searching.value, "acabados");
+      await page.keyboard.press("Escape");
+      await listbox.waitFor({ state: "detached" });
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción"), `${label}: Escape restaura la unidad`);
+      assert.equal(await dialog.isVisible(), true);
+
+      // Salir del campo en plena búsqueda también la descarta.
+      await unitShell(page).click();
+      await page.keyboard.type("acab");
+      await dialog.locator("#service-form-name").click();
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción"), `${label}: salir descarta la búsqueda`);
+
+      // Reemplazar por una denominación larga (teclado) cambia símbolo y Tag juntos y no la desplaza fuera de la vista.
+      await unitShell(page).click();
+      await page.keyboard.type("acabados");
+      await page.keyboard.press("Enter");
+      await listbox.waitFor({ state: "detached" });
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción con acabados"), `${label}: reemplazo por teclado`);
+      // Volver a elegir la misma unidad tras buscar la mantiene visible.
+      await unitShell(page).click();
+      await page.keyboard.type("acabados");
+      await page.keyboard.press("Enter");
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción con acabados"), `${label}: misma unidad`);
+
+      // El borrador guarda la unidad elegida.
+      await dialog.locator("#service-form-name").fill("Servicio con unidad visible");
+      await chooseModality(page, "Detalle por detalle");
+      await dialog.getByPlaceholder("0.00").fill("100");
+      await dialog.getByRole("button", { name: "Crear", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+      const [post] = requestsOf(backend, "POST", /^\/api\/admin\/services$/);
+      assert.deepEqual([post.body.measurementUnitId, post.body.unitDenominationId], [1, 77], `${label}: se guarda la unidad mostrada`);
+
+      // Servicio existente: la unidad precargada se presenta igual.
+      await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
+      const editDialog = page.getByRole("dialog", { name: "Servicio" });
+      await editDialog.getByRole("button", { name: "Quitar de construcción" }).waitFor();
+      assert.deepEqual(await measureUnitSelection(page), selected("de construcción"), `${label}: edición precargada`);
+      await editDialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+      await editDialog.waitFor({ state: "detached" });
+    }
+  });
+}
 
 test("unidad: quitar la selección retira símbolo y Tag, y sin unidades registradas se indica crear una", async (context) => {
   const backend = createServiceCatalogBackend(sampleCatalog());

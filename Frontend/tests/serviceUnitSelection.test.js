@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createServiceDraft, validateServiceDraft, toUpdateServiceChanges } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
 import {
-  filterServiceUnitOptions, getServiceUnitCatalog, normalizeUnitSearchText, preservesServiceUnit, toServiceUnitOption,
+  filterServiceUnitOptions, getServiceUnitCatalog, normalizeUnitSearchText, preservesServiceUnit, resolveSelectedUnitSymbol, toServiceUnitOption,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceUnitSelection.js";
 
 const BASES = Array.from({ length: 48 }, (_, index) => ({ id: index + 1, code: index === 0 ? "square_meter" : "other", label: `base-${index + 1}` }));
@@ -92,4 +92,15 @@ test("combobox de unidad: busca por símbolo, categoría o base sin distinguir m
 test("combobox de unidad: normalización de la búsqueda", () => {
   assert.equal(normalizeUnitSearchText("  Metro   Cuadrádo ²  "), "metro cuadrado 2");
   assert.equal(normalizeUnitSearchText(null), "");
+});
+
+test("combobox de unidad: el símbolo se deriva de los ids del borrador aunque falte la base en su catálogo", () => {
+  const denominations = [{ id: 1, measurementUnit: { id: 1, symbol: "m²" } }];
+  const selection = { measurementUnitId: 1, unitDenomination: { id: 1 } };
+  assert.equal(resolveSelectedUnitSymbol({ ...selection, denominations, selectedBaseOption: { id: 1, label: "m²" } }), "m²");
+  assert.equal(resolveSelectedUnitSymbol({ ...selection, denominations, selectedBaseOption: null }), "m²", "Catálogo de bases sin cargar");
+  assert.equal(resolveSelectedUnitSymbol({ ...selection, denominations: [], selectedBaseOption: { id: 1, label: "m²" } }), "m²", "Base histórica");
+  assert.equal(resolveSelectedUnitSymbol({ denominations, measurementUnitId: null, selectedBaseOption: null, unitDenomination: null }), "");
+  // Una denominación de otra base nunca aporta su símbolo.
+  assert.equal(resolveSelectedUnitSymbol({ denominations, measurementUnitId: 2, selectedBaseOption: null, unitDenomination: { id: 1 } }), "");
 });

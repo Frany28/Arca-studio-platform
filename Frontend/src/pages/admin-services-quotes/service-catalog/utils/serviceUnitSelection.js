@@ -87,3 +87,24 @@ export function filterServiceUnitOptions(options, query) {
   if (terms.length === 0) return options;
   return options.filter((option) => terms.every((term) => option.searchText.includes(term)));
 }
+
+/**
+ * Símbolo que muestra el prefijo del campo de unidad, derivado de los identificadores del
+ * borrador (la única fuente de verdad): primero la base elegida en el catálogo de bases (incluye
+ * una base histórica en la edición) y, si ese catálogo aún no la contiene, la base de la
+ * denominación elegida. Así el prefijo no desaparece por un catálogo de bases incompleto o que
+ * todavía está cargando.
+ *
+ * @param {Object} params - Selección y catálogos.
+ * @param {number|null} params.measurementUnitId - Base del borrador.
+ * @param {{id: number}|null} params.unitDenomination - Denominación del borrador.
+ * @param {{id: number, label: string}|null} params.selectedBaseOption - Base del catálogo de bases.
+ * @param {Array<{id: number, measurementUnit?: {id: number, symbol: string}}>} params.denominations - Denominaciones.
+ * @returns {string} Símbolo o cadena vacía si no hay base elegida.
+ */
+export function resolveSelectedUnitSymbol({ denominations, measurementUnitId, selectedBaseOption, unitDenomination }) {
+  if (!measurementUnitId) return "";
+  if (selectedBaseOption?.id === measurementUnitId && selectedBaseOption.label) return selectedBaseOption.label;
+  const denomination = (denominations || []).find((item) => item.id === unitDenomination?.id && item.measurementUnit?.id === measurementUnitId);
+  return denomination?.measurementUnit?.symbol ?? "";
+}
