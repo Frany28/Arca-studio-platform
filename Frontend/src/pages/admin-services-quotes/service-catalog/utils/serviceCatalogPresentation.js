@@ -4,9 +4,7 @@
 // `kind` define la modalidad, `unitLabel` es la etiqueta oficial de la unidad y
 // `referenceRate` es texto decimal.
 
-const DECIMAL_RATE = /^(\d+)(?:\.(\d+))?$/;
-const CURRENCY_SYMBOLS = { USD: "$" };
-const INTEGER_GROUPING = new Intl.NumberFormat("en-US");
+import { formatDecimalMoney } from "../../utils/moneyFormat.js";
 
 // Opciones del filtro de estado, alineadas con `status=active|inactive` del contrato.
 export const SERVICE_STATUS_FILTER_ITEMS = Object.freeze([
@@ -25,15 +23,7 @@ export const SERVICE_STATUS_FILTER_ITEMS = Object.freeze([
  * @returns {string} Tarifa legible.
  */
 export function formatReferenceRate(rate, currency = "USD") {
-  const text = String(rate ?? "").trim();
-  const match = DECIMAL_RATE.exec(text);
-  const prefix = CURRENCY_SYMBOLS[currency] ?? `${currency} `;
-  if (!match) return text ? `${prefix}${text}` : "—";
-  const [, integerPart, fractionPart = ""] = match;
-  // BigInt conserva cualquier longitud de la parte entera (el contrato admite hasta 12 dígitos).
-  const grouped = INTEGER_GROUPING.format(BigInt(integerPart));
-  const cents = fractionPart.padEnd(2, "0");
-  return /^0+$/.test(cents) ? `${prefix}${grouped}` : `${prefix}${grouped}.${cents}`;
+  return formatDecimalMoney(rate, { currency });
 }
 
 /**

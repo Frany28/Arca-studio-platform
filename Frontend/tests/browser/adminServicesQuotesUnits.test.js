@@ -114,6 +114,8 @@ function createBackend(initial) {
     // `abort` simula un fallo de red: fetch rechaza sin respuesta HTTP.
     if (failure) return failure.abort ? route.abort("failed") : json(route, failure.status, failure.body);
     if (path === "/api/admin/services") return json(route, 200, { services: SERVICES, nextCursor: null });
+    if (path === "/api/admin/quotes") return json(route, 200, { quotes: [], nextCursor: null });
+    if (path === "/api/admin/quotes/summary") return json(route, 200, { summary: { total: 24 } });
     if (path === "/api/admin/measurement-units") return json(route, 200, { measurementUnits: state.baseUnits });
     // Gestión de usuarios: solo para abrir el selector telefónico de referencia del modal «Nuevo usuario».
     if (path === "/api/admin/users") return json(route, 200, { users: [], nextCursor: null, metrics: { total: 0, active: 0, suspended: 0, disabled: 0 } });
@@ -208,7 +210,7 @@ test("contenedor: título, indicadores reales, pestañas de Figma y redirección
   await metrics.getByText("Servicios totales").waitFor();
   const values = await metrics.locator("strong").allTextContents();
   assert.deepEqual(values.slice(0, 3), ["3", "2", "1"], "Totales derivados del catálogo real de servicios");
-  assert.match(values[3], /^—No disponible/, "Cotizaciones no tiene fuente de datos: no se inventa un total");
+  assert.equal(values[3], "24", "Cotizaciones totales proviene de /api/admin/quotes/summary");
 
   const tabs = page.getByRole("tablist", { name: "Secciones de servicios y cotizaciones" });
   assert.deepEqual(await tabs.getByRole("tab").allInnerTexts(), ["Cotizaciones", "Tabulador de servicios", "Unidades"]);
@@ -217,7 +219,7 @@ test("contenedor: título, indicadores reales, pestañas de Figma y redirección
   // Una subruta desconocida vuelve a Cotizaciones sin pantalla vacía.
   await page.goto(`${origin}/servicios-cotizaciones/inexistente`);
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
-  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
+  await page.getByText("Aún no hay cotizaciones", { exact: true }).waitFor();
 });
 
 test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enlaces directos", async (context) => {
@@ -233,7 +235,7 @@ test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enla
   // Teclado del tablist: flecha izquierda activa Cotizaciones y la enfoca.
   await page.keyboard.press("ArrowLeft");
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
-  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
+  await page.getByText("Aún no hay cotizaciones", { exact: true }).waitFor();
   assert.equal(await tabs.getByRole("tab", { name: "Cotizaciones" }).evaluate((tab) => tab === document.activeElement), true);
 
   await page.goBack();
@@ -258,8 +260,10 @@ test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enla
   });
   await page.mouse.move(1300, 900);
   assert.equal(await navItem.evaluate((element) => getComputedStyle(element).backgroundColor), selectedColor);
-  // Las pestañas provisionales no consultan servicios ni cotizaciones adicionales.
-  assert.equal(backend.requests.some((request) => /quotes|cotizacion/.test(request.path)), false);
+  // Cotizaciones solo lee su listado y el total del indicador; ninguna pestaña escribe cotizaciones.
+  const quoteRequests = backend.requests.filter((request) => /quotes/.test(request.path));
+  assert.ok(quoteRequests.length > 0, "La pestaña Cotizaciones lee datos reales");
+  assert.deepEqual([...new Set(quoteRequests.map((request) => `${request.method} ${request.path}`))].sort(), ["GET /api/admin/quotes", "GET /api/admin/quotes/summary"]);
 });
 
 test("tabla: sin selección de filas; código público, etiqueta de la API, estado inactivo y columnas alineadas", async (context) => {

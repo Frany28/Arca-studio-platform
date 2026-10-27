@@ -5,6 +5,7 @@ import Button from "../../../components/ui/Button/Button.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Input from "../../../components/ui/Input/Input.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
+import CursorPaginationNav from "../components/CursorPaginationNav.jsx";
 import MeasurementUnitFormModal from "./components/MeasurementUnitFormModal.jsx";
 import MeasurementUnitStatusModal from "./components/MeasurementUnitStatusModal.jsx";
 import MeasurementUnitsTable from "./components/MeasurementUnitsTable.jsx";
@@ -127,10 +128,7 @@ function MeasurementUnitsPanel() {
 
       {!loading && !error && (items.length || pagination.hasPrevious) ? (
         <footer className="flex justify-end">
-          <nav className="flex items-center gap-[8px]" aria-label="Paginación de unidades">
-            <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasPrevious} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
-            <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasNext} onClick={pagination.next}>Siguiente pág.</Button>
-          </nav>
+          <CursorPaginationNav ariaLabel="Paginación de unidades" pagination={pagination} />
         </footer>
       ) : null}
 

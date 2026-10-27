@@ -197,6 +197,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       draft={draft}
       onDraftChange={changeDraft}
       onKindChange={changeKind}
+      kindLocked={Boolean(service?.kindLocked)}
       fieldErrors={fieldErrors}
       submitError={submitError}
       submitting={form.submitting}

@@ -11,7 +11,7 @@ import { createRateLimitQueryMock } from "./rateLimitQueryMock.js";
  * @param {Array<[string, import("express").Router]>} options.routes - Rutas de montaje y routers.
  * @param {(sql: string, params?: Array<unknown>) => object} [options.respond] - Respuesta a consultas que no
  *   son del rate limit; recibe también sus parámetros.
- * @returns {Promise<{ send: Function, setUser: Function, queries: Array<string> }>} Cliente HTTP y estado.
+ * @returns {Promise<{ send: Function, raw: Function, setUser: Function, queries: Array<string> }>} Cliente HTTP y estado.
  */
 export async function startAdminRouterServer(context, { pool, respond, routes }) {
   const { default: express } = await import("express");
@@ -45,11 +45,13 @@ export async function startAdminRouterServer(context, { pool, respond, routes })
   await new Promise((resolve) => server.once("listening", resolve));
   context.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
 
+  const raw = (method, path, headers = {}) => fetch(`http://127.0.0.1:${server.address().port}${path}`, { headers, method });
   const send = async (method, path, body) => {
     const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
       method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
     });
     return { body: await response.json(), headers: response.headers, status: response.status };
   };
-  return { queries, send, setUser: (value) => { user = value; } };
+  // `raw` devuelve la Response sin interpretar, para respuestas binarias como los PDF.
+  return { queries, raw, send, setUser: (value) => { user = value; } };
 }

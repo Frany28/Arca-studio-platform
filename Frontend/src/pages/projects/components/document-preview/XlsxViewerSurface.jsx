@@ -3,7 +3,7 @@ import clsx from "clsx";
 import * as XLSX from "xlsx";
 
 import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
-import DocumentMarker from "./DocumentMarker.jsx";
+import DocumentMarker from "../../../../components/document-viewer/DocumentMarker.jsx";
 
 function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, onPointSelect, pendingSelection, title }) {
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);

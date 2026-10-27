@@ -7,12 +7,12 @@ import { getToggledCommentId } from "../../../utils/commentSelection.js";
 import GeneralCommentsDrawer from "../../../components/ui/Gallery/GeneralCommentsDrawer.jsx";
 import { useDocumentComments } from "../../../hooks/useDocumentComments.js";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";
-import ProjectDocumentCard from "./ProjectDocumentCard.jsx";
+import DocumentFileCard from "../../../components/document-viewer/DocumentFileCard.jsx";
 import DocumentFullscreenModal from "./document-preview/DocumentFullscreenModal.jsx";
-import PdfViewerSurface from "./document-preview/PdfViewerSurface.jsx";
+import PdfViewerSurface from "../../../components/document-viewer/PdfViewerSurface.jsx";
 import OfficeViewerSurface from "./document-preview/OfficeViewerSurface.jsx";
-import { loadPdfjs } from "./document-preview/pdfjsLoader.js";
-import { ViewerButton, ExpandIcon, CloseIcon, MIN_ZOOM, MAX_ZOOM } from "./document-preview/DocumentViewerControls.jsx";
+import { loadPdfjs } from "../../../components/document-viewer/pdfjsLoader.js";
+import { ViewerButton, ExpandIcon, CloseIcon, MIN_ZOOM, MAX_ZOOM } from "../../../components/document-viewer/DocumentViewerControls.jsx";
 
 function getDocumentKind(document) {
   const extension = String(document?.fileType || document?.extension || "")
@@ -347,7 +347,7 @@ export function ProjectDocumentViewerModal({
     >
       <div className="flex size-full min-h-0 min-w-0 gap-[12px] max-[767px]:flex-col">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-100)] max-[767px]:min-h-[52dvh]">
-          <ProjectDocumentCard
+          <DocumentFileCard
             closeIcon={<CloseIcon />}
             document={document}
             onClose={onClose}

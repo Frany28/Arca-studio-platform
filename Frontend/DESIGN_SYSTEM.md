@@ -533,8 +533,8 @@ Validación, capturas y diferencias respecto a Figma:
   modificar como máscara (`assets/icons/document-normal.svg`), patrón ya usado en
   `AdminRequestEvaluation`.
 - Los indicadores de servicios se derivan de la colección real (`GET /admin/services`
-  recorrido por cursor), porque el contrato no ofrece totales; «Cotizaciones totales» muestra
-  «—» con texto accesible hasta que exista su fuente. Nunca se muestran cifras de Figma. La
+  recorrido por cursor), porque el contrato no ofrece totales; «Cotizaciones totales» usa
+  `GET /admin/quotes/summary` (`useQuoteSummary`), que se recarga tras crear o editar. Nunca se muestran cifras de Figma. La
   página lee esa colección una vez (`useServiceCatalogSummary`): alimenta los indicadores y el
   filtro por unidad del tabulador, que la recarga tras activar o desactivar un servicio.
 - Tabulador de servicios (Figma `5790:332031`, tooltip `5790:332129`, menú `5790:332135`):
@@ -568,10 +568,10 @@ Validación, capturas y diferencias respecto a Figma:
     + `HintText`), con los textos de la columna (`SERVICE_MODALITY_OPTIONS`; Figma escribe
     «Detalle por Detalle» en el desplegable y «Detalle por detalle» en la tabla: se usa uno solo).
     En el alta empieza sin elegir y es obligatoria; se envía `kind`. En la edición se precarga la
-    guardada y solo viaja si el administrador la cambia. Pendiente: cuando existan cotizaciones,
-    un servicio ya cotizado mostrará la modalidad deshabilitada con el motivo («La modalidad no se
-    puede modificar porque este servicio ya está incluido en una cotización») a partir de un dato
-    real del backend; hoy no se muestra ningún bloqueo (Backend/ARCHITECTURE.md).
+    guardada y solo viaja si el administrador la cambia. Un servicio ya cotizado (`kindLocked` del
+    detalle) muestra la modalidad deshabilitada con el motivo («La modalidad no se puede modificar
+    porque este servicio ya está incluido en una cotización»); un 409 `SERVICE_MODALITY_IN_USE`
+    muestra el mismo motivo junto al campo sin perder el borrador (Backend/ARCHITECTURE.md).
   - Llave en mano solo admite la unidad base de código `square_meter` (nunca por el símbolo):
     el selector de base y «+ Crear unidad» solo ofrecen m², y elegir llave en mano retira una
     unidad incompatible ya elegida (con su denominación). Volver a individual conserva la unidad.
@@ -751,10 +751,31 @@ Validación, capturas y diferencias respecto a Figma:
   en curso y errores del servidor junto al campo sin perder lo escrito. En edición la abreviatura
   solo se habilita si la API devuelve `baseUnitEditable: true` (sin servicios ni historial) y solo
   se envía si cambia; si no, queda bloqueada con el motivo bajo el campo, y un 409
-  `MEASUREMENT_UNIT_BASE_IN_USE` la vuelve a bloquear conservando el texto. Tabulador y
-  Cotizaciones conservan un `EmptyState` provisional.
+  `MEASUREMENT_UNIT_BASE_IN_USE` la vuelve a bloquear conservando el texto.
   No se muestra la explicación «Puedes cambiar la abreviatura…» cuando la base es editable;
   se conservan la previsualización, los errores y el motivo cuando está bloqueada.
+- Cotizaciones (Figma `5771:488497`, visor `5812:280752`, editor `5771:451934`/`5771:468058`,
+  móvil `5790:343717`/`5790:341791`), en `admin-services-quotes/quotes` y `quote-editor`:
+  - Listado con datos reales: búsqueda en la API (debounce y aborto de la lectura anterior),
+    `DateRangeField` (rango local convertido a instantes `createdFrom` inclusivo y
+    `createdBefore` exclusivo), «Quitar filtros», orden por N° o Total con `TableHeaderLabel`
+    (`onSort`), diez filas por página y `CursorPaginationNav` (compartida con tabulador y
+    Unidades). La geometría vive en `src/config/quotesTable.js`; como el tabulador, el mínimo es
+    1102 px y con el sidebar expandido la tabla se desplaza dentro de `HorizontalScrollViewport`.
+    Estados: skeleton `Loader` `quotesTable`, vacío, sin resultados, error con reintento.
+  - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». El PDF lo genera el
+    backend; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
+    `DocumentViewerControls`, `DocumentFileCard`), movidos desde Proyectos.
+  - Editor (`/servicios-cotizaciones/cotizaciones/nueva` y `/:quoteId/editar`) con `Breadcrumb`:
+    cliente y proyecto con `Input` `Tags` y búsqueda en la API (solo opciones existentes; el
+    proyecto depende del cliente), selector de servicios activos, tabla de incluidos con cantidad y
+    tarifa editables y total previo calculado con el mismo motor decimal que el backend
+    (`quoteAmounts.js`, prueba de paridad). Los servicios ya incluidos aparecen marcados y
+    deshabilitados en el selector. Guardar crea o versiona; un 409 de versión conserva el borrador.
+    Cancelar con cambios pide confirmación (`QuoteDiscardDialog`).
+- `DateRangePicker`/`DateRangeField` y `Breadcrumb` son componentes nuevos de `components/ui`;
+  `Loader` añade los presets `quotesTable`, `quoteEditor` y `quoteServicePicker`; `Modal`
+  admite `showSecondaryAction`.
 
 ### Dashboard administrativo móvil
 

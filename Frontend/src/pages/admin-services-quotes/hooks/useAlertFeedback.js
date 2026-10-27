@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 /**
- * Aviso único del tabulador (AlertToast) que comparten el formulario y los cambios de estado.
+ * Aviso único de una pestaña del módulo (AlertToast): en el tabulador lo comparten el formulario
+ * y los cambios de estado; en Cotizaciones, el visor y las operaciones del listado.
  * Cada aviso recibe un identificador nuevo para que AlertToast vuelva a mostrarse aunque el
  * texto se repita.
  *

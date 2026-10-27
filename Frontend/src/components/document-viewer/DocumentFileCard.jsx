@@ -1,10 +1,23 @@
 import clsx from "clsx";
-import AvatarLabel from "../../../components/ui/AvatarLabel/AvatarLabel.jsx";
-import Button from "../../../components/ui/Button/Button.jsx";
-import FileAttachmentIcons from "../../../components/ui/FileAttachmentIcons/FileAttachmentIcons.jsx";
-import { getFileDisplayName } from "../../../utils/fileDisplayName.js";
+import AvatarLabel from "../ui/AvatarLabel/AvatarLabel.jsx";
+import Button from "../ui/Button/Button.jsx";
+import FileAttachmentIcons from "../ui/FileAttachmentIcons/FileAttachmentIcons.jsx";
+import { getFileDisplayName } from "../../utils/fileDisplayName.js";
 
-export default function ProjectDocumentCard({ closeIcon = null, document, onClose, variant = "default" }) {
+/**
+ * Encabezado de un documento abierto: icono del tipo, nombre, tamaño y fecha, y su responsable.
+ * Lo comparten los documentos de proyecto y el visor de cotizaciones. `keepExtension` muestra el
+ * nombre completo del archivo (`COT-001.pdf`, como Figma 5812:283654) en lugar de quitarle la extensión.
+ *
+ * @param {Object} props - Documento, variante y cierre opcional.
+ * @param {Object|null} props.document - Datos del documento (name, fileType, size, uploadedAt, owner, ownerAvatarSrc).
+ * @param {"default"|"modal"} [props.variant="default"] - Presentación.
+ * @param {import("react").ReactNode} [props.closeIcon] - Icono del botón de cierre (variante modal).
+ * @param {() => void} [props.onClose] - Cierra el visor (variante modal).
+ * @param {boolean} [props.keepExtension=false] - Conserva la extensión en el nombre visible.
+ * @returns {import("react").ReactElement|null} Encabezado del documento.
+ */
+export default function DocumentFileCard({ closeIcon = null, document, keepExtension = false, onClose, variant = "default" }) {
   if (!document) {
     return null;
   }
@@ -39,7 +52,7 @@ export default function ProjectDocumentCard({ closeIcon = null, document, onClos
                 : "text-[var(--color-text-300)]",
             )}
           >
-            {getFileDisplayName(document.name)}
+            {keepExtension ? String(document.name || "").trim() || "Archivo" : getFileDisplayName(document.name)}
           </p>
           {!isEmptyState ? (
             <p className="truncate text-body-3 text-[var(--color-text-100)]">

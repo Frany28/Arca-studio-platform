@@ -83,6 +83,8 @@ function Modal({
   // Bloquea las acciones del diálogo estándar mientras una confirmación está en curso.
   actionsDisabled = false,
   primaryActionBusy = false,
+  // Diálogos informativos con una única acción (p. ej. «Aceptar» tras crear una cotización).
+  showSecondaryAction = true,
   checkboxLabel = MODAL_DEFAULT_PROPS.checkboxLabel,
   icon = null,
   showCloseButton = MODAL_DEFAULT_PROPS.showCloseButton,
@@ -275,18 +277,20 @@ function Modal({
                     </div>
                   ) : null}
 
-                  <Button
-                    theme={secondaryActionTheme}
-                    type="Outline"
-                    size="S"
-                    showLeftIcon={false}
-                    showRightIcon={false}
-                    className={buttonClassName}
-                    disabled={actionsDisabled}
-                    onClick={onSecondaryAction}
-                  >
-                    {secondaryActionLabel}
-                  </Button>
+                  {showSecondaryAction ? (
+                    <Button
+                      theme={secondaryActionTheme}
+                      type="Outline"
+                      size="S"
+                      showLeftIcon={false}
+                      showRightIcon={false}
+                      className={buttonClassName}
+                      disabled={actionsDisabled}
+                      onClick={onSecondaryAction}
+                    >
+                      {secondaryActionLabel}
+                    </Button>
+                  ) : null}
 
                   <Button
                     theme={primaryActionTheme}

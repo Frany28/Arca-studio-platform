@@ -40,6 +40,8 @@ const REQUEST_ASSIGNEES = [
 const PAYLOADS = {
   "/api/projects": { projects: [PROJECT], nextCursor: null },
   "/api/admin/services": { services: [], nextCursor: null },
+  "/api/admin/quotes": { quotes: [], nextCursor: null },
+  "/api/admin/quotes/summary": { summary: { total: 0 } },
   "/api/admin/measurement-unit-denominations": { unitDenominations: [], nextCursor: null },
   "/api/project-requests/review-queue": { projectRequests: [], nextCursor: null },
   "/api/environment-comments": { comments: [], nextCursor: null },
@@ -125,7 +127,7 @@ async function openAdminPage(context, path, width, { theme = "light" } = {}) {
     "/dashboard-arquitecto": "Apto. Noventa y Uno",
     "/usuarios": USERS[9].name,
     "/archivos": "Última carga",
-    "/servicios-cotizaciones": "Cotizaciones en desarrollo",
+    "/servicios-cotizaciones": "Aún no hay cotizaciones",
   }[path];
   await page.getByText(readyText, { exact: true }).first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   // Las medidas dependen de las métricas reales de Inter, no de la fuente de respaldo.

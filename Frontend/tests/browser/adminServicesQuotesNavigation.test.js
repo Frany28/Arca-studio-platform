@@ -20,6 +20,9 @@ const API_FIXTURES = {
   "/api/admin/dashboard-metrics": { metrics: { files: { total: 0, totalBytes: 0, latestUploadAt: null } } },
   // La raíz del módulo redirige a Unidades, que lee el catálogo (vacío en estas pruebas).
   "/api/admin/services": { services: [], nextCursor: null },
+  // Cotizaciones, primera pestaña: listado vacío y total del indicador.
+  "/api/admin/quotes": { quotes: [], nextCursor: null },
+  "/api/admin/quotes/summary": { summary: { total: 0 } },
   "/api/admin/measurement-unit-denominations": { unitDenominations: [], nextCursor: null },
 };
 
@@ -122,7 +125,7 @@ test("admin: la entrada navega sin recarga y queda activa en la ruta y sus subru
   await entry.click();
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
   await page.getByRole("heading", { name: LABEL, level: 1 }).waitFor();
-  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
+  await page.getByText("Aún no hay cotizaciones", { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.__arcaNoReload), true, "La navegación no debe recargar la página");
   assert.equal(await isSelected(page, LABEL), true);
   assert.equal(await isSelected(page, "Archivos"), false);
@@ -174,7 +177,7 @@ test("riel contraído: icono con nombre accesible, tooltip y activación por tec
   await page.getByRole("tooltip").getByText(LABEL, { exact: true }).waitFor();
   await page.keyboard.press("Enter");
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
-  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
+  await page.getByText("Aún no hay cotizaciones", { exact: true }).waitFor();
   assert.equal(await isSelected(page, LABEL), true);
 });
 
@@ -186,7 +189,7 @@ test("móvil: el drawer incluye la entrada y navega; sin desborde horizontal", a
   await drawer.waitFor({ state: "visible" });
   await drawer.getByRole("button", { name: LABEL, exact: true }).click();
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
-  await page.getByText("Cotizaciones en desarrollo", { exact: true }).waitFor();
+  await page.getByText("Aún no hay cotizaciones", { exact: true }).waitFor();
   await drawer.waitFor({ state: "detached" });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert.equal(overflow, 0);

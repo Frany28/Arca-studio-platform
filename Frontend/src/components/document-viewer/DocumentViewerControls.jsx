@@ -1,6 +1,6 @@
 import { forwardRef } from "react";
 import clsx from "clsx";
-import Tooltip from "../../../../components/ui/Tooltip/Tooltip.jsx";
+import Tooltip from "../ui/Tooltip/Tooltip.jsx";
 
 const MIN_ZOOM = 75;
 const MAX_ZOOM = 200;
@@ -77,6 +77,8 @@ function CloseIcon() {
 
 function PdfToolbar({
   expandButtonRef,
+  // Los visores sin modo de pantalla completa (p. ej. el PDF de una cotización) lo ocultan.
+  expandable = true,
   fullscreen = false,
   onClose,
   onExpand,
@@ -104,9 +106,9 @@ function PdfToolbar({
         <ViewerButton label="Alejar" disabled={zoom <= MIN_ZOOM} onClick={() => updateZoom(zoom - ZOOM_STEP)}>−</ViewerButton>
         <span className="min-w-[42px] rounded-[2px] bg-[#111] px-[4px] py-[2px] text-center">{zoom}%</span>
         <ViewerButton label="Acercar" disabled={zoom >= MAX_ZOOM} onClick={() => updateZoom(zoom + ZOOM_STEP)}>+</ViewerButton>
-        <span className="mx-[4px] text-[var(--color-neutral-300)]">|</span>
+        {expandable ? <span className="mx-[4px] text-[var(--color-neutral-300)]">|</span> : null}
 
-        {fullscreen ? (
+        {!expandable ? null : fullscreen ? (
           <ViewerButton
             label="Contraer visor"
             onClick={onClose}
@@ -124,7 +126,7 @@ function PdfToolbar({
           </ViewerButton>
         )}
 
-        {fullscreen ? (
+        {expandable && fullscreen ? (
           <ViewerButton
             label="Cerrar visor"
             onClick={onClose}

@@ -22,6 +22,39 @@ export function getServicesQuotesTabPath(slug) {
   return `${SERVICES_QUOTES_PATH}/${slug}`;
 }
 
+// Subrutas del formulario de cotización (Figma 5771:452483) bajo la pestaña Cotizaciones.
+const QUOTES_TAB_SLUG = SERVICES_QUOTES_TABS.find((tab) => tab.id === "quotes").slug;
+export const QUOTE_CREATE_SEGMENT = "nueva";
+export const QUOTE_EDIT_SEGMENT = "editar";
+
+/**
+ * Ruta absoluta del listado de cotizaciones (pestaña Cotizaciones).
+ *
+ * @returns {string} `/servicios-cotizaciones/cotizaciones`.
+ */
+export function getQuotesListPath() {
+  return getServicesQuotesTabPath(QUOTES_TAB_SLUG);
+}
+
+/**
+ * Ruta absoluta del formulario «Nueva cotización».
+ *
+ * @returns {string} `/servicios-cotizaciones/cotizaciones/nueva`.
+ */
+export function getQuoteCreatePath() {
+  return `${getServicesQuotesTabPath(QUOTES_TAB_SLUG)}/${QUOTE_CREATE_SEGMENT}`;
+}
+
+/**
+ * Ruta absoluta de la edición de una cotización.
+ *
+ * @param {number|string} quoteId - Cotización.
+ * @returns {string} `/servicios-cotizaciones/cotizaciones/12/editar`.
+ */
+export function getQuoteEditorPath(quoteId) {
+  return `${getServicesQuotesTabPath(QUOTES_TAB_SLUG)}/${encodeURIComponent(quoteId)}/${QUOTE_EDIT_SEGMENT}`;
+}
+
 /**
  * Resuelve la pestaña activa a partir de la URL actual, de modo que el estado activo depende
  * solo de la ruta (enlaces directos, recargas y Atrás/Adelante del navegador).

@@ -12,6 +12,8 @@
  *   genera una versión nueva.
  */
 
+import { formatGeneratedCode } from "./generatedCode.js";
+
 export const SERVICE_KINDS = Object.freeze({ INDIVIDUAL: "individual", TURNKEY: "turnkey" });
 
 export const SERVICE_CURRENCY = "USD";
@@ -20,7 +22,6 @@ export const SERVICE_CURRENCY = "USD";
 export const DEFAULT_SERVICE_KIND = SERVICE_KINDS.INDIVIDUAL;
 
 const GENERATED_CODE_PREFIX = "SERV-";
-const GENERATED_CODE_MIN_DIGITS = 3;
 
 /**
  * Compone el código visible de un servicio a partir de su id: `SERV-` y el id con al menos tres
@@ -32,10 +33,7 @@ const GENERATED_CODE_MIN_DIGITS = 3;
  * @throws {TypeError} Si el id no es un entero positivo seguro.
  */
 export function formatGeneratedServiceCode(serviceId) {
-  if (!Number.isSafeInteger(serviceId) || serviceId <= 0) {
-    throw new TypeError("service_catalog: el id del servicio debe ser un entero positivo.");
-  }
-  return `${GENERATED_CODE_PREFIX}${String(serviceId).padStart(GENERATED_CODE_MIN_DIGITS, "0")}`;
+  return formatGeneratedCode(GENERATED_CODE_PREFIX, serviceId, "service_catalog: el id del servicio");
 }
 
 /**

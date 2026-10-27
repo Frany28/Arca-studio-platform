@@ -24,29 +24,33 @@ function UnavailableValue({ reason }) {
 
 /**
  * Indicadores del encabezado del módulo (Figma 5790:339391): servicios totales, activos e
- * inactivos derivados del catálogo real, y cotizaciones totales, que no tienen fuente de datos
- * hasta implementar ese módulo y se muestran como no disponibles. El resumen lo lee la página
- * (useServiceCatalogSummary) para que el tabulador pueda recargarlo tras un cambio de estado.
+ * inactivos derivados del catálogo real, y cotizaciones totales leídas de la API. Los resúmenes
+ * los lee la página (useServiceCatalogSummary y useQuoteSummary) para que el tabulador y las
+ * cotizaciones puedan recargarlos tras un cambio. Sin dato real se muestra «no disponible».
  *
- * @param {Object} props - Resumen del catálogo.
- * @param {{metrics: Object|null, loading: boolean, error: string}} props.summary - Indicadores derivados.
+ * @param {Object} props - Resúmenes del módulo.
+ * @param {{metrics: Object|null, loading: boolean, error: string}} props.summary - Indicadores del catálogo.
+ * @param {{total: number|null, loading: boolean, error: string}} props.quoteSummary - Total de cotizaciones.
  * @returns {import("react").ReactElement} Fila de indicadores o su skeleton.
  */
-function ServicesQuotesMetrics({ summary }) {
+function ServicesQuotesMetrics({ quoteSummary, summary }) {
   const { error, loading, metrics } = summary;
 
-  if (loading) return <Loader preset="adminUserMetrics" label="Cargando indicadores de servicios" />;
+  if (loading || quoteSummary.loading) return <Loader preset="adminUserMetrics" label="Cargando indicadores de servicios" />;
 
   const serviceValue = (value) => (metrics
     ? NUMBER_FORMATTER.format(value)
     : <UnavailableValue reason={error || "No disponible"} />);
+  const quoteValue = quoteSummary.total === null
+    ? <UnavailableValue reason={quoteSummary.error || "No disponible"} />
+    : NUMBER_FORMATTER.format(quoteSummary.total);
 
   return (
     <div className="flex w-full flex-wrap content-center items-center gap-y-[16px] border-y border-[var(--color-neutral-200)] py-[24px]" aria-label="Indicadores de servicios y cotizaciones">
       <AdminKpiMetric label="Servicios totales" value={serviceValue(metrics?.total)} iconType="Accent" icon={<TaskSquare size="24" color="currentColor" />} />
       <AdminKpiMetric label="Servicios activos" value={serviceValue(metrics?.active)} iconType="Success" icon={<TickSquare size="24" color="currentColor" />} />
       <AdminKpiMetric label="Servicios Inactivos" value={serviceValue(metrics?.inactive)} iconType="Disabled" icon={<CloseSquare size="24" color="currentColor" />} />
-      <AdminKpiMetric label="Cotizaciones totales" value={<UnavailableValue reason="No disponible: el módulo de cotizaciones está en desarrollo." />} iconType="Accent" icon={<ClipboardTick size="24" color="currentColor" />} />
+      <AdminKpiMetric label="Cotizaciones totales" value={quoteValue} iconType="Accent" icon={<ClipboardTick size="24" color="currentColor" />} />
     </div>
   );
 }

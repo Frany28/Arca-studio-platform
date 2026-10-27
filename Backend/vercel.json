@@ -3,7 +3,8 @@
   "buildCommand": null,
   "functions": {
     "api/index.js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "{assets/**,node_modules/@fontsource/inter/files/inter-latin-*-normal.woff}"
     }
   },
   "rewrites": [

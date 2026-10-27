@@ -1,5 +1,6 @@
 import { query } from "../config/db.js";
 import { formatUnitLabel } from "../domain/measurementUnitLabel.js";
+import { toContainsPattern } from "../utils/sqlPatterns.js";
 
 const SERVICE_COLUMNS = `
   s.id, s.code, s.name, s.description, s.kind, s.reference_rate, s.currency_code, s.is_active, s.sort_order,
@@ -7,7 +8,8 @@ const SERVICE_COLUMNS = `
   u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
   u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active,
   d.id as denomination_id, d.denomination as denomination_text, d.is_active as denomination_is_active,
-  v.version_number as current_version`;
+  v.version_number as current_version,
+  exists (select 1 from public.quote_items qi where qi.service_id = s.id) as kind_locked`;
 
 const SERVICE_FROM = `
   from public.services s
@@ -28,9 +30,9 @@ function toServiceDenomination(row) {
 }
 
 /**
- * Transforma una fila del catálogo en la representación pública estable de un servicio.
- * La tarifa se conserva como texto decimal de PostgreSQL ("12.00") para no perder precisión.
- * `unitLabel` compone la abreviatura de la base con la denominación opcional.
+ * Transforma una fila del catálogo en la representación pública estable de un servicio, con la
+ * tarifa como texto decimal ("12.00"), la etiqueta de unidad compuesta (`unitLabel`) y
+ * `kindLocked` si está incluido en alguna cotización (SERVICE_MODALITY_IN_USE).
  *
  * @param {object} row - Fila con columnas del servicio, su unidad, denominación y versión vigente.
  * @returns {object} Servicio con su unidad de medida, denominación y número de versión vigente.
@@ -46,6 +48,7 @@ function toService(row) {
     id: Number(row.id),
     isActive: row.is_active,
     kind: row.kind,
+    kindLocked: row.kind_locked === true,
     measurementUnit: {
       allowsDecimals: row.unit_allows_decimals,
       code: row.unit_code,
@@ -61,17 +64,6 @@ function toService(row) {
     unitLabel: formatUnitLabel(row.unit_symbol, unitDenomination?.denomination),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
-}
-
-/**
- * Escapa los comodines de ILIKE para que la búsqueda trate %, _ y \ como texto literal.
- * Se usa junto con `escape '\'` en la consulta.
- *
- * @param {string} value - Texto buscado por el usuario.
- * @returns {string} Patrón `%texto%` con comodines escapados.
- */
-function toContainsPattern(value) {
-  return `%${value.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
 }
 
 /**
@@ -274,4 +266,50 @@ export async function insertServiceVersionSnapshot(client, { changeNote, service
     [serviceId, versionNumber, changeNote, userId],
   );
   if (result.rowCount !== 1) throw new Error("service_catalog: no se pudo registrar la versión del servicio.");
+}
+
+/**
+ * Bloquea con FOR SHARE, en orden de id, los servicios que se incluirán en una cotización y
+ * devuelve su versión vigente leída en una sentencia posterior. FOR SHARE excluye el FOR UPDATE
+ * de una edición del servicio: si la edición gana, esta lectura ve su versión nueva; si gana la
+ * cotización, la edición espera y después ve el concepto (SERVICE_MODALITY_IN_USE). El orden por
+ * id evita interbloqueos entre cotizaciones que comparten servicios.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {Array<number>} serviceIds - Servicios sin repetir.
+ * @returns {Promise<Map<number, { isActive: boolean, currentVersionId: number|null }>>} Estado por servicio
+ *   existente; los ausentes no existen.
+ */
+export async function lockQuotableServices(client, serviceIds) {
+  await client.query("select id from public.services where id = any($1::bigint[]) order by id for share", [serviceIds]);
+  const result = await client.query(
+    `select s.id, s.is_active, v.id as version_id
+     from public.services s
+     left join public.service_versions v on v.service_id = s.id and v.is_current
+     where s.id = any($1::bigint[])`,
+    [serviceIds],
+  );
+  return new Map(result.rows.map((row) => [
+    Number(row.id),
+    { currentVersionId: row.version_id === null ? null : Number(row.version_id), isActive: row.is_active },
+  ]));
+}
+
+/**
+ * Lee las copias inmutables de versiones de servicios que fija una cotización: tarifa de
+ * referencia y si la unidad admite decimales.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {Array<number>} versionIds - Versiones de servicio.
+ * @returns {Promise<Map<number, { serviceId: number, referenceRate: string, unitAllowsDecimals: boolean }>>} Copia por versión.
+ */
+export async function findServiceVersionSnapshots(client, versionIds) {
+  const result = await client.query(
+    "select id, service_id, reference_rate, unit_allows_decimals from public.service_versions where id = any($1::bigint[])",
+    [versionIds],
+  );
+  return new Map(result.rows.map((row) => [
+    Number(row.id),
+    { referenceRate: row.reference_rate, serviceId: Number(row.service_id), unitAllowsDecimals: row.unit_allows_decimals },
+  ]));
 }

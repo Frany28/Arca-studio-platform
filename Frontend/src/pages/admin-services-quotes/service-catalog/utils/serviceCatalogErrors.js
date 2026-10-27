@@ -54,6 +54,9 @@ export function getServiceStatusErrorFeedback(error, fallback) {
   };
 }
 
+// Motivo del bloqueo de la modalidad, igual al mensaje del 409 SERVICE_MODALITY_IN_USE.
+export const SERVICE_MODALITY_LOCKED_MESSAGE = "La modalidad no se puede modificar porque este servicio ya está incluido en una cotización.";
+
 // Campos del contrato que el formulario señala junto a su control.
 const FORM_FIELD_BY_PATH = {
   description: "description",
@@ -81,6 +84,8 @@ const FORM_CONFLICT_MESSAGES = {
  */
 function getServiceFormFieldErrors(error) {
   if (error?.code === "SERVICE_REFERENCE_CONFLICT") return { unit: error.message || "La unidad elegida ya no está disponible." };
+  // Regla SERVICE_MODALITY_IN_USE (Backend/ARCHITECTURE.md): el motivo va junto a la modalidad.
+  if (error?.code === "SERVICE_MODALITY_IN_USE") return { kind: error.message || SERVICE_MODALITY_LOCKED_MESSAGE };
   const fieldErrors = {};
   for (const [path, message] of Object.entries(error?.fields || {})) {
     const field = FORM_FIELD_BY_PATH[path.replace(/^body\./, "")];

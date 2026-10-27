@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 
-import Avatar from "../../../../components/ui/Avatar/Avatar.jsx";
-import AvatarGroup from "../../../../components/ui/AvatarGroup/AvatarGroup.jsx";
-import ObservationTooltip from "../../../../components/ui/ObservationTooltip/ObservationTooltip.jsx";
+import Avatar from "../ui/Avatar/Avatar.jsx";
+import AvatarGroup from "../ui/AvatarGroup/AvatarGroup.jsx";
+import ObservationTooltip from "../ui/ObservationTooltip/ObservationTooltip.jsx";
 
 function DocumentMarker({ comment, focused, onSelect, style }) {
   const markerRef = useRef(null);

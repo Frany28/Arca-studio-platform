@@ -10,6 +10,7 @@ import {
 } from "../domain/serviceCatalog.js";
 import { lockDenomination } from "../repositories/measurementUnitDenominationRepository.js";
 import { findMeasurementUnitById } from "../repositories/measurementUnitRepository.js";
+import { serviceHasQuoteReferences } from "../repositories/quoteRepository.js";
 import {
   findServiceById,
   insertServiceRecord,
@@ -29,6 +30,7 @@ import {
 } from "./serviceCatalogErrors.js";
 
 const SERVICE_NOT_FOUND_MESSAGE = "El servicio seleccionado no existe.";
+const SERVICE_MODALITY_IN_USE_MESSAGE = "La modalidad no se puede modificar porque este servicio ya está incluido en una cotización.";
 
 /**
  * Obtiene una página del catálogo con filtros y paginación por cursor (sort_order, id).
@@ -228,7 +230,8 @@ export async function createService({ payload, user }) {
  * @returns {Promise<{ service: object, changed: boolean, changedFields: Array<string> }>} Resultado;
  *   `changed` es false cuando no había cambios efectivos y no se creó versión.
  * @throws {NotFoundError} SERVICE_NOT_FOUND si el servicio no existe.
- * @throws {ConflictError} SERVICE_VERSION_CONFLICT si otra edición se confirmó antes.
+ * @throws {ConflictError} SERVICE_VERSION_CONFLICT si otra edición se confirmó antes;
+ *   SERVICE_MODALITY_IN_USE si cambia `kind` y el servicio está incluido en alguna cotización.
  * @throws {ValidationError} Si la unidad no es válida para el estado resultante.
  */
 export async function updateService({ payload, serviceId, user }) {
@@ -244,6 +247,10 @@ export async function updateService({ payload, serviceId, user }) {
       const next = mergeServiceChanges(current, payload);
       const changedFields = listChangedServiceFields(current, next);
       if (changedFields.length === 0) return { changed: false, changedFields, service: current };
+      // Con el servicio bloqueado FOR UPDATE, un concepto confirmado por otra transacción ya es visible.
+      if (changedFields.includes("kind") && await serviceHasQuoteReferences(client, serviceId)) {
+        throw new ConflictError("SERVICE_MODALITY_IN_USE", SERVICE_MODALITY_IN_USE_MESSAGE);
+      }
 
       await assertServiceUnitChanges(client, { changedFields, next, payload });
       await updateServiceRecord(client, serviceId, next, user.id);

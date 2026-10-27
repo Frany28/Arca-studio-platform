@@ -138,6 +138,7 @@ function PdfViewerSurface({
   className,
   documentProxy,
   expandButtonRef,
+  expandable = true,
   fullscreen = false,
   onClose,
   onExpand,
@@ -177,6 +178,7 @@ function PdfViewerSurface({
     >
       <PdfToolbar
         expandButtonRef={expandButtonRef}
+        expandable={expandable}
         fullscreen={fullscreen}
         onClose={onClose}
         onExpand={onExpand}

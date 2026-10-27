@@ -4,7 +4,7 @@ import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import IconContainer from "../../../components/ui/IconContainer.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import ScrollBar from "../../../components/ui/ScrollBar.jsx";
-import ProjectDocumentCard from "../components/ProjectDocumentCard.jsx";
+import DocumentFileCard from "../../../components/document-viewer/DocumentFileCard.jsx";
 import ProjectDocumentListCard from "../components/ProjectDocumentListCard.jsx";
 import ProjectDocumentPreview from "../components/ProjectDocumentPreview.jsx";
 import ProjectDocumentsToolbar from "../components/ProjectDocumentsToolbar.jsx";
@@ -205,7 +205,7 @@ export default function ProjectDocumentsPanel({
               : "bg-[var(--color-neutral-10)]",
           )}
         >
-          <ProjectDocumentCard document={selectedDocument || EMPTY_DOCUMENT_PREVIEW} />
+          <DocumentFileCard document={selectedDocument || EMPTY_DOCUMENT_PREVIEW} />
 
           {hasVisibleDocuments ? (
             <ProjectDocumentPreview

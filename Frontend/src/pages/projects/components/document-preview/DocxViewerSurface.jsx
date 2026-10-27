@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderAsync as renderDocx } from "docx-preview";
 
 import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
-import DocumentMarker from "./DocumentMarker.jsx";
+import DocumentMarker from "../../../../components/document-viewer/DocumentMarker.jsx";
 
 function DocxViewerSurface({ annotations = [], data, focusedId, onPointCreate, onPointSelect, pendingSelection, title }) {
   const containerRef = useRef(null);

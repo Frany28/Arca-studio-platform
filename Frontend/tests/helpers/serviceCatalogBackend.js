@@ -154,6 +154,8 @@ export function createServiceCatalogBackend(initial) {
 
     if (path === "/api/auth/me") return json(route, 200, { user: { id: 1, firstName: "Ana", lastName: "Admin", email: "ana@example.test", role: "admin", status: "active" } });
     if (path === "/api/projects") return json(route, 200, { projects: [], nextCursor: null });
+    // La cabecera del módulo lee siempre el total de cotizaciones para su indicador.
+    if (path === "/api/admin/quotes/summary" && method === "GET") return json(route, 200, { summary: { total: 0 } });
     // El resumen de los indicadores (limit=100) no se ve afectado por los fallos de la tabla.
     if (failure && !(method === "GET" && path === "/api/admin/services" && params.limit === "100")) {
       return json(route, failure.status, failure.body);

@@ -1,6 +1,7 @@
 import { CloseCircle, TickCircle } from "iconsax-react";
 
 import Button from "../../../../components/ui/Button/Button.jsx";
+import CursorPaginationNav from "../../components/CursorPaginationNav.jsx";
 import { getServiceBulkActionVisibility } from "../utils/serviceBulkStatus.js";
 
 // Figma 5790:351653: los controles de texto miden 41 px, las acciones con icono 44 px.
@@ -68,10 +69,12 @@ function ServiceCatalogFooter({ busy, mixed, onStatusRequest, pagination, select
           })}
         </div>
       ) : null}
-      <nav className="flex items-center gap-[8px] max-[1023px]:ml-auto" aria-label="Paginación de servicios">
-        <Button theme="Primary" type="Outline" size="M" fitContent style={FOOTER_BUTTON_GEOMETRY.previous} showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasPrevious} className="disabled:!border-[var(--color-neutral-400)] disabled:!text-[var(--color-neutral-400)]" onClick={pagination.previous}>Anterior</Button>
-        <Button theme="Primary" type="Solid" size="M" fitContent style={FOOTER_BUTTON_GEOMETRY.next} showLeftIcon={false} showRightIcon={false} disabled={!pagination.hasNext} onClick={pagination.next}>Siguiente pág.</Button>
-      </nav>
+      <CursorPaginationNav
+        className="max-[1023px]:ml-auto"
+        ariaLabel="Paginación de servicios"
+        buttonGeometry={FOOTER_BUTTON_GEOMETRY}
+        pagination={pagination}
+      />
     </footer>
   );
 }

@@ -1,5 +1,6 @@
 import { query } from "../config/db.js";
 import { formatUnitLabel } from "../domain/measurementUnitLabel.js";
+import { toContainsPattern } from "../utils/sqlPatterns.js";
 
 const DENOMINATION_COLUMNS = `
   d.id, d.public_code, d.denomination, d.is_active, d.created_at, d.updated_at,
@@ -42,17 +43,6 @@ function toDenomination(row) {
     },
     updatedAt: new Date(row.updated_at).toISOString(),
   };
-}
-
-/**
- * Escapa los comodines de ILIKE para que la búsqueda trate %, _ y \ como texto literal.
- * Se usa junto con `escape '\'` en la consulta.
- *
- * @param {string} value - Texto buscado por el usuario.
- * @returns {string} Patrón `%texto%` con comodines escapados.
- */
-function toContainsPattern(value) {
-  return `%${value.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
 }
 
 /**

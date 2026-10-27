@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { ADMIN_PROJECT_COLUMN_WIDTHS, ADMIN_PROJECT_TABLE_MIN_WIDTH } from "../../../config/adminProjectTable.js";
+import { getQuotesTableGridTemplate, QUOTES_TABLE_MIN_WIDTH } from "../../../config/quotesTable.js";
 import { getServiceCatalogGridTemplate, SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../../config/serviceCatalogTable.js";
 
 function SkeletonBlock({ className, delay = 0, style, tone = "surface" }) {
@@ -312,6 +313,76 @@ function ServiceCatalogTableSkeleton({ rows }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Cotizaciones (Figma 5771:488505): selección, N°, cliente, proyecto, fecha, total y tres acciones
+// de 36 px. Comparte la geometría de config/quotesTable.js para no saltar al terminar la carga.
+function QuotesTableSkeleton({ rows }) {
+  return (
+    <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
+      <div className="w-full overflow-x-auto">
+        <div style={{ minWidth: QUOTES_TABLE_MIN_WIDTH }}>
+          <SkeletonBlock className="h-[49px] w-full rounded-none" />
+          {Array.from({ length: rows }, (_, rowIndex) => (
+            <div key={rowIndex} className="grid h-[68px] items-center border-b border-[var(--color-neutral-200)] last:border-b-0" style={{ gridTemplateColumns: getQuotesTableGridTemplate() }}>
+              <SkeletonBlock className="mx-[16px] size-[16px] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="muted" />
+              <SkeletonBlock className="mx-[24px] h-[17px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[70%] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 30} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[55%] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 40} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[80px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 50} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[88px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 60} tone="text" />
+              <div className="flex items-center gap-[8px] px-[24px]">
+                {[0, 1, 2].map((action) => <SkeletonBlock key={action} className="size-[36px] rounded-[var(--radius-2)]" delay={rowIndex * 35 + 75 + action * 10} tone="muted" />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Tabla de «Seleccionar servicios» (Figma 5771:463260): encabezado de 49 px y cinco filas de
+// 50 px con selección, servicio, unidad y tarifa, el alto visible de la tabla real.
+function QuoteServicePickerSkeleton() {
+  return (
+    <>
+      <SkeletonBlock className="h-[49px] w-full rounded-none" delay={100} />
+      {Array.from({ length: 5 }, (_, row) => (
+        <div key={row} className="flex h-[50px] items-center gap-[24px] border-b border-[var(--color-neutral-200)] px-[16px] last:border-b-0">
+          <SkeletonBlock className="size-[16px] shrink-0 rounded-[var(--radius-1)]" delay={120 + row * 30} tone="muted" />
+          <SkeletonBlock className="h-[17px] w-[220px] max-w-[40%] rounded-[var(--radius-1)]" delay={130 + row * 30} tone="text" />
+          <SkeletonBlock className="h-[20px] w-[140px] max-w-[25%] rounded-[var(--radius-full)]" delay={140 + row * 30} />
+          <SkeletonBlock className="ml-auto h-[17px] w-[40px] rounded-[var(--radius-1)]" delay={150 + row * 30} tone="text" />
+        </div>
+      ))}
+    </>
+  );
+}
+
+// Formulario de cotización (Figma 5771:451934) mientras se lee la cotización editada: Datos
+// generales (dos campos de 320 × 61 px), selector de servicios (búsqueda, tabla de cinco filas de
+// 50 px y pie) y servicios incluidos (tabla, total y observaciones de 130 px). Los títulos, las
+// divisorias y el pie reales permanecen fuera del skeleton.
+function QuoteEditorSkeleton() {
+  return (
+    <div className="flex w-full flex-col gap-[48px]" data-skeleton-preset="quoteEditor">
+      <div className="flex flex-wrap gap-[24px]">
+        {[0, 1].map((field) => <ServiceFormFieldSkeleton key={field} controlHeight={36} delay={field * 40} labelWidth={150} />)}
+      </div>
+      <div className="flex flex-col gap-[24px]">
+        <SkeletonBlock className="ml-auto h-[40px] w-full max-w-[320px] rounded-[var(--radius-2)]" delay={80} />
+        <div className="overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
+          <QuoteServicePickerSkeleton />
+        </div>
+      </div>
+      <div className="flex flex-col gap-[16px]">
+        <SkeletonBlock className="h-[191px] w-full rounded-[var(--radius-3)]" delay={300} />
+        <SkeletonBlock className="ml-auto h-[30px] w-[118px] rounded-[var(--radius-1)]" delay={330} tone="text" />
+        <ServiceFormFieldSkeleton controlHeight={130} delay={360} labelWidth={170} />
       </div>
     </div>
   );
@@ -639,6 +710,12 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <ServiceCatalogTableSkeleton rows={itemCount} />;
   } else if (preset === "serviceForm") {
     content = <ServiceFormSkeleton />;
+  } else if (preset === "quotesTable") {
+    content = <QuotesTableSkeleton rows={itemCount} />;
+  } else if (preset === "quoteEditor") {
+    content = <QuoteEditorSkeleton />;
+  } else if (preset === "quoteServicePicker") {
+    content = <QuoteServicePickerSkeleton />;
   } else if (preset === "adminUserDetails") {
     content = <AdminUserDetailsSkeleton />;
   } else if (preset === "adminRequestDetails") {

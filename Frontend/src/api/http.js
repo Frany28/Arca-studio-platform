@@ -5,6 +5,7 @@ import { environmentCommentsApi } from "./environmentCommentsApi.js";
 import { measurementUnitsApi } from "./measurementUnitsApi.js";
 import { projectRequestsApi } from "./projectRequestsApi.js";
 import { projectsApi } from "./projectsApi.js";
+import { quotesApi } from "./quotesApi.js";
 import { serviceCatalogApi } from "./serviceCatalogApi.js";
 import { supportApi } from "./supportApi.js";
 
@@ -15,6 +16,7 @@ export { environmentCommentsApi } from "./environmentCommentsApi.js";
 export { measurementUnitsApi } from "./measurementUnitsApi.js";
 export { projectRequestsApi } from "./projectRequestsApi.js";
 export { projectsApi } from "./projectsApi.js";
+export { quotesApi } from "./quotesApi.js";
 export { serviceCatalogApi } from "./serviceCatalogApi.js";
 export { supportApi } from "./supportApi.js";
 
@@ -32,6 +34,7 @@ export const api = {
   measurementUnits: measurementUnitsApi,
   projectRequests: projectRequestsApi,
   projects: projectsApi,
+  quotes: quotesApi,
   serviceCatalog: serviceCatalogApi,
   support: supportApi,
 };

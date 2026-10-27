@@ -75,6 +75,41 @@ export async function apiRequest(path, options = {}) {
 }
 
 /**
+ * Descarga un recurso binario de la API (por ejemplo, un PDF) con las cookies de la sesión y la
+ * misma traducción de errores que apiRequest: un fallo HTTP lee el JSON de error si existe y un
+ * 401 notifica la expiración de la sesión. La caché HTTP del navegador revalida con ETag.
+ *
+ * @param {string} path - Ruta relativa a la base de API.
+ * @param {Object} [options={}] - Opciones fetch; admite signal.
+ * @returns {Promise<Blob>} Contenido recibido.
+ * @throws {Error} Fallo HTTP con status/code, fallo de red o cancelación.
+ */
+export async function apiRequestBlob(path, options = {}) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: "include" });
+  } catch (requestError) {
+    if (requestError?.name === "AbortError") throw requestError;
+    const networkError = new Error(NETWORK_USER_ERROR_MESSAGE);
+    networkError.code = "NETWORK_ERROR";
+    networkError.cause = requestError;
+    throw networkError;
+  }
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") || "";
+    const data = contentType.includes("application/json") ? await response.json().catch(() => null) : null;
+    const error = new Error(data?.message || "La API no está disponible para esta acción.");
+    error.status = response.status;
+    error.code = data?.code || "API_ROUTE_UNAVAILABLE";
+    reportSessionExpiration({ code: error.code, path, status: error.status });
+    throw error;
+  }
+
+  return response.blob();
+}
+
+/**
  * Construye la cadena de consulta omitiendo valores vacíos, para no enviar filtros sin efecto
  * que el backend validaría (por ejemplo `search=` o `cursor=`).
  *

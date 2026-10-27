@@ -45,6 +45,7 @@ const FOCUS_SELECTORS = {
  * @param {Object} props.draft - Borrador (createServiceDraft).
  * @param {(patch: Object) => void} props.onDraftChange - Aplica cambios parciales al borrador.
  * @param {(kind: string) => void} props.onKindChange - Aplica la modalidad elegida (y sus efectos en la unidad).
+ * @param {boolean} [props.kindLocked=false] - El servicio está en alguna cotización y su modalidad no cambia.
  * @param {Object} props.fieldErrors - Errores por campo (name, kind, description, unit, referenceRate).
  * @param {string} props.submitError - Error general del envío.
  * @param {boolean} props.submitting - Envío en curso.
@@ -65,7 +66,7 @@ const FOCUS_SELECTORS = {
  * @returns {import("react").ReactElement} Modal en portal.
  */
 function ServiceFormModal({
-  catalogUnavailable, denominations, draft, fieldErrors, focusRequest, loadError, mode,
+  catalogUnavailable, denominations, draft, fieldErrors, focusRequest, kindLocked = false, loadError, mode,
   onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, selectedBaseOption, status, submitError, submitting, unitCreation, unitHint, unitNotice, unitPrefixOptions,
 }) {
   const copy = COPY[mode === "edit" ? "edit" : "create"];
@@ -158,6 +159,7 @@ function ServiceFormModal({
                 value={draft.kind}
                 error={fieldErrors.kind}
                 disabled={submitting}
+                locked={kindLocked}
                 onChange={onKindChange}
               />
               <TextArea

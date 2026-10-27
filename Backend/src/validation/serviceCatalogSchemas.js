@@ -3,7 +3,7 @@ import { z } from "zod";
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
 import { DEFAULT_SERVICE_KIND, SERVICE_KINDS } from "../domain/serviceCatalog.js";
 import { decodeCursor } from "../utils/pagination.js";
-import { describeDecimalParseError, formatScaledDecimal, parseScaledDecimal } from "../utils/scaledDecimal.js";
+import { scaledDecimalText } from "./decimalSchemas.js";
 
 const MAX_INTEGER = 2147483647;
 const RATE_FORMAT = QUOTE_DECIMAL_FORMATS.unitRate;
@@ -24,25 +24,8 @@ const serviceDescription = z.union([z.string(), z.null()]).optional()
   .transform((value) => (value === undefined ? undefined : value?.trim() || null))
   .refine((value) => !value || value.length <= 2000, "Admite como máximo 2000 caracteres.");
 
-/**
- * Valida una tarifa de referencia con la misma precisión que NUMERIC(14,2) y la normaliza
- * a texto decimal con dos decimales ("12.00"). Reutiliza el analizador exacto del motor de
- * cotizaciones: no redondea, rechaza negativos y números inseguros de JavaScript.
- *
- * @param {unknown} value - Tarifa recibida como texto decimal o número exacto.
- * @param {import("zod").RefinementCtx} context - Contexto de Zod para registrar el error.
- * @returns {string} Tarifa normalizada.
- */
-function normalizeReferenceRate(value, context) {
-  const parsed = parseScaledDecimal(value, RATE_FORMAT);
-  if (parsed.error) {
-    context.addIssue({ code: "custom", message: describeDecimalParseError(parsed.error, RATE_FORMAT) });
-    return z.NEVER;
-  }
-  return formatScaledDecimal(parsed.value, RATE_FORMAT.scale);
-}
-
-const referenceRate = z.unknown().transform(normalizeReferenceRate);
+// Tarifa con la precisión de NUMERIC(14,2), normalizada a texto con dos decimales ("12.00").
+const referenceRate = scaledDecimalText(RATE_FORMAT);
 
 /**
  * Comprueba que un cursor del catálogo contenga el orden de visualización y el id del último
