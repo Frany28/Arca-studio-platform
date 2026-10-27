@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 
 import InputOptionsPanel from "../../../../components/ui/Input/options/InputOptionsPanel.jsx";
-import { getInputOptionClassName } from "../../../../components/ui/Input/options/inputOptionsConfig.js";
+import { INPUT_OPTIONS_ANCHOR_OFFSET, getInputOptionClassName } from "../../../../components/ui/Input/options/inputOptionsConfig.js";
 
 /**
  * Listado del combobox «Unidad de medida»: las unidades se agrupan por su unidad base bajo un
@@ -43,9 +43,15 @@ function ServiceUnitOptionsList({ activeIndex, groups, highlightedIndex, id, lis
       placement={position?.placement}
       maxViewportHeight={position?.viewportMaxHeight}
       className="fixed z-[var(--z-tooltip)]"
-      // Oculto hasta medir el campo; ocupa el ancho del campo completo.
+      // Oculto hasta medir el campo; alineado con sus bordes laterales y con su mismo ancho (el
+      // desfase de 1 px del layout compartido solo aplica a un segmento interior del campo).
       style={position
-        ? { left: position.left, top: position.top, width: position.minWidth, maxWidth: position.maxWidth }
+        ? {
+          left: position.left + INPUT_OPTIONS_ANCHOR_OFFSET,
+          top: position.top,
+          width: position.minWidth - INPUT_OPTIONS_ANCHOR_OFFSET,
+          maxWidth: position.maxWidth,
+        }
         : { visibility: "hidden" }}
     >
       {groups.map((group) => {

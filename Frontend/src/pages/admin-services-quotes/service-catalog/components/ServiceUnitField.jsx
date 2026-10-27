@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import clsx from "clsx";
 
 import Input from "../../../../components/ui/Input/Input.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
@@ -172,7 +173,14 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         aria-expanded={isOpen}
         aria-controls={isOpen ? listboxId : undefined}
         aria-activedescendant={isOpen ? optionId(activeIndex) : undefined}
-        className="max-w-none"
+        // Con el listado abierto, el campo pierde el radio del lado unido al panel para formar una
+        // sola pieza con él (el panel no dibuja borde en ese lado).
+        className={clsx(
+          "max-w-none",
+          isOpen && (position?.placement === "top"
+            ? "[&_[data-input-shell]]:rounded-t-none"
+            : "[&_[data-input-shell]]:rounded-b-none"),
+        )}
         autoComplete="off"
       />
       {selectionText ? <span id={selectionId} className="sr-only">{`Seleccionada: ${selectionText}`}</span> : null}
