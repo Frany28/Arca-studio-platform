@@ -735,9 +735,15 @@ Validación, capturas y diferencias respecto a Figma:
     `5925:478671`, `5925:476589`) son de Cotizaciones (`COT-001`), no del tabulador.
 - Unidades: búsqueda en la API (debounce de 300 ms, cada lectura aborta la anterior), diez
   filas por página, Anterior/Siguiente por cursor sin totales ni números de página. La tabla
-  no tiene selección de filas (sin checkbox ni contador): columnas N°, Unidad y Acciones, con
-  «Unidad» ocupando el ancho libre; las operaciones son individuales por fila (editar y el menú
-  «Más opciones»). Las etiquetas usan `Badge` `Brand 2` con `truncate`.
+  no tiene selección de filas (sin checkbox ni contador): columnas N° (154 px), Unidad (resto),
+  Estado (116 px, como en Servicios) y Acciones (128 px); las operaciones son individuales por
+  fila (editar y el menú «Más opciones»). Unidad muestra solo la etiqueta de la API en `Badge`
+  `Brand 2` con `truncate`. Estado replica la columna de Servicios: cabecera `TableHeaderLabel`
+  con icono de filtro decorativo y `Badge` `Simple` `S` según `isActive` («Activo» `Success`,
+  «Inactivo» `Disabled`; `getActiveStatusBadge` de `admin-services-quotes/utils`, compartido con
+  `getServiceStatusBadge`). La geometría (mínimo 628 px, Unidad con al menos 230 px) vive en
+  `config/measurementUnitTable.js` y la comparten la tabla y su skeleton (`Loader`
+  `measurementUnitTable`), con las mismas cuatro columnas para no saltar al cargar.
   Editar y Desactivar se bloquean cuando `activeServiceCount > 0`. El menú muestra únicamente
   «Desactivar» deshabilitado, sin el encabezado «En uso por…»; Editar conserva su motivo accesible.
   El backend lo rechaza igualmente con 409. Desactivar requiere confirmación y nunca elimina.

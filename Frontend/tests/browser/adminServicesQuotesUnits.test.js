@@ -283,7 +283,7 @@ test("tabla: sin selección de filas; código público, etiqueta de la API, colu
   assert.deepEqual(await page.locator("tbody tr").evaluateAll((rows) => rows.map((row) => [...row.querySelectorAll("td")].slice(0, 2).map((cell) => cell.innerText.trim()))), [
     ["m² de construcción", "Activo"],
     ["m² a intervenir", "Inactivo"],
-    ["pto. de supervisión", "Activo"],
+    ["hrs de supervisión", "Activo"],
   ]);
   assert.equal(await page.getByText("Inactiva", { exact: true }).count(), 0, "El estado ya no acompaña a la denominación");
   // En uso por servicios activos: edición bloqueada con el motivo en el nombre accesible.
@@ -868,6 +868,30 @@ test("menú compartido: descarta su tooltip al abrir, no lo restaura al cerrar y
   assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
   assert.equal(await tooltip.count(), 0);
 });
+
+for (const [width, height] of [[1440, 900], [375, 812]]) {
+  test(`carga (${width} px): el skeleton tiene las cuatro columnas de la tabla real, sin saltos al cargar`, async (context) => {
+    const backend = createBackend([denomination(1, 1, "de construcción"), denomination(2, 1, "a intervenir", { isActive: false })]);
+    backend.delays["GET /api/admin/measurement-unit-denominations"] = 1500;
+    const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width, height } });
+    // Inicio de cada bloque del skeleton (cada uno con 24 px de margen, como el padding de las celdas).
+    const skeleton = page.getByRole("status").filter({ hasText: "Cargando unidades de medida" });
+    await skeleton.waitFor();
+    const skeletonColumns = await skeleton.evaluate((loader) => {
+      const row = [...loader.querySelectorAll("div")].find((element) => getComputedStyle(element).display === "grid" && element.children.length === 4);
+      const container = row.parentElement.getBoundingClientRect();
+      return { width: Math.round(container.width), starts: [...row.children].map((block) => Math.round(block.getBoundingClientRect().left - 24)) };
+    });
+    await page.getByText("UNID-001", { exact: true }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+    const tableColumns = await page.evaluate(() => ({
+      width: Math.round(document.querySelector("table").getBoundingClientRect().width),
+      starts: [...document.querySelectorAll("thead th")].map((cell) => Math.round(cell.getBoundingClientRect().left)),
+    }));
+    assert.equal(skeletonColumns.starts.length, 4);
+    assert.equal(skeletonColumns.width, tableColumns.width, `Mismo ancho: ${JSON.stringify({ skeletonColumns, tableColumns })}`);
+    assert.ok(skeletonColumns.starts.every((start, index) => Math.abs(start - tableColumns.starts[index]) <= 1), JSON.stringify({ skeletonColumns, tableColumns }));
+  });
+}
 
 test("estados: carga, vacío con acción, error recuperable y 403 comprensible", async (context) => {
   const backend = createBackend([]);
