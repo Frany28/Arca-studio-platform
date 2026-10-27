@@ -199,6 +199,8 @@ async function openNewUserDialog(page) {
 }
 
 const rowCodes = (page) => page.locator("tbody tr th[scope=row]").allTextContents();
+// Celda «Estado» de una fila (después de N° y Unidad).
+const statusCell = (page, code) => page.locator("tbody tr", { hasText: code }).locator("td").nth(1);
 const denominationGets = (backend) => backend.requests.filter((request) => request.method === "GET" && request.path === "/api/admin/measurement-unit-denominations");
 
 test("contenedor: título, indicadores reales, pestañas de Figma y redirección a Cotizaciones", async (context) => {
@@ -266,7 +268,7 @@ test("pestañas: clic y teclado navegan sin recargar, con Atrás/Adelante y enla
   assert.deepEqual([...new Set(quoteRequests.map((request) => `${request.method} ${request.path}`))].sort(), ["GET /api/admin/quotes", "GET /api/admin/quotes/summary"]);
 });
 
-test("tabla: sin selección de filas; código público, etiqueta de la API, estado inactivo y columnas alineadas", async (context) => {
+test("tabla: sin selección de filas; código público, etiqueta de la API, columna Estado y columnas alineadas", async (context) => {
   const backend = createBackend([
     denomination(1, 1, "de construcción"),
     denomination(2, 1, "a intervenir", { isActive: false }),
@@ -275,10 +277,15 @@ test("tabla: sin selección de filas; código público, etiqueta de la API, esta
   const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades" });
   await page.getByText("UNID-001", { exact: true }).waitFor();
   assert.deepEqual(await rowCodes(page), ["UNID-001", "UNID-002", "UNID-003"]);
-  assert.deepEqual(await page.locator("thead th").allInnerTexts(), ["N°", "Unidad", "Acciones"]);
+  assert.deepEqual(await page.locator("thead th").allInnerTexts(), ["N°", "Unidad", "Estado", "Acciones"]);
   await page.getByText("m² de construcción", { exact: true }).waitFor();
-  const inactiveRow = page.locator("tbody tr", { hasText: "UNID-002" });
-  assert.equal(await inactiveRow.getByText("Inactiva", { exact: true }).count(), 1);
+  // «Estado» es su propia columna con el Badge de Servicios; «Unidad» solo muestra la etiqueta.
+  assert.deepEqual(await page.locator("tbody tr").evaluateAll((rows) => rows.map((row) => [...row.querySelectorAll("td")].slice(0, 2).map((cell) => cell.innerText.trim()))), [
+    ["m² de construcción", "Activo"],
+    ["m² a intervenir", "Inactivo"],
+    ["pto. de supervisión", "Activo"],
+  ]);
+  assert.equal(await page.getByText("Inactiva", { exact: true }).count(), 0, "El estado ya no acompaña a la denominación");
   // En uso por servicios activos: edición bloqueada con el motivo en el nombre accesible.
   const inUseEdit = page.getByRole("button", { name: /Editar UNID-003 .*En uso por 2 servicios activos/ });
   assert.equal(await inUseEdit.isDisabled(), true);
@@ -309,8 +316,21 @@ test("tabla: sin selección de filas; código público, etiqueta de la API, esta
       };
     });
     assert.deepEqual({ firstAtEdge: columns.firstAtEdge, lastAtEdge: columns.lastAtEdge, aligned: columns.aligned }, { firstAtEdge: true, lastAtEdge: true, aligned: true }, `${width} px: ${JSON.stringify(columns)}`);
-    assert.deepEqual([columns.widths[0], columns.widths[2]], [154, 128], `${width} px: N° y Acciones conservan su ancho`);
+    assert.deepEqual([columns.widths[0], columns.widths[2], columns.widths[3]], [154, 116, 128], `${width} px: N°, Estado y Acciones conservan su ancho`);
     assert.ok(columns.widths[1] >= 230, `${width} px: «Unidad» ocupa el resto (${columns.widths[1]} px)`);
+    // Los Badges de Estado caben sin recorte y las filas conservan su altura.
+    const fit = await page.evaluate(() => [...document.querySelectorAll("tbody tr")].map((row) => {
+      const cell = row.querySelectorAll("td")[1];
+      const badge = cell.firstElementChild;
+      const cellBox = cell.getBoundingClientRect();
+      const badgeBox = badge.getBoundingClientRect();
+      return {
+        inside: badgeBox.left >= cellBox.left && badgeBox.right <= cellBox.right - 24 + 0.5,
+        notClipped: badge.scrollWidth <= badge.clientWidth,
+        rowHeight: Math.round(row.getBoundingClientRect().height),
+      };
+    }));
+    assert.ok(fit.every((row) => row.inside && row.notClipped && row.rowHeight === 68), `${width} px: ${JSON.stringify(fit)}`);
   }
   assert.equal(await page.getByRole("button", { name: "Anterior" }).isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
@@ -588,14 +608,14 @@ test("estado: desactivar y activar con confirmación; los errores 409 y 429 se c
   const confirm = page.getByRole("dialog", { name: "¿Desactivar unidad de medida?" });
   await confirm.waitFor();
   await confirm.getByRole("button", { name: "Desactivar" }).click();
-  await page.locator("tbody tr", { hasText: "UNID-001" }).getByText("Inactiva", { exact: true }).waitFor();
+  await statusCell(page, "UNID-001").getByText("Inactivo", { exact: true }).waitFor();
   assert.deepEqual(backend.requests.find((request) => request.path.endsWith("/1/status")).body, { isActive: false });
 
   // Una unidad inactiva ofrece Activar.
   await page.getByRole("button", { name: "Más opciones para UNID-001" }).click();
   await page.getByRole("menuitem", { name: "Activar" }).click();
   await page.getByRole("dialog", { name: "¿Activar unidad de medida?" }).getByRole("button", { name: "Activar" }).click();
-  await page.waitForFunction(() => !document.querySelector("tbody tr")?.textContent?.includes("Inactiva"));
+  await statusCell(page, "UNID-001").getByText("Activo", { exact: true }).waitFor();
 
   // En uso: solo se muestra la opción deshabilitada, sin encabezado informativo.
   await page.getByRole("button", { name: "Más opciones para UNID-002" }).click();
@@ -705,7 +725,7 @@ for (const variant of [
     assert.equal(await alert.getAttribute("data-node-id"), SUCCESS_NODE);
     await page.locator(`[${UNIT_DIALOG.dialogAttribute}]`).waitFor({ state: "detached" });
     assert.equal(patches().length, 1, "Un doble clic envía un solo cambio");
-    await page.locator("tbody tr", { hasText: code }).getByText("Inactiva", { exact: true }).waitFor();
+    await statusCell(page, code).getByText("Inactivo", { exact: true }).waitFor();
     await closeAlert(page);
 
     // Activar: variante Success, sin colores destructivos.
@@ -793,9 +813,9 @@ test("errores reales: en uso, conflicto, validación y red sin aviso de éxito; 
     await closeAlert(page);
   }
   delete backend.failures[STATUS_PATCH];
-  // Los fallos no cambian el estado: solo las inactivas muestran su insignia.
-  assert.equal(await page.locator("tbody tr", { hasText: "UNID-001" }).getByText("Inactiva", { exact: true }).count(), 0);
-  await page.locator("tbody tr", { hasText: "UNID-002" }).getByText("Inactiva", { exact: true }).waitFor();
+  // Los fallos no cambian el estado mostrado en la columna Estado.
+  assert.equal(await statusCell(page, "UNID-001").innerText(), "Activo");
+  await statusCell(page, "UNID-002").getByText("Inactivo", { exact: true }).waitFor();
 
   // En el formulario, el duplicado y la red se muestran junto al campo, sin duplicarlos en un aviso.
   await page.getByRole("button", { name: "Añadir unidad" }).click();

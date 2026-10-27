@@ -673,7 +673,10 @@ Validación, capturas y diferencias respecto a Figma:
       flechas (circulares), Home/End, Enter elige sin enviar el formulario, Escape cierra solo el
       listado y Tab lo cierra y continúa. El listado (`ServiceUnitOptionsList`) reutiliza la
       carcasa, filas de 35 px, posición en portal y scroll del selector de prefijo del Input,
-      unido al campo completo. Agrupa las opciones por unidad base (`groupServiceUnitOptions`,
+      unido al campo completo como el DropdownMenu abierto («Filtrar por estado»): mismos bordes
+      laterales y ancho, el campo sin radio en el lado unido (`attachedOptionsPlacement` del
+      Input, invertido si se abre encima), un único borde `neutral-200` sin marco de foco ni
+      sombra y el lado unido del campo como divisor. Agrupa las opciones por unidad base (`groupServiceUnitOptions`,
       en el orden del catálogo y solo con resultados) bajo un encabezado `text-body-4`
       `text-100` «Nombre (símbolo)»; cada grupo es `role="group"` nombrado por su encabezado, que
       no es opción ni entra en el teclado, y la lista plana de índices sigue el orden visual.

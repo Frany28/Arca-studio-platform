@@ -11,7 +11,9 @@ import HintText from "../HintText/HintText.jsx";
 import Tooltip from "../Tooltip/Tooltip.jsx";
 import { getDefaultLeftIcon, getDefaultRightIcon } from "./InputIcons.jsx";
 import {
+  INPUT_ATTACHED_OPTIONS_STYLES,
   INPUT_INTERACTIVE_STYLES,
+  getInputAttachedOptionsRadiusClassName,
   INPUT_SIZE_STYLES,
   INPUT_STATE_STYLES,
   INPUT_TAG_DEFAULT_ITEMS,
@@ -77,6 +79,10 @@ function hasTextValue(value) {
  * @param {boolean} [props.prefixReadOnly=false] El prefijo solo presenta `prefixSelectedOption`
  * (mismo aspecto, sin listado propio) y un clic en él enfoca el campo: para combobox que eligen
  * prefijo y etiqueta en una única lista. Sin opción elegida no se dibuja el segmento.
+ * @param {"bottom"|"top"|null} [props.attachedOptionsPlacement=null] Lado al que el consumidor une
+ * un listado flotante propio mientras está abierto (por ejemplo, un combobox). El campo pierde el
+ * radio de ese lado y, en estado interactivo, conserva el borde de reposo en lugar del de foco,
+ * para formar una sola pieza con el panel como el DropdownMenu abierto. Sin valor, sin cambios.
  * @returns {import("react").ReactElement} Campo accesible con sus adornos y ayudas.
  */
 function Input({
@@ -112,6 +118,7 @@ function Input({
   prefixAriaLabel = "Prefijo",
   prefixDisabled = false,
   prefixReadOnly = false,
+  attachedOptionsPlacement = null,
   tags = [],
   tagOptions = INPUT_TAG_DEFAULT_ITEMS,
   tagGroupAriaLabel,
@@ -195,6 +202,11 @@ function Input({
             : baseState
       : baseState;
   const stateStyles = INPUT_STATE_STYLES[resolvedState];
+  // Con un listado unido, el estado interactivo usa el borde de reposo (el foco sigue en el
+  // campo); Error conserva su borde para no ocultar la validación.
+  const attachedInteractive = Boolean(getInputAttachedOptionsRadiusClassName(attachedOptionsPlacement))
+    && baseState === "Default";
+  const borderStyles = attachedInteractive ? INPUT_ATTACHED_OPTIONS_STYLES : stateStyles;
 
   const isFilled =
     hasInputText ||
@@ -344,8 +356,9 @@ function Input({
         resolvedType === "Phone number" ? "overflow-visible" : "overflow-hidden",
         isDisabled ? "cursor-not-allowed" : "cursor-pointer",
         sizing.shell,
-        stateStyles.shell,
-        baseState === "Default" && !isDisabled && INPUT_INTERACTIVE_STYLES,
+        borderStyles.shell,
+        baseState === "Default" && !isDisabled && !attachedInteractive && INPUT_INTERACTIVE_STYLES,
+        getInputAttachedOptionsRadiusClassName(attachedOptionsPlacement),
       )}
       data-state={resolvedState.toLowerCase()}
       onMouseEnter={() => {
@@ -359,7 +372,7 @@ function Input({
         <div
           className={clsx(
             "flex min-w-0 flex-1 items-center rounded-[inherit]",
-            stateStyles.contentBorder,
+            borderStyles.contentBorder,
           )}
         >
           {leadingSelector}
@@ -445,7 +458,7 @@ function Input({
           className={clsx(
             "flex min-w-0 flex-1 items-center gap-[8px] rounded-[inherit]",
             sizing.field,
-            stateStyles.contentBorder,
+            borderStyles.contentBorder,
           )}
         >
           {showLeftIcon && leadingIcon ? (

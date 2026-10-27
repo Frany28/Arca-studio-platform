@@ -4,6 +4,7 @@
 // `kind` define la modalidad, `unitLabel` es la etiqueta oficial de la unidad y
 // `referenceRate` es texto decimal.
 
+import { getActiveStatusBadge } from "../../utils/activeStatusBadge.js";
 import { formatDecimalMoney } from "../../utils/moneyFormat.js";
 
 // Opciones del filtro de estado, alineadas con `status=active|inactive` del contrato.
@@ -38,15 +39,14 @@ export function getServiceDescription(service) {
 }
 
 /**
- * Estado del servicio para su Badge: solo depende de `isActive`.
+ * Estado del servicio para su Badge: solo depende de `isActive`. Comparte la regla con la tabla
+ * de Unidades de medida (`getActiveStatusBadge`).
  *
  * @param {Object} service - Servicio de la API.
  * @returns {{label: "Activo"|"Inactivo", theme: "Success"|"Disabled"}} Texto y tema.
  */
 export function getServiceStatusBadge(service) {
-  return service?.isActive
-    ? { label: "Activo", theme: "Success" }
-    : { label: "Inactivo", theme: "Disabled" };
+  return getActiveStatusBadge(service);
 }
 
 // Etiquetas de la columna «Modalidad» (Figma 5924:439741) por cada `kind` del contrato

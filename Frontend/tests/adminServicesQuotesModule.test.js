@@ -5,6 +5,12 @@ import test from "node:test";
 import { measurementUnitsApi } from "../src/api/measurementUnitsApi.js";
 import { serviceCatalogApi } from "../src/api/serviceCatalogApi.js";
 import {
+  MEASUREMENT_UNIT_COLUMN_WIDTHS,
+  MEASUREMENT_UNIT_TABLE_MIN_WIDTH,
+  getMeasurementUnitGridTemplate,
+} from "../src/config/measurementUnitTable.js";
+import { SERVICE_CATALOG_COLUMN_WIDTHS } from "../src/config/serviceCatalogTable.js";
+import {
   getInputOptionClassName,
   getInputOptionsViewportHeight,
 } from "../src/components/ui/Input/options/inputOptionsConfig.js";
@@ -26,6 +32,8 @@ import {
   toEditBaseUnitOptions,
   validateDenominationText,
 } from "../src/pages/admin-services-quotes/measurement-units/utils/measurementUnitPresentation.js";
+import { getServiceStatusBadge } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceCatalogPresentation.js";
+import { getActiveStatusBadge } from "../src/pages/admin-services-quotes/utils/activeStatusBadge.js";
 import {
   SERVICES_QUOTES_DEFAULT_TAB_SLUG,
   SERVICES_QUOTES_TABS,
@@ -255,4 +263,31 @@ test("estructura: módulo separado por responsabilidad y componentes compartidos
   assert.match(input, /resolvedType === "Prefix select"/);
   // Las capas de UI no hacen peticiones directas.
   for (const file of [panel, table, form, menu]) assert.doesNotMatch(file, /fetch\(|apiRequest\(/);
+});
+
+test("tabla de unidades: Estado propio con el Badge de Servicios y geometría compartida con el skeleton", async () => {
+  // Misma regla y presentación que la columna «Estado» de Servicios, derivada solo de `isActive`.
+  assert.deepEqual(getActiveStatusBadge({ isActive: true }), { label: "Activo", theme: "Success" });
+  assert.deepEqual(getActiveStatusBadge({ isActive: false }), { label: "Inactivo", theme: "Disabled" });
+  for (const isActive of [true, false]) assert.deepEqual(getServiceStatusBadge({ isActive }), getActiveStatusBadge({ isActive }));
+
+  // N°, Unidad (flexible), Estado (el ancho de Servicios) y Acciones.
+  assert.deepEqual(MEASUREMENT_UNIT_COLUMN_WIDTHS, [154, null, 116, 128]);
+  assert.equal(MEASUREMENT_UNIT_COLUMN_WIDTHS[2], SERVICE_CATALOG_COLUMN_WIDTHS.at(-2), "Estado mide lo mismo que en Servicios");
+  assert.equal(getMeasurementUnitGridTemplate(), "154px minmax(0,1fr) 116px 128px");
+  assert.equal(MEASUREMENT_UNIT_TABLE_MIN_WIDTH, 628);
+
+  const [table, loader] = await Promise.all([
+    source("pages/admin-services-quotes/measurement-units/components/MeasurementUnitsTable.jsx"),
+    source("components/ui/Loader/Loader.jsx"),
+  ]);
+  assert.match(table, /getActiveStatusBadge\(item\)/);
+  assert.match(table, /<Badge label=\{status\.label\} theme=\{status\.theme\} variation="Simple" size="S" \/>/);
+  assert.match(table, /<TableHeaderLabel filter>Estado<\/TableHeaderLabel>/);
+  assert.doesNotMatch(table, /Inactiva/, "El estado ya no acompaña a la denominación");
+  // Tabla y skeleton leen la misma geometría.
+  assert.match(table, /MEASUREMENT_UNIT_COLUMN_WIDTHS\.map/);
+  assert.match(table, /minWidth: MEASUREMENT_UNIT_TABLE_MIN_WIDTH/);
+  assert.match(loader, /gridTemplateColumns: getMeasurementUnitGridTemplate\(\)/);
+  assert.match(loader, /minWidth: MEASUREMENT_UNIT_TABLE_MIN_WIDTH/);
 });

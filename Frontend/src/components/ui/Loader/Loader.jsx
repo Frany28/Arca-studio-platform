@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { ADMIN_PROJECT_COLUMN_WIDTHS, ADMIN_PROJECT_TABLE_MIN_WIDTH } from "../../../config/adminProjectTable.js";
+import { getMeasurementUnitGridTemplate, MEASUREMENT_UNIT_TABLE_MIN_WIDTH } from "../../../config/measurementUnitTable.js";
 import { getQuotesTableGridTemplate, QUOTES_TABLE_MIN_WIDTH } from "../../../config/quotesTable.js";
 import { getServiceCatalogGridTemplate, SERVICE_CATALOG_TABLE_MIN_WIDTH } from "../../../config/serviceCatalogTable.js";
 
@@ -275,18 +276,25 @@ function AdminUserTableSkeleton() {
   );
 }
 
-// Tabla de unidades de medida (Figma 5771:487550, sin selección): código, etiqueta y acciones.
+// Tabla de unidades de medida (Figma 5771:487550, sin selección): código, etiqueta, estado y
+// acciones. Usa la geometría de la tabla (config/measurementUnitTable.js) para no saltar al
+// terminar la carga.
 function MeasurementUnitTableSkeleton({ rows }) {
   return (
     <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
-      <SkeletonBlock className="h-[49px] w-full rounded-none" />
-      {Array.from({ length: rows }, (_, rowIndex) => (
-        <div key={rowIndex} className="grid h-[68px] grid-cols-[minmax(72px,106px)_minmax(0,1fr)_72px] items-center gap-[16px] border-b border-[var(--color-neutral-200)] px-[24px] last:border-b-0 sm:gap-[48px]">
-          <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
-          <SkeletonBlock className="h-[20px] w-[160px] max-w-full rounded-[var(--radius-full)]" delay={rowIndex * 35 + 30} />
-          <SkeletonBlock className="h-[20px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + 45} tone="muted" />
+      <div className="w-full overflow-x-auto">
+        <div style={{ minWidth: MEASUREMENT_UNIT_TABLE_MIN_WIDTH }}>
+          <SkeletonBlock className="h-[49px] w-full rounded-none" />
+          {Array.from({ length: rows }, (_, rowIndex) => (
+            <div key={rowIndex} className="grid h-[68px] items-center border-b border-[var(--color-neutral-200)] last:border-b-0" style={{ gridTemplateColumns: getMeasurementUnitGridTemplate() }}>
+              <SkeletonBlock className="mx-[24px] h-[17px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[20px] w-[160px] max-w-[calc(100%-48px)] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 30} />
+              <SkeletonBlock className="mx-[24px] h-[20px] w-[56px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 40} />
+              <SkeletonBlock className="mx-[24px] h-[20px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 50} tone="muted" />
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }

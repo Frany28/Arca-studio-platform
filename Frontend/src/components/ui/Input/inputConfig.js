@@ -123,6 +123,29 @@ export const INPUT_STATE_STYLES = {
 export const INPUT_INTERACTIVE_STYLES =
   "hover:border-[var(--color-neutral-200)] hover:shadow-[0px_2px_4px_0px_rgba(27,28,29,0.04)] focus-within:border-2 focus-within:border-[var(--color-primary-10)] focus-within:shadow-[0px_2px_4px_0px_rgba(27,28,29,0.04)]";
 
+// Campo con un listado flotante unido a él (patrón del DropdownMenu abierto): el foco sigue en
+// el campo, pero su borde de foco (2 px `primary-10` + borde interior `primary-300`) y la sombra
+// enmarcarían el campo y separarían el panel, que dibuja 1 px `neutral-200` sin borde en el lado
+// unido. Se conserva el borde de reposo; su lado unido hace de divisor con el contenido.
+export const INPUT_ATTACHED_OPTIONS_STYLES = {
+  shell: INPUT_STATE_STYLES.Default.shell,
+  contentBorder: INPUT_STATE_STYLES.Default.contentBorder,
+};
+
+/**
+ * Radio del campo con un listado unido: pierde las esquinas del lado por el que se une el
+ * panel, que redondea solo su lado libre (`InputOptionsPanel`). Los contenedores interiores
+ * heredan el radio (`rounded-[inherit]`), así que basta con ajustar la carcasa.
+ *
+ * @param {"bottom"|"top"|null|undefined} placement - Lado del campo al que se une el listado.
+ * @returns {string|false} Clase de radio o false sin listado unido.
+ */
+export function getInputAttachedOptionsRadiusClassName(placement) {
+  if (placement === "top") return "rounded-t-none";
+  if (placement === "bottom") return "rounded-b-none";
+  return false;
+}
+
 export const INPUT_TYPES = {
   "Default input": {
     inputType: "text",

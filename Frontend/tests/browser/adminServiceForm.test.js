@@ -620,15 +620,88 @@ function measureUnitList(page) {
   });
 }
 
+/**
+ * Lee los bordes, radios y sombra que deciden si campo y listado se ven como una sola pieza.
+ *
+ * @param {import("playwright").Page} page - Página con el listado abierto.
+ * @returns {Promise<Object>} Estilos computados del campo, de su contenedor interior y del panel.
+ */
+function measureUnitJoin(page) {
+  return page.evaluate(() => {
+    const shell = document.querySelector("#service-form-unit").closest("[data-input-shell]");
+    const content = shell.firstElementChild;
+    const panel = document.querySelector('[role="listbox"][aria-label="Unidades de medida registradas"]');
+    const css = (element) => getComputedStyle(element);
+    const corners = (style) => ({
+      topLeft: style.borderTopLeftRadius, topRight: style.borderTopRightRadius,
+      bottomLeft: style.borderBottomLeftRadius, bottomRight: style.borderBottomRightRadius,
+    });
+    const shellStyle = css(shell);
+    const panelStyle = css(panel);
+    return {
+      shell: {
+        corners: corners(shellStyle), shadow: shellStyle.boxShadow, borderColor: shellStyle.borderLeftColor,
+        borderWidth: shellStyle.borderLeftWidth, borderTopWidth: shellStyle.borderTopWidth, borderBottomWidth: shellStyle.borderBottomWidth,
+      },
+      contentBorderColor: css(content).borderLeftColor,
+      panel: {
+        corners: corners(panelStyle), borderColor: panelStyle.borderLeftColor, borderWidth: panelStyle.borderLeftWidth,
+        borderTopWidth: panelStyle.borderTopWidth, borderBottomWidth: panelStyle.borderBottomWidth,
+      },
+    };
+  });
+}
+
+/**
+ * Comprueba que campo y listado forman una sola pieza: mismos bordes laterales, sin hueco, el
+ * campo sin radio en el lado unido y el panel solo con el radio del lado libre, mismo borde de
+ * 1 px sin el marco de foco ni sombra, y el lado unido del campo como divisor.
+ *
+ * @param {import("playwright").Page} page - Página con el listado abierto.
+ * @param {"bottom"|"top"} placement - Lado por el que debe unirse el listado.
+ * @param {string} label - Contexto del mensaje de error.
+ * @returns {Promise<void>}
+ */
+async function assertUnitListJoined(page, placement, label) {
+  // El campo anima su borde y sombra (150 ms): se mide el estado final, no un fotograma intermedio.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((animation) => animation.finished)));
+  const layout = await measureUnitList(page);
+  const join = await measureUnitJoin(page);
+  const message = `${label}: ${JSON.stringify({ layout, join })}`;
+  assert.equal(layout.panel.left, layout.shell.left, message);
+  assert.equal(layout.panel.width, layout.shell.width, message);
+  if (placement === "bottom") {
+    assert.ok(Math.abs(layout.panel.top - layout.shell.bottom) <= 1, `Unido al borde inferior. ${message}`);
+    assert.deepEqual([join.shell.corners.bottomLeft, join.shell.corners.bottomRight], ["0px", "0px"], message);
+    assert.notEqual(join.shell.corners.topLeft, "0px", message);
+    assert.deepEqual([join.panel.corners.topLeft, join.panel.corners.topRight], ["0px", "0px"], message);
+    assert.notEqual(join.panel.corners.bottomLeft, "0px", message);
+    assert.equal(join.panel.borderTopWidth, "0px", message);
+    assert.equal(join.shell.borderBottomWidth, "1px", `Divisor entre campo y opciones. ${message}`);
+  } else {
+    assert.ok(Math.abs(layout.panel.bottom - layout.shell.top) <= 1, `Unido al borde superior. ${message}`);
+    assert.deepEqual([join.shell.corners.topLeft, join.shell.corners.topRight], ["0px", "0px"], message);
+    assert.notEqual(join.shell.corners.bottomLeft, "0px", message);
+    assert.deepEqual([join.panel.corners.bottomLeft, join.panel.corners.bottomRight], ["0px", "0px"], message);
+    assert.notEqual(join.panel.corners.topLeft, "0px", message);
+    assert.equal(join.panel.borderBottomWidth, "0px", message);
+    assert.equal(join.shell.borderTopWidth, "1px", `Divisor entre campo y opciones. ${message}`);
+  }
+  assert.equal(join.shell.borderWidth, join.panel.borderWidth, `Mismo grosor de borde. ${message}`);
+  assert.equal(join.shell.borderColor, join.panel.borderColor, `Mismo color de borde. ${message}`);
+  assert.equal(join.contentBorderColor, "rgba(0, 0, 0, 0)", `Sin borde interior de foco. ${message}`);
+  // Tailwind compone `box-shadow` como lista de capas; sin sombra, todas son transparentes.
+  const visibleShadow = join.shell.shadow !== "none" && join.shell.shadow.split(/,(?![^(]*\))/).some((layer) => !layer.includes("rgba(0, 0, 0, 0)"));
+  assert.equal(visibleShadow, false, `Sin sombra. ${message}`);
+}
+
 test("unidad en Crear y en Editar (móvil oscuro): el listado se une al campo, cabe en el viewport y no se abre solo", async (context) => {
   const backend = createServiceCatalogBackend(sampleCatalog());
   const page = await openTabulator(context, backend);
   let dialog = await openCreate(page);
   await openUnitList(page);
   let layout = await measureUnitList(page);
-  assert.equal(layout.panel.left, layout.shell.left - 1, JSON.stringify(layout));
-  assert.ok(Math.abs(layout.panel.width - (layout.shell.width + 1)) <= 1, JSON.stringify(layout));
-  assert.ok(Math.abs(layout.panel.top - layout.shell.bottom) <= 1, "Unido al borde inferior del campo");
+  await assertUnitListJoined(page, "bottom", "Crear (claro, 1440 px)");
   assert.equal(layout.row.height, 35, "Filas del patrón de opciones del Input");
   // El listado flota sobre el formulario: Escape lo cierra antes de usar el pie.
   await page.keyboard.press("Escape");
@@ -649,6 +722,7 @@ test("unidad en Crear y en Editar (móvil oscuro): el listado se une al campo, c
   assert.equal(await listbox.getByRole("option", { name: /^m² de construcción/ }).getAttribute("aria-selected"), "true");
   layout = await measureUnitList(mobile);
   assert.ok(layout.panel.left >= 0 && layout.panel.right <= layout.viewport, `El listado cabe en 375 px ${JSON.stringify(layout)}`);
+  await assertUnitListJoined(mobile, "bottom", "Editar (oscuro, 375 px)");
   // El panel usa el fondo del tema (no transparente) para leerse sobre el modal.
   assert.notEqual(await listbox.evaluate((element) => getComputedStyle(element).backgroundColor), "rgba(0, 0, 0, 0)");
   await mobile.keyboard.press("Escape");
@@ -657,6 +731,18 @@ test("unidad en Crear y en Editar (móvil oscuro): el listado se une al campo, c
   await dialog.waitFor({ state: "detached" });
   assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).length, 0);
 });
+
+for (const theme of ["light", "dark"]) {
+  test(`unidad (${theme}): sin espacio debajo, el listado se une al borde superior con los radios invertidos`, async (context) => {
+    const backend = createServiceCatalogBackend(sampleCatalog());
+    const page = await openTabulator(context, backend, { theme, viewport: { width: 1024, height: 480 } });
+    await openCreate(page);
+    // Lleva el campo al borde inferior del área visible del formulario para que no quepa debajo.
+    await page.locator("#service-form-unit").evaluate((input) => input.closest("[data-input-shell]").scrollIntoView({ block: "end" }));
+    await openUnitList(page);
+    await assertUnitListJoined(page, "top", `${theme}, 1024×480`);
+  });
+}
 
 test("alta contextual durante una lectura lenta conserva el catálogo completo y la selección creada", async (context) => {
   const backend = createServiceCatalogBackend(sampleCatalog());

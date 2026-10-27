@@ -4,7 +4,9 @@ import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
+import { MEASUREMENT_UNIT_COLUMN_WIDTHS, MEASUREMENT_UNIT_TABLE_MIN_WIDTH } from "../../../../config/measurementUnitTable.js";
 import TableHeaderLabel from "../../components/TableHeaderLabel.jsx";
+import { getActiveStatusBadge } from "../../utils/activeStatusBadge.js";
 import { getInUseReason } from "../utils/measurementUnitPresentation.js";
 
 /**
@@ -21,9 +23,9 @@ function getStatusActions(denomination) {
 
 /**
  * Tabla administrativa de unidades de medida (Figma 5771:487550, sin selección de filas):
- * código público, etiqueta compuesta por la API y acciones individuales. Solo presenta filas
- * reales; las inactivas lo indican con texto además del color. Desplaza horizontalmente dentro
- * de su propio contenedor.
+ * código público, etiqueta compuesta por la API, estado y acciones individuales. Solo presenta
+ * filas reales; «Estado» usa el mismo Badge que el tabulador de servicios (texto además del
+ * color) y sigue `isActive` de la API. Desplaza horizontalmente dentro de su propio contenedor.
  *
  * @param {Object} props - Filas y callbacks.
  * @param {Array<Object>} props.items - Denominaciones de la página visible.
@@ -36,28 +38,34 @@ function MeasurementUnitsTable({ actionsDisabled, items, onEdit, onStatusChange 
   return (
     <div className="w-full shrink-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
       <HorizontalScrollViewport scrollBarLabel="Desplazar tabla de unidades horizontalmente">
-        <table className="w-full min-w-[512px] table-fixed border-collapse text-left">
+        {/* Anchos y mínimo compartidos con el skeleton (config/measurementUnitTable.js); sin columna de selección, «Unidad» absorbe el ancho libre. */}
+        <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: MEASUREMENT_UNIT_TABLE_MIN_WIDTH }}>
           <caption className="sr-only">Unidades de medida</caption>
-          {/* Sin columna de selección: «Unidad» absorbe el ancho libre; N° y Acciones conservan el suyo. */}
-          <colgroup><col className="w-[154px]" /><col /><col className="w-[128px]" /></colgroup>
+          <colgroup>
+            {MEASUREMENT_UNIT_COLUMN_WIDTHS.map((width, index) => <col key={index} style={width ? { width } : undefined} />)}
+          </colgroup>
           <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
             <tr className="text-heading-8 h-[49px]">
               <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel>N°</TableHeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel filter>Unidad</TableHeaderLabel></th>
+              <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel filter>Estado</TableHeaderLabel></th>
               <th scope="col" className="px-[24px] py-[16px] text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => {
               const inUseReason = getInUseReason(item);
+              const status = getActiveStatusBadge(item);
               return (
                 <tr key={item.id} className="h-[68px] bg-[var(--color-neutral-100)]">
                   <th scope="row" className="text-heading-8 truncate px-[24px] py-[16px] font-medium text-[var(--color-text-300)]">{item.publicCode}</th>
                   <td className="px-[24px] py-[16px]">
-                    <div className="flex min-w-0 items-center gap-[8px]">
+                    <div className="flex min-w-0">
                       <Badge label={item.label} theme="Brand 2" variation="Simple" size="S" truncate />
-                      {!item.isActive ? <Badge label="Inactiva" theme="Disabled" variation="Simple" size="S" className="shrink-0" /> : null}
                     </div>
+                  </td>
+                  <td className="px-[24px] py-[16px]">
+                    <Badge label={status.label} theme={status.theme} variation="Simple" size="S" />
                   </td>
                   <td className="px-[24px] py-[16px]">
                     <div className="flex items-center justify-end gap-[8px]">

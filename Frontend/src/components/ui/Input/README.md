@@ -34,6 +34,15 @@ Sirve a combobox que eligen prefijo y etiqueta en una única lista, como «Unida
 (símbolo de la base + categoría); el consumidor expone la selección de forma accesible. Sin
 opción elegida no se dibuja el segmento.
 
+`attachedOptionsPlacement` (`"bottom"`, `"top"` o `null`, por defecto) indica que el consumidor
+une al campo un listado flotante propio mientras está abierto. El campo y el panel forman una
+sola pieza, con el patrón del DropdownMenu abierto. El campo pierde el radio del lado unido, y el
+panel (`InputOptionsPanel`) solo redondea su lado libre. Ambos usan el mismo borde de 1 px
+`neutral-200`, sin el marco de foco (2 px `primary-10` y borde interior `primary-300`) ni sombra,
+que separaban el panel aunque el foco siga en el campo. El borde del lado unido hace de divisor.
+El estado Error conserva su borde. El panel se alinea con los bordes laterales del campo y tiene
+su mismo ancho. Lo usa «Unidad de medida».
+
 `prefixSelectedOption` permite mostrar una selección guardada que ya no está entre las opciones,
 como una unidad histórica inactiva. Solo presenta la opción cuyo id coincide con `prefixValue`;
 no la añade al listado ni a la navegación por teclado. Sin otras opciones el prefijo queda
