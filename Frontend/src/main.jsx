@@ -1,6 +1,6 @@
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Outlet, Route, RouterProvider, createBrowserRouter, createRoutesFromElements } from "react-router-dom";
 import "./index.css";
 import { AuthProvider } from "./auth/AuthContext.jsx";
 import { RecentProjectsProvider } from "./auth/RecentProjectsContext.jsx";
@@ -64,14 +64,28 @@ function RouteFallback() {
   return <main className="min-h-screen bg-[var(--color-neutral-bg)]" />;
 }
 
-createRoot(document.getElementById("root")).render(
-  <StrictMode>
-    <AuthProvider>
-      <RecentProjectsProvider>
-        <BrowserRouter basename={import.meta.env.BASE_URL}>
-          <ThemeSync />
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
+/**
+ * Raíz de todas las rutas: sincroniza el tema y muestra el fallback mientras carga la página
+ * diferida, igual que lo hacían ThemeSync y Suspense alrededor de las rutas.
+ *
+ * @returns {import("react").ReactElement} Ruta activa con su tema.
+ */
+function AppRoot() {
+  return (
+    <>
+      <ThemeSync />
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
+    </>
+  );
+}
+
+// Data router (mismo árbol de rutas que el antiguo BrowserRouter): habilita useBlocker, que
+// protege los formularios con cambios sin guardar (useUnsavedChangesGuard).
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <Route element={<AppRoot />}>
             <Route element={<PublicOnlyRoute />}>
               <Route path="/" element={<Login />} />
               <Route path="/login" element={<Login />} />
@@ -154,9 +168,16 @@ createRoot(document.getElementById("root")).render(
                 element={<EmptyProjectWarrantiesExample />}
               />
             </Route>
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
+    </Route>,
+  ),
+  { basename: import.meta.env.BASE_URL },
+);
+
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <AuthProvider>
+      <RecentProjectsProvider>
+        <RouterProvider router={router} />
       </RecentProjectsProvider>
     </AuthProvider>
   </StrictMode>,

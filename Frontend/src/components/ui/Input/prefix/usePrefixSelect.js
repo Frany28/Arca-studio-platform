@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { observeAnchorLayout } from "../options/observeAnchorLayout.js";
 import {
   findPrefixOptionIndex,
   getPrefixSelectPanelHeight,
@@ -40,8 +41,10 @@ export default function usePrefixSelect({ options, value, disabled, onChange, on
   const panelHeight = getPrefixSelectPanelHeight(options.length);
 
   // Mide el segmento selector (no el campo completo), como el envoltorio del prefijo telefónico,
-  // antes del paint; acompaña resize y el scroll de los contenedores mientras está abierto. El
-  // panel flota sobre el contenido: no reserva espacio ni altera el tamaño del modal.
+  // antes del paint, y lo vuelve a medir mientras está abierto ante cualquier cambio de su
+  // geometría (observeAnchorLayout: resize, scroll de contenedores, tamaño del segmento y fin de
+  // la transición de entrada del modal). El panel flota sobre el contenido: no reserva espacio
+  // ni altera el tamaño del modal.
   useLayoutEffect(() => {
     if (!isOpen) return undefined;
     const updatePosition = () => {
@@ -52,19 +55,8 @@ export default function usePrefixSelect({ options, value, disabled, onChange, on
         viewport: { width: window.innerWidth, height: window.innerHeight },
       }));
     };
-    // El scroll del propio listado (arrastre del ScrollBar, rueda, teclado) no mueve el segmento:
-    // recalcular la posición en ese caso solo provocaba renders durante el desplazamiento.
-    const updateOnAncestorScroll = (event) => {
-      if (listboxRef.current?.contains(event.target)) return;
-      updatePosition();
-    };
     updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updateOnAncestorScroll, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updateOnAncestorScroll, true);
-    };
+    return observeAnchorLayout({ anchor: triggerRef.current, getPanel: () => listboxRef.current, onChange: updatePosition });
   }, [isOpen, panelHeight]);
 
   // Un clic fuera del disparador y del panel cierra sin seleccionar.

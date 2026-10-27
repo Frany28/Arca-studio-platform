@@ -11,7 +11,7 @@ import DocumentFileCard from "../../../components/document-viewer/DocumentFileCa
 import DocumentFullscreenModal from "./document-preview/DocumentFullscreenModal.jsx";
 import PdfViewerSurface from "../../../components/document-viewer/PdfViewerSurface.jsx";
 import OfficeViewerSurface from "./document-preview/OfficeViewerSurface.jsx";
-import { loadPdfjs } from "../../../components/document-viewer/pdfjsLoader.js";
+import { fetchDocumentBytes, openPdfDocument } from "../../../components/document-viewer/pdfDocumentLoader.js";
 import { ViewerButton, ExpandIcon, CloseIcon, MIN_ZOOM, MAX_ZOOM } from "../../../components/document-viewer/DocumentViewerControls.jsx";
 
 function getDocumentKind(document) {
@@ -183,12 +183,12 @@ export function ProjectDocumentViewerModal({
   useEffect(() => {
     if (!open || !source || kind === "unsupported") return undefined;
 
+    // Abortar cancela la descarga y destruye el documento de PDF.js (openPdfDocument).
     const controller = new AbortController();
-    let cancelled = false;
-    let loadingTask;
+    const { signal } = controller;
 
     queueMicrotask(() => {
-      if (cancelled) return;
+      if (signal.aborted) return;
       setLoadState({
         data: null,
         documentProxy: null,
@@ -204,24 +204,14 @@ export function ProjectDocumentViewerModal({
       setReplyRequest(null);
     });
 
-    fetch(source, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("DOCUMENT_LOAD_FAILED");
-        return response.arrayBuffer();
-      })
+    fetchDocumentBytes(source, signal)
       .then(async (buffer) => {
+        // DOCX y XLSX se presentan con sus propios visores a partir de los bytes.
         if (kind !== "pdf") return { buffer };
-        const { getDocument } = await loadPdfjs();
-        // Si el visor se cerró durante la descarga de PDF.js, no crear una tarea que nadie destruirá.
-        if (cancelled) return { buffer };
-        loadingTask = getDocument({ data: new Uint8Array(buffer) });
-        return loadingTask.promise.then((documentProxy) => ({
-          buffer,
-          documentProxy,
-        }));
+        return { buffer, documentProxy: await openPdfDocument(buffer, signal) };
       })
       .then(({ buffer, documentProxy = null }) => {
-        if (cancelled) return;
+        if (signal.aborted) return;
         setLoadState({
           data: buffer,
           documentProxy,
@@ -232,7 +222,7 @@ export function ProjectDocumentViewerModal({
         });
       })
       .catch((error) => {
-        if (cancelled || error.name === "AbortError") return;
+        if (signal.aborted || error.name === "AbortError") return;
         setLoadState({
           data: null,
           documentProxy: null,
@@ -243,11 +233,7 @@ export function ProjectDocumentViewerModal({
         });
       });
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-      loadingTask?.destroy();
-    };
+    return () => controller.abort();
   }, [kind, open, source]);
 
   const handleSubmitComment = async ({
@@ -427,24 +413,14 @@ export default function ProjectDocumentPreview({ document, focusedCommentId = nu
   useEffect(() => {
     if (!source || !isPdf) return undefined;
 
+    // Abortar cancela la descarga y destruye el documento de PDF.js (openPdfDocument).
     const controller = new AbortController();
-    let cancelled = false;
-    let loadingTask;
+    const { signal } = controller;
 
-    fetch(source, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("DOCUMENT_LOAD_FAILED");
-        return response.arrayBuffer();
-      })
-      .then(async (buffer) => {
-        const { getDocument } = await loadPdfjs();
-        // Si el efecto se limpió durante la descarga de PDF.js, no crear una tarea que nadie destruirá.
-        if (cancelled) return null;
-        loadingTask = getDocument({ data: new Uint8Array(buffer) });
-        return loadingTask.promise;
-      })
+    fetchDocumentBytes(source, signal)
+      .then((buffer) => openPdfDocument(buffer, signal))
       .then((pdfDocument) => {
-        if (cancelled || !pdfDocument) return;
+        if (signal.aborted) return;
         setLoadState({
           documentProxy: pdfDocument,
           pageCount: pdfDocument.numPages,
@@ -453,7 +429,7 @@ export default function ProjectDocumentPreview({ document, focusedCommentId = nu
         });
       })
       .catch((error) => {
-        if (!cancelled && error.name !== "AbortError") {
+        if (!signal.aborted && error.name !== "AbortError") {
           setLoadState({
             documentProxy: null,
             pageCount: 1,
@@ -463,11 +439,7 @@ export default function ProjectDocumentPreview({ document, focusedCommentId = nu
         }
       });
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-      loadingTask?.destroy();
-    };
+    return () => controller.abort();
   }, [isPdf, retryKey, source]);
 
   const updatePage = (nextPage) => {

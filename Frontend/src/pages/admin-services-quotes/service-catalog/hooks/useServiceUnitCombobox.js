@@ -5,6 +5,7 @@ import {
   getScrollTopToRevealOption,
   resolvePrefixSelectLayout,
 } from "../../../../components/ui/Input/prefix/prefixSelectPosition.js";
+import { observeAnchorLayout } from "../../../../components/ui/Input/options/observeAnchorLayout.js";
 
 /**
  * Estado y teclado del combobox «Unidad de medida»: el campo nativo del Input conserva el foco
@@ -34,30 +35,21 @@ export function useServiceUnitCombobox({ disabled, onSelect, options }) {
   const resolvedActiveIndex = activeIndex < options.length ? activeIndex : 0;
   const panelHeight = getPrefixSelectPanelHeight(options.length);
 
-  // Mide el campo antes del paint y acompaña resize y el scroll de los contenedores (modal),
-  // salvo el del propio listado, que no mueve el campo.
+  // Mide el campo completo antes del paint y lo vuelve a medir ante cualquier cambio de su
+  // geometría mientras está abierto (observeAnchorLayout, compartido con el selector de prefijo).
   useLayoutEffect(() => {
     if (!visible) return undefined;
+    const shell = anchorRef.current?.querySelector("[data-input-shell]");
+    if (!shell) return undefined;
     const updatePosition = () => {
-      const shell = anchorRef.current?.querySelector("[data-input-shell]");
-      if (!shell) return;
       setPosition(resolvePrefixSelectLayout({
         segment: shell.getBoundingClientRect(),
         panelHeight,
         viewport: { width: window.innerWidth, height: window.innerHeight },
       }));
     };
-    const updateOnAncestorScroll = (event) => {
-      if (listboxRef.current?.contains(event.target)) return;
-      updatePosition();
-    };
     updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updateOnAncestorScroll, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updateOnAncestorScroll, true);
-    };
+    return observeAnchorLayout({ anchor: shell, getPanel: () => listboxRef.current, onChange: updatePosition });
   }, [panelHeight, visible]);
 
   // Mantiene visible la opción activa moviendo solo el área del listado (scrollIntoView

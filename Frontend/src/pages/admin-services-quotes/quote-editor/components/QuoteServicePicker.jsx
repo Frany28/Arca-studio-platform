@@ -11,6 +11,7 @@ import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/Horizo
 import { normalizeTagSearchText } from "../../../../components/ui/Input/tags/tagUtils.js";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatReferenceRate, getServiceDescription } from "../../service-catalog/utils/serviceCatalogPresentation.js";
+import { formatServicePickerCount } from "../utils/servicePickerCount.js";
 
 // Figma 5771:463261: selección 48, Servicio 350 y Unidad/Tarifa flexibles (mínimo 150).
 const PICKER_TABLE_MIN_WIDTH = 48 + 350 + 150 + 150;
@@ -54,6 +55,8 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   const selectable = visible.filter((service) => !includedIds.has(service.id));
   // Solo cuentan los servicios seleccionables presentes: un servicio ya añadido deja de contar.
   const selected = services.filter((service) => selectedIds.has(service.id) && !includedIds.has(service.id));
+  // Incluidos del listado (un servicio cotizado que ya está inactivo no figura en él).
+  const includedCount = services.filter((service) => includedIds.has(service.id)).length;
   const allSelected = selectable.length > 0 && selectable.every((service) => selectedIds.has(service.id));
   const someSelected = selectable.some((service) => selectedIds.has(service.id));
 
@@ -197,7 +200,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
 
       <div className="flex flex-wrap items-center justify-between gap-y-[16px]">
         <span className="text-heading-8 text-[var(--color-text-300)]" aria-live="polite">
-          {selected.length} de {services.length} seleccionados
+          {formatServicePickerCount({ available: services.length - includedCount, included: includedCount, selected: selected.length })}
         </span>
         <div className="flex min-w-[257px] items-center gap-[8px] max-[767px]:w-full">
           <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={disabled || !selected.length} onClick={() => setSelectedIds(new Set())}>

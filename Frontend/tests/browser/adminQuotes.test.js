@@ -323,6 +323,117 @@ test("cancelar: con cambios pide confirmación y «Volver» conserva el borrador
   assert.equal(backend.requests.some((request) => request.method === "POST"), false);
 });
 
+test("servicios incluidos: el desplegable de la fila cambia el servicio sin recortarse y el contador separa los incluidos", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", viewport: { height: 900, width: 1024 } });
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).click();
+  await picker.getByText("1 de 2 seleccionados", { exact: true }).waitFor();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+  // Las nuevas selecciones se cuentan sobre lo que aún puede agregarse; los incluidos, aparte.
+  await picker.getByText("0 de 1 seleccionados · 1 ya incluido", { exact: true }).waitFor();
+  await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).fill("10");
+
+  const trigger = page.getByRole("button", { name: "Servicio de la fila: Anteproyecto arquitectónico" });
+  await trigger.click();
+  const option = page.getByRole("menuitem", { name: "Puntos eléctricos y fuerza" });
+  await option.waitFor();
+  const layout = await page.evaluate(() => {
+    const menu = document.querySelector('[role="menu"]');
+    const viewport = document.querySelector('[aria-labelledby="quote-items-title"] table').parentElement;
+    const anchor = [...document.querySelectorAll("button[aria-expanded=true]")].find((button) => button.getAttribute("aria-label")?.startsWith("Servicio de la fila"));
+    const menuBox = menu.getBoundingClientRect();
+    const anchorBox = anchor.closest(".relative.inline-flex").getBoundingClientRect();
+    const item = [...menu.querySelectorAll('[role="menuitem"]')].at(-1).getBoundingClientRect();
+    const hit = document.elementFromPoint(item.left + item.width / 2, item.top + item.height / 2);
+    return {
+      inBody: menu.parentElement === document.body,
+      joined: Math.abs(menuBox.left - anchorBox.left) < 0.6 && Math.abs(menuBox.width - anchorBox.width) < 0.6
+        && (Math.abs(menuBox.top - anchorBox.bottom) < 0.6 || Math.abs(menuBox.bottom - anchorBox.top) < 0.6),
+      lastItemReachable: Boolean(hit?.closest('[role="menu"]')),
+      insideWindow: menuBox.top >= 0 && menuBox.bottom <= window.innerHeight,
+      tableScrolls: viewport.scrollWidth > viewport.clientWidth,
+    };
+  });
+  // El menú vive fuera de la tabla (no lo recorta su overflow) y la tabla conserva su scroll horizontal.
+  assert.deepEqual(layout, { inBody: true, joined: true, lastItemReachable: true, insideWindow: true, tableScrolls: true });
+  assert.deepEqual(await page.getByRole("menuitem").allInnerTexts(), ["Anteproyecto arquitectónico", "Puntos eléctricos y fuerza"], "El actual y los activos no incluidos; nunca el inactivo");
+
+  // Cambiar el servicio trae su unidad y su tarifa, y conserva la cantidad escrita.
+  await option.click();
+  const quantity = page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" });
+  await quantity.waitFor();
+  assert.equal(await quantity.inputValue(), "10");
+  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Puntos eléctricos y fuerza en USD" }).inputValue(), "45");
+  assert.equal(await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).count(), 0);
+  await picker.getByText("0 de 1 seleccionados · 1 ya incluido", { exact: true }).waitFor();
+  await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).waitFor();
+});
+
+test("salir sin guardar: sidebar, breadcrumb, Atrás y cierre del navegador piden confirmación", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  const listUrl = `${origin}/servicios-cotizaciones/cotizaciones`;
+  const editorUrl = `${listUrl}/nueva`;
+  const breadcrumb = page.getByRole("navigation", { name: "Ruta de navegación" }).getByRole("link", { name: "Servicios y cotizaciones" });
+  const dialog = page.locator("[data-quote-discard-dialog]");
+  const question = dialog.getByText("¿Deseas cancelar la cotización?");
+  const quantity = page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" });
+
+  // Sin cambios no se pregunta nada.
+  await page.getByRole("button", { name: "Nueva cotización" }).click();
+  await page.waitForURL(editorUrl);
+  await breadcrumb.click();
+  await page.waitForURL(listUrl);
+  assert.equal(await question.count(), 0);
+
+  await page.getByRole("button", { name: "Nueva cotización" }).click();
+  await page.waitForURL(editorUrl);
+  await page.getByRole("region", { name: "Seleccionar servicios" }).getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).click();
+  await page.getByRole("button", { name: "Agregar seleccionados" }).click();
+  await quantity.fill("150");
+
+  /**
+   * Comprueba que la salida quedó detenida y vuelve al formulario con el borrador intacto.
+   *
+   * @param {string} origin - Vía de salida probada.
+   * @returns {Promise<void>}
+   */
+  async function stayInEditor(origin) {
+    await question.waitFor();
+    await dialog.getByRole("button", { name: "Volver" }).click();
+    await question.waitFor({ state: "hidden" });
+    assert.equal(page.url(), editorUrl, `${origin}: la URL no cambia`);
+    assert.equal(await quantity.inputValue(), "150", `${origin}: el borrador se conserva`);
+  }
+
+  await page.getByRole("button", { name: "Usuarios", exact: true }).click();
+  await stayInEditor("sidebar");
+  await breadcrumb.click();
+  await stayInEditor("breadcrumb");
+  await page.goBack({ waitUntil: "commit" });
+  await stayInEditor("Atrás");
+
+  // Recarga o cierre: confirmación nativa del navegador (beforeunload); descartarla mantiene la página.
+  const unloadDialog = new Promise((resolve) => {
+    page.once("dialog", async (nativeDialog) => {
+      resolve(nativeDialog.type());
+      await nativeDialog.dismiss();
+    });
+  });
+  await page.close({ runBeforeUnload: true });
+  assert.equal(await unloadDialog, "beforeunload");
+  assert.equal(page.isClosed(), false);
+  assert.equal(await quantity.inputValue(), "150");
+
+  // Confirmar el descarte completa la navegación pendiente sin enviar nada.
+  await page.goBack({ waitUntil: "commit" });
+  await question.waitFor();
+  await dialog.getByRole("button", { name: "Cancelar cotización" }).click();
+  await page.waitForURL(listUrl);
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false);
+});
+
 test("edición: datos guardados, PATCH con expectedVersion y conflicto de versión sin perder el borrador", async (context) => {
   const backend = createBackend({ failures: { "PATCH /api/admin/quotes/:id": { body: { code: "QUOTE_VERSION_CONFLICT", message: "Otro administrador modificó esta cotización. Recarga los datos antes de guardar." }, status: 409 } } });
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/1/editar" });

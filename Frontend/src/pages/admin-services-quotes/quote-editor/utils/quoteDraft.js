@@ -55,6 +55,21 @@ export function addServicesToLines(lines, services) {
 }
 
 /**
+ * Cambia el servicio de un concepto desde el desplegable de su fila (Figma 5771:367425): toma
+ * la unidad, el nombre y la tarifa de referencia del servicio nuevo, conserva la posición y la
+ * cantidad escrita, y no admite un servicio que ya está en otra fila (uno por cotización).
+ *
+ * @param {Array<Object>} lines - Conceptos actuales.
+ * @param {string} key - Concepto que cambia.
+ * @param {Object} service - Servicio activo elegido.
+ * @returns {Array<Object>} Conceptos resultantes (los mismos si el cambio no procede).
+ */
+export function replaceLineService(lines, key, service) {
+  if (lines.some((line) => line.serviceId === service.id)) return lines;
+  return lines.map((line) => (line.key === key ? { ...createLineFromService(service), quantity: line.quantity } : line));
+}
+
+/**
  * Construye el borrador de edición a partir de una cotización guardada, con los nombres y
  * unidades de la versión de servicio cotizada (lo que muestra el documento).
  *

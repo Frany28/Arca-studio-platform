@@ -1,6 +1,6 @@
 import { useReducer } from "react";
 
-import { addServicesToLines } from "../utils/quoteDraft.js";
+import { addServicesToLines, replaceLineService } from "../utils/quoteDraft.js";
 
 /**
  * Aplica una acción del formulario al borrador. Cambiar de cliente retira el proyecto, porque un
@@ -22,6 +22,8 @@ function quoteDraftReducer(draft, action) {
       return { ...draft, notes: action.notes };
     case "addServices":
       return { ...draft, lines: addServicesToLines(draft.lines, action.services) };
+    case "replaceService":
+      return { ...draft, lines: replaceLineService(draft.lines, action.key, action.service) };
     case "removeLine":
       return { ...draft, lines: draft.lines.filter((line) => line.key !== action.key) };
     case "updateLine":
@@ -44,6 +46,7 @@ export function useQuoteDraft(initialDraft) {
     actions: {
       addServices: (services) => dispatch({ services, type: "addServices" }),
       removeLine: (key) => dispatch({ key, type: "removeLine" }),
+      replaceService: (key, service) => dispatch({ key, service, type: "replaceService" }),
       reset: (nextDraft) => dispatch({ draft: nextDraft, type: "reset" }),
       setClient: (client) => dispatch({ client, type: "setClient" }),
       setNotes: (notes) => dispatch({ notes, type: "setNotes" }),

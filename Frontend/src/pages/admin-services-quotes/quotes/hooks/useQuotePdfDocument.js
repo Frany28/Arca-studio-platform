@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../../../../api/http.js";
-import { loadPdfjs } from "../../../../components/document-viewer/pdfjsLoader.js";
+import { openPdfDocument } from "../../../../components/document-viewer/pdfDocumentLoader.js";
 
 const IDLE = Object.freeze({ documentProxy: null, error: "", key: "", pageCount: 1, size: 0, status: "idle" });
 
@@ -37,34 +37,24 @@ export function useQuotePdfDocument(quote) {
 
   useEffect(() => {
     if (quoteId === null) return undefined;
+    // Abortar cancela la descarga y destruye el documento de PDF.js (openPdfDocument).
     const controller = new AbortController();
-    let cancelled = false;
-    let loadingTask = null;
-    let documentProxy = null;
+    const { signal } = controller;
 
     queueMicrotask(() => {
-      if (!cancelled) setState({ ...IDLE, key, status: "loading" });
+      if (!signal.aborted) setState({ ...IDLE, key, status: "loading" });
     });
-    api.quotes.getQuotePdf({ quoteId, signal: controller.signal, timeZone: getBrowserTimeZone() })
+    api.quotes.getQuotePdf({ quoteId, signal, timeZone: getBrowserTimeZone() })
       .then(async (blob) => {
-        const { getDocument } = await loadPdfjs();
-        // Si el visor se cerró durante la descarga de PDF.js, no crear una tarea que nadie destruirá.
-        if (cancelled) return;
-        loadingTask = getDocument({ data: new Uint8Array(await blob.arrayBuffer()) });
-        documentProxy = await loadingTask.promise;
-        if (cancelled) return;
+        const documentProxy = await openPdfDocument(await blob.arrayBuffer(), signal);
         setState({ documentProxy, error: "", key, pageCount: documentProxy.numPages || 1, size: blob.size, status: "ready" });
       })
       .catch((error) => {
-        if (cancelled || error?.name === "AbortError") return;
+        if (signal.aborted || error?.name === "AbortError") return;
         setState({ ...IDLE, error: error?.message || "No se pudo cargar el documento.", key, status: "error" });
       });
 
-    return () => {
-      cancelled = true;
-      controller.abort();
-      loadingTask?.destroy();
-    };
+    return () => controller.abort();
     // `key` resume la cotización, su versión y el reintento; el objeto `quote` puede cambiar de identidad.
   }, [key, quoteId]);
 

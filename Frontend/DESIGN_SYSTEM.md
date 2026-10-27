@@ -780,11 +780,25 @@ Validación, capturas y diferencias respecto a Figma:
     proyecto depende del cliente), selector de servicios activos, tabla de incluidos con cantidad y
     tarifa editables y total previo calculado con el mismo motor decimal que el backend
     (`quoteAmounts.js`, prueba de paridad). Los servicios ya incluidos aparecen marcados y
-    deshabilitados en el selector. Guardar crea o versiona; un 409 de versión conserva el borrador.
-    Cancelar con cambios pide confirmación (`QuoteDiscardDialog`).
+    deshabilitados en el selector; su contador separa ambos conjuntos («1 de 2 seleccionados · 1 ya
+    incluido», `formatServicePickerCount`). Cada fila de servicios incluidos tiene el
+    `DropdownMenu` de su servicio (Figma 5771:367425) con `portal`, para que el desplazamiento
+    horizontal de la tabla no recorte el menú: ofrece el servicio actual y los activos no incluidos,
+    y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). Guardar
+    crea o versiona; un 409 de versión conserva el borrador.
+  - Cambios sin guardar: toda salida pasa por `useUnsavedChangesGuard` (`src/hooks`). Cancelar,
+    sidebar, breadcrumb, Atrás/Adelante y `navigate()` se detienen con `useBlocker` y se confirman
+    en `QuoteDiscardDialog`; recargar o cerrar la pestaña muestra la confirmación nativa del
+    navegador (`beforeunload`). Tras un guardado confirmado la navegación queda libre. Requiere el
+    data router de `main.jsx` (`createBrowserRouter`).
 - `DateRangePicker`/`DateRangeField` y `Breadcrumb` son componentes nuevos de `components/ui`;
   `Loader` añade los presets `quotesTable`, `quoteEditor` y `quoteServicePicker`; `Modal`
-  admite `showSecondaryAction`.
+  admite `showSecondaryAction`; `DropdownMenu` admite `portal` (menú en `document.body`,
+  anclado al disparador, que se abre hacia arriba si no cabe debajo).
+- Listados flotantes anclados (selector de prefijo del Input, combobox de unidad y `DropdownMenu`
+  en portal): se vuelven a medir con `observeAnchorLayout` ante resize, scroll de contenedores,
+  cambios de tamaño del ancla y el fin de transiciones y animaciones (p. ej. la entrada con
+  `transform` del `Modal`), para no quedar anclados a una geometría intermedia.
 
 ### Dashboard administrativo móvil
 

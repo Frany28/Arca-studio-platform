@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
+import DropdownMenu from "../../../../components/ui/DropdownMenu/DropdownMenu.jsx";
 import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
@@ -62,8 +63,23 @@ function LineNumberField({ disabled, error, id, label, onChange, prefix, value }
 }
 
 /**
- * «Servicios incluidos» del formulario (Figma 5771:367425): cada concepto con su servicio y
- * unidad, cantidad y tarifa aplicada editables, el subtotal calculado al momento y «Eliminar» en
+ * Opciones del desplegable de servicio de una fila: el servicio actual (aunque ya esté inactivo,
+ * para mostrarlo seleccionado) y los servicios activos que no están en otra fila.
+ *
+ * @param {Object} line - Concepto de la fila.
+ * @param {Array<Object>} services - Servicios activos del tabulador.
+ * @param {Set<number>} includedIds - Servicios ya incluidos en la cotización.
+ * @returns {Array<{id: number, label: string}>} Opciones del Dropdown menu.
+ */
+function getLineServiceOptions(line, services, includedIds) {
+  const others = services.filter((service) => service.id !== line.serviceId && !includedIds.has(service.id));
+  return [{ id: line.serviceId, label: line.serviceName }, ...others.map((service) => ({ id: service.id, label: service.name }))];
+}
+
+/**
+ * «Servicios incluidos» del formulario (Figma 5771:367425): cada concepto con el desplegable de
+ * su servicio (cambiarlo trae la unidad y la tarifa del nuevo), su unidad, cantidad y tarifa
+ * aplicada editables, el subtotal calculado al momento y «Eliminar» en
  * el menú de la fila; debajo, el total de la cotización. Los importes mostrados son una vista
  * previa con las reglas del backend, que recalcula y guarda los definitivos.
  *
@@ -73,11 +89,14 @@ function LineNumberField({ disabled, error, id, label, onChange, prefix, value }
  * @param {Record<string, string>} props.errors - Errores por ruta (`items.0.quantity`).
  * @param {(key: string, field: "quantity"|"unitRate", value: string) => void} props.onLineChange - Edita un concepto.
  * @param {(key: string) => void} props.onRemove - Quita un concepto.
+ * @param {Array<Object>} props.services - Servicios activos del tabulador (opciones del desplegable).
+ * @param {(key: string, service: Object) => void} props.onServiceChange - Cambia el servicio de un concepto.
  * @param {boolean} props.disabled - Bloquea la edición durante el guardado.
  * @returns {import("react").ReactElement} Sección.
  */
-function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, preview }) {
+function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onServiceChange, preview, services }) {
   const [openHintKey, setOpenHintKey] = useState(null);
+  const includedIds = new Set(lines.map((line) => line.serviceId));
   const total = preview.total === null ? "—" : formatDecimalMoney(preview.total, { alwaysShowCents: true });
 
   return (
@@ -110,7 +129,27 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, prev
                     <td aria-hidden="true" />
                     <th scope="row" className="px-[24px] py-[16px] text-left font-normal">
                       <div className="flex min-w-0 items-center gap-[2px]">
-                        <span className="text-heading-8 truncate text-[var(--color-text-300)]" title={line.serviceName}>{line.serviceName}</span>
+                        {/* En portal: la tabla desplaza en horizontal y recortaría el menú. */}
+                        <DropdownMenu
+                          portal
+                          type="Text"
+                          label={line.serviceName}
+                          supportingText=""
+                          items={getLineServiceOptions(line, services, includedIds)}
+                          selectedItemId={line.serviceId}
+                          interactive
+                          truncateTriggerLabel
+                          disabled={disabled}
+                          showContainer
+                          rowHeightClassName="h-[35px]"
+                          contentPaddingClassName="px-[4px] py-[8px]"
+                          className="min-w-0 flex-1"
+                          aria-label={`Servicio de la fila: ${line.serviceName}`}
+                          onItemSelect={(item) => {
+                            const service = services.find((candidate) => candidate.id === item.id);
+                            if (service && item.id !== line.serviceId) onServiceChange(line.key, service);
+                          }}
+                        />
                         {line.serviceDescription ? (
                           <ServiceDescriptionHint
                             serviceName={line.serviceName}

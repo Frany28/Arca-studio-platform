@@ -1365,6 +1365,43 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
+/**
+ * Espera a que el listado del prefijo quede unido al segmento: 1 px a su izquierda y con su ancho
+ * + 1 px (sin abreviaturas más largas que el segmento).
+ *
+ * @param {import("playwright").Page} page - Página con el listado abierto.
+ * @returns {Promise<void>}
+ */
+async function waitForAnchoredPrefixList(page) {
+  await page.waitForFunction(() => {
+    const segment = document.querySelector("[data-measurement-unit-form] [role=combobox]").getBoundingClientRect();
+    const panel = document.querySelector('[role="listbox"]').getBoundingClientRect();
+    return Math.abs(panel.width - (segment.width + 1)) < 0.6 && Math.abs(panel.left - (segment.left - 1)) < 0.6
+      && Math.abs(panel.top - segment.bottom) < 0.6;
+  });
+}
+
+test("anclaje: abierto durante la entrada del modal o con el segmento redimensionado, el panel sigue unido al segmento", async (context) => {
+  const backend = createBackend([denomination(1, 1, "de construcción")]);
+  backend.baseUnits = FORTY_EIGHT_UNITS;
+  const page = await openModule(context, backend, { path: "/servicios-cotizaciones/unidades", viewport: { width: 1440, height: 1000 } });
+  await page.getByText("UNID-001", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Añadir unidad" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nueva unidad de medida" });
+  const combobox = dialog.getByRole("combobox");
+  // Abrir el listado en cuanto aparece el diálogo, durante su transición de entrada (translate +
+  // scale): al terminar, el panel debe medirse de nuevo en lugar de quedarse en la geometría intermedia.
+  await combobox.click();
+  const listbox = page.getByRole("listbox", { name: "Abreviatura de la unidad base" });
+  await listbox.waitFor();
+  await waitForAnchoredPrefixList(page);
+  // Reajuste del segmento sin cambiar la ventana (como al cargar la fuente definitiva).
+  await combobox.evaluate((element) => { element.style.paddingInline = "40px"; });
+  await waitForAnchoredPrefixList(page);
+  await page.keyboard.press("Escape");
+  await listbox.waitFor({ state: "detached" });
+});
+
 test("posicionamiento: tras cerrar el listado flotante, Crear valida y envía con normalidad", async (context) => {
   // Catálogo por defecto: el backend simulado resuelve la unidad enviada en BASE_UNITS.
   const backend = createBackend([denomination(1, 1, "de construcción")]);

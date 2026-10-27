@@ -1,5 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
+import { observeAnchorLayout } from "../Input/options/observeAnchorLayout.js";
 import Avatar from "../Avatar/Avatar.jsx";
 import Checkbox from "../Checkbox/Checkbox.jsx";
 import Flag from "../../Flag.jsx";
@@ -9,6 +11,7 @@ import {
   DROPDOWN_MENU_STATES,
   DROPDOWN_MENU_TYPES,
 } from "./dropdownMenuConfig.js";
+import { getPortalMenuPosition } from "./dropdownMenuPosition.js";
 import { updateDropdownCheckboxItems } from "./dropdownMenuSelection.js";
 
 const DROPDOWN_MENU_NODE_IDS = {
@@ -409,7 +412,18 @@ function renderMenuItemLeading(
   return null;
 }
 
+/**
+ * Dropdown menu del sistema (Figma «Dropdown menu»). Con `portal`, el menú se monta en
+ * `document.body` con `position: fixed` unido al disparador, para no quedar recortado por
+ * contenedores con overflow (p. ej. una tabla con desplazamiento horizontal); sigue al disparador
+ * al desplazarse esos contenedores y el clic dentro del menú no cuenta como exterior.
+ *
+ * @param {Object} props - Disparador, opciones, selección y presentación (ver DROPDOWN_MENU_DEFAULT_PROPS).
+ * @param {boolean} [props.portal=false] - Monta el menú en un portal anclado al disparador.
+ * @returns {import("react").ReactElement} Disparador con su menú.
+ */
 function DropdownMenu({
+  portal = false,
   className,
   triggerClassName,
   triggerWrapperClassName,
@@ -448,6 +462,8 @@ function DropdownMenu({
   const menuId = useId();
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
+  const contentRef = useRef(null);
+  const [portalPosition, setPortalPosition] = useState(null);
 
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
@@ -485,6 +501,8 @@ function DropdownMenu({
   );
 
   const shouldShowContainer = showContainer || resolvedOpen;
+  // Solo el menú en portal puede abrirse hacia arriba; el inline siempre se despliega debajo.
+  const opensUpward = portal && portalPosition?.placement === "top";
   const shouldRenderContent = resolvedOpen || preserveMenuSpace;
   const resolvedHoveredItemId = hoveredItemId ?? internalHoveredItemId ?? null;
   const resolvedSelectedItemId =
@@ -566,7 +584,8 @@ function DropdownMenu({
     }
 
     function handlePointerDown(event) {
-      if (wrapperRef.current?.contains(event.target)) {
+      // En portal el menú no está dentro del contenedor: elegir una opción no es un clic exterior.
+      if (wrapperRef.current?.contains(event.target) || contentRef.current?.contains(event.target)) {
         return;
       }
 
@@ -598,6 +617,23 @@ function DropdownMenu({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [interactive, isOpenControlled, onOpenChange, resolvedOpen]);
+
+  // En portal, el menú se mide contra el disparador antes del paint (ya montado y oculto, para
+  // conocer su altura) y lo acompaña mientras está abierto (scroll de la tabla o del modal,
+  // resize, cambios de tamaño y fin de transiciones).
+  useLayoutEffect(() => {
+    if (!portal || !resolvedOpen || !wrapperRef.current) {
+      return undefined;
+    }
+    const anchor = wrapperRef.current;
+    const updatePosition = () => setPortalPosition(getPortalMenuPosition(
+      anchor.getBoundingClientRect(),
+      contentRef.current?.offsetHeight ?? 0,
+      window.innerHeight,
+    ));
+    updatePosition();
+    return observeAnchorLayout({ anchor, getPanel: () => contentRef.current, onChange: updatePosition });
+  }, [portal, resolvedOpen]);
 
   const setMenuOpen = (nextOpen) => {
     if (!isOpenControlled) {
@@ -684,7 +720,7 @@ function DropdownMenu({
           shouldShowContainer
             ? "rounded-[12px] border-[var(--color-neutral-200)]"
             : "rounded-none border-x-transparent border-t-transparent border-b-[var(--color-neutral-400)]",
-          resolvedOpen && "rounded-b-none",
+          resolvedOpen && (opensUpward ? "rounded-t-none" : "rounded-b-none"),
           resolvedOpen && showDivider
             ? "border-b-[var(--color-neutral-200)]"
             : resolvedOpen && "border-b-transparent",
@@ -705,7 +741,7 @@ function DropdownMenu({
             resolvedState !== "Default" &&
               !resolvedOpen &&
               "bg-[var(--color-neutral-200)]",
-            resolvedOpen && "rounded-b-none",
+            resolvedOpen && (opensUpward ? "rounded-t-none" : "rounded-b-none"),
             triggerClassName,
           )}
           aria-label={ariaLabel}
@@ -779,17 +815,27 @@ function DropdownMenu({
         </button>
       </div>
 
-      {shouldRenderContent ? (
+      {shouldRenderContent ? renderMenuContent(
         <div
+          ref={contentRef}
           id={`${menuId}-content`}
           role="menu"
           className={clsx(
-            "absolute inset-x-0 top-full z-[110] box-border w-auto rounded-b-[12px] border border-[var(--color-neutral-200)] border-t-0 bg-[var(--color-neutral-100)]",
+            portal
+              ? clsx(
+                "fixed z-[var(--z-tooltip)] box-border border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]",
+                opensUpward ? "rounded-t-[12px] border-b-0" : "rounded-b-[12px] border-t-0",
+              )
+              : "absolute inset-x-0 top-full z-[110] box-border w-auto rounded-b-[12px] border border-[var(--color-neutral-200)] border-t-0 bg-[var(--color-neutral-100)]",
             contentPaddingClassName,
             resolvedOpen ? "flex flex-col gap-[4px]" : "hidden",
             contentClassName,
           )}
           data-node-id={DROPDOWN_MENU_NODE_IDS.content}
+          // Oculto hasta medir el disparador para no dibujarse un frame en el origen.
+          style={portal ? (portalPosition
+            ? { left: portalPosition.left, top: portalPosition.top, width: portalPosition.width }
+            : { visibility: "hidden" }) : undefined}
         >
           {normalizedItems.map((item, index) => {
             const itemType = getResolvedType(item.type ?? resolvedType);
@@ -891,10 +937,21 @@ function DropdownMenu({
               </button>
             );
           })}
-        </div>
+        </div>,
       ) : null}
     </div>
   );
+
+  /**
+   * Monta el menú junto al disparador o, con `portal`, en `document.body`. Los eventos de React
+   * siguen propagándose por el árbol de componentes en ambos casos.
+   *
+   * @param {import("react").ReactElement} content - Menú.
+   * @returns {import("react").ReactNode} Menú montado.
+   */
+  function renderMenuContent(content) {
+    return portal && typeof document !== "undefined" ? createPortal(content, document.body) : content;
+  }
 }
 
 export default DropdownMenu;

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import Alert from "../../../../components/ui/Alert/Alert.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import TextArea from "../../../../components/ui/TextArea/TextArea.jsx";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard.js";
 import { useQuoteDraft } from "../hooks/useQuoteDraft.js";
 import { useQuoteSubmit } from "../hooks/useQuoteSubmit.js";
 import { calculateQuotePreview } from "../utils/quoteAmounts.js";
@@ -26,6 +27,8 @@ function SectionDivider() {
  * servicios incluidos con su total, observaciones y acciones. El borrador vive en memoria hasta que
  * el servidor confirma el guardado; un error conserva lo escrito y muestra cada mensaje junto a su
  * campo. Las validaciones del cliente reproducen las del backend, que sigue siendo la autoridad.
+ * Con cambios sin guardar, toda salida (Cancelar, sidebar, breadcrumb, Atrás, recarga o cierre)
+ * pasa por useUnsavedChangesGuard: dentro de la aplicación se confirma con QuoteDiscardDialog.
  *
  * @param {Object} props - Modo, datos iniciales, catálogo y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
@@ -33,7 +36,7 @@ function SectionDivider() {
  * @param {Object|null} props.quote - Cotización editada (versión y código) o null.
  * @param {{services: Array<Object>, loading: boolean, error: string, reload: () => void}} props.catalog - Tabulador.
  * @param {(response: Object) => void} props.onSaved - Guardado confirmado por la API.
- * @param {() => void} props.onExit - Vuelve al listado sin guardar.
+ * @param {() => void} props.onExit - Vuelve al listado; con cambios, la navegación se confirma antes.
  * @param {() => void} props.onReloadQuote - Relee la cotización tras un conflicto de versión.
  * @returns {import("react").ReactElement} Formulario.
  */
@@ -41,7 +44,8 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   const { actions, draft } = useQuoteDraft(initialDraft);
   const submission = useQuoteSubmit({ expectedVersion: quote?.currentVersion ?? null, mode, quoteId: quote?.id ?? null });
   const [attempted, setAttempted] = useState(false);
-  const [dialog, setDialog] = useState(null);
+  // Respuesta del alta confirmada mientras se muestra «Has creado la cotización»; null si no.
+  const [createdResponse, setCreatedResponse] = useState(null);
   const preview = useMemo(() => calculateQuotePreview(draft.lines), [draft.lines]);
   const activeServices = useMemo(() => catalog.services.filter((service) => service.isActive), [catalog.services]);
   const includedIds = useMemo(() => new Set(draft.lines.map((line) => line.serviceId)), [draft.lines]);
@@ -49,6 +53,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   // Los errores locales se muestran tras el primer intento de guardar; los del servidor, siempre.
   const errors = { ...(attempted ? localErrors : {}), ...submission.result.fieldErrors };
   const { submitting } = submission;
+  const guard = useUnsavedChangesGuard({ when: isQuoteDraftDirty(initialDraft, draft) });
 
   /**
    * Valida y guarda el borrador. Con errores locales no se envía nada y se señalan los campos.
@@ -62,18 +67,10 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
     if (Object.keys(localErrors).length || submitting) return;
     const response = await submission.submit(draft);
     if (!response) return;
-    if (mode === "create") setDialog({ type: "created", response });
+    // Guardado confirmado: el borrador ya no tiene cambios que perder al volver al listado.
+    guard.allowNavigation();
+    if (mode === "create") setCreatedResponse(response);
     else onSaved(response);
-  }
-
-  /**
-   * Sale del formulario; si hay cambios sin guardar pide confirmación antes de descartarlos.
-   *
-   * @returns {void}
-   */
-  function requestExit() {
-    if (isQuoteDraftDirty(initialDraft, draft)) setDialog({ type: "discard" });
-    else onExit();
   }
 
   return (
@@ -110,11 +107,16 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
       <div className="flex flex-col gap-[48px]">
         <QuoteItemsTable
           lines={draft.lines}
+          services={activeServices}
           preview={preview}
           errors={errors}
           disabled={submitting}
           onLineChange={(key, field, value) => actions.updateLine(key, field, value)}
           onRemove={actions.removeLine}
+          onServiceChange={(key, service) => {
+            submission.clearFieldError("items");
+            actions.replaceService(key, service);
+          }}
         />
         <TextArea
           id="quote-notes"
@@ -154,7 +156,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
 
       <SectionDivider />
       <div className="flex items-center justify-end gap-[12px]">
-        <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={submitting} onClick={requestExit}>
+        <Button theme="Primary" type="Outline" size="M" fitContent showLeftIcon={false} showRightIcon={false} disabled={submitting} onClick={onExit}>
           Cancelar
         </Button>
         <Button theme="Primary" type="Solid" size="M" fitContent htmlType="submit" showLeftIcon={false} showRightIcon={false} disabled={submitting} aria-busy={submitting || undefined}>
@@ -162,8 +164,9 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
         </Button>
       </div>
 
-      <QuoteCreatedDialog open={dialog?.type === "created"} onAccept={() => onSaved(dialog.response)} />
-      <QuoteDiscardDialog open={dialog?.type === "discard"} onStay={() => setDialog(null)} onDiscard={onExit} />
+      <QuoteCreatedDialog open={createdResponse !== null} onAccept={() => onSaved(createdResponse)} />
+      {/* Cancelar navega al listado: con cambios, el bloqueo lo detiene y aquí se confirma. */}
+      <QuoteDiscardDialog open={guard.blocked} onStay={guard.reset} onDiscard={guard.proceed} />
     </form>
   );
 }
