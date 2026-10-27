@@ -142,7 +142,8 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         aria-describedby={[selectionText ? selectionId : null, visibleHint ? hintId : null].filter(Boolean).join(" ") || undefined}
         disabled={disabled}
         prefixReadOnly
-        prefixSelectedOption={symbol ? { id: measurementUnitId, label: symbol } : null}
+        // Figma: el segmento del símbolo se ve siempre, separado del texto; en el alta, vacío.
+        prefixSelectedOption={{ id: measurementUnitId ?? "", label: symbol }}
         tags={showSelectionTag ? [toDenominationTag(unitDenomination)] : []}
         tagOptions={[]}
         // Controlado: Enter con texto libre propone una etiqueta nueva que aquí se descarta; quitar
