@@ -4,13 +4,15 @@ import Input from "../../../../components/ui/Input/Input.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import { useServiceUnitCombobox } from "../hooks/useServiceUnitCombobox.js";
 import { toDenominationTag } from "../utils/serviceFormValues.js";
-import { filterServiceUnitOptions, resolveSelectedUnitSymbol, toServiceUnitOption } from "../utils/serviceUnitSelection.js";
+import {
+  filterServiceUnitOptions, groupServiceUnitOptions, resolveSelectedUnitSymbol, toServiceUnitOption,
+} from "../utils/serviceUnitSelection.js";
 import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
 
 /**
  * Campo «Unidad de medida» del formulario de servicios (Figma 5764:226084): un único combobox
- * editable. Al hacer clic se despliegan las unidades registradas (denominaciones activas con su
- * base); escribir en el mismo campo las filtra por símbolo, categoría o nombre de la base, sin
+ * editable. Al hacer clic se despliegan las unidades registradas (denominaciones activas),
+ * agrupadas por su unidad base; escribir en el mismo campo las filtra por símbolo, categoría o nombre de la base, sin
  * distinguir mayúsculas ni acentos. Conserva la composición de Figma: el símbolo de la base en
  * el prefijo («m²») y la categoría como Tag con cierre («de construcción»), ambos derivados de
  * la unidad elegida.
@@ -56,10 +58,15 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   const searching = query !== "";
   const inputRef = useRef(null);
   const allOptions = useMemo(() => (denominations || []).map(toServiceUnitOption), [denominations]);
-  const options = useMemo(() => filterServiceUnitOptions(allOptions, query), [allOptions, query]);
+  // Grupos por unidad base con resultados; la lista plana (índices de teclado y
+  // aria-activedescendant) sigue el mismo orden visual que los grupos.
+  const groups = useMemo(() => groupServiceUnitOptions(filterServiceUnitOptions(allOptions, query)), [allOptions, query]);
+  const options = useMemo(() => groups.flatMap((group) => group.options), [groups]);
   const {
     activeIndex, anchorRef, close, handleKeyDownCapture, highlightedIndex, hoverOption, isOpen, listboxRef, open, position, select,
-  } = useServiceUnitCombobox({ disabled, options, onSelect: selectOption, searching, onCancelSearch: clearSearch });
+  } = useServiceUnitCombobox({
+    disabled, options, onSelect: selectOption, searching, onCancelSearch: clearSearch, rowCount: options.length + groups.length,
+  });
   const listboxId = `${id}-options`;
   const optionId = (index) => `${id}-option-${index}`;
   const hintId = `${id}-unit-hint`;
@@ -173,7 +180,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         <ServiceUnitOptionsList
           id={listboxId}
           optionId={optionId}
-          options={options}
+          groups={groups}
           selectedId={unitDenomination?.id ?? null}
           activeIndex={activeIndex}
           highlightedIndex={highlightedIndex}

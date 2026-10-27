@@ -23,9 +23,11 @@ import { observeAnchorLayout } from "../../../../components/ui/Input/options/obs
  * @param {boolean} [params.searching=false] - Hay texto de búsqueda temporal en el campo.
  * @param {() => void} [params.onCancelSearch] - Descarta la búsqueda temporal (Escape); la
  * selección del formulario no cambia.
+ * @param {number} [params.rowCount] - Filas del listado (opciones y encabezados de grupo), para
+ * su altura; por defecto, solo las opciones. Los encabezados nunca entran en la navegación.
  * @returns {Object} Estado, refs y manejadores del campo y del listado.
  */
-export function useServiceUnitCombobox({ disabled, onCancelSearch, onSelect, options, searching = false }) {
+export function useServiceUnitCombobox({ disabled, onCancelSearch, onSelect, options, rowCount, searching = false }) {
   const anchorRef = useRef(null);
   const listboxRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -36,7 +38,7 @@ export function useServiceUnitCombobox({ disabled, onCancelSearch, onSelect, opt
   const visible = isOpen && !disabled && options.length > 0;
   // Filtrar puede dejar el índice fuera de rango: se deriva uno válido sin otro estado.
   const resolvedActiveIndex = activeIndex < options.length ? activeIndex : 0;
-  const panelHeight = getPrefixSelectPanelHeight(options.length);
+  const panelHeight = getPrefixSelectPanelHeight(rowCount ?? options.length);
 
   // Mide el campo completo antes del paint y lo vuelve a medir ante cualquier cambio de su
   // geometría mientras está abierto (observeAnchorLayout, compartido con el selector de prefijo).
@@ -56,15 +58,16 @@ export function useServiceUnitCombobox({ disabled, onCancelSearch, onSelect, opt
   }, [panelHeight, visible]);
 
   // Mantiene visible la opción activa moviendo solo el área del listado (scrollIntoView
-  // desplazaría también el modal).
+  // desplazaría también el modal). La primera opción de un grupo muestra también su encabezado.
   useEffect(() => {
     if (!visible) return;
     const viewport = listboxRef.current?.firstElementChild;
     const option = viewport?.querySelector(`[data-option-index="${resolvedActiveIndex}"]`);
     if (!viewport || !option) return;
-    viewport.scrollTo({
-      top: getScrollTopToRevealOption(viewport.getBoundingClientRect(), viewport.scrollTop, option.getBoundingClientRect()),
-    });
+    const header = option.previousElementSibling?.matches("[data-option-group-header]") ? option.previousElementSibling : null;
+    const optionRect = option.getBoundingClientRect();
+    const target = header ? { top: header.getBoundingClientRect().top, bottom: optionRect.bottom } : optionRect;
+    viewport.scrollTo({ top: getScrollTopToRevealOption(viewport.getBoundingClientRect(), viewport.scrollTop, target) });
   }, [resolvedActiveIndex, visible]);
 
   /**

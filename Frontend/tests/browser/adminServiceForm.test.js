@@ -299,6 +299,33 @@ test("unidad: un único combobox con búsqueda en el campo, símbolo y categorí
   assert.equal(await input.getAttribute("aria-controls"), await listbox.getAttribute("id"));
   assert.deepEqual(await unitSuggestions(page), ["m² a intervenir", "m² de construcción", "m³ de excavación", "pto. eléctrico"]);
 
+  // Agrupadas por unidad base: un encabezado «Nombre (símbolo)» por grupo, que no es una opción.
+  const grouped = () => listbox.getByRole("group").evaluateAll((groups) => groups.map((group) => [
+    group.querySelector("[data-option-group-header]").textContent,
+    [...group.querySelectorAll("[role=option]")].map((option) => option.getAttribute("aria-label").replace(/, [^,]+$/, "")),
+  ]));
+  await input.click();
+  await listbox.waitFor();
+  assert.deepEqual(await grouped(), [
+    ["Metro cuadrado (m²)", ["m² de construcción", "m² a intervenir"]],
+    ["Punto (pto.)", ["pto. eléctrico"]],
+    ["Metro cúbico (m³)", ["m³ de excavación"]],
+  ]);
+  assert.equal(await listbox.getByRole("group", { name: "Metro cuadrado (m²)" }).count(), 1, "El encabezado nombra su grupo");
+  // El teclado recorre solo opciones (circular): aria-activedescendant nunca señala un encabezado.
+  const visited = [];
+  for (let step = 0; step < 5; step += 1) {
+    await page.keyboard.press("ArrowDown");
+    const activeId = await input.getAttribute("aria-activedescendant");
+    visited.push(await page.locator(`[id="${activeId}"]`).getAttribute("aria-label"));
+  }
+  assert.deepEqual(visited.map((label) => label.replace(/, [^,]+$/, "")),
+    ["m² a intervenir", "pto. eléctrico", "m³ de excavación", "m² de construcción", "m² a intervenir"]);
+  await page.keyboard.press("End");
+  assert.equal(await page.locator(`[id="${await input.getAttribute("aria-activedescendant")}"]`).getAttribute("role"), "option");
+  await input.evaluate((element) => element.blur());
+  await listbox.waitFor({ state: "detached" });
+
   // Escribir filtra en el mismo campo por categoría, símbolo o nombre de la base, sin mayúsculas ni acentos.
   const offered = () => listbox.getByRole("option").evaluateAll((options) => options.map((option) => option.getAttribute("aria-label")));
   await input.click();
@@ -308,6 +335,7 @@ test("unidad: un único combobox con búsqueda en el campo, símbolo y categorí
   assert.deepEqual(await offered(), ["m² de construcción, Metro cuadrado", "m² a intervenir, Metro cuadrado"], "En el orden del catálogo");
   await input.fill("cubico");
   assert.deepEqual(await offered(), ["m³ de excavación, Metro cúbico"]);
+  assert.deepEqual(await grouped(), [["Metro cúbico (m³)", ["m³ de excavación"]]], "Solo grupos con resultados");
   // Sin resultados: el listado se cierra y se indica crear la unidad.
   await input.fill("volumen");
   await listbox.waitFor({ state: "detached" });

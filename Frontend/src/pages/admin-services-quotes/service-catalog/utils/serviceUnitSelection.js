@@ -52,8 +52,8 @@ export function normalizeUnitSearchText(value) {
  *
  * @param {{id: number, denomination: string, label?: string, measurementUnit: {id: number, symbol: string, name?: string}}} denomination
  * Denominación con la forma del contrato.
- * @returns {{id: number, symbol: string, category: string, baseName: string, label: string, searchText: string, denomination: Object}}
- * Opción presentable y su texto de búsqueda.
+ * @returns {{id: number, baseId: number|undefined, symbol: string, category: string, baseName: string, label: string,
+ * searchText: string, denomination: Object}} Opción presentable y su texto de búsqueda.
  */
 export function toServiceUnitOption(denomination) {
   const symbol = denomination.measurementUnit?.symbol ?? "";
@@ -61,6 +61,7 @@ export function toServiceUnitOption(denomination) {
   const label = denomination.label || `${symbol} ${denomination.denomination}`.trim();
   return {
     id: denomination.id,
+    baseId: denomination.measurementUnit?.id,
     symbol,
     category: denomination.denomination,
     baseName,
@@ -83,6 +84,26 @@ export function filterServiceUnitOptions(options, query) {
   const terms = normalizeUnitSearchText(query).split(" ").filter(Boolean);
   if (terms.length === 0) return options;
   return options.filter((option) => terms.every((term) => option.searchText.includes(term)));
+}
+
+/**
+ * Agrupa las opciones (ya filtradas) por su unidad base, en el orden en que aparece cada base
+ * en el catálogo y conservando dentro de cada grupo el orden de las opciones. Solo existen los
+ * grupos con resultados. El encabezado es «Nombre (símbolo)», o solo el símbolo sin nombre.
+ *
+ * @param {Array<{baseId: number|undefined, baseName: string, symbol: string}>} options - Opciones de toServiceUnitOption.
+ * @returns {Array<{key: string, title: string, options: Array<Object>}>} Grupos con sus opciones.
+ */
+export function groupServiceUnitOptions(options) {
+  const groups = new Map();
+  for (const option of options) {
+    const key = String(option.baseId ?? option.symbol);
+    if (!groups.has(key)) {
+      groups.set(key, { key, title: option.baseName ? `${option.baseName} (${option.symbol})` : option.symbol, options: [] });
+    }
+    groups.get(key).options.push(option);
+  }
+  return [...groups.values()];
 }
 
 /**

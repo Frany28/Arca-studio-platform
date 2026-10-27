@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createServiceDraft, validateServiceDraft, toUpdateServiceChanges } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
 import {
-  filterServiceUnitOptions, getServiceUnitCatalog, normalizeUnitSearchText, preservesServiceUnit, resolveSelectedUnitSymbol, toServiceUnitOption,
+  filterServiceUnitOptions, getServiceUnitCatalog, groupServiceUnitOptions, normalizeUnitSearchText, preservesServiceUnit, resolveSelectedUnitSymbol, toServiceUnitOption,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceUnitSelection.js";
 
 const BASES = Array.from({ length: 48 }, (_, index) => ({ id: index + 1, code: index === 0 ? "square_meter" : "other", label: `base-${index + 1}` }));
@@ -88,6 +88,17 @@ test("combobox de unidad: busca por símbolo, categoría o base sin distinguir m
   assert.deepEqual(ids("lineal"), [3]);
   assert.deepEqual(ids("cuadrado área"), [2], "Cada palabra debe coincidir, en cualquier orden");
   assert.deepEqual(ids("volumen"), []);
+});
+
+test("combobox de unidad: agrupa por unidad base en el orden del catálogo y solo con resultados", () => {
+  const summary = (options) => groupServiceUnitOptions(options).map((group) => [group.title, group.options.map((option) => option.id)]);
+  // Una base intercalada se reúne en su grupo, que conserva su primera posición.
+  const interleaved = [UNIT_OPTIONS[0], UNIT_OPTIONS[2], UNIT_OPTIONS[1], UNIT_OPTIONS[3]];
+  assert.deepEqual(summary(interleaved), [["Metro cuadrado (m²)", [1, 2]], ["Metro lineal (m.l.)", [3]], ["Hora (h)", [4]]]);
+  assert.deepEqual(summary(filterServiceUnitOptions(UNIT_OPTIONS, "lineal")), [["Metro lineal (m.l.)", [3]]]);
+  assert.deepEqual(summary([]), []);
+  // Sin nombre de base, el encabezado es el símbolo.
+  assert.deepEqual(summary([toServiceUnitOption({ id: 9, denomination: "de obra", measurementUnit: { id: 7, symbol: "u" } })]), [["u", [9]]]);
 });
 
 test("combobox de unidad: normalización de la búsqueda", () => {
