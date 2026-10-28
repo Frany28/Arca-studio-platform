@@ -12,6 +12,7 @@ import {
   getServiceDescription,
   getServiceModalityBadge,
   getServiceStatusBadge,
+  getServiceUnitBadges,
 } from "../utils/serviceCatalogPresentation.js";
 import ServiceDescriptionHint from "./ServiceDescriptionHint.jsx";
 
@@ -73,6 +74,7 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, o
               const status = getServiceStatusBadge(service);
               const modality = getServiceModalityBadge(service);
               const rate = formatReferenceRate(service.referenceRate, service.currency);
+              const units = getServiceUnitBadges(service);
               const editTooltip = overlays.tooltipProps(`edit:${service.id}`);
               const menuTooltip = overlays.tooltipProps(`menu:${service.id}`);
               return (
@@ -103,9 +105,22 @@ function ServiceCatalogTable({ actionsDisabled, items, onEdit, onStatusChange, o
                       />
                     </div>
                   </td>
-                  <td className="px-[24px] py-[16px]">
-                    <div className="flex min-w-0">
-                      <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
+                  {/* Una Badge por unidad (la principal primero); la tarifa pendiente se indica en `title`. */}
+                  <td className="px-[24px] py-[16px]" data-service-units={units.length}>
+                    <div className="flex min-w-0 gap-[4px] overflow-hidden">
+                      {units.map((unit) => (
+                        <Badge
+                          key={unit.key}
+                          label={unit.label}
+                          theme="Brand 2"
+                          variation="Simple"
+                          size="S"
+                          truncate
+                          className={units.length > 1 ? "min-w-0 shrink" : undefined}
+                          // Sin pendiente se conserva el `title` automático de la etiqueta truncada.
+                          {...(unit.ratePending ? { title: `${unit.label}: tarifa pendiente de validación comercial` } : {})}
+                        />
+                      ))}
                     </div>
                   </td>
                   {/* Una tarifa fuera de lo previsto se recorta con su valor completo en `title`, en lugar de invadir Estado. */}

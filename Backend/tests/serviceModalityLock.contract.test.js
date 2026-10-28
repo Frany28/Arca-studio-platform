@@ -19,7 +19,9 @@ const { default: serviceCatalogRouter } = await import("../src/routes/serviceCat
 
 // Tablas que pueden referenciar servicios: su historial y los conceptos de cotización, que la
 // consulta serviceHasQuoteReferences revisa. Una tabla nueva debe sumarse a esa consulta.
-const ALLOWED_SERVICE_REFERENCES = new Set(["service_versions", "quote_items"]);
+// service_unit_options y su copia por versión describen el propio servicio (sus unidades), no su
+// uso: no representan una cotización y no bloquean la modalidad.
+const ALLOWED_SERVICE_REFERENCES = new Set(["service_versions", "quote_items", "service_unit_options", "service_version_unit_options"]);
 const ADMIN = { id: 2, role: { code: "admin" } };
 const REFERENCE_CHECK = "select exists (select 1 from public.quote_items where service_id = $1) as used";
 const CURRENT = {
@@ -83,6 +85,21 @@ function serviceRow(service) {
 }
 
 /**
+ * Única unidad del servicio simulado (m², con la tarifa del servicio), con la forma de la consulta
+ * de unidades del catálogo.
+ *
+ * @param {object} service - Estado del servicio simulado.
+ * @returns {object} Fila como la devuelve `pg`.
+ */
+function unitOptionRow(service) {
+  return {
+    denomination_id: null, denomination_is_active: null, denomination_text: null, option_id: "1", position: 1, presentation_label: null,
+    reference_rate: service.referenceRate, service_id: "1", unit_allows_decimals: true, unit_code: "square_meter", unit_id: "1",
+    unit_is_active: true, unit_name: "Metro cuadrado", unit_symbol: "m²",
+  };
+}
+
+/**
  * Levanta el router del tabulador sobre una base simulada con un servicio individual en m²
  * que puede estar incluido en cotizaciones (`used`). Registra las escrituras para comprobar que
  * un rechazo no modifica nada.
@@ -100,13 +117,19 @@ async function startCatalog(context, { isActive = true, used }) {
     statements.push(text);
     if (/^(begin|commit|rollback)$/i.test(text)) return { rowCount: 0, rows: [] };
     // Las escrituras primero: la copia de la versión es un INSERT ... SELECT sobre services.
-    if (/^(update|insert)/.test(text)) {
+    if (/^(update|insert|delete)/.test(text)) {
       writes.push(text);
-      if (text.startsWith("insert into public.service_versions")) service.version += 1;
+      if (text.startsWith("insert into public.service_versions")) {
+        service.version += 1;
+        return { rowCount: 1, rows: [{ id: String(service.version) }] };
+      }
       return { rowCount: 1, rows: [] };
     }
     if (text.startsWith("select id from public.services where id = $1 for update")) return { rowCount: 1, rows: [{ id: "1" }] };
     if (text.includes("from public.services s inner join public.measurement_units u")) return { rowCount: 1, rows: [serviceRow(service)] };
+    if (text.includes("from public.service_unit_options o inner join public.measurement_units u")) {
+      return { rowCount: 1, rows: [unitOptionRow(service)] };
+    }
     if (text.startsWith(REFERENCE_CHECK)) return { rowCount: 1, rows: [{ used: service.used }] };
     if (text.includes("from public.measurement_units where id = $1")) {
       return { rowCount: 1, rows: [{ allows_decimals: true, code: "square_meter", id: "1", is_active: true, name: "Metro cuadrado", sort_order: 101, symbol: "m²" }] };

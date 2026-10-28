@@ -10,8 +10,11 @@ import Loader from "../../../../components/ui/Loader/Loader.jsx";
 import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import { normalizeTagSearchText } from "../../../../components/ui/Input/tags/tagUtils.js";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
-import { formatReferenceRate, getServiceDescription } from "../../service-catalog/utils/serviceCatalogPresentation.js";
+import { formatReferenceRate, getServiceDescription, getServiceUnitBadges } from "../../service-catalog/utils/serviceCatalogPresentation.js";
+import { isServiceQuotable } from "../utils/quoteDraft.js";
 import { formatServicePickerCount } from "../utils/servicePickerCount.js";
+
+const PENDING_SERVICE_NOTE = "Tarifa pendiente de validación comercial: aún no se puede cotizar.";
 
 // Figma 5771:463261: selección 48, Servicio 350 y Unidad/Tarifa flexibles (mínimo 150).
 const PICKER_TABLE_MIN_WIDTH = 48 + 350 + 150 + 150;
@@ -34,7 +37,8 @@ function matchesService(service, query) {
 /**
  * «Seleccionar servicios» del formulario (Figma 5771:463257): busca en los servicios activos del
  * tabulador, marca varios y los añade a «Servicios incluidos». Los ya incluidos aparecen marcados
- * y bloqueados, porque cada servicio va una sola vez por cotización. «Cancelar» limpia la
+ * y bloqueados, porque cada servicio va una sola vez por cotización; los que no tienen ninguna
+ * unidad con tarifa confirmada se muestran bloqueados con el motivo. «Cancelar» limpia la
  * selección sin añadir nada.
  *
  * @param {Object} props - Catálogo, estado y callbacks.
@@ -52,9 +56,9 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [openHintId, setOpenHintId] = useState(null);
   const visible = useMemo(() => services.filter((service) => matchesService(service, query)), [query, services]);
-  const selectable = visible.filter((service) => !includedIds.has(service.id));
+  const selectable = visible.filter((service) => !includedIds.has(service.id) && isServiceQuotable(service));
   // Solo cuentan los servicios seleccionables presentes: un servicio ya añadido deja de contar.
-  const selected = services.filter((service) => selectedIds.has(service.id) && !includedIds.has(service.id));
+  const selected = services.filter((service) => selectedIds.has(service.id) && !includedIds.has(service.id) && isServiceQuotable(service));
   // Incluidos del listado (un servicio cotizado que ya está inactivo no figura en él).
   const includedCount = services.filter((service) => includedIds.has(service.id)).length;
   const allSelected = selectable.length > 0 && selectable.every((service) => selectedIds.has(service.id));
@@ -128,7 +132,8 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
             <tbody>
               {visible.map((service) => {
                 const included = includedIds.has(service.id);
-                const checked = included || selectedIds.has(service.id);
+                const quotable = isServiceQuotable(service);
+                const checked = included || (quotable && selectedIds.has(service.id));
                 const description = getServiceDescription(service);
                 return (
                   <tr key={service.id} className={`h-[50px] transition-colors duration-150 ${checked ? "bg-[var(--color-neutral-300)]" : "bg-[var(--color-neutral-100)]"}`} data-selected={checked ? "true" : undefined}>
@@ -136,8 +141,8 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
                       <Checkbox
                         size="S"
                         checked={checked ? "Yes" : "No"}
-                        interactive={!included && !disabled}
-                        aria-label={included ? `${service.name} ya está incluido` : `Seleccionar ${service.name}`}
+                        interactive={!included && quotable && !disabled}
+                        aria-label={included ? `${service.name} ya está incluido` : quotable ? `Seleccionar ${service.name}` : `${service.name}: ${PENDING_SERVICE_NOTE}`}
                         onCheckedChange={() => toggle(service.id)}
                       />
                     </td>
@@ -153,10 +158,13 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
                           />
                         ) : null}
                       </div>
+                      {quotable ? null : <p className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={PENDING_SERVICE_NOTE}>{PENDING_SERVICE_NOTE}</p>}
                     </td>
                     <td className="px-[24px]">
-                      <div className="flex min-w-0">
-                        <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
+                      <div className="flex min-w-0 gap-[4px] overflow-hidden">
+                        {getServiceUnitBadges(service).map((unit) => (
+                          <Badge key={unit.key} label={unit.label} theme="Brand 2" variation="Simple" size="S" truncate className="min-w-0 shrink" />
+                        ))}
                       </div>
                     </td>
                     <td className="text-heading-8 truncate px-[24px] text-right text-[var(--color-text-300)] tabular-nums">{formatReferenceRate(service.referenceRate, service.currency)}</td>

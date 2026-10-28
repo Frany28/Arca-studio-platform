@@ -715,6 +715,8 @@ model measurement_units {
   services                       services[]
   service_versions               service_versions[]
   measurement_unit_denominations measurement_unit_denominations[]
+  service_unit_options           service_unit_options[]
+  service_version_unit_options   service_version_unit_options[]
 }
 
 /// Denominaciones personalizadas que comparten una unidad base (m² + "de construcción").
@@ -743,6 +745,8 @@ model measurement_unit_denominations {
   users_updated_by    users?             @relation("measurement_unit_denominations_updated_by", fields: [updated_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_measurement_unit_denominations_updated_by")
   services            services[]
   service_versions    service_versions[]
+  service_unit_options         service_unit_options[]
+  service_version_unit_options service_version_unit_options[]
 
   @@unique([id, measurement_unit_id], map: "uq_measurement_unit_denominations_id_unit")
 }
@@ -774,6 +778,7 @@ model services {
   users_updated_by    users?             @relation("services_updated_by", fields: [updated_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_services_updated_by")
   service_versions    service_versions[]
   quote_items         quote_items[]
+  service_unit_options service_unit_options[]
 
   @@index([sort_order, id], map: "services_catalog_order_idx")
   @@index([measurement_unit_id], map: "idx_services_measurement_unit_id")
@@ -813,6 +818,7 @@ model service_versions {
   measurement_unit_denominations measurement_unit_denominations? @relation(fields: [unit_denomination_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_unit_denomination")
   users                users?            @relation("service_versions_changed_by", fields: [changed_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_versions_changed_by")
   quote_items          quote_items[]
+  service_version_unit_options service_version_unit_options[]
 
   @@unique([service_id, version_number], map: "uq_service_versions_service_version")
   /// Destino de la FK compuesta de quote_items: la versión cotizada pertenece al servicio indicado.
@@ -879,6 +885,8 @@ model quote_items {
   line_number        Int
   service_id         BigInt
   service_version_id BigInt
+  /// Unidad cotizada: copia de la versión del servicio (FK compuesta con service_version_id).
+  service_version_unit_option_id BigInt
   quantity           Decimal          @db.Decimal(12, 3)
   unit_rate          Decimal          @db.Decimal(14, 2)
   reference_rate     Decimal          @db.Decimal(14, 2)
@@ -887,11 +895,71 @@ model quote_items {
   quote_versions     quote_versions   @relation(fields: [quote_version_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_items_quote_version")
   services           services         @relation(fields: [service_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_items_service")
   service_versions   service_versions @relation(fields: [service_version_id, service_id], references: [id, service_id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_items_service_version")
+  service_version_unit_options service_version_unit_options @relation(fields: [service_version_unit_option_id, service_version_id], references: [id, service_version_id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_items_service_version_unit_option")
 
   @@unique([quote_version_id, line_number], map: "uq_quote_items_version_line")
   @@unique([quote_version_id, service_id], map: "uq_quote_items_version_service")
   @@index([service_id], map: "idx_quote_items_service_id")
   @@index([service_version_id], map: "idx_quote_items_service_version_id")
+  @@index([service_version_unit_option_id], map: "idx_quote_items_service_version_unit_option_id")
+}
+
+/// Unidades vigentes de cada servicio (1 a 10, posiciones 1..n). La posición 1 es la principal y
+/// coincide con services.measurement_unit_id / unit_denomination_id (trigger diferido
+/// service_unit_options_consistent). reference_rate NULL = tarifa pendiente de validación
+/// comercial (no se cotiza); con una sola unidad, su tarifa es la del servicio.
+/// uq_service_unit_options_unit usa NULLS NOT DISTINCT y se define en la migración.
+/// This table contains check constraints and requires additional setup for migrations.
+/// This model contains row level security and requires additional setup for migrations.
+model service_unit_options {
+  id                   BigInt            @id @default(autoincrement())
+  service_id           BigInt
+  position             Int               @db.SmallInt
+  measurement_unit_id  BigInt
+  unit_denomination_id BigInt?
+  /// Texto comercial que sustituye a la etiqueta compuesta («Global por Proyecto»).
+  presentation_label   String?           @db.VarChar(80)
+  reference_rate       Decimal?          @db.Decimal(14, 2)
+  created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime          @default(now()) @db.Timestamptz(6)
+  services             services          @relation(fields: [service_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_unit_options_service")
+  measurement_units    measurement_units @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_unit_options_measurement_unit")
+  measurement_unit_denominations measurement_unit_denominations? @relation(fields: [unit_denomination_id, measurement_unit_id], references: [id, measurement_unit_id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_unit_options_unit_denomination")
+
+  @@unique([service_id, position], map: "uq_service_unit_options_position")
+  @@index([measurement_unit_id], map: "idx_service_unit_options_measurement_unit_id")
+  @@index([unit_denomination_id], map: "idx_service_unit_options_unit_denomination_id", where: raw("(unit_denomination_id IS NOT NULL)"))
+}
+
+/// Copia inmutable de las unidades de una versión de servicio (trigger
+/// service_version_unit_options_immutable: sin UPDATE ni DELETE). Conserva unidad, denominación,
+/// etiqueta comercial y tarifa (NULL = pendiente) vigentes al versionar.
+/// This table contains check constraints and requires additional setup for migrations.
+/// This model contains row level security and requires additional setup for migrations.
+model service_version_unit_options {
+  id                   BigInt            @id @default(autoincrement())
+  service_version_id   BigInt
+  position             Int               @db.SmallInt
+  measurement_unit_id  BigInt
+  unit_code            String            @db.VarChar(30)
+  unit_name            String            @db.VarChar(80)
+  unit_symbol          String            @db.VarChar(20)
+  unit_allows_decimals Boolean
+  unit_denomination_id BigInt?
+  unit_denomination    String?           @db.VarChar(80)
+  presentation_label   String?           @db.VarChar(80)
+  reference_rate       Decimal?          @db.Decimal(14, 2)
+  created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  service_versions     service_versions  @relation(fields: [service_version_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_version_unit_options_version")
+  measurement_units    measurement_units @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_version_unit_options_measurement_unit")
+  measurement_unit_denominations measurement_unit_denominations? @relation(fields: [unit_denomination_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_service_version_unit_options_unit_denomination")
+  quote_items          quote_items[]
+
+  @@unique([service_version_id, position], map: "uq_service_version_unit_options_position")
+  /// Destino de la FK compuesta de quote_items: la unidad cotizada pertenece a la versión indicada.
+  @@unique([id, service_version_id], map: "uq_service_version_unit_options_id_version")
+  @@index([measurement_unit_id], map: "idx_service_version_unit_options_measurement_unit_id")
+  @@index([unit_denomination_id], map: "idx_service_version_unit_options_unit_denomination_id", where: raw("(unit_denomination_id IS NOT NULL)"))
 }
 
 enum anchor_type {

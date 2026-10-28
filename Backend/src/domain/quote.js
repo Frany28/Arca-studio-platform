@@ -8,6 +8,8 @@ import { parseScaledDecimal } from "../utils/scaledDecimal.js";
  * - Código visible generado por el sistema a partir del id (`COT-001`, `COT-1000`).
  * - Moneda única USD, como el tabulador.
  * - Cada servicio aparece una sola vez por cotización: su cantidad expresa todo el alcance.
+ * - Cada concepto se cotiza con una unidad del servicio con tarifa confirmada; las pendientes de
+ *   validación comercial no se cotizan.
  * - Una unidad sin decimales (unidades contables, entregables) solo admite cantidades enteras.
  * - Guardar sin cambios efectivos no crea una versión nueva.
  */
@@ -50,6 +52,29 @@ export function collectDuplicateServiceErrors(items, fields) {
     if (seen.has(item.serviceId)) fields[`items.${index}.serviceId`] = "Este servicio ya está incluido en la cotización.";
     seen.add(item.serviceId);
   });
+}
+
+/**
+ * Elige la unidad de un concepto entre las copiadas en la versión del servicio cotizada. Usa la
+ * posición recibida; si falta, la del concepto ya cotizado o, si el servicio tiene una sola
+ * unidad, esa. Una unidad con tarifa pendiente de validación comercial no se cotiza nunca: no se
+ * sustituye por otra tarifa ni se calcula con la tarifa de referencia del servicio.
+ *
+ * @param {object} options - Datos del concepto.
+ * @param {Array<{ id: number, position: number, referenceRate: string|null }>} options.unitOptions - Unidades de la versión.
+ * @param {number} [options.requestedPosition] - Posición enviada por el cliente.
+ * @param {number|null} [options.quotedPosition] - Posición del concepto ya guardado con esta versión.
+ * @returns {{ option: object }|{ error: string }} Unidad elegida o motivo del rechazo.
+ */
+export function chooseQuoteUnitOption({ quotedPosition = null, requestedPosition, unitOptions }) {
+  const position = requestedPosition ?? quotedPosition ?? (unitOptions.length === 1 ? unitOptions[0].position : null);
+  if (position === null) return { error: "Elige la unidad de medida con la que se cotiza este servicio." };
+  const option = unitOptions.find((candidate) => candidate.position === position);
+  if (!option) return { error: "La unidad elegida no existe en este servicio." };
+  if (option.referenceRate === null) {
+    return { error: "La tarifa de esta unidad está pendiente de validación comercial; no puede cotizarse todavía." };
+  }
+  return { option };
 }
 
 /**
@@ -96,13 +121,14 @@ function comparableDecimal(value, format) {
 /**
  * Representa el contenido versionado de una cotización como texto estable, para decidir si un
  * guardado cambia algo. Incluye cliente, proyecto, observaciones y, en orden, cada concepto con
- * la versión del servicio, la cantidad y la tarifa aplicada.
+ * la versión del servicio, la unidad elegida, la cantidad y la tarifa aplicada.
  *
  * @param {object} content - Contenido de la cotización.
  * @param {number} content.clientId - Cliente.
  * @param {number} content.projectId - Proyecto.
  * @param {string|null} content.notes - Observaciones.
- * @param {Array<{ serviceId: number, serviceVersionId: number, quantity: string, unitRate: string }>} content.items - Conceptos.
+ * @param {Array<{ serviceId: number, serviceVersionId: number, serviceVersionUnitOptionId: number, quantity: string,
+ *   unitRate: string }>} content.items - Conceptos.
  * @returns {string} Huella comparable del contenido.
  */
 function quoteContentFingerprint({ clientId, items, notes, projectId }) {
@@ -113,6 +139,7 @@ function quoteContentFingerprint({ clientId, items, notes, projectId }) {
     items.map((item) => [
       Number(item.serviceId),
       Number(item.serviceVersionId),
+      Number(item.serviceVersionUnitOptionId),
       comparableDecimal(item.quantity, QUANTITY_FORMAT),
       comparableDecimal(item.unitRate, QUOTE_DECIMAL_FORMATS.unitRate),
     ]),

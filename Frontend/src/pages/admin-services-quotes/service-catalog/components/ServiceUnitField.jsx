@@ -3,19 +3,20 @@ import { useMemo, useRef, useState } from "react";
 import Input from "../../../../components/ui/Input/Input.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import { useServiceUnitCombobox } from "../hooks/useServiceUnitCombobox.js";
-import { toDenominationTag } from "../utils/serviceFormValues.js";
+import { toBaseUnitTag, toDenominationTag } from "../utils/serviceFormValues.js";
 import {
-  filterServiceUnitOptions, groupServiceUnitOptions, resolveSelectedUnitSymbol, toServiceUnitOption,
+  baseOnlyOptionId, buildServiceUnitSelectionOptions, filterServiceUnitOptions, groupServiceUnitOptions, resolveSelectedUnitSymbol,
 } from "../utils/serviceUnitSelection.js";
 import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
 
 /**
  * Campo «Unidad de medida» del formulario de servicios (Figma 5764:226084): un único combobox
- * editable. Al hacer clic se despliegan las unidades registradas (denominaciones activas),
- * agrupadas por su unidad base; escribir en el mismo campo las filtra por símbolo, categoría o nombre de la base, sin
- * distinguir mayúsculas ni acentos. Conserva la composición de Figma: el símbolo de la base en
- * el prefijo («m²») y la categoría como Tag con cierre («de construcción»), ambos derivados de
- * la unidad elegida.
+ * editable. Al hacer clic se despliegan las unidades agrupadas por su unidad base: primero la base
+ * sola (sin denominación, como admite el backend) y después sus denominaciones activas; escribir
+ * en el mismo campo las filtra por símbolo, categoría o nombre de la base, sin distinguir
+ * mayúsculas ni acentos. Conserva la composición de Figma: el símbolo de la base en el prefijo
+ * («m²») y la categoría como Tag con cierre («de construcción» o, sin denominación, el nombre de
+ * la base), ambos derivados de la unidad elegida. Se reutiliza para las unidades alternativas.
  *
  * Tres estados, con la unidad del borrador (`measurementUnitId` + `unitDenomination`) como única
  * fuente de verdad y la búsqueda como estado temporal de interfaz:
@@ -35,8 +36,11 @@ import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
  *
  * @param {Object} props - Selección, opciones y callbacks.
  * @param {string} props.id - Id del campo nativo (enfoque inicial y etiqueta).
+ * @param {string} [props.label="Unidad de medida"] - Etiqueta visible del campo.
+ * @param {Array<{id: number, label: string, description?: string}>} [props.bases] - Bases activas que
+ * pueden asignarse sin denominación (abreviatura en `label`, nombre en `description`).
  * @param {Array<Object>} props.denominations - Unidades registradas que se ofrecen (forma del
- * contrato), ya filtradas por modalidad y disponibilidad.
+ * contrato), ya filtradas por disponibilidad.
  * @param {{id: number, label: string}|null} props.selectedBaseOption - Base elegida (su `label` es el
  * símbolo), incluida una histórica que ya no se ofrece.
  * @param {number|null} props.measurementUnitId - Base elegida.
@@ -49,7 +53,9 @@ import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
  * @param {boolean} props.disabled - Bloquea el campo.
  * @returns {import("react").ReactElement} Campo de unidad con su listado.
  */
-function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurementUnitId, onChange, selectedBaseOption, unitDenomination }) {
+function ServiceUnitField({
+  bases = [], denominations, disabled, hint, id, invalid, label = "Unidad de medida", measurementUnitId, onChange, selectedBaseOption, unitDenomination,
+}) {
   // La consulta pertenece a esta combinación. Un cambio externo de base o unidad (modalidad,
   // alta contextual) no puede reutilizar texto anterior ni necesita sincronizarlo con un efecto.
   const searchKey = `${measurementUnitId}:${unitDenomination?.id ?? ""}`;
@@ -57,7 +63,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   const query = search.key === searchKey ? search.text : "";
   const searching = query !== "";
   const inputRef = useRef(null);
-  const allOptions = useMemo(() => (denominations || []).map(toServiceUnitOption), [denominations]);
+  const allOptions = useMemo(() => buildServiceUnitSelectionOptions(bases, denominations), [bases, denominations]);
   // Grupos por unidad base con resultados; la lista plana (índices de teclado y
   // aria-activedescendant) sigue el mismo orden visual que los grupos.
   const groups = useMemo(() => groupServiceUnitOptions(filterServiceUnitOptions(allOptions, query)), [allOptions, query]);
@@ -72,21 +78,32 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
   const hintId = `${id}-unit-hint`;
   const selectionId = `${id}-selection`;
   const symbol = resolveSelectedUnitSymbol({ denominations, measurementUnitId, selectedBaseOption, unitDenomination });
+  // Base elegida sin denominación: su Tag es el nombre de la base (incluida una base histórica).
+  const selectedBase = measurementUnitId && !unitDenomination
+    ? bases.find((base) => base.id === measurementUnitId) ?? (selectedBaseOption?.id === measurementUnitId ? selectedBaseOption : null)
+    : null;
+  const selectionTag = unitDenomination ? toDenominationTag(unitDenomination) : selectedBase ? toBaseUnitTag(selectedBase) : null;
   // El Tag solo cede su lugar mientras hay texto de búsqueda.
-  const showSelectionTag = Boolean(unitDenomination) && !searching;
+  const showSelectionTag = Boolean(selectionTag) && !searching;
   const noResults = Boolean(query.trim()) && options.length === 0 && allOptions.length > 0;
   const visibleHint = hint || (noResults ? `No hay unidades que coincidan con «${query.trim()}». Puedes crearla con «Crear unidad».` : "");
   // El prefijo es decorativo (aria-hidden): el nombre accesible de la selección vive aquí.
-  const selectionText = [symbol, unitDenomination?.denomination].filter(Boolean).join(" ");
+  const selectionText = [symbol, unitDenomination?.denomination ?? selectionTag?.label].filter(Boolean).join(" ");
+  const selectedOptionId = unitDenomination?.id ?? (measurementUnitId ? baseOnlyOptionId(measurementUnitId) : null);
 
   /**
-   * Elige una unidad registrada, con su base, sustituyendo la anterior (selección única).
+   * Elige una unidad, con o sin denominación, sustituyendo la anterior (selección única).
    *
-   * @param {{denomination: {id: number, denomination: string, measurementUnit: {id: number}}}} option - Opción elegida.
+   * @param {{baseOnly?: boolean, baseId?: number, denomination: {id: number, denomination: string,
+   * measurementUnit: {id: number}}|null}} option - Opción elegida.
    * @returns {void}
    */
   function selectOption(option) {
     setSearch({ key: searchKey, text: "" });
+    if (option.baseOnly) {
+      onChange({ measurementUnitId: option.baseId, unitDenomination: null });
+      return;
+    }
     onChange({
       measurementUnitId: option.denomination.measurementUnit.id,
       unitDenomination: { id: option.denomination.id, denomination: option.denomination.denomination },
@@ -133,13 +150,13 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         id={id}
         type="Tags"
         size="M"
-        label="Unidad de medida"
+        label={label}
         required
         showLabel
         showLabelInfo={false}
         showLeftIcon={false}
         showRightIcon={false}
-        placeholder={unitDenomination ? "" : measurementUnitId ? "Sin denominación guardada" : "Buscar unidad"}
+        placeholder={measurementUnitId ? "" : "Buscar unidad"}
         inputRef={inputRef}
         // Con el Tag visible, el texto (vacío) no ocupa espacio: el Tag dispone de todo el segmento.
         inputClassName={showSelectionTag ? "!w-0 !min-w-0 !flex-none" : undefined}
@@ -151,7 +168,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
         prefixReadOnly
         // Figma: el segmento del símbolo se ve siempre, separado del texto; en el alta, vacío.
         prefixSelectedOption={{ id: measurementUnitId ?? "", label: symbol }}
-        tags={showSelectionTag ? [toDenominationTag(unitDenomination)] : []}
+        tags={showSelectionTag ? [selectionTag] : []}
         tagOptions={[]}
         // Controlado: Enter con texto libre propone una etiqueta nueva que aquí se descarta; quitar
         // la etiqueta deja el campo sin unidad.
@@ -184,7 +201,7 @@ function ServiceUnitField({ denominations, disabled, hint, id, invalid, measurem
           id={listboxId}
           optionId={optionId}
           groups={groups}
-          selectedId={unitDenomination?.id ?? null}
+          selectedId={selectedOptionId}
           activeIndex={activeIndex}
           highlightedIndex={highlightedIndex}
           position={position}

@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from "../errors/appErro
 import {
   QUOTE_CURRENCY,
   QUOTE_SORT_FIELDS,
+  chooseQuoteUnitOption,
   collectDuplicateServiceErrors,
   collectWholeQuantityErrors,
   formatGeneratedQuoteCode,
@@ -27,7 +28,7 @@ import {
   retireCurrentQuoteVersion,
   touchQuoteRecord,
 } from "../repositories/quoteRepository.js";
-import { findServiceVersionSnapshots, lockQuotableServices } from "../repositories/serviceCatalogRepository.js";
+import { findServiceVersionUnitOptions, lockQuotableServices } from "../repositories/serviceCatalogRepository.js";
 import { decodeCursor, pageResult, parsePageLimit } from "../utils/pagination.js";
 import { QUOTE_VERSION_CONFLICT_MESSAGE, translateQuoteError } from "./quoteErrors.js";
 
@@ -180,13 +181,40 @@ function chooseServiceVersions(items, services, current) {
 }
 
 /**
- * Resuelve los conceptos de la cotización dentro de la transacción: rechaza servicios repetidos,
- * bloquea los servicios con FOR SHARE (regla SERVICE_MODALITY_IN_USE), fija su versión, exige
- * cantidades enteras en unidades sin decimales y calcula los importes con el motor único.
+ * Elige la unidad copiada de cada concepto (posición enviada, la ya cotizada con esa misma
+ * versión o la única del servicio) y rechaza las pendientes de validación comercial.
+ *
+ * @param {Array<{ serviceId: number, unitOptionPosition?: number }>} items - Conceptos recibidos.
+ * @param {Array<number>} versionIds - Versión de servicio por concepto.
+ * @param {Map<number, Array<object>>} unitOptionsByVersion - Unidades copiadas por versión.
+ * @param {object|null} current - Cotización vigente al editar.
+ * @returns {Array<object>} Unidad elegida por concepto, en el mismo orden.
+ * @throws {ValidationError} Con `fields.items.N.unitOptionPosition` si alguna unidad no puede cotizarse.
+ */
+function chooseUnitOptions(items, versionIds, unitOptionsByVersion, current) {
+  const fields = {};
+  const quotedPositions = new Map((current?.items ?? []).map((item) => [`${item.service.id}:${item.service.versionId}`, item.unit.position]));
+  const options = items.map((item, index) => {
+    const choice = chooseQuoteUnitOption({
+      quotedPosition: quotedPositions.get(`${item.serviceId}:${versionIds[index]}`) ?? null,
+      requestedPosition: item.unitOptionPosition,
+      unitOptions: unitOptionsByVersion.get(versionIds[index]) ?? [],
+    });
+    if (choice.error) fields[`items.${index}.unitOptionPosition`] = choice.error;
+    return choice.option ?? null;
+  });
+  if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
+  return options;
+}
+
+/**
+ * Resuelve los conceptos en la transacción: rechaza servicios repetidos, bloquea los servicios
+ * FOR SHARE (SERVICE_MODALITY_IN_USE), fija versión y unidad con tarifa confirmada (su referencia),
+ * exige cantidades enteras en unidades sin decimales y calcula los importes con el motor único.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la operación.
- * @param {Array<{ serviceId: number, quantity: string, unitRate: string }>} options.items - Conceptos validados.
+ * @param {Array<{ serviceId: number, unitOptionPosition?: number, quantity: string, unitRate: string }>} options.items - Conceptos validados.
  * @param {object|null} options.current - Cotización vigente al editar; null al crear.
  * @returns {Promise<{ lines: Array<object>, servicesTotal: string }>} Conceptos con subtotal y total.
  * @throws {ValidationError} Si algún concepto no puede guardarse.
@@ -199,18 +227,17 @@ async function resolveQuoteLines(client, { current, items }) {
   const serviceIds = [...new Set(items.map((item) => item.serviceId))].sort((left, right) => left - right);
   const services = await lockQuotableServices(client, serviceIds);
   const versionIds = chooseServiceVersions(items, services, current);
-  const snapshots = await findServiceVersionSnapshots(client, [...new Set(versionIds)]);
-  const lines = items.map((item, index) => {
-    const snapshot = snapshots.get(versionIds[index]);
-    return {
-      quantity: item.quantity,
-      referenceRate: snapshot.referenceRate,
-      serviceId: item.serviceId,
-      serviceVersionId: versionIds[index],
-      unitAllowsDecimals: snapshot.unitAllowsDecimals,
-      unitRate: item.unitRate,
-    };
-  });
+  const unitOptionsByVersion = await findServiceVersionUnitOptions(client, [...new Set(versionIds)]);
+  const unitOptions = chooseUnitOptions(items, versionIds, unitOptionsByVersion, current);
+  const lines = items.map((item, index) => ({
+    quantity: item.quantity,
+    referenceRate: unitOptions[index].referenceRate,
+    serviceId: item.serviceId,
+    serviceVersionId: versionIds[index],
+    serviceVersionUnitOptionId: unitOptions[index].id,
+    unitAllowsDecimals: unitOptions[index].unitAllowsDecimals,
+    unitRate: item.unitRate,
+  }));
   collectWholeQuantityErrors(lines, fields);
   if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
 
@@ -282,6 +309,7 @@ function toStoredContent(quote) {
       quantity: item.quantity,
       serviceId: item.service.id,
       serviceVersionId: item.service.versionId,
+      serviceVersionUnitOptionId: item.unit.optionId,
       unitRate: item.unitRate,
     })),
     notes: quote.notes,

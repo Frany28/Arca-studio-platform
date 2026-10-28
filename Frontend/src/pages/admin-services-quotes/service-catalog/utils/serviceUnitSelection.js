@@ -1,7 +1,8 @@
 /**
- * Construye el mismo catálogo seleccionable para Crear y Editar, con cualquier modalidad: bases
- * activas que tienen denominaciones activas registradas. La referencia histórica se muestra
- * aparte; nunca se incorpora al catálogo como si fuera una nueva asignación válida.
+ * Construye el mismo catálogo seleccionable para Crear y Editar, con cualquier modalidad: todas
+ * las bases activas (una base puede asignarse sola, sin denominación, como admite el backend) y
+ * sus denominaciones activas. La referencia histórica se muestra aparte; nunca se incorpora al
+ * catálogo como si fuera una nueva asignación válida.
  *
  * @param {Array<Object>} baseOptions - Opciones de bases activas obtenidas de la API.
  * @param {Array<Object>} denominations - Denominaciones registradas.
@@ -12,8 +13,59 @@ export function getServiceUnitCatalog(baseOptions, denominations) {
   const baseIds = new Set(bases.map((base) => base.id));
   const selectable = (denominations || []).filter((item) => item.isActive !== false
     && item.measurementUnit?.isActive !== false && baseIds.has(item.measurementUnit?.id));
-  const registeredBaseIds = new Set(selectable.map((item) => item.measurementUnit.id));
-  return { prefixOptions: bases.filter((base) => registeredBaseIds.has(base.id)), denominations: selectable };
+  return { prefixOptions: bases, denominations: selectable };
+}
+
+/**
+ * Identificador de la opción «unidad base sin denominación» del combobox, distinto de los ids
+ * numéricos de las denominaciones.
+ *
+ * @param {number} baseId - Unidad base.
+ * @returns {string} Identificador de la opción.
+ */
+export function baseOnlyOptionId(baseId) {
+  return `base:${baseId}`;
+}
+
+// Categoría visible de la opción «base sola» (el encabezado del grupo ya nombra la base).
+export const BASE_ONLY_CATEGORY = "sin denominación";
+
+/**
+ * Opción del combobox para asignar una unidad base sin denominación («m.l.», «proy.»): muestra
+ * «sin denominación» como categoría y busca también por el nombre de la base («Metro lineal»).
+ *
+ * @param {{id: number, label: string, description?: string}} base - Unidad base del catálogo (abreviatura en `label`).
+ * @returns {Object} Opción presentable con `baseOnly: true` y sin denominación.
+ */
+export function toBaseOnlyUnitOption(base) {
+  const symbol = base.label ?? "";
+  const baseName = base.description ?? "";
+  return {
+    id: baseOnlyOptionId(base.id),
+    baseId: base.id,
+    baseOnly: true,
+    symbol,
+    category: BASE_ONLY_CATEGORY,
+    baseName,
+    label: symbol,
+    searchText: normalizeUnitSearchText([symbol, baseName, BASE_ONLY_CATEGORY].join(" ")),
+    denomination: null,
+  };
+}
+
+/**
+ * Opciones del combobox en el orden del catálogo de bases: por cada base, primero la base sola y
+ * después sus denominaciones registradas, para que el agrupamiento por base las muestre juntas.
+ *
+ * @param {Array<{id: number, label: string, description?: string}>} bases - Bases activas seleccionables.
+ * @param {Array<Object>} denominations - Denominaciones activas de esas bases.
+ * @returns {Array<Object>} Opciones presentables.
+ */
+export function buildServiceUnitSelectionOptions(bases, denominations) {
+  return (bases || []).flatMap((base) => [
+    toBaseOnlyUnitOption(base),
+    ...(denominations || []).filter((item) => item.measurementUnit?.id === base.id).map(toServiceUnitOption),
+  ]);
 }
 
 /**

@@ -77,11 +77,68 @@ function getLineServiceOptions(line, services, includedIds) {
 }
 
 /**
+ * Unidad de un concepto: el Badge de Figma si el servicio tiene una sola unidad y, con varias, un
+ * desplegable con las cotizables (las pendientes de validación comercial no se ofrecen y se
+ * nombran debajo). El error de la API o de la validación va bajo el control.
+ *
+ * @param {Object} props - Concepto, error y callback.
+ * @param {Object} props.line - Concepto del borrador.
+ * @param {string} [props.error] - Error de `items.N.unitOptionPosition`.
+ * @param {boolean} props.disabled - Bloquea el desplegable.
+ * @param {(position: number) => void} props.onChange - Elige una unidad cotizable.
+ * @returns {import("react").ReactElement} Contenido de la celda.
+ */
+function LineUnitField({ disabled, error, line, onChange }) {
+  const choices = line.unitChoices ?? [];
+  const errorId = `quote-line-${line.serviceId}-unit-error`;
+  if (choices.length <= 1) {
+    return (
+      <div className="flex min-w-0 flex-col gap-[4px]">
+        <div className="flex min-w-0">
+          <Badge label={line.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
+        </div>
+        {error ? <HintText id={errorId} hintText={error} state="Error" role="alert" className="w-full" /> : null}
+      </div>
+    );
+  }
+  const quotable = choices.filter((choice) => choice.referenceRate !== null);
+  const pending = choices.filter((choice) => choice.referenceRate === null);
+  return (
+    <div className="flex min-w-0 flex-col gap-[4px]">
+      <DropdownMenu
+        portal
+        type="Text"
+        label={line.unitLabel || "Elige la unidad"}
+        supportingText=""
+        items={quotable.map((choice) => ({ id: choice.position, label: choice.label }))}
+        selectedItemId={line.unitOptionPosition}
+        interactive={quotable.length > 0}
+        truncateTriggerLabel
+        disabled={disabled}
+        showContainer
+        rowHeightClassName="h-[35px]"
+        contentPaddingClassName="px-[4px] py-[8px]"
+        className="min-w-0"
+        aria-label={`Unidad de ${line.serviceName}${line.unitLabel ? `: ${line.unitLabel}` : ""}`}
+        aria-describedby={error ? errorId : undefined}
+        onItemSelect={(item) => onChange(item.id)}
+      />
+      {pending.length ? (
+        <p className="text-body-4 m-0 text-[var(--color-text-100)]">
+          {`Tarifa pendiente de validación comercial: ${pending.map((choice) => choice.label).join(", ")}`}
+        </p>
+      ) : null}
+      {error ? <HintText id={errorId} hintText={error} state="Error" role="alert" className="w-full" /> : null}
+    </div>
+  );
+}
+
+/**
  * «Servicios incluidos» del formulario (Figma 5771:367425): cada concepto con el desplegable de
- * su servicio (cambiarlo trae la unidad y la tarifa del nuevo), su unidad, cantidad y tarifa
- * aplicada editables, el subtotal calculado al momento y «Eliminar» en
- * el menú de la fila; debajo, el total de la cotización. Los importes mostrados son una vista
- * previa con las reglas del backend, que recalcula y guarda los definitivos.
+ * su servicio (cambiarlo trae la unidad y la tarifa del nuevo), su unidad (elegible si el servicio
+ * tiene varias cotizables), cantidad y tarifa aplicada editables, el subtotal calculado al
+ * momento y «Eliminar» en el menú de la fila; debajo, el total de la cotización. Los importes
+ * mostrados son una vista previa con las reglas del backend, que recalcula los definitivos.
  *
  * @param {Object} props - Conceptos, importes, errores y callbacks.
  * @param {Array<Object>} props.lines - Conceptos del borrador.
@@ -91,10 +148,11 @@ function getLineServiceOptions(line, services, includedIds) {
  * @param {(key: string) => void} props.onRemove - Quita un concepto.
  * @param {Array<Object>} props.services - Servicios activos del tabulador (opciones del desplegable).
  * @param {(key: string, service: Object) => void} props.onServiceChange - Cambia el servicio de un concepto.
+ * @param {(key: string, position: number, index: number) => void} props.onUnitChange - Elige la unidad de un concepto.
  * @param {boolean} props.disabled - Bloquea la edición durante el guardado.
  * @returns {import("react").ReactElement} Sección.
  */
-function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onServiceChange, preview, services }) {
+function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onServiceChange, onUnitChange, preview, services }) {
   const [openHintKey, setOpenHintKey] = useState(null);
   const includedIds = new Set(lines.map((line) => line.serviceId));
   const total = preview.total === null ? "—" : formatDecimalMoney(preview.total, { alwaysShowCents: true });
@@ -164,9 +222,12 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onSe
                       ) : null}
                     </th>
                     <td className="px-[24px] py-[16px]">
-                      <div className="flex min-w-0">
-                        <Badge label={line.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
-                      </div>
+                      <LineUnitField
+                        line={line}
+                        error={errors[`items.${index}.unitOptionPosition`]}
+                        disabled={disabled}
+                        onChange={(position) => onUnitChange(line.key, position, index)}
+                      />
                     </td>
                     <td className="px-[24px] py-[16px]">
                       <LineNumberField

@@ -97,8 +97,8 @@ test("alta y edición: COT- con el id, importes del motor y versiones inmutables
 
   await assert.rejects(rows("update public.quote_versions set notes = 'x' where quote_id = $1", [created.id]), { code: "55000" });
   await assert.rejects(rows("delete from public.quote_items"), { code: "55000" });
-  await assert.rejects(rows(`insert into public.quote_items (quote_version_id, line_number, service_id, service_version_id, quantity, unit_rate, reference_rate, subtotal)
-    select v.id, 9, i.service_id, i.service_version_id, 1, 10, 10, 11 from public.quote_versions v join public.quote_items i on i.quote_version_id = v.id
+  await assert.rejects(rows(`insert into public.quote_items (quote_version_id, line_number, service_id, service_version_id, service_version_unit_option_id, quantity, unit_rate, reference_rate, subtotal)
+    select v.id, 9, i.service_id, i.service_version_id, i.service_version_unit_option_id, 1, 10, 10, 11 from public.quote_versions v join public.quote_items i on i.quote_version_id = v.id
     where v.quote_id = $1 and v.is_current limit 1`, [created.id]), { code: "23514" }, "El CHECK rechaza un subtotal mal calculado");
 });
 

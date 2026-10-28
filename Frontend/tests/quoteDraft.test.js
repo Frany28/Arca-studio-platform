@@ -8,7 +8,9 @@ import {
   createLineFromService,
   draftFromQuote,
   isQuoteDraftDirty,
+  isServiceQuotable,
   normalizeServerFields,
+  selectLineUnit,
   toEditableDecimal,
   toQuotePayload,
   validateQuoteDraft,
@@ -31,10 +33,44 @@ test("decimales editables sin ceros sobrantes y conceptos con la tarifa de refer
   assert.equal(toEditableDecimal("12.50"), "12.5");
   assert.equal(toEditableDecimal("100"), "100");
   assert.equal(toEditableDecimal("abc"), "abc");
+  // Con una sola unidad (contrato anterior, sin unitOptions) se elige sola, con la tarifa del servicio.
   assert.deepEqual(createLineFromService(POINT_SERVICE), {
     key: "service-2", quantity: "", referenceRate: "45.50", serviceCode: "SERV-002", serviceDescription: "Planos y memoria",
     serviceId: 2, serviceName: "Puntos eléctricos", unitAllowsDecimals: false, unitLabel: "m² de construcción", unitRate: "45.5",
+    unitChoices: [{ allowsDecimals: false, label: "m² de construcción", position: 1, referenceRate: "45.50" }], unitOptionPosition: 1,
   });
+});
+
+// «Modelado 3D & Renders» (tabulador 3.2): proyecto a $450 y espacio pendiente de validación comercial.
+const MODELING = {
+  ...SERVICE, code: "SERV-002", id: 4, name: "Modelado 3D & Renders", referenceRate: "450.00", unitLabel: "proy.",
+  unitOptions: [
+    { label: "proy.", measurementUnit: { allowsDecimals: false }, position: 1, ratePending: false, referenceRate: "450.00" },
+    { label: "esp.", measurementUnit: { allowsDecimals: false }, position: 2, ratePending: true, referenceRate: null },
+  ],
+};
+// «Recorrido Virtual / VR»: minuto y proyecto, ambas pendientes.
+const VIRTUAL_TOUR = {
+  ...MODELING, id: 5, name: "Recorrido Virtual / VR", referenceRate: "600.00",
+  unitOptions: [{ ...MODELING.unitOptions[1], label: "min", position: 1 }, { ...MODELING.unitOptions[1], label: "proy.", position: 2 }],
+};
+
+test("varias unidades: solo se eligen las cotizables y nunca con una tarifa pendiente", () => {
+  assert.equal(isServiceQuotable(MODELING), true);
+  assert.equal(isServiceQuotable(VIRTUAL_TOUR), false, "Sin ninguna tarifa confirmada no se cotiza");
+  // Proyecto es la única cotizable: se elige sola con su tarifa de referencia.
+  const line = createLineFromService(MODELING);
+  assert.deepEqual([line.unitOptionPosition, line.unitLabel, line.referenceRate, line.unitRate], [1, "proy.", "450.00", "450"]);
+  assert.deepEqual(selectLineUnit([line], line.key, 2)[0], line, "Espacio está pendiente y no se aplica");
+  // Con varias cotizables hay que elegir; sin elegir no hay tarifa ni se puede enviar.
+  const confirmed = { ...MODELING, unitOptions: [MODELING.unitOptions[0], { ...MODELING.unitOptions[1], ratePending: false, referenceRate: "380.00" }] };
+  const open = createLineFromService(confirmed);
+  assert.deepEqual([open.unitOptionPosition, open.referenceRate, open.unitRate], [null, null, ""]);
+  const draft = { client: { id: 3 }, lines: [{ ...open, quantity: "1" }], notes: "", project: { id: 9 } };
+  assert.match(validateQuoteDraft(draft, calculateQuotePreview(draft.lines))["items.0.unitOptionPosition"], /Elige la unidad/);
+  const [chosen] = selectLineUnit(draft.lines, open.key, 2);
+  assert.deepEqual([chosen.unitOptionPosition, chosen.unitLabel, chosen.referenceRate, chosen.unitRate], [2, "esp.", "380.00", "380"]);
+  assert.equal(toQuotePayload({ ...draft, lines: [chosen] }).items[0].unitOptionPosition, 2);
 });
 
 test("agregar servicios: cada servicio una sola vez y en el orden elegido", () => {
@@ -50,7 +86,7 @@ test("payload: ids, observaciones vacías como null y decimales normalizados", (
     notes: "   ",
     project: { id: 9, name: "Apto. 910" },
   };
-  assert.deepEqual(toQuotePayload(draft), { clientId: 3, items: [{ quantity: "200.5", serviceId: 1, unitRate: "12" }], notes: null, projectId: 9 });
+  assert.deepEqual(toQuotePayload(draft), { clientId: 3, items: [{ quantity: "200.5", serviceId: 1, unitOptionPosition: 1, unitRate: "12" }], notes: null, projectId: 9 });
   assert.equal(toQuotePayload({ ...draft, notes: " Visita " }).notes, "Visita");
 });
 

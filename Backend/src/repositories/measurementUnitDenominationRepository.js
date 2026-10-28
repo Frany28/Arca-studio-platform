@@ -6,9 +6,11 @@ const DENOMINATION_COLUMNS = `
   d.id, d.public_code, d.denomination, d.is_active, d.created_at, d.updated_at,
   u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
   u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active, u.sort_order as unit_sort_order,
-  (select count(*) from public.services s where s.unit_denomination_id = d.id and s.is_active)::int as active_service_count,
-  (not exists (select 1 from public.services s where s.unit_denomination_id = d.id)
-    and not exists (select 1 from public.service_versions v where v.unit_denomination_id = d.id)) as base_unit_editable`;
+  (select count(distinct s.id) from public.service_unit_options o
+     inner join public.services s on s.id = o.service_id
+     where o.unit_denomination_id = d.id and s.is_active)::int as active_service_count,
+  (not exists (select 1 from public.service_unit_options o where o.unit_denomination_id = d.id)
+    and not exists (select 1 from public.service_version_unit_options v where v.unit_denomination_id = d.id)) as base_unit_editable`;
 
 const DENOMINATION_FROM = `
   from public.measurement_unit_denominations d
@@ -138,8 +140,10 @@ export async function insertDenomination(client, { denomination, measurementUnit
 }
 
 /**
- * Cuenta las referencias de una denominación en servicios (de cualquier estado) y en versiones
- * históricas. Se llama tras bloquearla FOR UPDATE para ver las referencias ya confirmadas.
+ * Cuenta las referencias de una denominación en servicios (de cualquier estado, como unidad
+ * principal o alternativa) y en versiones históricas. Se llama tras bloquearla FOR UPDATE para
+ * ver las referencias ya confirmadas. La posición 1 de las unidades replica la de services, así
+ * que basta con contar las unidades vigentes y las copiadas en versiones.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {number} denominationId - Identificador de la denominación.
@@ -147,8 +151,8 @@ export async function insertDenomination(client, { denomination, measurementUnit
  */
 export async function countDenominationReferences(client, denominationId) {
   const result = await client.query(
-    `select (select count(*) from public.services where unit_denomination_id = $1)::int as service_count,
-       (select count(*) from public.service_versions where unit_denomination_id = $1)::int as version_count`,
+    `select (select count(distinct service_id) from public.service_unit_options where unit_denomination_id = $1)::int as service_count,
+       (select count(distinct service_version_id) from public.service_version_unit_options where unit_denomination_id = $1)::int as version_count`,
     [denominationId],
   );
   return { serviceCount: result.rows[0].service_count, versionCount: result.rows[0].version_count };

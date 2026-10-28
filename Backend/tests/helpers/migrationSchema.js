@@ -74,6 +74,18 @@ export function addedColumns(sql, table) {
 }
 
 /**
+ * Lista las columnas que una migración vuelve obligatorias con ALTER TABLE ... ALTER COLUMN ...
+ * SET NOT NULL (por ejemplo, tras rellenar una columna añadida a una tabla con datos).
+ *
+ * @param {string} sql - SQL sin comentarios.
+ * @param {string} table - Tabla buscada.
+ * @returns {Array<string>} Columnas que pasan a NOT NULL.
+ */
+export function columnsSetNotNull(sql, table) {
+  return [...sql.matchAll(new RegExp(`ALTER TABLE public\\.${table} ALTER COLUMN ([a-z_]+) SET NOT NULL;`, "g"))].map(([, name]) => name);
+}
+
+/**
  * Reúne las columnas de una tabla a lo largo de todo el historial de migraciones.
  *
  * @param {string} table - Tabla buscada.
@@ -86,6 +98,9 @@ export async function accumulatedColumns(table) {
     const body = createTableBody(sql, table);
     if (body) for (const [column, definition] of sqlColumns(body)) columns.set(column, definition);
     for (const [column, definition] of addedColumns(sql, table)) columns.set(column, definition);
+    for (const column of columnsSetNotNull(sql, table)) {
+      if (columns.has(column) && !/NOT NULL/.test(columns.get(column))) columns.set(column, `${columns.get(column)} NOT NULL`);
+    }
   }
   return columns;
 }

@@ -100,7 +100,20 @@ function createCatalogDatabase() {
     }
     if (sql.includes("insert into public.service_versions")) {
       inserts.push({ params, sql });
-      return { rowCount: 1, rows: [] };
+      return { rowCount: 1, rows: [{ id: "1" }] };
+    }
+    // Unidades del servicio (una, con la tarifa del servicio); su copia en la versión la hace un trigger.
+    if (sql.includes("insert into public.service_unit_options")) return { rowCount: params[1].length, rows: [] };
+    if (inserted && sql.includes("from public.service_unit_options o")) {
+      const unit = UNIT_ROWS[inserted[5]];
+      return {
+        rowCount: 1,
+        rows: [{
+          denomination_id: null, option_id: "70", position: 1, presentation_label: null, reference_rate: inserted[6], service_id: inserted[0],
+          unit_allows_decimals: unit.allows_decimals, unit_code: unit.code, unit_id: unit.id, unit_is_active: true, unit_name: unit.name,
+          unit_symbol: unit.symbol,
+        }],
+      };
     }
     if (inserted && /from public\.services s\b/.test(sql)) {
       const unit = UNIT_ROWS[inserted[5]];

@@ -38,7 +38,8 @@ const REGISTERED_UNITS = [
 
 test("borrador: vacío en el alta y con los datos guardados (sin convertir la tarifa) en la edición", () => {
   // El alta empieza sin modalidad: el administrador debe elegirla.
-  assert.deepEqual(createServiceDraft(null), { name: "", kind: "", description: "", measurementUnitId: null, unitDenomination: null, referenceRate: "" });
+  const noAlternatives = { alternativeUnits: [], presentationLabel: "", primaryUnitRate: "" };
+  assert.deepEqual(createServiceDraft(null), { name: "", kind: "", description: "", measurementUnitId: null, unitDenomination: null, referenceRate: "", ...noAlternatives });
   assert.deepEqual(createServiceDraft(SERVICE), {
     name: "Anteproyecto",
     kind: "turnkey",
@@ -46,7 +47,61 @@ test("borrador: vacío en el alta y con los datos guardados (sin convertir la ta
     measurementUnitId: 1,
     unitDenomination: { id: 10, denomination: "de construcción" },
     referenceRate: "12.00",
+    ...noAlternatives,
   });
+});
+
+// «Modelado 3D & Renders» (tabulador 3.2): proyecto a $450 y espacio pendiente de validación comercial.
+const PROJECT = { id: 38, code: "project", symbol: "proy.", name: "Proyecto" };
+const SPACE = { id: 39, code: "space", symbol: "esp.", name: "Espacio" };
+const MODELING = {
+  ...SERVICE, kind: "individual", measurementUnit: PROJECT, unitDenomination: null, referenceRate: "450.00",
+  unitOptions: [
+    { id: 1, label: "proy.", measurementUnit: PROJECT, position: 1, presentationLabel: null, ratePending: false, referenceRate: "450.00", unitDenomination: null },
+    { id: 2, label: "esp.", measurementUnit: SPACE, position: 2, presentationLabel: null, ratePending: true, referenceRate: null, unitDenomination: null },
+  ],
+};
+const BASES = [{ id: 1, label: "m²", description: "Metro cuadrado" }, { id: 6, label: "m.l.", description: "Metro lineal" }, { id: 38, label: "proy.", description: "Proyecto" }, { id: 39, label: "esp.", description: "Espacio" }];
+
+test("varias unidades: borrador, envío y edición sin inventar tarifas", () => {
+  const draft = createServiceDraft(MODELING);
+  assert.deepEqual([draft.primaryUnitRate, draft.alternativeUnits.length, draft.alternativeUnits[0].measurementUnitId, draft.alternativeUnits[0].referenceRate], ["450.00", 1, 39, ""]);
+  // Sin cambios no se envía nada; la tarifa vacía viaja como null (pendiente), nunca copiada.
+  assert.equal(toUpdateServiceChanges(draft, MODELING), null);
+  const confirmed = { ...draft, alternativeUnits: [{ ...draft.alternativeUnits[0], referenceRate: "380.00" }] };
+  assert.deepEqual(toUpdateServiceChanges(confirmed, MODELING), {
+    expectedVersion: 3,
+    unitOptions: [
+      { measurementUnitId: 38, unitDenominationId: null, presentationLabel: null, referenceRate: "450.00" },
+      { measurementUnitId: 39, unitDenominationId: null, presentationLabel: null, referenceRate: "380.00" },
+    ],
+  });
+  // Alta con alternativas: lista completa con tarifa por unidad.
+  const created = toCreateServicePayload({ ...confirmed, name: "Modelado 3D & Renders", alternativeUnits: [{ ...draft.alternativeUnits[0] }] });
+  assert.deepEqual(created.unitOptions.map((option) => option.referenceRate), ["450.00", null]);
+  assert.equal("measurementUnitId" in created, false);
+  // Texto comercial con una sola unidad: también viaja en la lista, sin tarifa (la del servicio).
+  const permits = toCreateServicePayload({ ...VALID_DRAFT, measurementUnitId: 38, presentationLabel: " Global por Proyecto " });
+  assert.deepEqual(permits.unitOptions, [{ measurementUnitId: 38, unitDenominationId: null, presentationLabel: "Global por Proyecto" }]);
+});
+
+test("varias unidades: validación de repetidas, disponibilidad, tarifas y máximo", () => {
+  const draft = createServiceDraft(MODELING);
+  const context = { availableBases: BASES, availableDenominations: [], preserveStoredUnit: true };
+  assert.deepEqual(validateServiceDraft(draft, context), {});
+  const repeated = { ...draft, alternativeUnits: [{ ...draft.alternativeUnits[0], measurementUnitId: 38 }] };
+  assert.equal(validateServiceDraft(repeated, context)["alternative.0"], "Esta unidad ya está incluida en el servicio.");
+  const empty = { ...draft, alternativeUnits: [{ ...draft.alternativeUnits[0], measurementUnitId: null }] };
+  assert.equal(validateServiceDraft(empty, context)["alternative.0"], "Elige la unidad alternativa.");
+  const inactive = { ...draft, alternativeUnits: [{ ...draft.alternativeUnits[0], measurementUnitId: 99 }] };
+  assert.equal(validateServiceDraft(inactive, context)["alternative.0"], "Elige una unidad base activa.");
+  // Una alternativa ya guardada se conserva aunque ya no esté disponible.
+  assert.equal(validateServiceDraft(inactive, { ...context, storedUnitKeys: new Set(["99:"]) })["alternative.0"], undefined);
+  const badRate = { ...draft, primaryUnitRate: "1.234", alternativeUnits: [{ ...draft.alternativeUnits[0], referenceRate: "-1" }] };
+  assert.deepEqual(Object.keys(validateServiceDraft(badRate, context)).sort(), ["alternativeRate.0", "primaryUnitRate"]);
+  const tooMany = { ...draft, alternativeUnits: Array.from({ length: 10 }, (_value, index) => ({ ...draft.alternativeUnits[0], key: `k${index}`, measurementUnitId: 100 + index })) };
+  assert.ok(validateServiceDraft(tooMany, { ...context, availableBases: undefined }).alternatives);
+  assert.ok(validateServiceDraft({ ...draft, presentationLabel: "x".repeat(81) }, context).presentationLabel);
 });
 
 test("validación: campos obligatorios, límites del contrato y tarifa NUMERIC(14,2) sin signo", () => {
@@ -72,10 +127,14 @@ test("modalidad: solo individual o turnkey, y ninguna restringe la unidad regist
   }
 });
 
-test("unidad: se exige una unidad registrada; solo la edición conserva una base sin denominación", () => {
-  assert.equal(validateServiceDraft(VALID_DRAFT).unit, "Elige la unidad de medida.", "Una base sola no es una unidad");
-  assert.equal(validateServiceDraft(VALID_DRAFT, { allowBaseOnly: true }).unit, undefined, "Servicio guardado solo con la base");
+test("unidad: una base activa sin denominación es válida, como admite el backend; una base no disponible no", () => {
+  assert.equal(validateServiceDraft(VALID_DRAFT).unit, undefined, "Una base sola es una unidad válida");
+  assert.equal(validateServiceDraft(VALID_DRAFT, { availableBases: [{ id: 1 }] }).unit, undefined);
+  assert.equal(validateServiceDraft(VALID_DRAFT, { availableBases: [{ id: 6 }] }).unit, "Elige una unidad base activa.");
+  assert.equal(validateServiceDraft(VALID_DRAFT, { availableBases: [{ id: 6 }], preserveStoredUnit: true }).unit, undefined, "La base guardada se conserva");
   assert.deepEqual(validateServiceDraft(REGISTERED), {});
+  // Una sola unidad sin texto comercial mantiene el atajo del contrato.
+  assert.deepEqual(toCreateServicePayload({ ...VALID_DRAFT, measurementUnitId: 6 }), { name: "Servicio", kind: "individual", measurementUnitId: 6, referenceRate: "12.50" });
 });
 
 test("unidades registradas: sugerencias con símbolo", () => {

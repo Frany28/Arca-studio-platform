@@ -7,6 +7,13 @@ import {
   listChangedServiceFields,
   mergeServiceChanges,
 } from "../domain/serviceCatalog.js";
+import {
+  collectUnitOptionErrors,
+  currentUnitOptions,
+  resolveUnitOptions,
+  toCanonicalUnitOption,
+  unitOptionKey,
+} from "../domain/serviceUnitOptions.js";
 import { lockDenomination } from "../repositories/measurementUnitDenominationRepository.js";
 import { findMeasurementUnitById } from "../repositories/measurementUnitRepository.js";
 import { serviceHasQuoteReferences } from "../repositories/quoteRepository.js";
@@ -16,6 +23,7 @@ import {
   insertServiceVersionSnapshot,
   listServices,
   lockServiceForUpdate,
+  replaceServiceUnitOptions,
   reserveServiceId,
   retireCurrentServiceVersion,
   serviceCodeExists,
@@ -75,14 +83,15 @@ export async function getService(serviceId) {
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la asignación.
  * @param {number} options.measurementUnitId - Unidad elegida.
+ * @param {string} [options.field="measurementUnitId"] - Ruta del campo en el error.
  * @returns {Promise<void>}
  * @throws {ValidationError} Si la unidad no existe o está inactiva.
  */
-async function assertAssignableUnit(client, { measurementUnitId }) {
+async function assertAssignableUnit(client, { field = "measurementUnitId", measurementUnitId }) {
   const unit = await findMeasurementUnitById(measurementUnitId, { executor: client, lockForShare: true });
-  if (!unit) throw new ValidationError(undefined, { measurementUnitId: "La unidad de medida no existe." });
+  if (!unit) throw new ValidationError(undefined, { [field]: "La unidad de medida no existe." });
   if (!unit.isActive) {
-    throw new ValidationError(undefined, { measurementUnitId: "La unidad de medida está inactiva." });
+    throw new ValidationError(undefined, { [field]: "La unidad de medida está inactiva." });
   }
 }
 
@@ -95,51 +104,114 @@ async function assertAssignableUnit(client, { measurementUnitId }) {
  * @param {object} options - Datos de la asignación.
  * @param {number} options.measurementUnitId - Unidad base del servicio.
  * @param {number} options.unitDenominationId - Denominación elegida.
+ * @param {string} [options.field="unitDenominationId"] - Ruta del campo en el error.
  * @returns {Promise<void>}
  * @throws {ValidationError} Si la denominación no existe, está inactiva o es de otra unidad base.
  */
-async function assertAssignableDenomination(client, { measurementUnitId, unitDenominationId }) {
+async function assertAssignableDenomination(client, { field = "unitDenominationId", measurementUnitId, unitDenominationId }) {
   const denomination = await lockDenomination(client, unitDenominationId, "share");
-  if (!denomination) throw new ValidationError(undefined, { unitDenominationId: "La denominación no existe." });
+  if (!denomination) throw new ValidationError(undefined, { [field]: "La denominación no existe." });
   if (denomination.measurementUnit.id !== measurementUnitId) {
-    throw new ValidationError(undefined, { unitDenominationId: "La denominación no pertenece a la unidad de medida seleccionada." });
+    throw new ValidationError(undefined, { [field]: "La denominación no pertenece a la unidad de medida seleccionada." });
   }
   if (!denomination.isActive) {
-    throw new ValidationError(undefined, { unitDenominationId: "La denominación está inactiva." });
+    throw new ValidationError(undefined, { [field]: "La denominación está inactiva." });
   }
 }
 
 /**
- * Valida unidad y denominación cuando cambian o al reactivar el servicio, bloqueándolas con FOR SHARE
- * hasta el COMMIT; cambiar solo la modalidad no las revalida (no restringe la unidad, ni histórica).
- * Cambiar la base conservando la denominación anterior se rechaza: pertenece a la otra base.
+ * Rutas de los errores de una unidad: las del contrato anterior para la principal enviada con el
+ * atajo `measurementUnitId` / `unitDenominationId`, y `unitOptions.N.*` para la lista completa.
+ *
+ * @param {boolean} usesList - El cuerpo envió `unitOptions`.
+ * @param {number} index - Posición de la unidad (0 = principal).
+ * @returns {{ unit: string, denomination: string }} Rutas de los campos.
+ */
+function unitOptionFields(usesList, index) {
+  return usesList
+    ? { denomination: `unitOptions.${index}.unitDenominationId`, unit: `unitOptions.${index}.measurementUnitId` }
+    : { denomination: "unitDenominationId", unit: "measurementUnitId" };
+}
+
+/**
+ * Valida y bloquea FOR SHARE hasta el COMMIT las unidades asignadas: todas al crear o reactivar y,
+ * al editar, solo las combinaciones nuevas (una unidad histórica inactiva ya asignada se conserva).
+ * Antes comprueba las reglas sin base de datos: cantidad, repeticiones y tarifa única.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {object} options - Datos de la operación.
+ * @param {Array<object>} options.unitOptions - Unidades canónicas resultantes.
+ * @param {Array<object>} options.current - Unidades canónicas vigentes (vacío en el alta).
+ * @param {boolean} options.revalidateAll - Alta o reactivación: valida todas.
+ * @param {object} options.payload - Cuerpo validado.
+ * @param {string} options.referenceRate - Tarifa resultante del servicio.
+ * @returns {Promise<void>}
+ * @throws {ValidationError} Si alguna unidad no puede asignarse.
+ */
+async function assertAssignableUnitOptions(client, { current, payload, referenceRate, revalidateAll, unitOptions }) {
+  const usesList = payload.unitOptions !== undefined;
+  const fields = collectUnitOptionErrors(usesList ? payload.unitOptions.map(toCanonicalUnitOption) : null, referenceRate);
+  if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
+  const assigned = new Set(current.map(unitOptionKey));
+  // Si una desactivación de la denominación toma su bloqueo antes, la lectura posterior a FOR SHARE
+  // ya la ve inactiva y se rechaza; si la asignación lo toma antes, la desactivación cuenta después
+  // este servicio activo (IN_USE).
+  for (const [index, option] of unitOptions.entries()) {
+    if (!revalidateAll && assigned.has(unitOptionKey(option))) continue;
+    const path = unitOptionFields(usesList, index);
+    await assertAssignableUnit(client, { field: path.unit, measurementUnitId: option.measurementUnitId });
+    if (option.unitDenominationId !== null) {
+      await assertAssignableDenomination(client, {
+        field: path.denomination,
+        measurementUnitId: option.measurementUnitId,
+        unitDenominationId: option.unitDenominationId,
+      });
+    }
+  }
+}
+
+/**
+ * Valida las unidades de una edición. Cambiar la base principal con el atajo conservando la
+ * denominación anterior se rechaza: pertenece a la otra base. Cambiar solo la modalidad no las
+ * revalida (no restringe la unidad, ni histórica); reactivar el servicio sí.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la edición.
+ * @param {object} options.current - Servicio vigente.
  * @param {Array<string>} options.changedFields - Campos con cambio efectivo.
  * @param {object} options.next - Estado resultante (mergeServiceChanges).
  * @param {object} options.payload - Cuerpo validado de la edición.
  * @returns {Promise<void>}
- * @throws {ValidationError} Si la unidad o la denominación no son válidas para el estado resultante.
+ * @throws {ValidationError} Si alguna unidad no es válida para el estado resultante.
  */
-async function assertServiceUnitChanges(client, { changedFields, next, payload }) {
-  const unitChanged = changedFields.includes("measurementUnitId");
-  const denominationChanged = changedFields.includes("unitDenominationId");
-  // Reactivar revalida aunque los ids no cambien. Si una desactivación de la denominación toma su
-  // bloqueo antes, la lectura posterior a FOR SHARE ya la ve inactiva y se rechaza; si la
-  // reactivación lo toma antes, la desactivación cuenta después este servicio activo (IN_USE).
+async function assertServiceUnitChanges(client, { changedFields, current, next, payload }) {
   const reactivating = changedFields.includes("isActive") && next.isActive;
-  if (unitChanged && payload.unitDenominationId === undefined && next.unitDenominationId !== null) {
+  if (payload.measurementUnitId !== undefined && payload.measurementUnitId !== current.measurementUnit.id
+    && payload.unitDenominationId === undefined && current.unitDenomination) {
     throw new ValidationError(undefined, {
       unitDenominationId: "La denominación actual pertenece a otra unidad. Indica una denominación de la nueva unidad o null.",
     });
   }
-  if (unitChanged || reactivating) {
-    await assertAssignableUnit(client, { measurementUnitId: next.measurementUnitId });
-  }
-  if ((unitChanged || denominationChanged || reactivating) && next.unitDenominationId !== null) {
-    await assertAssignableDenomination(client, { measurementUnitId: next.measurementUnitId, unitDenominationId: next.unitDenominationId });
-  }
+  if (!changedFields.includes("unitOptions") && !reactivating && payload.unitOptions === undefined) return;
+  await assertAssignableUnitOptions(client, {
+    current: currentUnitOptions(current),
+    payload,
+    referenceRate: next.referenceRate,
+    revalidateAll: reactivating,
+    unitOptions: next.unitOptions,
+  });
+}
+
+/**
+ * Unidades de un alta: la lista `unitOptions` o, con el atajo del contrato anterior, la unidad
+ * principal (`measurementUnitId` y `unitDenominationId` opcional). Con una sola unidad su tarifa
+ * es la del servicio.
+ *
+ * @param {object} payload - Cuerpo validado por serviceCreateSchema.
+ * @returns {Array<object>} Unidades canónicas del servicio nuevo.
+ */
+function resolveCreateUnitOptions(payload) {
+  return resolveUnitOptions({ changes: payload, current: [], referenceRate: payload.referenceRate });
 }
 
 // Reservas de id permitidas cuando el código generado coincide con uno heredado escrito a mano.
@@ -164,29 +236,27 @@ async function reserveGeneratedServiceCode(client) {
 }
 
 /**
- * Crea un servicio y su versión 1 en una única transacción: si falla cualquiera de las dos
- * escrituras no queda ningún registro. El código `SERV-001` lo genera siempre el sistema a
+ * Crea un servicio, sus unidades y su versión 1 en una única transacción: si falla cualquier
+ * escritura no queda ningún registro. El código `SERV-001` lo genera siempre el sistema a
  * partir del id reservado (el cuerpo validado no admite código) y la unicidad la garantiza
  * además PostgreSQL (uq_services_code). La modalidad (`kind`) la elige el administrador y
- * admite cualquier unidad base activa (con una denominación activa de esa base), comprobada
- * aquí con la unidad bloqueada.
+ * admite cualquier unidad base activa (con o sin denominación activa de esa base). Todas las
+ * validaciones se hacen antes de reservar el id, para no consumir códigos en un alta inválida.
  *
  * @param {object} options - Datos de la operación.
  * @param {object} options.payload - Cuerpo validado por serviceCreateSchema (`kind` ya resuelto;
  *   `individual` si se omite).
  * @param {{ id: number }} options.user - Administrador autenticado.
  * @returns {Promise<object>} Servicio creado con currentVersion = 1.
- * @throws {ValidationError} Si la unidad o la denominación no existen, están inactivas o no corresponden.
+ * @throws {ValidationError} Si alguna unidad o denominación no existe, está inactiva o no corresponde.
  * @throws {ConflictError} SERVICE_CODE_ALREADY_EXISTS si no hay código libre.
  */
 export async function createService({ payload, user }) {
   const kind = payload.kind ?? DEFAULT_SERVICE_KIND;
+  const unitOptions = resolveCreateUnitOptions(payload);
   try {
     return await withTransaction(async (client) => {
-      await assertAssignableUnit(client, { measurementUnitId: payload.measurementUnitId });
-      if (payload.unitDenominationId) {
-        await assertAssignableDenomination(client, { measurementUnitId: payload.measurementUnitId, unitDenominationId: payload.unitDenominationId });
-      }
+      await assertAssignableUnitOptions(client, { current: [], payload, referenceRate: payload.referenceRate, revalidateAll: true, unitOptions });
       const { code, id } = await reserveGeneratedServiceCode(client);
       const serviceId = await insertServiceRecord(client, {
         ...payload,
@@ -195,8 +265,11 @@ export async function createService({ payload, user }) {
         currency: SERVICE_CURRENCY,
         id,
         description: payload.description ?? null,
+        measurementUnitId: unitOptions[0].measurementUnitId,
+        unitDenominationId: unitOptions[0].unitDenominationId,
         userId: user.id,
       });
+      await replaceServiceUnitOptions(client, serviceId, unitOptions);
       await insertServiceVersionSnapshot(client, { changeNote: payload.changeNote, serviceId, userId: user.id, versionNumber: 1 });
       return findServiceById(serviceId, client);
     });
@@ -240,7 +313,10 @@ export async function updateService({ payload, serviceId, user }) {
         throw new ConflictError("SERVICE_MODALITY_IN_USE", SERVICE_MODALITY_IN_USE_MESSAGE);
       }
 
-      await assertServiceUnitChanges(client, { changedFields, next, payload });
+      await assertServiceUnitChanges(client, { changedFields, current, next, payload });
+      // Las unidades primero: la sincronización de la posición 1 al actualizar el servicio ya no
+      // cambia nada y un intercambio principal/alternativa no choca con la unicidad.
+      if (changedFields.includes("unitOptions")) await replaceServiceUnitOptions(client, serviceId, next.unitOptions);
       await updateServiceRecord(client, serviceId, next, user.id);
       await retireCurrentServiceVersion(client, serviceId);
       await insertServiceVersionSnapshot(client, {

@@ -112,8 +112,9 @@ test("servicios: unitDenominationId es opcional, admite null y cuenta como campo
   const current = { description: null, isActive: true, kind: "turnkey", measurementUnit: { id: 1 }, name: "Llave", referenceRate: "900.00", sortOrder: 1, unitDenomination: { id: 7 } };
   assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, {})), []);
   assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, { unitDenominationId: 7 })), []);
-  assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, { unitDenominationId: 8 })), ["unitDenominationId"]);
-  assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, { unitDenominationId: null })), ["unitDenominationId"]);
+  // Cambiar la denominación cambia también la unidad principal de `unitOptions`.
+  assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, { unitDenominationId: 8 })), ["unitDenominationId", "unitOptions"]);
+  assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, { unitDenominationId: null })), ["unitDenominationId", "unitOptions"]);
 });
 
 test("errores de PostgreSQL de unidades y servicios se traducen sin detalles internos", () => {

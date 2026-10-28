@@ -80,11 +80,29 @@ export function getServiceModalityBadge(service) {
 }
 
 /**
+ * Unidades de un servicio para la columna «Unidad»: su etiqueta (con el texto comercial si lo
+ * tiene) y si su tarifa está pendiente de validación comercial. Sin `unitOptions` (contrato
+ * anterior) se usa la unidad principal con `unitLabel`.
+ *
+ * @param {Object} service - Servicio de la API.
+ * @returns {Array<{key: string, label: string, ratePending: boolean}>} Unidades en su orden.
+ */
+export function getServiceUnitBadges(service) {
+  const options = Array.isArray(service?.unitOptions) ? service.unitOptions : [];
+  if (options.length === 0) return [{ key: "primary", label: service?.unitLabel ?? "", ratePending: false }];
+  return options.map((option, index) => ({
+    key: String(option.id ?? index),
+    label: option.label,
+    ratePending: Boolean(option.ratePending),
+  }));
+}
+
+/**
  * Construye las opciones del filtro por unidad a partir de las unidades que usan los servicios
- * reales del catálogo, sin ofrecer filtros que no producen resultados. Por cada unidad base
- * usada hay una opción que filtra por `measurementUnitId` (incluye todas sus denominaciones,
- * "m² · todas" cuando alguna se usa) y, debajo, una opción por denominación usada que filtra
- * por `unitDenominationId` con su `unitLabel` ("m² de construcción").
+ * reales del catálogo (principales y alternativas), sin ofrecer filtros que no producen
+ * resultados. Por cada unidad base usada hay una opción que filtra por `measurementUnitId`
+ * (incluye todas sus denominaciones, "m² · todas" cuando alguna se usa) y, debajo, una opción por
+ * denominación usada que filtra por `unitDenominationId` ("m² de construcción").
  *
  * @param {Array<Object>} services - Colección completa del catálogo.
  * @returns {Array<{id: string, label: string, filter: {name: string, value: number}}>} Opciones ordenadas.
@@ -92,12 +110,16 @@ export function getServiceModalityBadge(service) {
 export function buildUnitFilterItems(services) {
   const bases = new Map();
   for (const service of services || []) {
-    const unit = service?.measurementUnit;
-    if (!unit?.id) continue;
-    const base = bases.get(unit.id) ?? { unit, denominations: new Map() };
-    const denomination = service.unitDenomination;
-    if (denomination?.id) base.denominations.set(denomination.id, service.unitLabel || `${unit.symbol} ${denomination.denomination}`);
-    bases.set(unit.id, base);
+    const units = Array.isArray(service?.unitOptions) && service.unitOptions.length
+      ? service.unitOptions
+      : [{ measurementUnit: service?.measurementUnit, unitDenomination: service?.unitDenomination }];
+    for (const { measurementUnit: unit, unitDenomination: denomination } of units) {
+      if (!unit?.id) continue;
+      const base = bases.get(unit.id) ?? { unit, denominations: new Map() };
+      // Se compone la etiqueta de la unidad, sin el texto comercial: el filtro es por unidad.
+      if (denomination?.id) base.denominations.set(denomination.id, `${unit.symbol} ${denomination.denomination}`);
+      bases.set(unit.id, base);
+    }
   }
 
   const byLabel = (left, right) => left.label.localeCompare(right.label, "es");

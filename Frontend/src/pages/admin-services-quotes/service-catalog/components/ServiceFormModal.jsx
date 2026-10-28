@@ -11,6 +11,7 @@ import {
   rateFromPastedText, rateFromTypedValue, SERVICE_DESCRIPTION_MAX_LENGTH, SERVICE_NAME_MAX_LENGTH,
 } from "../utils/serviceFormValues.js";
 import ServiceModalityField from "./ServiceModalityField.jsx";
+import ServiceUnitAlternatives from "./ServiceUnitAlternatives.jsx";
 import ServiceUnitCreateField from "./ServiceUnitCreateField.jsx";
 import ServiceUnitField from "./ServiceUnitField.jsx";
 
@@ -34,8 +35,9 @@ const FOCUS_SELECTORS = {
  * contratación, descripción opcional, unidad de medida (base + denominación), tarifa en USD y
  * «+ Crear unidad», que despliega debajo, en el mismo modal, la fila de alta de una unidad
  * (Figma 5767:342334). Esa fila ocupa su propio espacio: el contenido desplaza dentro del
- * formulario y el pie con Cancelar/Crear queda siempre visible. No guarda estado propio: el
- * borrador vive en ServiceFormDialog. El código no se muestra: lo genera el sistema.
+ * formulario y el pie con Cancelar/Crear queda siempre visible. Debajo, las unidades
+ * alternativas y el texto comercial (ServiceUnitAlternatives), sin alterar la fila de Figma. No
+ * guarda estado propio: el borrador vive en ServiceFormDialog. El código lo genera el sistema.
  *
  * @param {Object} props - Modo, borrador, opciones y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
@@ -50,8 +52,11 @@ const FOCUS_SELECTORS = {
  * @param {string} props.submitError - Error general del envío.
  * @param {boolean} props.submitting - Envío en curso.
  * @param {Object|null} props.selectedBaseOption - Base elegida, visible aunque sea histórica y no seleccionable.
+ * @param {Array<Object>} props.bases - Bases activas que pueden asignarse sin denominación.
+ * @param {(baseId: number) => Object|null} props.findBaseOption - Base por id, incluida una histórica guardada.
+ * @param {string} props.primaryUnitLabel - Etiqueta de la unidad principal elegida.
  * @param {{options: Array<Object>, loading: boolean, error: string, retry: () => void}} props.denominations
- * Unidades de medida registradas que ofrece el campo (activas y filtradas por modalidad).
+ * Unidades de medida registradas que ofrece el campo (activas).
  * @param {string} props.unitHint - Ayuda del campo de unidad (carga o error del catálogo).
  * @param {string} [props.unitNotice] - Confirmación discreta al reutilizar una unidad existente tras un duplicado.
  * @param {boolean} props.catalogUnavailable - El catálogo de bases no está disponible.
@@ -65,8 +70,9 @@ const FOCUS_SELECTORS = {
  * @returns {import("react").ReactElement} Modal en portal.
  */
 function ServiceFormModal({
-  catalogUnavailable, denominations, draft, fieldErrors, focusRequest, kindLocked = false, loadError, mode,
-  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, selectedBaseOption, status, submitError, submitting, unitCreation, unitHint, unitNotice,
+  bases, catalogUnavailable, denominations, draft, fieldErrors, findBaseOption, focusRequest, kindLocked = false, loadError, mode,
+  onCancel, onDraftChange, onKindChange, onRetryLoad, onSubmit, primaryUnitLabel, selectedBaseOption, status, submitError, submitting,
+  unitCreation, unitHint, unitNotice,
 }) {
   const copy = COPY[mode === "edit" ? "edit" : "create"];
   const ready = status === "ready";
@@ -180,6 +186,7 @@ function ServiceFormModal({
                 <div className="flex min-w-0 flex-1 flex-col items-start gap-[8px]">
                   <ServiceUnitField
                     id={FIELD_IDS.unit}
+                    bases={bases}
                     selectedBaseOption={selectedBaseOption}
                     measurementUnitId={draft.measurementUnitId}
                     unitDenomination={draft.unitDenomination}
@@ -254,6 +261,16 @@ function ServiceFormModal({
                   onUseExisting={unitCreation.onUseExisting}
                 />
               ) : null}
+              <ServiceUnitAlternatives
+                draft={draft}
+                primaryLabel={primaryUnitLabel}
+                bases={bases}
+                denominations={denominations.options}
+                findBaseOption={findBaseOption}
+                fieldErrors={fieldErrors}
+                disabled={submitting || catalogUnavailable}
+                onDraftChange={onDraftChange}
+              />
               {submitError ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}
             </>
           ) : null}

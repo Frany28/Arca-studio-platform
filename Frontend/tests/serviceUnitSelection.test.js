@@ -3,7 +3,8 @@ import test from "node:test";
 
 import { createServiceDraft, validateServiceDraft, toUpdateServiceChanges } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceFormValues.js";
 import {
-  filterServiceUnitOptions, getServiceUnitCatalog, groupServiceUnitOptions, normalizeUnitSearchText, preservesServiceUnit, resolveSelectedUnitSymbol, toServiceUnitOption,
+  buildServiceUnitSelectionOptions, filterServiceUnitOptions, getServiceUnitCatalog, groupServiceUnitOptions, normalizeUnitSearchText,
+  preservesServiceUnit, resolveSelectedUnitSymbol, toBaseOnlyUnitOption, toServiceUnitOption,
 } from "../src/pages/admin-services-quotes/service-catalog/utils/serviceUnitSelection.js";
 
 const BASES = Array.from({ length: 48 }, (_, index) => ({ id: index + 1, code: index === 0 ? "square_meter" : "other", label: `base-${index + 1}` }));
@@ -16,19 +17,30 @@ const DENOMINATIONS = [
 const SERVICE = { name: "Servicio", kind: "individual", description: "", measurementUnit: { id: 1 },
   unitDenomination: { id: 10, denomination: "de obra", isActive: true }, referenceRate: "12.00", currentVersion: 3 };
 
-test("catálogo común: 48 bases solo ofrecen las que tienen denominaciones y base activas", () => {
+test("catálogo común: las 48 bases activas son seleccionables (también sin denominación) con sus denominaciones activas", () => {
   const catalog = getServiceUnitCatalog(BASES, DENOMINATIONS);
-  assert.deepEqual(catalog.prefixOptions.map((base) => base.id), [1, 2]);
+  assert.equal(catalog.prefixOptions.length, 48);
   assert.deepEqual(catalog.denominations.map((item) => item.id), [10, 20]);
-  assert.deepEqual(getServiceUnitCatalog(BASES, []), { prefixOptions: [], denominations: [] });
+  assert.deepEqual(getServiceUnitCatalog(BASES, []), { prefixOptions: BASES, denominations: [] });
   assert.deepEqual(getServiceUnitCatalog([], DENOMINATIONS), { prefixOptions: [], denominations: [] });
-  assert.deepEqual(getServiceUnitCatalog(BASES.filter((base) => base.id !== 2), DENOMINATIONS).prefixOptions.map((base) => base.id), [1]);
+  assert.deepEqual(getServiceUnitCatalog(BASES.filter((base) => base.id !== 2), DENOMINATIONS).denominations.map((item) => item.id), [10]);
+  assert.equal(getServiceUnitCatalog([...BASES.slice(0, 2), { id: 49, isActive: false }], []).prefixOptions.length, 2, "Una base inactiva no se ofrece");
 });
 
 test("catálogo común: filtra por id de base y estado, no por el símbolo", () => {
   const catalog = getServiceUnitCatalog(BASES.map((base) => ({ ...base, label: "m²" })), DENOMINATIONS);
-  assert.deepEqual(catalog.prefixOptions.map((base) => base.id), [1, 2]);
   assert.deepEqual(catalog.denominations.map((item) => item.id), [10, 20]);
+});
+
+test("opciones del combobox: cada base sola va primero en su grupo, seguida de sus denominaciones", () => {
+  const bases = [{ id: 1, label: "m²", description: "Metro cuadrado" }, { id: 6, label: "m.l.", description: "Metro lineal" }];
+  const denominations = [{ id: 10, denomination: "de obra", measurementUnit: { id: 1, symbol: "m²", name: "Metro cuadrado" } }];
+  const options = buildServiceUnitSelectionOptions(bases, denominations);
+  assert.deepEqual(options.map((option) => [option.id, option.category]), [["base:1", "sin denominación"], [10, "de obra"], ["base:6", "sin denominación"]]);
+  assert.equal(toBaseOnlyUnitOption(bases[1]).baseOnly, true);
+  // Se encuentra por el nombre de la base aunque no se muestre en la fila.
+  assert.deepEqual(filterServiceUnitOptions(options, "lineal").map((option) => option.id), ["base:6"]);
+  assert.deepEqual(groupServiceUnitOptions(options).map((group) => [group.title, group.options.length]), [["Metro cuadrado (m²)", 2], ["Metro lineal (m.l.)", 1]]);
 });
 
 test("históricos: conservar una base o denominación inactiva no obliga a cambiarlas ni reenviarlas", () => {

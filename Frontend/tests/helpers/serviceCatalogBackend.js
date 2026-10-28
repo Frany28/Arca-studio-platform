@@ -103,13 +103,57 @@ export function sampleCatalog() {
 }
 
 /**
- * Compone la etiqueta de unidad de un servicio a partir de su base y su denominación.
+ * Compone la etiqueta de unidad de un servicio a partir de su base y su denominación, o su texto
+ * comercial si la unidad principal lo tiene.
  *
  * @param {Object} item - Servicio en memoria.
  * @returns {string} unitLabel.
  */
 function composeUnitLabel(item) {
+  if (item.unitOptions?.[0]?.presentationLabel) return item.unitOptions[0].presentationLabel;
   return item.unitDenomination ? `${item.measurementUnit.symbol} ${item.unitDenomination.denomination}` : item.measurementUnit.symbol;
+}
+
+/**
+ * Convierte `unitOptions` del cuerpo (alta o edición) en las unidades públicas del servicio, como
+ * el backend: la primera es la principal, con una sola unidad su tarifa es la del servicio y una
+ * tarifa omitida o null queda pendiente de validación comercial.
+ *
+ * @param {Array<Object>} options - `unitOptions` recibidas.
+ * @param {Array<Object>} denominations - Denominaciones del estado.
+ * @param {string} referenceRate - Tarifa del servicio.
+ * @returns {Array<Object>} Unidades públicas.
+ */
+function toUnitOptions(options, denominations, referenceRate) {
+  return options.map((option, index) => {
+    const measurementUnit = unitById(option.measurementUnitId);
+    const denomination = option.unitDenominationId ? denominations.find((item) => item.id === option.unitDenominationId) : null;
+    const rate = options.length === 1 ? referenceRate : option.referenceRate ?? null;
+    return {
+      id: 500 + index,
+      label: option.presentationLabel || (denomination ? `${measurementUnit.symbol} ${denomination.denomination}` : measurementUnit.symbol),
+      measurementUnit,
+      position: index + 1,
+      presentationLabel: option.presentationLabel ?? null,
+      ratePending: rate === null,
+      referenceRate: rate,
+      unitDenomination: denomination ? { id: denomination.id, denomination: denomination.denomination, isActive: denomination.isActive } : null,
+    };
+  });
+}
+
+/**
+ * Aplica unas unidades públicas a un servicio en memoria: la principal fija la unidad y la
+ * denominación del servicio, como en la API.
+ *
+ * @param {Object} item - Servicio en memoria (se modifica).
+ * @param {Array<Object>} unitOptions - Unidades públicas.
+ * @returns {void}
+ */
+function applyUnitOptions(item, unitOptions) {
+  item.unitOptions = unitOptions;
+  item.measurementUnit = unitOptions[0].measurementUnit;
+  item.unitDenomination = unitOptions[0].unitDenomination;
 }
 
 /**
@@ -185,8 +229,9 @@ export function createServiceCatalogBackend(initial) {
       const search = (params.search || "").toLowerCase();
       const matches = state.items.filter((item) => (!search || item.name.toLowerCase().includes(search) || item.code.toLowerCase().includes(search))
         && (!params.status || item.isActive === (params.status === "active"))
-        && (!params.measurementUnitId || item.measurementUnit.id === Number(params.measurementUnitId))
-        && (!params.unitDenominationId || item.unitDenomination?.id === Number(params.unitDenominationId)));
+        // Como el backend: la unidad o la denominación coinciden con cualquiera de las unidades del servicio.
+        && (!params.measurementUnitId || (item.unitOptions ?? [item]).some((option) => option.measurementUnit.id === Number(params.measurementUnitId)))
+        && (!params.unitDenominationId || (item.unitOptions ?? [item]).some((option) => option.unitDenomination?.id === Number(params.unitDenominationId))));
       const limit = Number(params.limit || 25);
       const start = Number(params.cursor || 0);
       return json(route, 200, { services: matches.slice(start, start + limit), nextCursor: start + limit < matches.length ? String(start + limit) : null });
@@ -209,6 +254,7 @@ export function createServiceCatalogBackend(initial) {
         kind,
         sortOrder: 0,
       };
+      if (body.unitOptions) applyUnitOptions(created, toUnitOptions(body.unitOptions, state.denominations, body.referenceRate));
       created.unitLabel = composeUnitLabel(created);
       state.items.unshift(created);
       return json(route, 201, { message: "Servicio creado correctamente.", service: created });
@@ -245,6 +291,7 @@ export function createServiceCatalogBackend(initial) {
           const denomination = body.unitDenominationId ? state.denominations.find((candidate) => candidate.id === body.unitDenominationId) : null;
           item.unitDenomination = denomination ? { id: denomination.id, denomination: denomination.denomination, isActive: denomination.isActive } : null;
         }
+        if (body.unitOptions !== undefined) applyUnitOptions(item, toUnitOptions(body.unitOptions, state.denominations, item.referenceRate));
         item.unitLabel = composeUnitLabel(item);
         const changed = JSON.stringify(item) !== before;
         if (changed) item.currentVersion += 1;

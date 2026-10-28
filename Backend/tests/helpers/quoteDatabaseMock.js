@@ -42,11 +42,22 @@ function createInitialState() {
       [10, { code: "SERV-001", id: 10, kind: "turnkey", name: "Anteproyecto arquitectónico", referenceRate: "12.00", serviceId: 1, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
       [20, { code: "SERV-002", id: 20, kind: "individual", name: "Puntos eléctricos y fuerza", referenceRate: "45.00", serviceId: 2, unitAllowsDecimals: false, unitDenomination: "eléctrico", unitSymbol: "pt." }],
       [30, { code: "SERV-003", id: 30, kind: "individual", name: "Servicio retirado", referenceRate: "8.00", serviceId: 3, unitAllowsDecimals: true, unitDenomination: null, unitSymbol: "m²" }],
+      [40, { code: "SERV-004", id: 40, kind: "individual", name: "Modelado 3D & Renders", referenceRate: "450.00", serviceId: 4, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "proy." }],
+    ]),
+    // Unidades copiadas por versión: una por servicio salvo la versión 40 («Por Proyecto /
+    // Espacio»: proyecto con tarifa y espacio pendiente de validación comercial).
+    serviceVersionUnitOptions: new Map([
+      [100, { id: 100, position: 1, presentationLabel: null, referenceRate: "12.00", serviceVersionId: 10, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
+      [200, { id: 200, position: 1, presentationLabel: null, referenceRate: "45.00", serviceVersionId: 20, unitAllowsDecimals: false, unitDenomination: "eléctrico", unitSymbol: "pt." }],
+      [300, { id: 300, position: 1, presentationLabel: null, referenceRate: "8.00", serviceVersionId: 30, unitAllowsDecimals: true, unitDenomination: null, unitSymbol: "m²" }],
+      [400, { id: 400, position: 1, presentationLabel: null, referenceRate: "450.00", serviceVersionId: 40, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "proy." }],
+      [401, { id: 401, position: 2, presentationLabel: null, referenceRate: null, serviceVersionId: 40, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "esp." }],
     ]),
     services: new Map([
       [1, { currentVersionId: 10, id: 1, isActive: true }],
       [2, { currentVersionId: 20, id: 2, isActive: true }],
       [3, { currentVersionId: 30, id: 3, isActive: false }],
+      [4, { currentVersionId: 40, id: 4, isActive: true }],
     ]),
     users: new Map([[2, { firstName: "Leonel", hasProfilePhoto: true, id: 2, lastName: "Peréz" }]]),
     versions: [],
@@ -130,10 +141,15 @@ export function createQuoteDatabaseMock() {
         return { id: String(service.id), is_active: service.isActive, version_id: service.currentVersionId === null ? null : String(service.currentVersionId) };
       }));
     }
-    if (text.startsWith("select id, service_id, reference_rate, unit_allows_decimals from public.service_versions")) {
-      return result(params[0].map((id) => state.serviceVersions.get(Number(id))).filter(Boolean).map((version) => ({
-        id: String(version.id), reference_rate: version.referenceRate, service_id: String(version.serviceId), unit_allows_decimals: version.unitAllowsDecimals,
-      })));
+    if (text.startsWith("select id, service_version_id, position, reference_rate, unit_allows_decimals from public.service_version_unit_options")) {
+      const versionIds = new Set(params[0].map(Number));
+      return result([...state.serviceVersionUnitOptions.values()]
+        .filter((option) => versionIds.has(option.serviceVersionId))
+        .sort((left, right) => left.serviceVersionId - right.serviceVersionId || left.position - right.position)
+        .map((option) => ({
+          id: String(option.id), position: option.position, reference_rate: option.referenceRate,
+          service_version_id: String(option.serviceVersionId), unit_allows_decimals: option.unitAllowsDecimals,
+        })));
     }
     if (text.includes("pg_get_serial_sequence('public.quotes', 'id')")) return result([{ id: String(state.nextQuoteId++) }]);
     if (text.startsWith("insert into public.quotes")) {
@@ -150,10 +166,11 @@ export function createQuoteDatabaseMock() {
       return result([{ id: String(id) }]);
     }
     if (text.startsWith("insert into public.quote_items")) {
-      const [versionId, lineNumbers, serviceIds, serviceVersionIds, quantities, unitRates, referenceRates, subtotals] = params;
+      const [versionId, lineNumbers, serviceIds, serviceVersionIds, quantities, unitRates, referenceRates, subtotals, unitOptionIds] = params;
       lineNumbers.forEach((lineNumber, index) => state.items.push({
         lineNumber, quantity: toNumeric(quantities[index], 3), referenceRate: referenceRates[index], serviceId: serviceIds[index],
-        serviceVersionId: serviceVersionIds[index], subtotal: toNumeric(subtotals[index], 2), unitRate: toNumeric(unitRates[index], 2), versionId,
+        serviceVersionId: serviceVersionIds[index], serviceVersionUnitOptionId: unitOptionIds[index], subtotal: toNumeric(subtotals[index], 2),
+        unitRate: toNumeric(unitRates[index], 2), versionId,
       }));
       return result([], lineNumbers.length);
     }
@@ -164,11 +181,14 @@ export function createQuoteDatabaseMock() {
     if (text.includes("from public.quote_items i inner join public.service_versions sv")) {
       return result(state.items.filter((item) => item.versionId === Number(params[0])).sort((left, right) => left.lineNumber - right.lineNumber).map((item) => {
         const version = state.serviceVersions.get(item.serviceVersionId);
+        const unitOption = state.serviceVersionUnitOptions.get(item.serviceVersionUnitOptionId);
         return {
           line_number: item.lineNumber, quantity: item.quantity, reference_rate: item.referenceRate, service_code: version.code,
           service_description: null, service_id: String(item.serviceId), service_is_active: state.services.get(item.serviceId).isActive,
-          service_kind: version.kind, service_name: version.name, service_version_id: String(item.serviceVersionId), subtotal: item.subtotal,
-          unit_allows_decimals: version.unitAllowsDecimals, unit_denomination: version.unitDenomination, unit_rate: item.unitRate, unit_symbol: version.unitSymbol,
+          service_kind: version.kind, service_name: version.name, service_version_id: String(item.serviceVersionId),
+          service_version_unit_option_id: String(item.serviceVersionUnitOptionId), subtotal: item.subtotal,
+          unit_allows_decimals: unitOption.unitAllowsDecimals, unit_denomination: unitOption.unitDenomination, unit_position: unitOption.position,
+          unit_presentation_label: unitOption.presentationLabel, unit_rate: item.unitRate, unit_symbol: unitOption.unitSymbol,
         };
       }));
     }

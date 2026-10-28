@@ -10,8 +10,14 @@ import { AppError, ConflictError, ValidationError } from "../errors/appError.js"
 export const SERVICE_VERSION_CONFLICT_MESSAGE =
   "Otro administrador modificó este servicio. Recarga los datos antes de guardar.";
 
-const UNIT_FOREIGN_KEYS = new Set(["fk_services_measurement_unit", "fk_service_versions_measurement_unit"]);
-const DENOMINATION_FOREIGN_KEYS = new Set(["fk_services_unit_denomination", "fk_service_versions_unit_denomination"]);
+const UNIT_FOREIGN_KEYS = new Set([
+  "fk_services_measurement_unit", "fk_service_versions_measurement_unit",
+  "fk_service_unit_options_measurement_unit", "fk_service_version_unit_options_measurement_unit",
+]);
+const DENOMINATION_FOREIGN_KEYS = new Set([
+  "fk_services_unit_denomination", "fk_service_versions_unit_denomination",
+  "fk_service_unit_options_unit_denomination", "fk_service_version_unit_options_unit_denomination",
+]);
 const VERSION_UNIQUE_CONSTRAINTS = new Set(["uq_service_versions_current", "uq_service_versions_service_version"]);
 
 /**
@@ -32,6 +38,9 @@ export function translateServiceCatalogError(error) {
       }
       if (VERSION_UNIQUE_CONSTRAINTS.has(error.constraint)) {
         return new ConflictError("SERVICE_VERSION_CONFLICT", SERVICE_VERSION_CONFLICT_MESSAGE, error);
+      }
+      if (error.constraint === "uq_service_unit_options_unit") {
+        return new ValidationError(undefined, { unitOptions: "Una unidad de medida está repetida en el servicio." });
       }
       return new ConflictError("SERVICE_CONFLICT", "El servicio entra en conflicto con un registro existente.", error);
     case "23503":

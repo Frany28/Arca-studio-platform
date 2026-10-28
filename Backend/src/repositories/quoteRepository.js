@@ -1,6 +1,6 @@
 import { query } from "../config/db.js";
-import { formatUnitLabel } from "../domain/measurementUnitLabel.js";
 import { QUOTE_SORT_DIRECTIONS, QUOTE_SORT_FIELDS } from "../domain/quote.js";
+import { formatUnitOptionLabel } from "../domain/serviceUnitOptions.js";
 import { toContainsPattern } from "../utils/sqlPatterns.js";
 
 const QUOTE_SUMMARY_COLUMNS = `
@@ -71,11 +71,11 @@ function toQuoteSummary(row) {
 }
 
 /**
- * Transforma un concepto con la copia de la versión del servicio cotizada. `serviceIsActive`
- * describe el estado actual del servicio en el tabulador (no el histórico), para que el
- * formulario de edición sepa si puede volver a ofrecerlo.
+ * Transforma un concepto con la copia de su versión de servicio y de la unidad elegida (etiqueta
+ * con texto comercial, decimales y posición). `serviceIsActive` es el estado actual del servicio,
+ * para que el formulario de edición sepa si puede volver a ofrecerlo.
  *
- * @param {object} row - Fila de quote_items unida a service_versions y services.
+ * @param {object} row - Fila de quote_items unida a service_versions, su unidad copiada y services.
  * @returns {object} Concepto público.
  */
 function toQuoteItem(row) {
@@ -95,7 +95,9 @@ function toQuoteItem(row) {
     subtotal: row.subtotal,
     unit: {
       allowsDecimals: row.unit_allows_decimals,
-      label: formatUnitLabel(row.unit_symbol, row.unit_denomination),
+      label: formatUnitOptionLabel({ denomination: row.unit_denomination, presentationLabel: row.unit_presentation_label, symbol: row.unit_symbol }),
+      optionId: Number(row.service_version_unit_option_id),
+      position: row.unit_position,
     },
     unitRate: row.unit_rate,
   };
@@ -144,8 +146,8 @@ export async function countQuotes() {
 }
 
 /**
- * Lee los conceptos de una versión con la copia de la versión del servicio cotizada y el
- * estado actual del servicio en el tabulador, en el orden del documento.
+ * Lee los conceptos de una versión con la copia de la versión del servicio cotizada, la de la
+ * unidad elegida y el estado actual del servicio en el tabulador, en el orden del documento.
  *
  * @param {number} quoteVersionId - Versión de la cotización.
  * @param {{ query: Function }} executor - Pool o cliente de una transacción.
@@ -153,11 +155,14 @@ export async function countQuotes() {
  */
 async function listQuoteItems(quoteVersionId, executor) {
   const result = await executor.query(
-    `select i.line_number, i.service_id, i.service_version_id, i.quantity, i.unit_rate, i.reference_rate, i.subtotal,
+    `select i.line_number, i.service_id, i.service_version_id, i.service_version_unit_option_id, i.quantity, i.unit_rate,
+       i.reference_rate, i.subtotal,
        sv.code as service_code, sv.name as service_name, sv.description as service_description, sv.kind as service_kind,
-       sv.unit_symbol, sv.unit_denomination, sv.unit_allows_decimals, s.is_active as service_is_active
+       uo.unit_symbol, uo.unit_denomination, uo.unit_allows_decimals, uo.presentation_label as unit_presentation_label,
+       uo.position as unit_position, s.is_active as service_is_active
      from public.quote_items i
      inner join public.service_versions sv on sv.id = i.service_version_id
+     inner join public.service_version_unit_options uo on uo.id = i.service_version_unit_option_id
      inner join public.services s on s.id = i.service_id
      where i.quote_version_id = $1
      order by i.line_number`,
@@ -314,18 +319,21 @@ export async function insertQuoteVersion(client, version) {
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {number} quoteVersionId - Versión a la que pertenecen.
- * @param {Array<{ serviceId: number, serviceVersionId: number, quantity: string, unitRate: string, referenceRate: string, subtotal: string }>} lines - Conceptos.
+ * @param {Array<{ serviceId: number, serviceVersionId: number, serviceVersionUnitOptionId: number, quantity: string,
+ *   unitRate: string, referenceRate: string, subtotal: string }>} lines - Conceptos.
  * @returns {Promise<void>}
  * @throws {Error} Si no se insertaron todos los conceptos.
  */
 export async function insertQuoteItems(client, quoteVersionId, lines) {
   const result = await client.query(
     `insert into public.quote_items (
-       quote_version_id, line_number, service_id, service_version_id, quantity, unit_rate, reference_rate, subtotal
+       quote_version_id, line_number, service_id, service_version_id, service_version_unit_option_id, quantity, unit_rate,
+       reference_rate, subtotal
      )
-     select $1, line.line_number, line.service_id, line.service_version_id, line.quantity, line.unit_rate, line.reference_rate, line.subtotal
-     from unnest($2::integer[], $3::bigint[], $4::bigint[], $5::numeric[], $6::numeric[], $7::numeric[], $8::numeric[])
-       as line(line_number, service_id, service_version_id, quantity, unit_rate, reference_rate, subtotal)`,
+     select $1, line.line_number, line.service_id, line.service_version_id, line.service_version_unit_option_id, line.quantity,
+       line.unit_rate, line.reference_rate, line.subtotal
+     from unnest($2::integer[], $3::bigint[], $4::bigint[], $9::bigint[], $5::numeric[], $6::numeric[], $7::numeric[], $8::numeric[])
+       as line(line_number, service_id, service_version_id, service_version_unit_option_id, quantity, unit_rate, reference_rate, subtotal)`,
     [
       quoteVersionId,
       lines.map((_line, index) => index + 1),
@@ -335,6 +343,7 @@ export async function insertQuoteItems(client, quoteVersionId, lines) {
       lines.map((line) => line.unitRate),
       lines.map((line) => line.referenceRate),
       lines.map((line) => line.subtotal),
+      lines.map((line) => line.serviceVersionUnitOptionId),
     ],
   );
   if (result.rowCount !== lines.length) throw new Error("quotes: no se registraron todos los conceptos de la versión.");

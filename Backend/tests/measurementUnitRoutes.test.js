@@ -120,7 +120,8 @@ function baseChangeResponder({ references, unit }) {
   return (sql) => {
     if (/^(begin|commit|rollback)/.test(sql)) return { rows: [] };
     if (sql.startsWith("select id from")) return { rows: [{ id: "1" }] };
-    if (/select \(select count\(\*\) from public\.services/.test(sql)) return { rows: [references] };
+    // Recuento de referencias: unidades vigentes de servicios (principal o alternativa) y copias en versiones.
+    if (/select \(select count\(distinct service_id\) from public\.service_unit_options/.test(sql)) return { rows: [references] };
     if (/from public\.measurement_units\s+where id = \$1\s+for share/.test(sql)) return { rows: unit ? [unit] : [] };
     if (sql.startsWith("update")) {
       Object.assign(row, { unit_code: unit.code, unit_id: unit.id, unit_name: unit.name, unit_symbol: unit.symbol });

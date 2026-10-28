@@ -117,6 +117,10 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
             submission.clearFieldError("items");
             actions.replaceService(key, service);
           }}
+          onUnitChange={(key, position, index) => {
+            submission.clearFieldError(`items.${index}.unitOptionPosition`);
+            actions.selectUnit(key, position);
+          }}
         />
         <TextArea
           id="quote-notes"

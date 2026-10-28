@@ -78,6 +78,7 @@ function ServiceUnitOptionsList({ activeIndex, groups, highlightedIndex, id, lis
                   // El nombre de la base distingue símbolos parecidos (m / m.l.) sin ocupar la fila.
                   aria-label={option.baseName ? `${option.label}, ${option.baseName}` : option.label}
                   data-option-index={index}
+                  data-unit-base-only={option.baseOnly ? "true" : undefined}
                   className={getInputOptionClassName({
                     selected: option.id === selectedId,
                     highlighted: index === highlightedIndex,
