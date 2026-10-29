@@ -506,6 +506,7 @@ test("servicios incluidos: el desplegable de la fila cambia el servicio sin reco
   // El menú vive fuera de la tabla (no lo recorta su overflow) y la tabla conserva su scroll horizontal.
   assert.deepEqual(layout, { inBody: true, joined: true, lastItemReachable: true, insideWindow: true, tableScrolls: true });
   assert.deepEqual(await page.getByRole("menuitem").allInnerTexts(), ["Anteproyecto arquitectónico", "Puntos eléctricos y fuerza"], "El actual y los activos no incluidos; nunca el inactivo");
+  assert.equal(await page.getByRole("scrollbar", { name: /^Desplazar opciones/ }).count(), 0, "Con tres opciones o menos no hay ScrollBar");
 
   // Cambiar el servicio trae su unidad y su tarifa, y conserva la cantidad escrita.
   await option.click();
@@ -516,6 +517,65 @@ test("servicios incluidos: el desplegable de la fila cambia el servicio sin reco
   assert.equal(await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).count(), 0);
   await picker.getByText("0 de 1 seleccionados · 1 ya incluido", { exact: true }).waitFor();
   await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).waitFor();
+});
+
+test("servicios incluidos: el desplegable muestra tres opciones con ScrollBar y recorta los nombres largos", async (context) => {
+  // Ocho servicios ficticios con nombres más anchos que la columna Servicio.
+  const many = Array.from({ length: 8 }, (_, index) => ({
+    ...SERVICES[0], code: `SERV-${String(index + 1).padStart(3, "0")}`, description: null, id: index + 1, sortOrder: index + 1,
+    name: `Servicio ${index + 1} con un nombre comercial muy largo — Por proyecto`,
+  }));
+  const backend = createBackend({ services: many });
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  await picker.getByRole("checkbox", { name: `Seleccionar ${many[0].name}` }).click();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+
+  await page.getByRole("button", { name: `Servicio de la fila: ${many[0].name}` }).click();
+  const scrollBar = page.getByRole("scrollbar", { name: `Desplazar opciones: Servicio de la fila: ${many[0].name}` });
+  await scrollBar.waitFor();
+  const measure = () => page.evaluate(() => {
+    const menu = document.querySelector('[role="menu"]');
+    const viewport = menu.querySelector("[data-dropdown-menu-viewport]");
+    const box = viewport.getBoundingClientRect();
+    const menuBox = menu.getBoundingClientRect();
+    const items = [...menu.querySelectorAll('[role="menuitem"]')];
+    return {
+      height: viewport.clientHeight,
+      // Opciones completamente visibles dentro del viewport.
+      visible: items.filter((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.top >= box.top - 0.5 && rect.bottom <= box.bottom + 0.5;
+      }).map((item) => item.textContent),
+      total: items.length,
+      // Ninguna etiqueta sale del panel: se recorta con elipsis y conserva el texto en title.
+      labelsInside: items.every((item) => {
+        const label = item.querySelector("p");
+        return label.getBoundingClientRect().right <= menuBox.right && label.title === label.textContent;
+      }),
+      truncated: items.some((item) => item.querySelector("p").scrollWidth > item.querySelector("p").clientWidth),
+    };
+  });
+
+  const start = await measure();
+  assert.equal(start.height, 3 * 35 + 2 * 4, "Tres opciones de 35 px con huecos de 4 px");
+  assert.equal(start.total, 8, "Todas las opciones están en el menú");
+  assert.deepEqual(start.visible, many.slice(0, 3).map((service) => service.name));
+  assert.equal(start.labelsInside, true);
+  assert.equal(start.truncated, true, "Los nombres largos se recortan");
+
+  // Arrastrar el ScrollBar hasta el final muestra las tres últimas opciones.
+  const track = await scrollBar.boundingBox();
+  await page.mouse.move(track.x + track.width / 2, track.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width / 2, track.y + track.height + 40, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForFunction((label) => document.querySelector(`[aria-label='${label}']`)?.getAttribute("aria-valuenow") === "100", `Desplazar opciones: Servicio de la fila: ${many[0].name}`);
+  assert.deepEqual((await measure()).visible, many.slice(5).map((service) => service.name));
+
+  // Elegir una opción del final sigue funcionando.
+  await page.getByRole("menuitem", { name: many[7].name }).click();
+  await page.getByRole("textbox", { name: `Cantidad de ${many[7].name}` }).waitFor();
 });
 
 test("salir sin guardar: sidebar, breadcrumb, Atrás y cierre del navegador piden confirmación", async (context) => {

@@ -822,7 +822,10 @@ Validación, capturas y diferencias respecto a Figma:
     incluido», `formatServicePickerCount`). Cada fila de servicios incluidos tiene el
     `DropdownMenu` de su servicio (Figma 5771:367425) con `portal`, para que el desplazamiento
     horizontal de la tabla no recorte el menú: ofrece el servicio actual y los activos no incluidos,
-    y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). Guardar
+    y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). El menú
+    muestra como máximo tres opciones (`maxVisibleItems={3}`, filas de 35 px) y el resto se recorre
+    con el `ScrollBar` vertical del sistema; los nombres largos se recortan con elipsis dentro del
+    ancho del panel y el texto completo queda en `title` (`truncateItemLabels`). Guardar
     crea o versiona; un 409 de versión conserva el borrador.
   - Una unidad por servicio: el selector y la tabla de incluidos muestran el Badge `unitLabel` del
     servicio, sin selector de unidad. Cada forma de cobro (p. ej. Recorrido VR por minuto y por
@@ -837,7 +840,10 @@ Validación, capturas y diferencias respecto a Figma:
 - `DateRangePicker`/`DateRangeField` y `Breadcrumb` son componentes nuevos de `components/ui`;
   `Loader` añade los presets `quotesTable`, `quoteEditor` y `quoteServicePicker`; `Modal`
   admite `showSecondaryAction`; `DropdownMenu` admite `portal` (menú en `document.body`,
-  anclado al disparador, que se abre hacia arriba si no cabe debajo).
+  anclado al disparador, que se abre hacia arriba si no cabe debajo), `maxVisibleItems` con
+  `itemHeight` (limita las opciones visibles y añade el `ScrollBar` vertical interactivo con
+  `useVerticalScrollBar`, ocultando la barra nativa) y `truncateItemLabels` (etiquetas con elipsis
+  y `title`). Ambas son opcionales: sin ellas el menú se comporta como antes.
 - Listados flotantes anclados (selector de prefijo del Input, combobox de unidad y `DropdownMenu`
   en portal): se vuelven a medir con `observeAnchorLayout` ante resize, scroll de contenedores,
   cambios de tamaño del ancla y el fin de transiciones y animaciones (p. ej. la entrada con

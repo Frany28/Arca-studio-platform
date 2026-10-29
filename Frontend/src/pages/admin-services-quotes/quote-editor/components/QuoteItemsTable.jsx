@@ -142,6 +142,9 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onSe
                           disabled={disabled}
                           showContainer
                           rowHeightClassName="h-[35px]"
+                          itemHeight={35}
+                          maxVisibleItems={3}
+                          truncateItemLabels
                           contentPaddingClassName="px-[4px] py-[8px]"
                           className="min-w-0 flex-1"
                           aria-label={`Servicio de la fila: ${line.serviceName}`}

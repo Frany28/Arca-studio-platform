@@ -4,7 +4,9 @@ import clsx from "clsx";
 import { observeAnchorLayout } from "../Input/options/observeAnchorLayout.js";
 import Avatar from "../Avatar/Avatar.jsx";
 import Checkbox from "../Checkbox/Checkbox.jsx";
+import ScrollBar from "../ScrollBar/ScrollBar.jsx";
 import Flag from "../../Flag.jsx";
+import { useVerticalScrollBar } from "../../../hooks/useVerticalScrollBar.js";
 import {
   DROPDOWN_MENU_DEFAULT_ITEMS,
   DROPDOWN_MENU_DEFAULT_PROPS,
@@ -417,13 +419,24 @@ function renderMenuItemLeading(
  * `document.body` con `position: fixed` unido al disparador, para no quedar recortado por
  * contenedores con overflow (p. ej. una tabla con desplazamiento horizontal); sigue al disparador
  * al desplazarse esos contenedores y el clic dentro del menú no cuenta como exterior.
+ * Con `maxVisibleItems`, el panel muestra como máximo ese número de opciones y el resto se recorre
+ * con el ScrollBar vertical del sistema (las barras nativas se ocultan); `truncateItemLabels`
+ * recorta con elipsis las etiquetas que no caben en el ancho del panel y muestra el texto completo
+ * en `title`.
  *
  * @param {Object} props - Disparador, opciones, selección y presentación (ver DROPDOWN_MENU_DEFAULT_PROPS).
  * @param {boolean} [props.portal=false] - Monta el menú en un portal anclado al disparador.
+ * @param {number} [props.maxVisibleItems] - Opciones visibles a la vez; sin valor se muestran todas.
+ * @param {number} [props.itemHeight] - Alto en px de cada opción (el de `rowHeightClassName`),
+ * necesario para calcular el alto visible con `maxVisibleItems`.
+ * @param {boolean} [props.truncateItemLabels=false] - Recorta las etiquetas largas de las opciones.
  * @returns {import("react").ReactElement} Disparador con su menú.
  */
 function DropdownMenu({
   portal = false,
+  maxVisibleItems,
+  itemHeight,
+  truncateItemLabels = false,
   className,
   triggerClassName,
   triggerWrapperClassName,
@@ -499,6 +512,13 @@ function DropdownMenu({
         : getDefaultMenuItems(resolvedType),
     [internalItems, resolvedType],
   );
+
+  const itemsScroll = useVerticalScrollBar();
+  // Alto de N opciones más los huecos de 4 px entre ellas (gap del panel).
+  const itemsViewportHeight = maxVisibleItems && itemHeight
+    ? maxVisibleItems * itemHeight + (maxVisibleItems - 1) * 4
+    : null;
+  const limitsVisibleItems = itemsViewportHeight !== null && normalizedItems.length > maxVisibleItems;
 
   const shouldShowContainer = showContainer || resolvedOpen;
   // Solo el menú en portal puede abrirse hacia arriba; el inline siempre se despliega debajo.
@@ -837,110 +857,145 @@ function DropdownMenu({
             ? { left: portalPosition.left, top: portalPosition.top, width: portalPosition.width }
             : { visibility: "hidden" }) : undefined}
         >
-          {normalizedItems.map((item, index) => {
-            const itemType = getResolvedType(item.type ?? resolvedType);
-            const isHoveredItem = item.id === resolvedHoveredItemId;
-            const isCheckboxSelected =
-              itemType === "Checkbox" && item.checked === "Yes";
-
-            const isSelectedItem =
-              itemType === "Checkbox"
-                ? isCheckboxSelected
-                : item.id === resolvedSelectedItemId;
-
-            const itemVisualState =
-              itemType === "Checkbox"
-                ? isHoveredItem
-                  ? "Hover"
-                  : isCheckboxSelected
-                    ? "Selected"
-                    : "Default"
-                : isSelectedItem
-                  ? "Selected"
-                  : isHoveredItem
-                    ? "Hover"
-                    : "Default";
-
-            return (
-              <button
-                key={item.id ?? `${item.label}-${index}`}
-                type="button"
-                role={itemType === "Checkbox" ? "menuitemcheckbox" : "menuitem"}
-                aria-checked={
-                  itemType === "Checkbox" ? item.checked === "Yes" : undefined
-                }
-                className={clsx(
-                  "group flex w-full items-center gap-[8px] rounded-[8px] px-[8px] text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
-                  rowHeightClassName ?? getDefaultRowHeight(itemType),
-                  itemType === "Checkbox"
-                    ? isSelectedItem
-                      ? "bg-[var(--color-neutral-200)] hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]"
-                      : "hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]"
-                    : isSelectedItem
-                      ? "bg-[var(--color-neutral-200)] hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]"
-                      : itemHoverClassName,
-                  isHoveredItem &&
-                    !isSelectedItem &&
-                    "bg-[var(--color-neutral-200)]",
-                  itemClassName,
-                )}
-                onMouseEnter={() => setInternalHoveredItemId(item.id ?? null)}
-                onMouseLeave={() => setInternalHoveredItemId(null)}
-                onClick={() =>
-                  handleItemClick({
-                    ...item,
-                    visualState: itemVisualState,
-                  })
-                }
+          {limitsVisibleItems ? (
+            <div className="relative">
+              <div
+                ref={itemsScroll.viewportRef}
+                className="flex flex-col gap-[4px] overflow-x-hidden overflow-y-auto [&>*]:shrink-0 overscroll-contain pr-[16px] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                style={{ maxHeight: itemsViewportHeight }}
+                data-dropdown-menu-viewport
+                onScroll={itemsScroll.syncScrollState}
               >
-                <div className="flex min-w-0 flex-1 items-center gap-[12px]">
-                  {renderMenuItemLeading(
-                    itemType,
-                    {
-                      ...item,
-                      visualState: itemVisualState,
-                    },
-                    avatarSrc,
-                    countryCode,
-                  )}
-
-                  <div className="flex min-w-0 flex-1 items-center gap-[8px] tracking-[-0.5px]">
-                    <p
-                      className={clsx(
-                        "shrink-0 text-heading-8",
-                        isSelectedItem
-                          ? "text-[var(--color-text-300)]"
-                          : isHoveredItem
-                            ? "text-[var(--color-text-200)]"
-                            : "text-[var(--color-text-200)]",
-                      )}
-                    >
-                      {item.label}
-                    </p>
-
-                    {item.supportingText ? (
-                      <p
-                        className={clsx(
-                          "min-w-0 flex-1 text-body-4",
-                          isSelectedItem
-                            ? "text-[var(--color-text-300)]"
-                            : isHoveredItem
-                              ? "text-[var(--color-text-200)]"
-                              : "text-[var(--color-text-100)]",
-                        )}
-                      >
-                        {item.supportingText}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+                {renderMenuItems()}
+              </div>
+              {itemsScroll.hasOverflow ? (
+                <ScrollBar
+                  height={itemsScroll.scrollState.height}
+                  length={itemsScroll.scrollState.length}
+                  position={itemsScroll.scrollState.position}
+                  interactive
+                  onPositionChange={itemsScroll.handlePositionChange}
+                  aria-label={`Desplazar opciones: ${ariaLabel}`}
+                  className="absolute right-0 top-0"
+                  trackContainerClassName="bg-transparent"
+                />
+              ) : null}
+            </div>
+          ) : renderMenuItems()}
         </div>,
       ) : null}
     </div>
   );
+
+  /**
+   * Opciones del menú, en el panel o dentro de su viewport con ScrollBar.
+   *
+   * @returns {Array<import("react").ReactElement>} Botones de las opciones.
+   */
+  function renderMenuItems() {
+    return normalizedItems.map((item, index) => {
+      const itemType = getResolvedType(item.type ?? resolvedType);
+      const isHoveredItem = item.id === resolvedHoveredItemId;
+      const isCheckboxSelected =
+        itemType === "Checkbox" && item.checked === "Yes";
+
+      const isSelectedItem =
+        itemType === "Checkbox"
+          ? isCheckboxSelected
+          : item.id === resolvedSelectedItemId;
+
+      const itemVisualState =
+        itemType === "Checkbox"
+          ? isHoveredItem
+            ? "Hover"
+            : isCheckboxSelected
+              ? "Selected"
+              : "Default"
+          : isSelectedItem
+            ? "Selected"
+            : isHoveredItem
+              ? "Hover"
+              : "Default";
+
+      return (
+        <button
+          key={item.id ?? `${item.label}-${index}`}
+          type="button"
+          role={itemType === "Checkbox" ? "menuitemcheckbox" : "menuitem"}
+          aria-checked={
+            itemType === "Checkbox" ? item.checked === "Yes" : undefined
+          }
+          className={clsx(
+            "group flex w-full items-center gap-[8px] rounded-[8px] px-[8px] text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
+            rowHeightClassName ?? getDefaultRowHeight(itemType),
+            itemType === "Checkbox"
+              ? isSelectedItem
+                ? "bg-[var(--color-neutral-200)] hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]"
+                : "hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]"
+              : isSelectedItem
+                ? "bg-[var(--color-neutral-200)] hover:bg-[var(--color-neutral-200)] focus-visible:bg-[var(--color-neutral-200)]"
+                : itemHoverClassName,
+            isHoveredItem &&
+              !isSelectedItem &&
+              "bg-[var(--color-neutral-200)]",
+            itemClassName,
+          )}
+          onMouseEnter={() => setInternalHoveredItemId(item.id ?? null)}
+          onMouseLeave={() => setInternalHoveredItemId(null)}
+          onClick={() =>
+            handleItemClick({
+              ...item,
+              visualState: itemVisualState,
+            })
+          }
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-[12px]">
+            {renderMenuItemLeading(
+              itemType,
+              {
+                ...item,
+                visualState: itemVisualState,
+              },
+              avatarSrc,
+              countryCode,
+            )}
+
+            <div className="flex min-w-0 flex-1 items-center gap-[8px] tracking-[-0.5px]">
+              <p
+                title={truncateItemLabels ? item.label : undefined}
+                className={clsx(
+                  "text-heading-8",
+                  truncateItemLabels ? "min-w-0 flex-1 truncate" : "shrink-0",
+                  isSelectedItem
+                    ? "text-[var(--color-text-300)]"
+                    : isHoveredItem
+                      ? "text-[var(--color-text-200)]"
+                      : "text-[var(--color-text-200)]",
+                )}
+              >
+                {item.label}
+              </p>
+
+              {item.supportingText ? (
+                <p
+                  className={clsx(
+                    "min-w-0 flex-1 text-body-4",
+                    isSelectedItem
+                      ? "text-[var(--color-text-300)]"
+                      : isHoveredItem
+                        ? "text-[var(--color-text-200)]"
+                        : "text-[var(--color-text-100)]",
+                  )}
+                >
+                  {item.supportingText}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </button>
+      );
+    });
+  }
 
   /**
    * Monta el menú junto al disparador o, con `portal`, en `document.body`. Los eventos de React
