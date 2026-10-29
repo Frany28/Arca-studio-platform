@@ -287,38 +287,70 @@ const VARIANT_SERVICES = [
   singleUnitService(21, "Recorrido Virtual / VR — Por proyecto", PROJECT_UNIT, "275.00"),
 ];
 
-test("seleccionar servicios: diez por página, la selección se conserva entre páginas y buscar vuelve a la primera", async (context) => {
-  // Doce servicios activos ficticios (más de una página).
+test("seleccionar servicios: cinco filas visibles con ScrollBar vertical, sin paginación; buscar vuelve al inicio", async (context) => {
+  // Doce servicios activos ficticios (más de cinco filas).
   const many = Array.from({ length: 12 }, (_, index) => ({
-    ...SERVICES[0], code: `SERV-${String(index + 1).padStart(3, "0")}`, description: null, id: index + 1, name: `Servicio de página ${String(index + 1).padStart(2, "0")}`, sortOrder: index + 1,
+    ...SERVICES[0], code: `SERV-${String(index + 1).padStart(3, "0")}`, description: null, id: index + 1, name: `Servicio de lista ${String(index + 1).padStart(2, "0")}`, sortOrder: index + 1,
   }));
   const backend = createBackend({ services: many });
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
   const picker = page.getByRole("region", { name: "Seleccionar servicios" });
-  const pagination = picker.getByRole("navigation", { name: "Paginación de servicios disponibles" });
-  const names = () => picker.locator("tbody tr td:nth-child(2) span.text-heading-8").allInnerTexts();
-  await picker.getByText("Servicio de página 01", { exact: true }).waitFor();
+  const viewport = picker.locator("[data-service-picker-viewport]");
+  const scrollBar = picker.getByRole("scrollbar", { name: "Desplazar servicios disponibles verticalmente" });
+  const search = picker.getByRole("textbox", { name: "Buscar servicios por nombre o código" });
+  // Filas cuyo centro queda dentro del viewport, bajo la cabecera fija.
+  const visibleNames = () => viewport.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const header = node.querySelector("thead").getBoundingClientRect();
+    return [...node.querySelectorAll("tbody tr")].filter((row) => {
+      const rect = row.getBoundingClientRect();
+      const center = rect.top + rect.height / 2;
+      return center > header.bottom && center < box.bottom;
+    }).map((row) => row.querySelector("td:nth-child(2) span").textContent);
+  });
+  await picker.getByText("Servicio de lista 01", { exact: true }).waitFor();
 
-  assert.equal(await picker.locator("tbody tr").count(), 10, "Una página muestra diez servicios");
-  assert.equal(await pagination.getByRole("button", { name: "Anterior" }).isDisabled(), true);
-  await picker.getByRole("checkbox", { name: "Seleccionar Servicio de página 02" }).click();
-  await pagination.getByRole("button", { name: "Siguiente pág." }).click();
-  assert.deepEqual(await names(), ["Servicio de página 11", "Servicio de página 12"]);
-  assert.equal(await pagination.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
-  // «Seleccionar todos» marca solo la página visible; la selección de la página anterior se conserva.
+  // Todas las filas están en la tabla, pero solo cinco caben: cabecera de 49 px y filas de 50 px.
+  assert.equal(await picker.locator("tbody tr").count(), 12);
+  assert.equal(await viewport.evaluate((node) => node.clientHeight), 49 + 5 * 50);
+  assert.deepEqual(await visibleNames(), ["01", "02", "03", "04", "05"].map((n) => `Servicio de lista ${n}`));
+  assert.equal(await picker.getByRole("navigation", { name: "Paginación de servicios disponibles" }).count(), 0);
+  assert.equal(await picker.getByRole("button", { name: "Siguiente pág." }).count(), 0);
+  await scrollBar.waitFor();
+  assert.equal(await scrollBar.getAttribute("aria-valuenow"), "0");
+  await picker.getByRole("checkbox", { name: "Seleccionar Servicio de lista 02" }).click();
+
+  // Arrastrar el ScrollBar hasta el final muestra las últimas filas con la cabecera fija.
+  const track = await scrollBar.boundingBox();
+  await page.mouse.move(track.x + track.width / 2, track.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width / 2, track.y + track.height + 40, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForFunction(() => document.querySelector("[aria-label='Desplazar servicios disponibles verticalmente']")?.getAttribute("aria-valuenow") === "100");
+  assert.deepEqual(await visibleNames(), ["08", "09", "10", "11", "12"].map((n) => `Servicio de lista ${n}`));
+  assert.equal(await viewport.evaluate((node) => Math.round(node.querySelector("thead").getBoundingClientRect().top - node.getBoundingClientRect().top)), 0, "La cabecera queda fija");
+  await picker.getByRole("checkbox", { name: "Seleccionar Servicio de lista 12" }).click();
+
+  // La rueda también desplaza: sube de nuevo al principio.
+  await viewport.hover();
+  await page.mouse.wheel(0, -2000);
+  await page.waitForFunction(() => document.querySelector("[aria-label='Desplazar servicios disponibles verticalmente']")?.getAttribute("aria-valuenow") === "0");
+
+  // Con cinco resultados o menos no hay ScrollBar; «Seleccionar todos» marca los resultados de la búsqueda.
+  await search.fill("lista 1");
+  await picker.getByText("Servicio de lista 10", { exact: true }).waitFor();
+  assert.deepEqual(await visibleNames(), ["10", "11", "12"].map((n) => `Servicio de lista ${n}`));
+  await scrollBar.waitFor({ state: "detached" });
   await picker.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
-  await picker.getByText("3 de 12 seleccionados", { exact: true }).waitFor();
+  await picker.getByText("4 de 12 seleccionados", { exact: true }).waitFor();
 
-  // Buscar vuelve a la primera página de los resultados.
-  await picker.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("página 0");
-  assert.deepEqual(await names(), Array.from({ length: 9 }, (_, index) => `Servicio de página 0${index + 1}`));
-  assert.equal(await pagination.getByRole("button", { name: "Anterior" }).isDisabled(), true);
-  assert.equal(await pagination.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
-
-  await picker.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("");
+  // Volver a la lista completa la muestra desde el principio.
+  await search.fill("");
+  await scrollBar.waitFor();
+  assert.equal(await viewport.evaluate((node) => node.scrollTop), 0);
   await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
-  for (const name of ["Servicio de página 02", "Servicio de página 11", "Servicio de página 12"]) {
-    await page.getByRole("textbox", { name: `Cantidad de ${name}` }).waitFor();
+  for (const n of ["02", "10", "11", "12"]) {
+    await page.getByRole("textbox", { name: `Cantidad de Servicio de lista ${n}` }).waitFor();
   }
 });
 

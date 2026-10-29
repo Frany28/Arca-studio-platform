@@ -353,13 +353,13 @@ function QuotesTableSkeleton({ rows }) {
   );
 }
 
-// Tabla de «Seleccionar servicios» (Figma 5771:463260): encabezado de 49 px y diez filas de
-// 50 px con selección, servicio, unidad y tarifa, una página completa de la tabla real.
+// Tabla de «Seleccionar servicios» (Figma 5771:463260): encabezado de 49 px y cinco filas de
+// 50 px con selección, servicio, unidad y tarifa, las visibles en la tabla real (el resto, con ScrollBar).
 function QuoteServicePickerSkeleton() {
   return (
     <>
       <SkeletonBlock className="h-[49px] w-full rounded-none" delay={100} />
-      {Array.from({ length: 10 }, (_, row) => (
+      {Array.from({ length: 5 }, (_, row) => (
         <div key={row} className="flex h-[50px] items-center gap-[24px] border-b border-[var(--color-neutral-200)] px-[16px] last:border-b-0">
           <SkeletonBlock className="size-[16px] shrink-0 rounded-[var(--radius-1)]" delay={120 + row * 30} tone="muted" />
           <SkeletonBlock className="h-[17px] w-[220px] max-w-[40%] rounded-[var(--radius-1)]" delay={130 + row * 30} tone="text" />
@@ -372,7 +372,7 @@ function QuoteServicePickerSkeleton() {
 }
 
 // Formulario de cotización (Figma 5771:451934) mientras se lee la cotización editada: Datos
-// generales (dos campos de 320 × 61 px), selector de servicios (búsqueda, tabla de diez filas de
+// generales (dos campos de 320 × 61 px), selector de servicios (búsqueda, tabla de cinco filas de
 // 50 px y pie) y servicios incluidos (tabla, total y observaciones de 130 px). Los títulos, las
 // divisorias y el pie reales permanecen fuera del skeleton.
 function QuoteEditorSkeleton() {
