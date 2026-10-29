@@ -10,7 +10,9 @@ import { applyMigration, createIsolatedMigrationDatabase } from "./helpers/isola
 // ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL (solo localhost).
 // La base empieza sin la migración de varias unidades para comprobar que la carga la exige. Usa
 // el archivo privado del tabulador si ARCA_OFFICIAL_CATALOG_FILE lo indica; si no, un catálogo
-// de prueba con las mismas variantes (denominación, varias unidades, pendiente, texto comercial).
+// de prueba con las mismas variantes (denominación, varias unidades confirmadas o con una pendiente,
+// texto comercial) y tarifas ficticias. Con el archivo privado, las tarifas se leen de él y no se
+// repiten aquí (el repositorio es público).
 const enabled = process.env.ARCA_SERVICE_CATALOG_DB_TESTS === "1";
 const createApiRoles = process.env.ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES === "1";
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
@@ -29,8 +31,12 @@ let catalog;
 let admin;
 let usesOfficialFile;
 
+let quotes;
+let quoteIds;
+let NAMES;
+
 /**
- * Catálogo de prueba con las variantes del tabulador 3.2.
+ * Catálogo de prueba con las variantes del tabulador 3.2 y tarifas ficticias.
  *
  * @returns {object} Catálogo sin validar.
  */
@@ -39,13 +45,14 @@ function sampleCatalog() {
     catalogId: "prueba-tabulador",
     changeNote: "Carga de prueba del tabulador",
     denominations: [{ denomination: "de construcción", unit: "square_meter" }, { denomination: "eléctrico", unit: "point" }],
-    expectedTotals: { denominations: 2, individual: 4, services: 5, turnkey: 1 },
+    expectedTotals: { denominations: 2, individual: 5, services: 6, turnkey: 1 },
     services: [
-      { description: "Planimetría 2D.", kind: "individual", name: "Anteproyecto de prueba", order: 1, referenceRate: "12.00", units: [{ denomination: "de construcción", unit: "square_meter" }] },
-      { description: "Modelo 3D.", kind: "individual", name: "Modelado de prueba", order: 2, referenceRate: "450.00", units: [{ referenceRate: "450.00", unit: "project" }, { referenceRate: null, unit: "space" }] },
-      { description: null, kind: "individual", name: "Recorrido de prueba", order: 3, referenceRate: "600.00", units: [{ referenceRate: null, unit: "minute" }, { referenceRate: null, unit: "project" }] },
-      { description: null, kind: "individual", name: "Permisos de prueba", order: 4, referenceRate: "800.00", units: [{ presentationLabel: "Global por Proyecto", unit: "project" }] },
-      { description: null, kind: "turnkey", name: "Llave en mano de prueba", order: 5, referenceRate: "550.00", units: [{ unit: "square_meter" }] },
+      { description: "Planimetría 2D.", kind: "individual", name: "Anteproyecto de prueba", order: 1, referenceRate: "14.00", units: [{ denomination: "de construcción", unit: "square_meter" }] },
+      { description: "Modelo 3D.", kind: "individual", name: "Modelado de prueba", order: 2, referenceRate: "320.00", units: [{ referenceRate: "320.00", unit: "project" }, { referenceRate: null, unit: "space" }] },
+      { description: null, kind: "individual", name: "Recorrido de prueba", order: 3, referenceRate: "275.00", units: [{ referenceRate: "275.00", unit: "minute" }, { referenceRate: "275.00", unit: "project" }] },
+      { description: null, kind: "individual", name: "Permisos de prueba", order: 4, referenceRate: "510.00", units: [{ presentationLabel: "Global por Proyecto", unit: "project" }] },
+      { description: null, kind: "individual", name: "Inspección de prueba", order: 5, referenceRate: "430.00", units: [{ presentationLabel: "Honorario Mensual", unit: "month" }] },
+      { description: null, kind: "turnkey", name: "Llave en mano de prueba", order: 6, referenceRate: "610.00", units: [{ unit: "square_meter" }] },
     ],
     source: "Documento de prueba",
   };
@@ -100,6 +107,9 @@ before(async () => {
   if (!enabled) return;
   usesOfficialFile = Boolean(process.env.ARCA_OFFICIAL_CATALOG_FILE);
   rawCatalog = usesOfficialFile ? JSON.parse(await readFile(process.env.ARCA_OFFICIAL_CATALOG_FILE, "utf8")) : sampleCatalog();
+  NAMES = usesOfficialFile
+    ? { inspection: "Inspección Técnica Obra", modeling: "Modelado 3D & Renders", permits: "Permisología & Legal", tour: "Recorrido Virtual / VR" }
+    : { inspection: "Inspección de prueba", modeling: "Modelado de prueba", permits: "Permisos de prueba", tour: "Recorrido de prueba" };
   database = await createIsolatedMigrationDatabase({
     baseUrl: process.env.ARCA_SERVICE_CATALOG_TEST_DATABASE_URL,
     createApiRoles,
@@ -115,6 +125,10 @@ before(async () => {
       ($1, 'inactivo@arca.test', 'Admin', 'Inactivo', $3, 'inactive')
     returning id::int, email`, [roleId.admin, roleId.client, hash]);
   admin = users.find((user) => user.email === "carga@arca.test");
+  const [client] = await rows("insert into public.clients (name, email) values ('Cliente Catálogo', 'catalogo@arca.test') returning id::int");
+  const [project] = await rows(`insert into public.projects (client_id, created_by, name, start_date, project_type, location, public_slug)
+    values ($1, $2, 'Local Catálogo', current_date, (select enum_range(null::public.project_type))[1], 'Caracas', 'local-catalogo-carga') returning id::int`, [client.id, admin.id]);
+  quoteIds = { client: client.id, project: project.id };
 
   Object.assign(process.env, { DATABASE_POOL_MAX: "5", DATABASE_URL: database.databaseUrl, NODE_ENV: "test" });
   db = await import("../src/config/db.js");
@@ -123,6 +137,7 @@ before(async () => {
   catalogService = await import("../src/services/serviceCatalogService.js");
   unitService = await import("../src/services/measurementUnitService.js");
   maintenance = await import("../src/repositories/catalogMaintenanceRepository.js");
+  quotes = await import("../src/services/quoteService.js");
   catalog = loader.parseOfficialCatalog(rawCatalog);
 });
 
@@ -160,8 +175,12 @@ test("dry-run: predice SERV-001.. y UNID-001.. sin escribir ni consumir secuenci
   assert.equal(plan.pendingWrites, catalog.denominations.length + catalog.services.length);
   assert.deepEqual(plan.services.map((step) => step.expectedCode), catalog.services.map((service) => `SERV-${String(service.order).padStart(3, "0")}`));
   assert.deepEqual(plan.denominations.map((step) => step.publicCode), catalog.denominations.map((_, index) => `UNID-${String(index + 1).padStart(3, "0")}`));
-  const modeling = plan.services[1];
-  assert.deepEqual(modeling.units.map((unit) => [unit.label, unit.referenceRate, unit.pending]), [["proy.", "450.00", false], ["esp.", null, true]]);
+  const step = (name) => plan.services.find((service) => service.name === name);
+  const modeling = step(NAMES.modeling);
+  assert.deepEqual(modeling.units.map((unit) => [unit.label, unit.referenceRate, unit.pending]), [["proy.", modeling.referenceRate, false], ["esp.", null, true]]);
+  const tour = step(NAMES.tour);
+  assert.deepEqual(tour.units.map((unit) => [unit.label, unit.referenceRate, unit.pending]), [["min", tour.referenceRate, false], ["proy.", tour.referenceRate, false]]);
+  assert.deepEqual(step(NAMES.inspection).units.map((unit) => unit.label), ["Honorario Mensual"]);
   assert.deepEqual(await writeCounts(), before);
   assert.equal(await maintenance.readNextSerialId("public.services", "id"), 1);
   assert.equal(await maintenance.readNextSerialId("public.measurement_unit_denominations", "id"), 1);
@@ -232,14 +251,15 @@ test("unidades y tarifas: alternativas con tarifa pendiente y texto comercial ta
     const code = `SERV-${String(catalog.services.find((service) => service.name === name).order).padStart(3, "0")}`;
     return listed.filter((row) => row.code === code).map((row) => [row.unit, row.presentation_label, row.reference_rate]);
   };
-  const names = usesOfficialFile
-    ? { modeling: "Modelado 3D & Renders", permits: "Permisología & Legal", tour: "Recorrido Virtual / VR" }
-    : { modeling: "Modelado de prueba", permits: "Permisos de prueba", tour: "Recorrido de prueba" };
-  assert.deepEqual(unitsOf(names.modeling), [["project", null, "450.00"], ["space", null, null]]);
-  assert.deepEqual(unitsOf(names.tour), [["minute", null, null], ["project", null, null]]);
-  assert.deepEqual(unitsOf(names.permits), [["project", "Global por Proyecto", "800.00"]]);
-  const [tour] = await rows("select reference_rate from public.services where name = $1", [names.tour]);
-  assert.equal(tour.reference_rate, "600.00", "La tarifa del tabulador se conserva como referencia");
+  // Las tarifas se leen del catálogo usado (el privado no se repite en el repositorio público).
+  const rateOf = (name) => catalog.services.find((service) => service.name === name).referenceRate;
+  assert.deepEqual(unitsOf(NAMES.modeling), [["project", null, rateOf(NAMES.modeling)], ["space", null, null]]);
+  // Recorrido VR: minuto (principal) y proyecto, ambas cotizables a la tarifa del tabulador.
+  assert.deepEqual(unitsOf(NAMES.tour), [["minute", null, rateOf(NAMES.tour)], ["project", null, rateOf(NAMES.tour)]]);
+  assert.deepEqual(unitsOf(NAMES.permits), [["project", "Global por Proyecto", rateOf(NAMES.permits)]]);
+  assert.deepEqual(unitsOf(NAMES.inspection), [["month", "Honorario Mensual", rateOf(NAMES.inspection)]]);
+  const [tour] = await rows("select reference_rate from public.services where name = $1", [NAMES.tour]);
+  assert.equal(tour.reference_rate, rateOf(NAMES.tour), "La tarifa del tabulador se conserva como referencia");
   if (usesOfficialFile) {
     const kinds = await rows("select kind, count(*)::int as total from public.services group by kind order by kind");
     assert.deepEqual(kinds, [{ kind: "individual", total: 16 }, { kind: "turnkey", total: 3 }]);
@@ -251,6 +271,29 @@ test("idempotencia: repetir la carga no escribe nada y la verificación sigue co
   const again = await loader.applyOfficialCatalogLoad(catalog, { catalogSha256: "d".repeat(64), runId: "run3", user: admin });
   assert.deepEqual([again.plan.pendingWrites, again.completed.length, again.verification.ok], [0, 0, true]);
   assert.deepEqual(await writeCounts(), before);
+});
+
+test("cotizaciones del catálogo cargado: VR por minuto o proyecto; Modelado por espacio bloqueado", { skip }, async () => {
+  const serviceId = async (name) => (await rows("select id::int from public.services where name = $1", [name]))[0].id;
+  const quoteItem = async (item) => (await quotes.createQuote({
+    payload: { clientId: quoteIds.client, items: [item], notes: null, projectId: quoteIds.project },
+    user: admin,
+  })).items[0];
+  const tourRate = catalog.services.find((service) => service.name === NAMES.tour).referenceRate;
+  const tour = await serviceId(NAMES.tour);
+  await assert.rejects(quoteItem({ quantity: "3", serviceId: tour, unitRate: tourRate }), (error) => /Elige la unidad/.test(error.fields?.["items.0.unitOptionPosition"]));
+  const byMinute = await quoteItem({ quantity: "3", serviceId: tour, unitOptionPosition: 1, unitRate: tourRate });
+  assert.deepEqual([byMinute.unit.label, byMinute.referenceRate, byMinute.subtotal], ["min", tourRate, (Number(tourRate) * 3).toFixed(2)]);
+  // La tarifa propuesta se modifica en la cotización sin alterar la referencia del tabulador.
+  const byProject = await quoteItem({ quantity: "1", serviceId: tour, unitOptionPosition: 2, unitRate: "123.00" });
+  assert.deepEqual([byProject.unit.label, byProject.referenceRate, byProject.unitRate, byProject.subtotal], ["proy.", tourRate, "123.00", "123.00"]);
+
+  const modeling = await serviceId(NAMES.modeling);
+  await assert.rejects(
+    quoteItem({ quantity: "1", serviceId: modeling, unitOptionPosition: 2, unitRate: "1.00" }),
+    (error) => /pendiente de validación comercial/.test(error.fields?.["items.0.unitOptionPosition"]),
+  );
+  assert.equal((await quoteItem({ quantity: "1", serviceId: modeling, unitOptionPosition: 1, unitRate: "1.00" })).unit.label, "proy.");
 });
 
 test("servicio editado después de la carga: la verificación lo detecta y la carga no lo sobrescribe", { skip }, async () => {

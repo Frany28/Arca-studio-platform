@@ -10,7 +10,7 @@ const { pool } = await import("../src/config/db.js");
 const { default: serviceCatalogRouter } = await import("../src/routes/serviceCatalog.js");
 
 const ADMIN = { id: 2, role: { code: "admin" } };
-const VALID_CREATE = { measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
+const VALID_CREATE = { measurementUnitId: 1, name: "Anteproyecto", referenceRate: "14" };
 
 /**
  * Levanta el router del catálogo y devuelve un cliente cuyas rutas son relativas a /api/admin/services.
@@ -148,7 +148,7 @@ test("alta: crea servicios individuales y llave en mano con código generado y v
     assert.equal(response.body.service.kind, expectedKind);
     assert.equal(response.body.service.code, "SERV-007", "El código lo genera el sistema a partir del id");
     assert.equal(response.body.service.currentVersion, 1);
-    assert.equal(response.body.service.referenceRate, body.referenceRate === "850.50" ? "850.50" : "12.00");
+    assert.equal(response.body.service.referenceRate, body.referenceRate === "850.50" ? "850.50" : "14.00");
     // La modalidad elegida es la que se inserta y la versión 1 se escribe en la misma transacción.
     const [serviceInsert, versionInsert] = database.inserts;
     assert.equal(serviceInsert.params[4], expectedKind);

@@ -39,18 +39,18 @@ function createInitialState() {
     ]),
     quotes: [],
     serviceVersions: new Map([
-      [10, { code: "SERV-001", id: 10, kind: "turnkey", name: "Anteproyecto arquitectónico", referenceRate: "12.00", serviceId: 1, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
-      [20, { code: "SERV-002", id: 20, kind: "individual", name: "Puntos eléctricos y fuerza", referenceRate: "45.00", serviceId: 2, unitAllowsDecimals: false, unitDenomination: "eléctrico", unitSymbol: "pt." }],
+      [10, { code: "SERV-001", id: 10, kind: "turnkey", name: "Anteproyecto arquitectónico", referenceRate: "14.00", serviceId: 1, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
+      [20, { code: "SERV-002", id: 20, kind: "individual", name: "Puntos eléctricos y fuerza", referenceRate: "47.00", serviceId: 2, unitAllowsDecimals: false, unitDenomination: "eléctrico", unitSymbol: "pt." }],
       [30, { code: "SERV-003", id: 30, kind: "individual", name: "Servicio retirado", referenceRate: "8.00", serviceId: 3, unitAllowsDecimals: true, unitDenomination: null, unitSymbol: "m²" }],
-      [40, { code: "SERV-004", id: 40, kind: "individual", name: "Modelado 3D & Renders", referenceRate: "450.00", serviceId: 4, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "proy." }],
+      [40, { code: "SERV-004", id: 40, kind: "individual", name: "Modelado 3D & Renders", referenceRate: "320.00", serviceId: 4, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "proy." }],
     ]),
     // Unidades copiadas por versión: una por servicio salvo la versión 40 («Por Proyecto /
     // Espacio»: proyecto con tarifa y espacio pendiente de validación comercial).
     serviceVersionUnitOptions: new Map([
-      [100, { id: 100, position: 1, presentationLabel: null, referenceRate: "12.00", serviceVersionId: 10, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
-      [200, { id: 200, position: 1, presentationLabel: null, referenceRate: "45.00", serviceVersionId: 20, unitAllowsDecimals: false, unitDenomination: "eléctrico", unitSymbol: "pt." }],
+      [100, { id: 100, position: 1, presentationLabel: null, referenceRate: "14.00", serviceVersionId: 10, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
+      [200, { id: 200, position: 1, presentationLabel: null, referenceRate: "47.00", serviceVersionId: 20, unitAllowsDecimals: false, unitDenomination: "eléctrico", unitSymbol: "pt." }],
       [300, { id: 300, position: 1, presentationLabel: null, referenceRate: "8.00", serviceVersionId: 30, unitAllowsDecimals: true, unitDenomination: null, unitSymbol: "m²" }],
-      [400, { id: 400, position: 1, presentationLabel: null, referenceRate: "450.00", serviceVersionId: 40, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "proy." }],
+      [400, { id: 400, position: 1, presentationLabel: null, referenceRate: "320.00", serviceVersionId: 40, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "proy." }],
       [401, { id: 401, position: 2, presentationLabel: null, referenceRate: null, serviceVersionId: 40, unitAllowsDecimals: false, unitDenomination: null, unitSymbol: "esp." }],
     ]),
     services: new Map([

@@ -226,7 +226,7 @@ test("denominaciones: edición y activación con cambios efectivos y sin cambios
 test("servicios: denominación de la misma base, llave en mano por m² y copia histórica en versiones", { skip }, async () => {
   const [construction] = (await units.getDenominationsPage({ measurementUnitId: ids.units.square_meter, search: "construcción" })).unitDenominations;
   const [canalization] = (await units.getDenominationsPage({ search: "canalización" })).unitDenominations;
-  const turnkey = await createService({ code: "LLAVE-PREMIUM", kind: "turnkey", referenceRate: "900.00", unitDenominationId: construction.id });
+  const turnkey = await createService({ code: "LLAVE-PREMIUM", kind: "turnkey", referenceRate: "940.00", unitDenominationId: construction.id });
   created.llavePremium = turnkey.id;
   assert.deepEqual(turnkey.unitDenomination, { denomination: "de construcción", id: construction.id, isActive: true });
   assert.equal(turnkey.unitLabel, "m² de construcción");
@@ -255,7 +255,7 @@ test("versionado: cambiar o retirar la denominación crea versiones y exige cohe
   assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.unit_denomination]), [[1, "de construcción"], [2, "de recorrido comercial"], [3, null]]);
 
   const [electric] = (await units.getDenominationsPage({ search: "eléctrico" })).unitDenominations;
-  const points = await createService({ code: "PUNTOS", measurementUnitId: ids.units.point, referenceRate: "45.00", unitDenominationId: electric.id });
+  const points = await createService({ code: "PUNTOS", measurementUnitId: ids.units.point, referenceRate: "47.00", unitDenominationId: electric.id });
   await assert.rejects(
     catalog.updateService({ payload: { expectedVersion: 1, measurementUnitId: ids.units.unit }, serviceId: points.id, user: { id: ids.admin } }),
     (error) => error.code === "VALIDATION_ERROR" && /otra unidad/.test(error.fields.unitDenominationId),

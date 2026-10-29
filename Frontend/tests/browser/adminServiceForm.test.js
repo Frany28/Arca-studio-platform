@@ -859,14 +859,14 @@ for (const theme of ["light", "dark"]) {
     let dialog = await openCreate(page);
     await dialog.locator("#service-form-name").fill("Canalización base sola");
     await chooseModality(page, "Detalle por detalle");
-    await dialog.getByPlaceholder("0.00").fill("12.00");
+    await dialog.getByPlaceholder("0.00").fill("13.00");
     await chooseUnit(page, "m.l.");
     await dialog.getByRole("button", { name: "Quitar Metro lineal" }).waitFor();
     assert.equal(await unitSymbol(page), "m.l.");
     await dialog.getByRole("button", { name: "Crear", exact: true }).click();
     await dialog.waitFor({ state: "detached" });
     assert.deepEqual(requestsOf(backend, "POST", /^\/api\/admin\/services$/).at(-1).body,
-      { name: "Canalización base sola", kind: "individual", measurementUnitId: 6, referenceRate: "12.00" });
+      { name: "Canalización base sola", kind: "individual", measurementUnitId: 6, referenceRate: "13.00" });
 
     // Principal con texto comercial y una alternativa con la tarifa pendiente de validación comercial.
     dialog = await openCreate(page);
@@ -1255,7 +1255,7 @@ test("edición: mismo modal con datos reales, solo campos cambiados, expectedVer
   assert.ok(requestsOf(backend, "GET", /^\/api\/admin\/services\/1$/).length >= 1, "Lee la versión vigente");
   assert.equal(await dialog.locator("#service-form-name").inputValue(), "Anteproyecto de prueba");
   assert.equal(await dialog.getByPlaceholder("Descripción del servicio.").inputValue(), "Primera propuesta del espacio.");
-  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "12.00", "La tarifa guardada, sin conversión");
+  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "14.00", "La tarifa guardada, sin conversión");
   await dialog.getByRole("button", { name: "Quitar de construcción" }).waitFor();
   assert.equal(await dialog.getByRole("button", { name: "Guardar" }).isVisible(), true);
 
@@ -1265,7 +1265,7 @@ test("edición: mismo modal con datos reales, solo campos cambiados, expectedVer
   await page.getByRole("alert").getByText("Sin cambios").first().waitFor();
   assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/1$/).length, 0);
 
-  // Cambiar solo la tarifa (12 equivale a 12.00, así que se cambia de verdad a 15).
+  // Cambiar solo la tarifa (14 equivale a 14.00, así que se cambia de verdad a 15).
   await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
   await dialog.locator("#service-form-name").waitFor();
   await dialog.getByPlaceholder("0.00").fill("1500");
@@ -1324,7 +1324,7 @@ test("edición: el mismo modal valida los campos y Cancelar descarta lo escrito 
   await page.getByRole("button", { name: "Editar TST-001 Anteproyecto de prueba" }).click();
   await dialog.locator("#service-form-name").waitFor();
   await page.waitForFunction(() => document.querySelector("#service-form-name")?.value === "Anteproyecto de prueba");
-  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "12.00");
+  assert.equal(await dialog.getByPlaceholder("0.00").inputValue(), "14.00");
 });
 
 test("edición de un servicio llave en mano: no envía el tipo y la fila conserva su modalidad", async (context) => {

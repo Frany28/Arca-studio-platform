@@ -50,7 +50,7 @@ function seededRandom(seed) {
 
 test("paridad: subtotales y total coinciden con el motor del backend, incluidos los límites de redondeo", () => {
   const cases = [
-    [{ quantity: "200", unitRate: "12" }, { quantity: "35", unitRate: "45" }],
+    [{ quantity: "200", unitRate: "14" }, { quantity: "35", unitRate: "47" }],
     // 0.005 → 0.01 (mitad hacia arriba) y 0.004 → 0.00.
     [{ quantity: "0.001", unitRate: "5" }, { quantity: "0.001", unitRate: "4" }],
     [{ quantity: "1.005", unitRate: "1.01" }, { quantity: "333.333", unitRate: "0.03" }],

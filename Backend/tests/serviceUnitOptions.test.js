@@ -13,18 +13,18 @@ import {
 import { quoteCreateSchema } from "../src/validation/quoteSchemas.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../src/validation/serviceCatalogSchemas.js";
 
-// Varias unidades por servicio (tabulador 3.2): «Por Proyecto / Espacio» ($450, confirmado por
-// proyecto) y «Por Minuto / Proyecto» ($600, sin tarifa por unidad), sin inventar tarifas.
+// Varias unidades por servicio (tabulador 3.2): «Por Proyecto / Espacio» (tarifa confirmada por
+// proyecto y espacio pendiente) y «Por Minuto / Proyecto», sin inventar tarifas (importes ficticios).
 
 const option = (unitId, overrides = {}) => ({
   measurementUnit: { id: unitId }, presentationLabel: null, referenceRate: null, unitDenomination: null, ...overrides,
 });
 
-// «Modelado 3D & Renders»: proyecto (38) a $450 y espacio (39) pendiente.
+// «Modelado 3D & Renders»: proyecto (38) a $320 y espacio (39) pendiente.
 const MODELING = {
   description: "Modelo 3D + 3 a 5 renders hiperrealistas.", isActive: true, kind: "individual",
-  measurementUnit: { id: 38 }, name: "Modelado 3D & Renders", referenceRate: "450.00", sortOrder: 2, unitDenomination: null,
-  unitOptions: [option(38, { referenceRate: "450.00" }), option(39)],
+  measurementUnit: { id: 38 }, name: "Modelado 3D & Renders", referenceRate: "320.00", sortOrder: 2, unitDenomination: null,
+  unitOptions: [option(38, { referenceRate: "320.00" }), option(39)],
 };
 
 /**
@@ -52,7 +52,7 @@ test("tarifas: una unidad pendiente no es cotizable y una sola unidad usa la tar
   ]);
   // Varias unidades: una tarifa omitida queda pendiente; nunca se copia la del servicio.
   const recorrido = resolveUnitOptions({
-    changes: { unitOptions: [{ measurementUnitId: 31 }, { measurementUnitId: 38 }] }, current: [], referenceRate: "600.00",
+    changes: { unitOptions: [{ measurementUnitId: 31 }, { measurementUnitId: 38 }] }, current: [], referenceRate: "275.00",
   });
   assert.deepEqual(recorrido.map((item) => item.referenceRate), [null, null]);
 });
@@ -69,7 +69,7 @@ test("reglas: entre 1 y el máximo, sin repetir unidad y denominación, tarifa �
     ["unitOptions.1.measurementUnitId"],
   );
   assert.deepEqual(
-    Object.keys(collectUnitOptionErrors([{ measurementUnitId: 38, referenceRate: "500.00", unitDenominationId: null }], "800.00")),
+    Object.keys(collectUnitOptionErrors([{ measurementUnitId: 38, referenceRate: "500.00", unitDenominationId: null }], "510.00")),
     ["unitOptions.0.referenceRate"],
   );
 });
@@ -78,19 +78,19 @@ test("versionado: las unidades cambian con su orden, tarifa o texto; el atajo co
   assert.deepEqual(listChangedServiceFields(MODELING, mergeServiceChanges(MODELING, {})), []);
   // Confirmar la tarifa de espacio es un cambio versionado de las unidades.
   const confirmed = mergeServiceChanges(MODELING, { unitOptions: [
-    { measurementUnitId: 38, referenceRate: "450.00" }, { measurementUnitId: 39, referenceRate: "380.00" },
+    { measurementUnitId: 38, referenceRate: "320.00" }, { measurementUnitId: 39, referenceRate: "380.00" },
   ] });
   assert.deepEqual(listChangedServiceFields(MODELING, confirmed), ["unitOptions"]);
   // En un servicio con varias unidades, la tarifa del tabulador no cambia las de las unidades.
   assert.deepEqual(listChangedServiceFields(MODELING, mergeServiceChanges(MODELING, { referenceRate: "500.00" })), ["referenceRate"]);
   // El atajo cambia solo la principal y conserva espacio pendiente.
   const replaced = mergeServiceChanges(MODELING, { measurementUnitId: 44 });
-  assert.deepEqual(replaced.unitOptions.map((item) => [item.measurementUnitId, item.referenceRate]), [[44, "450.00"], [39, null]]);
+  assert.deepEqual(replaced.unitOptions.map((item) => [item.measurementUnitId, item.referenceRate]), [[44, "320.00"], [39, null]]);
   assert.equal(replaced.measurementUnitId, 44);
 });
 
 test("cotización: se elige la unidad por posición y nunca una con tarifa pendiente", () => {
-  const unitOptions = [{ id: 400, position: 1, referenceRate: "450.00" }, { id: 401, position: 2, referenceRate: null }];
+  const unitOptions = [{ id: 400, position: 1, referenceRate: "320.00" }, { id: 401, position: 2, referenceRate: null }];
   assert.deepEqual(chooseQuoteUnitOption({ requestedPosition: 1, unitOptions }), { option: unitOptions[0] });
   assert.match(chooseQuoteUnitOption({ requestedPosition: 2, unitOptions }).error, /pendiente de validación comercial/);
   assert.match(chooseQuoteUnitOption({ unitOptions }).error, /Elige la unidad/, "Con varias unidades hay que elegir");
@@ -102,12 +102,12 @@ test("cotización: se elige la unidad por posición y nunca una con tarifa pendi
 });
 
 test("contrato: unitOptions o el atajo de unidad, nunca ambos; tarifa por unidad opcional y texto comercial normalizado", () => {
-  const base = { name: "Modelado 3D & Renders", referenceRate: "450" };
+  const base = { name: "Modelado 3D & Renders", referenceRate: "320" };
   const created = serviceCreateSchema.safeParse({ body: { ...base, unitOptions: [
-    { measurementUnitId: 38, referenceRate: "450" }, { measurementUnitId: 39, presentationLabel: "  Por  Espacio " },
+    { measurementUnitId: 38, referenceRate: "320" }, { measurementUnitId: 39, presentationLabel: "  Por  Espacio " },
   ] } });
   assert.equal(created.success, true, JSON.stringify(created.error?.issues));
-  assert.deepEqual(created.data.body.unitOptions.map((item) => [item.referenceRate, item.presentationLabel]), [["450.00", null], [null, "Por Espacio"]]);
+  assert.deepEqual(created.data.body.unitOptions.map((item) => [item.referenceRate, item.presentationLabel]), [["320.00", null], [null, "Por Espacio"]]);
   assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: base })), ["body.measurementUnitId"]);
   assert.deepEqual(
     errorPaths(serviceCreateSchema.safeParse({ body: { ...base, measurementUnitId: 38, unitOptions: [{ measurementUnitId: 38 }] } })),
@@ -119,7 +119,7 @@ test("contrato: unitOptions o el atajo de unidad, nunca ambos; tarifa por unidad
   const updated = serviceUpdateSchema.safeParse({ params: { serviceId: "2" }, body: { expectedVersion: 1, unitOptions: [{ measurementUnitId: 38 }] } });
   assert.equal(updated.success, true);
   // En la cotización, la posición de la unidad es opcional y acotada.
-  const item = { quantity: "1", serviceId: 4, unitRate: "450" };
+  const item = { quantity: "1", serviceId: 4, unitRate: "320" };
   assert.equal(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 1 }], projectId: 9 } }).success, true);
   assert.deepEqual(errorPaths(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 0 }], projectId: 9 } })), ["body.items.0.unitOptionPosition"]);
 });

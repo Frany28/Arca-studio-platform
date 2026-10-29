@@ -4,13 +4,13 @@ import test from "node:test";
 import { QUOTE_DECIMAL_FORMATS, calculateQuoteTotals } from "../src/domain/quoteTotals.js";
 import { ValidationError } from "../src/errors/appError.js";
 
-// Ejemplos tomados de la Propuesta de Servicios y Tabulador 2025, versión 3.2. Las tarifas
-// son datos de prueba: el motor las recibe como parámetros y no contiene el tabulador.
-const ANTEPROYECTO_M2 = { quantity: "200", unitRate: "12" };
-const CANALIZACIONES_ML = { quantity: "120", unitRate: "12" };
-const PUNTOS_ELECTRICOS = { quantity: "35", unitRate: "45" };
-const MODELADO_3D_PROYECTO = { quantity: "1", unitRate: "450" };
-const LLAVE_EN_MANO_PREMIUM_M2 = { quantity: "150", unitRate: "900" };
+// Ejemplos con las unidades del tabulador 3.2 (m², m.l., puntos, proyecto, llave en mano) y tarifas
+// ficticias: el motor las recibe como parámetros y no contiene el tabulador.
+const ANTEPROYECTO_M2 = { quantity: "200", unitRate: "14" };
+const CANALIZACIONES_ML = { quantity: "120", unitRate: "13" };
+const PUNTOS_ELECTRICOS = { quantity: "35", unitRate: "47" };
+const MODELADO_3D_PROYECTO = { quantity: "1", unitRate: "320" };
+const LLAVE_EN_MANO_PREMIUM_M2 = { quantity: "150", unitRate: "940" };
 
 const VAT_DISABLED = { enabled: false };
 const VAT_16 = { enabled: true, rate: "16" };
@@ -54,24 +54,24 @@ function toCents(amount) {
   return BigInt(amount.replace(".", ""));
 }
 
-test("v3.2: servicio por metro cuadrado (anteproyecto, 200 m² × 12 USD)", () => {
-  assert.equal(calculate([ANTEPROYECTO_M2]).items[0].subtotal, "2400.00");
+test("v3.2: servicio por metro cuadrado (anteproyecto, 200 m² × 14 USD)", () => {
+  assert.equal(calculate([ANTEPROYECTO_M2]).items[0].subtotal, "2800.00");
 });
 
-test("v3.2: servicio por metro lineal (canalizaciones, 120 ml × 12 USD)", () => {
-  assert.equal(calculate([CANALIZACIONES_ML]).items[0].subtotal, "1440.00");
+test("v3.2: servicio por metro lineal (canalizaciones, 120 ml × 13 USD)", () => {
+  assert.equal(calculate([CANALIZACIONES_ML]).items[0].subtotal, "1560.00");
 });
 
-test("v3.2: servicio por punto (puntos eléctricos, 35 × 45 USD)", () => {
-  assert.equal(calculate([PUNTOS_ELECTRICOS]).items[0].subtotal, "1575.00");
+test("v3.2: servicio por punto (puntos eléctricos, 35 × 47 USD)", () => {
+  assert.equal(calculate([PUNTOS_ELECTRICOS]).items[0].subtotal, "1645.00");
 });
 
-test("v3.2: servicio por proyecto con tarifa fija usa la misma multiplicación (1 × 450 USD)", () => {
-  assert.equal(calculate([MODELADO_3D_PROYECTO]).items[0].subtotal, "450.00");
+test("v3.2: servicio por proyecto con tarifa fija usa la misma multiplicación (1 × 320 USD)", () => {
+  assert.equal(calculate([MODELADO_3D_PROYECTO]).items[0].subtotal, "320.00");
 });
 
-test("v3.2: modalidad llave en mano premium por m² (150 m² × 900 USD)", () => {
-  assert.equal(calculate([LLAVE_EN_MANO_PREMIUM_M2]).items[0].subtotal, "135000.00");
+test("v3.2: modalidad llave en mano premium por m² (150 m² × 940 USD)", () => {
+  assert.equal(calculate([LLAVE_EN_MANO_PREMIUM_M2]).items[0].subtotal, "141000.00");
 });
 
 test("cotización con múltiples servicios: subtotales en orden, total e IVA referencial", () => {
@@ -79,14 +79,14 @@ test("cotización con múltiples servicios: subtotales en orden, total e IVA ref
 
   assert.deepEqual(result, {
     items: [
-      { quantity: "200.000", subtotal: "2400.00", unitRate: "12.00" },
-      { quantity: "120.000", subtotal: "1440.00", unitRate: "12.00" },
-      { quantity: "35.000", subtotal: "1575.00", unitRate: "45.00" },
-      { quantity: "1.000", subtotal: "450.00", unitRate: "450.00" },
+      { quantity: "200.000", subtotal: "2800.00", unitRate: "14.00" },
+      { quantity: "120.000", subtotal: "1560.00", unitRate: "13.00" },
+      { quantity: "35.000", subtotal: "1645.00", unitRate: "47.00" },
+      { quantity: "1.000", subtotal: "320.00", unitRate: "320.00" },
     ],
-    servicesTotal: "5865.00",
-    referenceVat: { amount: "938.40", enabled: true, isReferenceOnly: true, rate: "16.00" },
-    estimatedTotalWithVat: "6803.40",
+    servicesTotal: "6325.00",
+    referenceVat: { amount: "1012.00", enabled: true, isReferenceOnly: true, rate: "16.00" },
+    estimatedTotalWithVat: "7337.00",
   });
 });
 
@@ -139,35 +139,35 @@ test("precisión decimal: los resultados no dependen de la coma flotante binaria
 
 test("IVA referencial habilitado: se identifica como estimación y redondea a dos decimales", () => {
   const result = calculate([ANTEPROYECTO_M2], VAT_16);
-  assert.deepEqual(result.referenceVat, { amount: "384.00", enabled: true, isReferenceOnly: true, rate: "16.00" });
-  assert.equal(result.servicesTotal, "2400.00");
-  assert.equal(result.estimatedTotalWithVat, "2784.00");
+  assert.deepEqual(result.referenceVat, { amount: "448.00", enabled: true, isReferenceOnly: true, rate: "16.00" });
+  assert.equal(result.servicesTotal, "2800.00");
+  assert.equal(result.estimatedTotalWithVat, "3248.00");
 
   assert.equal(calculate([{ quantity: "1", unitRate: "10.03" }], VAT_16).referenceVat.amount, "1.60"); // 1.6048
   assert.equal(calculate([{ quantity: "1", unitRate: "0.05" }], { enabled: true, rate: "10" }).referenceVat.amount, "0.01"); // 0.005
-  assert.equal(calculate([ANTEPROYECTO_M2], { enabled: true, rate: "12.5" }).referenceVat.amount, "300.00");
+  assert.equal(calculate([ANTEPROYECTO_M2], { enabled: true, rate: "12.5" }).referenceVat.amount, "350.00");
 });
 
 test("IVA referencial deshabilitado: no altera el total de servicios", () => {
   const result = calculate([ANTEPROYECTO_M2], VAT_DISABLED);
   assert.deepEqual(result.referenceVat, { amount: "0.00", enabled: false, isReferenceOnly: true, rate: null });
-  assert.equal(result.estimatedTotalWithVat, "2400.00");
+  assert.equal(result.estimatedTotalWithVat, "2800.00");
 
   // La tasa configurada puede conservarse sin aplicarse.
   const withConfiguredRate = calculate([ANTEPROYECTO_M2], { enabled: false, rate: "16" });
   assert.equal(withConfiguredRate.referenceVat.rate, "16.00");
   assert.equal(withConfiguredRate.referenceVat.amount, "0.00");
-  assert.equal(withConfiguredRate.estimatedTotalWithVat, "2400.00");
+  assert.equal(withConfiguredRate.estimatedTotalWithVat, "2800.00");
 });
 
 test("IVA referencial con tasa 0 %", () => {
   const result = calculate([ANTEPROYECTO_M2], { enabled: true, rate: "0" });
   assert.deepEqual(result.referenceVat, { amount: "0.00", enabled: true, isReferenceOnly: true, rate: "0.00" });
-  assert.equal(result.estimatedTotalWithVat, "2400.00");
+  assert.equal(result.estimatedTotalWithVat, "2800.00");
 });
 
 test("acepta los extremos de la tasa de IVA y rechaza tasas inválidas", () => {
-  assert.equal(calculate([ANTEPROYECTO_M2], { enabled: true, rate: "100" }).estimatedTotalWithVat, "4800.00");
+  assert.equal(calculate([ANTEPROYECTO_M2], { enabled: true, rate: "100" }).estimatedTotalWithVat, "5600.00");
 
   for (const rate of ["-1", -0.01, "100.01", 101, "abc", "16.555", NaN, Infinity, null, undefined, ""]) {
     assertInvalidFields(() => calculate([ANTEPROYECTO_M2], { enabled: true, rate }), ["referenceVat.rate"]);
@@ -257,13 +257,13 @@ test("la suma de subtotales coincide siempre con el total y el total estimado co
 
 test("conserva el orden, ignora propiedades ajenas al cálculo y no modifica la entrada", () => {
   const items = [
-    { concept: "Modelado 3D", quantity: "1", serviceId: 7, unitRate: "450" },
-    { concept: "Anteproyecto", quantity: "200", serviceId: 1, unitRate: "12" },
+    { concept: "Modelado 3D", quantity: "1", serviceId: 7, unitRate: "320" },
+    { concept: "Anteproyecto", quantity: "200", serviceId: 1, unitRate: "14" },
   ];
   const snapshot = structuredClone(items);
   const result = calculate(items);
 
-  assert.deepEqual(result.items.map((item) => item.subtotal), ["450.00", "2400.00"]);
+  assert.deepEqual(result.items.map((item) => item.subtotal), ["320.00", "2800.00"]);
   assert.deepEqual(Object.keys(result.items[0]).sort(), ["quantity", "subtotal", "unitRate"]);
   assert.deepEqual(items, snapshot);
 });

@@ -14,8 +14,8 @@ const ADMIN = { id: 2, role: { code: "admin" } };
 const VALID_CREATE = {
   clientId: 3,
   items: [
-    { quantity: "200", serviceId: 1, unitRate: "12" },
-    { quantity: "35", serviceId: 2, unitRate: "45" },
+    { quantity: "200", serviceId: 1, unitRate: "14" },
+    { quantity: "35", serviceId: 2, unitRate: "47" },
   ],
   notes: "Incluye dos visitas de obra.",
   projectId: 9,
@@ -81,10 +81,10 @@ test("alta: calcula importes en el servidor, genera COT-001 y bloquea cliente, p
   assert.equal(quote.currentVersion, 1);
   assert.deepEqual(quote.client, { id: 3, name: "Leonel Pérez" });
   assert.deepEqual(quote.project, { id: 9, name: "Apto. 910" });
-  assert.equal(quote.servicesTotal, "3975.00");
+  assert.equal(quote.servicesTotal, "4445.00");
   assert.deepEqual(quote.items.map((item) => [item.service.code, item.unit.label, item.quantity, item.unitRate, item.subtotal]), [
-    ["SERV-001", "m² de construcción", "200.000", "12.00", "2400.00"],
-    ["SERV-002", "pt. eléctrico", "35.000", "45.00", "1575.00"],
+    ["SERV-001", "m² de construcción", "200.000", "14.00", "2800.00"],
+    ["SERV-002", "pt. eléctrico", "35.000", "47.00", "1645.00"],
   ]);
   assert.equal(quote.notes, "Incluye dos visitas de obra.");
   assert.deepEqual(quote.version.createdBy, { hasProfilePhoto: true, id: 2, name: "Leonel Peréz" });
@@ -98,9 +98,9 @@ test("alta: calcula importes en el servidor, genera COT-001 y bloquea cliente, p
 });
 
 test("varias unidades: exige elegir, rechaza la tarifa pendiente y cotiza la confirmada con su referencia", async (context) => {
-  // Servicio 4 «Modelado 3D & Renders»: proyecto ($450) y espacio (pendiente de validación comercial).
+  // Servicio 4 «Modelado 3D & Renders»: proyecto ($320) y espacio (pendiente de validación comercial).
   const server = await startServer(context);
-  const line = { quantity: "1", serviceId: 4, unitRate: "450" };
+  const line = { quantity: "1", serviceId: 4, unitRate: "320" };
   for (const [item, message] of [
     [line, /Elige la unidad/],
     [{ ...line, unitOptionPosition: 2 }, /pendiente de validación comercial/],
@@ -115,7 +115,7 @@ test("varias unidades: exige elegir, rechaza la tarifa pendiente y cotiza la con
   const created = await createQuote(server, { items: [{ ...line, unitOptionPosition: 1 }] });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const [item] = created.body.quote.items;
-  assert.deepEqual([item.unit.label, item.unit.position, item.referenceRate, item.subtotal], ["proy.", 1, "450.00", "450.00"]);
+  assert.deepEqual([item.unit.label, item.unit.position, item.referenceRate, item.subtotal], ["proy.", 1, "320.00", "320.00"]);
   assert.equal(server.database.state.items[0].serviceVersionUnitOptionId, 400, "Se guarda la unidad copiada de la versión");
 
   // Editar sin reenviar la posición conserva la unidad cotizada; cambiar a la pendiente se rechaza.
@@ -136,8 +136,8 @@ test("alta: rechaza cliente inactivo, proyecto ajeno o eliminado y servicios ina
     [{ items: [{ quantity: "1", serviceId: 3, unitRate: "8" }] }, "items.0.serviceId", "El servicio está inactivo y no puede añadirse a la cotización."],
     [{ items: [{ quantity: "1", serviceId: 404, unitRate: "8" }] }, "items.0.serviceId", "El servicio seleccionado no existe."],
     [{ items: [VALID_CREATE.items[0], VALID_CREATE.items[0]] }, "items.1.serviceId", "Este servicio ya está incluido en la cotización."],
-    [{ items: [{ quantity: "2.5", serviceId: 2, unitRate: "45" }] }, "items.0.quantity", "La unidad de este servicio solo admite cantidades enteras."],
-    [{ items: [{ quantity: "0", serviceId: 1, unitRate: "12" }] }, "items.0.quantity", "Debe ser mayor que cero."],
+    [{ items: [{ quantity: "2.5", serviceId: 2, unitRate: "47" }] }, "items.0.quantity", "La unidad de este servicio solo admite cantidades enteras."],
+    [{ items: [{ quantity: "0", serviceId: 1, unitRate: "14" }] }, "items.0.quantity", "Debe ser mayor que cero."],
   ];
   for (const [overrides, field, message] of cases) {
     const response = await createQuote(server, overrides);
@@ -164,18 +164,18 @@ test("edición: versiona solo cambios efectivos y respeta expectedVersion", asyn
   const { quote } = (await createQuote(server)).body;
 
   const unchanged = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, items: [
-    { quantity: "200.000", serviceId: 1, unitRate: "12.00" }, { quantity: "35", serviceId: 2, unitRate: "45.00" },
+    { quantity: "200.000", serviceId: 1, unitRate: "14.00" }, { quantity: "35", serviceId: 2, unitRate: "47.00" },
   ] });
   assert.equal(unchanged.status, 200);
   assert.equal(unchanged.body.changed, false);
   assert.equal(unchanged.body.quote.currentVersion, 1);
   assert.equal(server.database.state.versions.length, 1, "Sin cambios no hay versión nueva");
 
-  const changed = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, items: [{ quantity: "100", serviceId: 1, unitRate: "12" }], notes: "" });
+  const changed = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, items: [{ quantity: "100", serviceId: 1, unitRate: "14" }], notes: "" });
   assert.equal(changed.status, 200);
   assert.equal(changed.body.changed, true);
   assert.equal(changed.body.quote.currentVersion, 2);
-  assert.equal(changed.body.quote.servicesTotal, "1200.00");
+  assert.equal(changed.body.quote.servicesTotal, "1400.00");
   assert.equal(changed.body.quote.notes, null);
   assert.deepEqual(server.database.state.versions.map((version) => [version.versionNumber, version.isCurrent]), [[1, false], [2, true]]);
 
@@ -196,10 +196,10 @@ test("edición: un servicio ya cotizado conserva su versión aunque se desactive
   serviceVersions.set(11, { ...serviceVersions.get(10), id: 11, name: "Anteproyecto renombrado", referenceRate: "15.00" });
   services.set(1, { currentVersionId: 11, id: 1, isActive: false });
 
-  const kept = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, items: [{ quantity: "50", serviceId: 1, unitRate: "12" }] });
+  const kept = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, items: [{ quantity: "50", serviceId: 1, unitRate: "14" }] });
   assert.equal(kept.status, 200);
   assert.deepEqual(kept.body.quote.items.map((item) => [item.service.versionId, item.service.name, item.referenceRate, item.service.isActive]), [
-    [10, "Anteproyecto arquitectónico", "12.00", false],
+    [10, "Anteproyecto arquitectónico", "14.00", false],
   ]);
 
   const added = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 2, items: [{ quantity: "1", serviceId: 3, unitRate: "8" }] });

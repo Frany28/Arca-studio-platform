@@ -22,8 +22,8 @@ let server;
 let origin;
 
 const SERVICES = [
-  { code: "SERV-001", currency: "USD", currentVersion: 1, description: "Planos y memoria descriptiva.", id: 1, isActive: true, kind: "individual", kindLocked: false, measurementUnit: { allowsDecimals: true, code: "square_meter", id: 1, isActive: true, name: "Metro cuadrado", symbol: "m²" }, name: "Anteproyecto arquitectónico", referenceRate: "12.00", sortOrder: 1, unitDenomination: { denomination: "de construcción", id: 10, isActive: true }, unitLabel: "m² de construcción" },
-  { code: "SERV-002", currency: "USD", currentVersion: 1, description: null, id: 2, isActive: true, kind: "individual", kindLocked: false, measurementUnit: { allowsDecimals: false, code: "point", id: 30, isActive: true, name: "Punto", symbol: "pt." }, name: "Puntos eléctricos y fuerza", referenceRate: "45.00", sortOrder: 2, unitDenomination: { denomination: "eléctrico", id: 12, isActive: true }, unitLabel: "pt. eléctrico" },
+  { code: "SERV-001", currency: "USD", currentVersion: 1, description: "Planos y memoria descriptiva.", id: 1, isActive: true, kind: "individual", kindLocked: false, measurementUnit: { allowsDecimals: true, code: "square_meter", id: 1, isActive: true, name: "Metro cuadrado", symbol: "m²" }, name: "Anteproyecto arquitectónico", referenceRate: "14.00", sortOrder: 1, unitDenomination: { denomination: "de construcción", id: 10, isActive: true }, unitLabel: "m² de construcción" },
+  { code: "SERV-002", currency: "USD", currentVersion: 1, description: null, id: 2, isActive: true, kind: "individual", kindLocked: false, measurementUnit: { allowsDecimals: false, code: "point", id: 30, isActive: true, name: "Punto", symbol: "pt." }, name: "Puntos eléctricos y fuerza", referenceRate: "47.00", sortOrder: 2, unitDenomination: { denomination: "eléctrico", id: 12, isActive: true }, unitLabel: "pt. eléctrico" },
   { code: "SERV-003", currency: "USD", currentVersion: 1, description: null, id: 3, isActive: false, kind: "individual", kindLocked: false, measurementUnit: { allowsDecimals: true, code: "square_meter", id: 1, isActive: true, name: "Metro cuadrado", symbol: "m²" }, name: "Servicio retirado", referenceRate: "8.00", sortOrder: 3, unitDenomination: null, unitLabel: "m²" },
 ];
 const CLIENTS = [
@@ -110,8 +110,8 @@ function buildQuote(id, payload, version, createdAt, services = SERVICES) {
 function createBackend({ failures = {}, services = SERVICES } = {}) {
   const state = {
     quotes: [
-      buildQuote(1, { clientId: 3, items: [{ quantity: "200", serviceId: 1, unitRate: "12" }, { quantity: "35", serviceId: 2, unitRate: "45" }], notes: "Incluye visitas.", projectId: 9 }, 1, "2026-03-23T15:00:00.000Z"),
-      buildQuote(2, { clientId: 4, items: [{ quantity: "10", serviceId: 1, unitRate: "12" }], projectId: 10 }, 1, "2026-04-12T15:00:00.000Z"),
+      buildQuote(1, { clientId: 3, items: [{ quantity: "200", serviceId: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitRate: "47" }], notes: "Incluye visitas.", projectId: 9 }, 1, "2026-03-23T15:00:00.000Z"),
+      buildQuote(2, { clientId: 4, items: [{ quantity: "10", serviceId: 1, unitRate: "14" }], projectId: 10 }, 1, "2026-04-12T15:00:00.000Z"),
     ],
     requests: [],
   };
@@ -209,7 +209,7 @@ test("listado: filas reales, indicador, orden por Total, búsqueda e intervalo d
   const page = await openQuotes(context, backend);
   await page.getByRole("rowheader", { name: "COT-001" }).waitFor();
   const cells = await page.locator("tbody tr").first().locator("td, th").allInnerTexts();
-  assert.deepEqual(cells.slice(1, 6), ["COT-001", "Leonel Pérez", "Apto. 910", "23/03/2026", "$3,975.00"]);
+  assert.deepEqual(cells.slice(1, 6), ["COT-001", "Leonel Pérez", "Apto. 910", "23/03/2026", "$4,445.00"]);
   const metrics = page.getByLabel("Indicadores de servicios y cotizaciones");
   assert.equal((await metrics.locator("strong").allTextContents())[3], "2");
 
@@ -265,7 +265,8 @@ test("visor: PDF real del backend en el visor PDF.js, con archivo, peso y accion
 const PROJECT_UNIT = { allowsDecimals: false, code: "project", id: 38, isActive: true, name: "Proyecto", symbol: "proy." };
 const SPACE_UNIT = { allowsDecimals: false, code: "space", id: 39, isActive: true, name: "Espacio", symbol: "esp." };
 const MINUTE_UNIT = { allowsDecimals: false, code: "minute", id: 31, isActive: true, name: "Minuto", symbol: "min" };
-const LINEAR_UNIT = { allowsDecimals: true, code: "linear_meter", id: 6, isActive: true, name: "Metro lineal", symbol: "m.l." };
+const HOUR_UNIT = { allowsDecimals: true, code: "hour", id: 30, isActive: true, name: "Hora", symbol: "hrs" };
+const WEEK_UNIT = { allowsDecimals: true, code: "week", id: 33, isActive: true, name: "Semana", symbol: "sem." };
 
 /**
  * Unidad de un servicio con la forma de la API (`unitOptions`).
@@ -282,15 +283,15 @@ function unitOption(position, measurementUnit, referenceRate) {
   };
 }
 
-// Tabulador 3.2: «Por Proyecto / Espacio» (proyecto a $450, espacio pendiente) y «Por Minuto /
-// Proyecto» ($600 de referencia, sin tarifa por unidad); y un servicio con dos unidades confirmadas.
+// Tabulador 3.2: «Por Proyecto / Espacio» (proyecto con tarifa, espacio pendiente) y «Por Minuto /
+// Proyecto» (ambas con la misma tarifa); tarifas ficticias, y un servicio ficticio sin ninguna tarifa confirmada.
 const MULTI_UNIT_SERVICES = [
-  { ...SERVICES[0], code: "SERV-004", description: null, id: 4, measurementUnit: PROJECT_UNIT, name: "Modelado 3D & Renders", referenceRate: "450.00",
-    unitDenomination: null, unitLabel: "proy.", unitOptions: [unitOption(1, PROJECT_UNIT, "450.00"), unitOption(2, SPACE_UNIT, null)] },
-  { ...SERVICES[0], code: "SERV-005", description: null, id: 5, measurementUnit: MINUTE_UNIT, name: "Recorrido Virtual / VR", referenceRate: "600.00",
-    unitDenomination: null, unitLabel: "min", unitOptions: [unitOption(1, MINUTE_UNIT, null), unitOption(2, PROJECT_UNIT, null)] },
-  { ...SERVICES[0], code: "SERV-006", description: null, id: 6, measurementUnit: PROJECT_UNIT, name: "Servicio de dos unidades", referenceRate: "25.00",
-    unitDenomination: null, unitLabel: "proy.", unitOptions: [unitOption(1, PROJECT_UNIT, "25.00"), unitOption(2, LINEAR_UNIT, "12.00")] },
+  { ...SERVICES[0], code: "SERV-004", description: null, id: 4, measurementUnit: PROJECT_UNIT, name: "Modelado 3D & Renders", referenceRate: "320.00",
+    unitDenomination: null, unitLabel: "proy.", unitOptions: [unitOption(1, PROJECT_UNIT, "320.00"), unitOption(2, SPACE_UNIT, null)] },
+  { ...SERVICES[0], code: "SERV-005", description: null, id: 5, measurementUnit: MINUTE_UNIT, name: "Recorrido Virtual / VR", referenceRate: "275.00",
+    unitDenomination: null, unitLabel: "min", unitOptions: [unitOption(1, MINUTE_UNIT, "275.00"), unitOption(2, PROJECT_UNIT, "275.00")] },
+  { ...SERVICES[0], code: "SERV-006", description: null, id: 6, measurementUnit: HOUR_UNIT, name: "Servicio sin tarifa confirmada", referenceRate: "300.00",
+    unitDenomination: null, unitLabel: "hrs", unitOptions: [unitOption(1, HOUR_UNIT, null), unitOption(2, WEEK_UNIT, null)] },
 ];
 
 test("varias unidades: solo se cotiza con tarifa confirmada, se elige la unidad y se envía su posición", async (context) => {
@@ -301,37 +302,48 @@ test("varias unidades: solo se cotiza con tarifa confirmada, se elige la unidad 
   await page.locator("#quote-project").click();
   await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
 
-  // El Recorrido VR se ve con sus dos unidades, pero sin tarifa confirmada no se puede elegir.
+  // Un servicio sin ninguna tarifa confirmada se ve con sus unidades, pero no se puede elegir.
   const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  const pendingRow = picker.locator("tbody tr", { hasText: "Servicio sin tarifa confirmada" });
+  assert.equal(await pendingRow.getByRole("checkbox").count(), 0, "Sin tarifa confirmada no hay casilla que marcar");
+  assert.deepEqual(await pendingRow.locator("td").nth(2).locator(":scope > div > *").allInnerTexts(), ["hrs", "sem."]);
+  await pendingRow.getByText("Tarifa pendiente de validación comercial: aún no se puede cotizar.").waitFor();
+  // El Recorrido VR está disponible con sus dos unidades.
   const tourRow = picker.locator("tbody tr", { hasText: "Recorrido Virtual / VR" });
-  assert.equal(await tourRow.getByRole("checkbox").count(), 0, "Sin tarifa confirmada no hay casilla que marcar");
   assert.deepEqual(await tourRow.locator("td").nth(2).locator(":scope > div > *").allInnerTexts(), ["min", "proy."]);
-  await tourRow.getByText("Tarifa pendiente de validación comercial: aún no se puede cotizar.").waitFor();
+  assert.equal(await tourRow.getByText("Tarifa pendiente de validación comercial: aún no se puede cotizar.").count(), 0);
 
   await picker.getByRole("checkbox", { name: "Seleccionar Modelado 3D & Renders" }).click();
-  await picker.getByRole("checkbox", { name: "Seleccionar Servicio de dos unidades" }).click();
+  await picker.getByRole("checkbox", { name: "Seleccionar Recorrido Virtual / VR" }).click();
   await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
 
   // Modelado: proyecto es su única unidad cotizable y se elige sola con su tarifa; espacio se nombra pendiente.
   await page.getByRole("button", { name: "Unidad de Modelado 3D & Renders: proy." }).waitFor();
   await page.getByText("Tarifa pendiente de validación comercial: esp.", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Modelado 3D & Renders en USD" }).inputValue(), "450");
-  // Con dos unidades cotizables hay que elegir antes de guardar.
+  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Modelado 3D & Renders en USD" }).inputValue(), "320");
+  // Recorrido VR: con dos unidades cotizables hay que elegir minuto o proyecto antes de guardar.
   await page.getByRole("textbox", { name: "Cantidad de Modelado 3D & Renders" }).fill("1");
-  await page.getByRole("textbox", { name: "Cantidad de Servicio de dos unidades" }).fill("10");
+  await page.getByRole("textbox", { name: "Cantidad de Recorrido Virtual / VR" }).fill("3");
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByText("Elige la unidad de medida con la que se cotiza este servicio.", { exact: true }).waitFor();
   assert.equal(backend.requests.some((request) => request.method === "POST"), false, "Sin unidad elegida no se envía");
-  await page.getByRole("button", { name: "Unidad de Servicio de dos unidades" }).click();
-  await page.getByRole("menuitem", { name: "m.l." }).click();
-  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Servicio de dos unidades en USD" }).inputValue(), "12");
+  await page.getByRole("button", { name: "Unidad de Recorrido Virtual / VR" }).click();
+  assert.deepEqual(await page.getByRole("menuitem").allInnerTexts(), ["min", "proy."]);
+  await page.getByRole("menuitem", { name: "proy." }).click();
+  const tourRate = page.getByRole("textbox", { name: "Tarifa base de Recorrido Virtual / VR en USD" });
+  assert.equal(await tourRate.inputValue(), "275");
+  await page.getByRole("button", { name: "Unidad de Recorrido Virtual / VR: proy." }).click();
+  await page.getByRole("menuitem", { name: "min" }).click();
+  assert.equal(await tourRate.inputValue(), "275");
+  // La tarifa propuesta se puede modificar en esta cotización.
+  await tourRate.fill("250");
 
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByText("Has creado la cotización exitosamente").waitFor();
   const [post] = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
   assert.deepEqual(post.body.items, [
-    { quantity: "1", serviceId: 4, unitOptionPosition: 1, unitRate: "450" },
-    { quantity: "10", serviceId: 6, unitOptionPosition: 2, unitRate: "12" },
+    { quantity: "1", serviceId: 4, unitOptionPosition: 1, unitRate: "320" },
+    { quantity: "3", serviceId: 5, unitOptionPosition: 1, unitRate: "250" },
   ]);
 });
 
@@ -366,7 +378,7 @@ test("alta: validación local, cliente y proyecto reales, servicios del tabulado
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByText("La unidad de este servicio solo admite cantidades enteras.").waitFor();
   await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("35");
-  await page.getByText("$3,975.00", { exact: true }).waitFor();
+  await page.getByText("$4,445.00", { exact: true }).waitFor();
   await page.getByRole("textbox", { name: "Observaciones (opcional)" }).fill("  Incluye dos visitas.  ");
 
   await page.getByRole("button", { name: "Guardar" }).click();
@@ -376,7 +388,7 @@ test("alta: validación local, cliente y proyecto reales, servicios del tabulado
   assert.deepEqual(posts[0].body, {
     clientId: 3,
     // Con una sola unidad cotizable, el concepto envía su posición (1, la principal).
-    items: [{ quantity: "200", serviceId: 1, unitOptionPosition: 1, unitRate: "12" }, { quantity: "35", serviceId: 2, unitOptionPosition: 1, unitRate: "45" }],
+    items: [{ quantity: "200", serviceId: 1, unitOptionPosition: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitOptionPosition: 1, unitRate: "47" }],
     notes: "Incluye dos visitas.",
     projectId: 9,
   });
@@ -444,7 +456,7 @@ test("servicios incluidos: el desplegable de la fila cambia el servicio sin reco
   const quantity = page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" });
   await quantity.waitFor();
   assert.equal(await quantity.inputValue(), "10");
-  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Puntos eléctricos y fuerza en USD" }).inputValue(), "45");
+  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Puntos eléctricos y fuerza en USD" }).inputValue(), "47");
   assert.equal(await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).count(), 0);
   await picker.getByText("0 de 1 seleccionados · 1 ya incluido", { exact: true }).waitFor();
   await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).waitFor();
@@ -521,7 +533,7 @@ test("edición: datos guardados, PATCH con expectedVersion y conflicto de versi�
   const quantity = page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" });
   await quantity.waitFor();
   assert.equal(await quantity.inputValue(), "200");
-  await page.getByText("$3,975.00", { exact: true }).waitFor();
+  await page.getByText("$4,445.00", { exact: true }).waitFor();
   await quantity.fill("100");
   await page.getByRole("button", { name: "Actualizar" }).click();
   await page.getByText("La cotización cambió mientras la editabas").waitFor();
@@ -529,7 +541,7 @@ test("edición: datos guardados, PATCH con expectedVersion y conflicto de versi�
   const patch = backend.requests.find((request) => request.method === "PATCH");
   assert.equal(patch.body.expectedVersion, 1);
   // El concepto guardado conserva su unidad cotizada (posición 1).
-  assert.deepEqual(patch.body.items[0], { quantity: "100", serviceId: 1, unitOptionPosition: 1, unitRate: "12" });
+  assert.deepEqual(patch.body.items[0], { quantity: "100", serviceId: 1, unitOptionPosition: 1, unitRate: "14" });
   await page.getByRole("button", { name: "Recargar cotización" }).waitFor();
 });
 

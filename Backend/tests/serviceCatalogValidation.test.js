@@ -17,14 +17,14 @@ import {
   serviceUpdateSchema,
 } from "../src/validation/serviceCatalogSchemas.js";
 
-const VALID_CREATE = { measurementUnitId: 1, name: " Anteproyecto ", referenceRate: "12" };
+const VALID_CREATE = { measurementUnitId: 1, name: " Anteproyecto ", referenceRate: "14" };
 const CURRENT = {
   description: null,
   isActive: true,
   kind: "individual",
   measurementUnit: { code: "square_meter", id: 1 },
   name: "Anteproyecto",
-  referenceRate: "12.00",
+  referenceRate: "14.00",
   sortOrder: 1,
 };
 
@@ -43,7 +43,7 @@ test("alta: normaliza nombre y tarifa y aplica valores por defecto (modalidad in
   assert.equal(result.success, true);
   // Sin código (lo genera el servicio) y, por compatibilidad con clientes previos, `individual`.
   assert.deepEqual(result.data.body, {
-    changeNote: null, isActive: true, kind: "individual", measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12.00", sortOrder: 0,
+    changeNote: null, isActive: true, kind: "individual", measurementUnitId: 1, name: "Anteproyecto", referenceRate: "14.00", sortOrder: 0,
   });
   const described = serviceCreateSchema.safeParse({ body: { ...VALID_CREATE, referenceRate: 900.5, description: "  " } });
   assert.equal(described.data.body.referenceRate, "900.50");
@@ -151,7 +151,7 @@ test("estado, detalle y listado validan identificadores, filtros y cursor", () =
 
 test("dominio: detecta solo cambios efectivos en los campos versionados", () => {
   assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, {})), []);
-  assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { name: "Anteproyecto", referenceRate: "12.00" })), []);
+  assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { name: "Anteproyecto", referenceRate: "14.00" })), []);
   // Con una sola unidad, su tarifa es la del servicio: cambiarla cambia también `unitOptions`.
   assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { referenceRate: "15.50", isActive: false })), ["unitOptions", "referenceRate", "isActive"]);
   assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { description: "Nueva" })), ["description"]);

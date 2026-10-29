@@ -62,7 +62,7 @@ function create(overrides = {}, userId = ids.adminA) {
   return catalog.createService({
     payload: {
       changeNote: null, description: null, isActive: true,
-      measurementUnitId: ids.squareMeter, name: "Servicio", referenceRate: "12.00", sortOrder: 0, ...overrides,
+      measurementUnitId: ids.squareMeter, name: "Servicio", referenceRate: "14.00", sortOrder: 0, ...overrides,
     },
     user: { id: userId },
   });
@@ -104,16 +104,16 @@ test("alta: sin código ni tipo genera SERV- con el id, es individual y la versi
   assert.equal(service.code, expectedCode(service.id));
   assert.equal(service.kind, "individual");
   assert.equal(service.currentVersion, 1);
-  assert.equal(service.referenceRate, "12.00");
+  assert.equal(service.referenceRate, "14.00");
   assert.equal(service.currency, "USD");
   assert.equal(service.measurementUnit.code, "square_meter");
   assert.deepEqual(await versionsOf(service.id), [
-    { change_note: "Tabulador 3.2", changed_by: ids.adminA, code: service.code, is_active: true, is_current: true, kind: "individual", reference_rate: "12.00", unit_symbol: "m²", version_number: 1 },
+    { change_note: "Tabulador 3.2", changed_by: ids.adminA, code: service.code, is_active: true, is_current: true, kind: "individual", reference_rate: "14.00", unit_symbol: "m²", version_number: 1 },
   ]);
 });
 
 test("llave en mano: el alta elegida por el administrador conserva el tipo, admite cualquier unidad activa y genera el código", { skip }, async () => {
-  const llave = await create({ kind: "turnkey", name: "Llave premium", referenceRate: "900.00", sortOrder: 2 });
+  const llave = await create({ kind: "turnkey", name: "Llave premium", referenceRate: "940.00", sortOrder: 2 });
   created.llave = llave.id;
   assert.equal(llave.kind, "turnkey");
   assert.match(llave.code, GENERATED_CODE);
@@ -185,7 +185,7 @@ test("edición: sin cambios no crea versión; un cambio de tarifa crea la versi�
   const id = created.anteproyecto;
   const original = await catalog.getService(id);
   const unchanged = await catalog.updateService({
-    payload: { expectedVersion: 1, name: "Anteproyecto arquitectónico", referenceRate: "12.00", changeNote: "Sin cambios" },
+    payload: { expectedVersion: 1, name: "Anteproyecto arquitectónico", referenceRate: "14.00", changeNote: "Sin cambios" },
     serviceId: id, user: { id: ids.adminB },
   });
   assert.equal(unchanged.changed, false);
@@ -201,7 +201,7 @@ test("edición: sin cambios no crea versión; un cambio de tarifa crea la versi�
   assert.equal(updated.service.code, original.code, "La edición conserva el código");
   assert.equal(updated.service.currentVersion, 2);
   assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.code, v.reference_rate, v.is_current, v.changed_by]), [
-    [1, original.code, "12.00", false, ids.adminA],
+    [1, original.code, "14.00", false, ids.adminA],
     [2, original.code, "15.50", true, ids.adminB],
   ]);
   const [{ updated_by: updatedBy }] = await rows("select updated_by::int from public.services where id = $1", [id]);
@@ -263,7 +263,7 @@ test("reversión: un fallo a mitad de la edición no deja cambios ni pierde la v
 });
 
 test("edición: unidad inactiva se rechaza; cambiar a llave en mano conserva la unidad y el tipo existente se conserva", { skip }, async () => {
-  const service = await create({ name: "Puntos eléctricos", measurementUnitId: ids.point, referenceRate: "45.00", sortOrder: 3 });
+  const service = await create({ name: "Puntos eléctricos", measurementUnitId: ids.point, referenceRate: "47.00", sortOrder: 3 });
   created.puntos = service.id;
   await assert.rejects(
     catalog.updateService({ payload: { expectedVersion: 1, measurementUnitId: ids.legacy }, serviceId: service.id, user: { id: ids.adminA } }),

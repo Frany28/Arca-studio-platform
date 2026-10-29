@@ -65,7 +65,7 @@ before(async () => {
   const unit = await query("select id from public.measurement_units where code = 'square_meter'");
   const service = await query(`
     insert into public.services (code, name, kind, measurement_unit_id, reference_rate, sort_order, created_by, updated_by)
-    values ('ANTEPROYECTO', 'Anteproyecto arquitectónico', 'individual', $1, 12.00, 1, $2, $2) returning id
+    values ('ANTEPROYECTO', 'Anteproyecto arquitectónico', 'individual', $1, 14.00, 1, $2, $2) returning id
   `, [unit.rows[0].id, user.rows[0].id]);
   ids = { serviceId: service.rows[0].id, unitId: unit.rows[0].id, userId: user.rows[0].id };
   await insertServiceVersion(1);
@@ -85,7 +85,7 @@ test("migración: tablas con RLS, índices y valores por defecto esperados", { s
   ]]);
   assert.equal(indexes.rowCount, 3);
   const service = await query("select currency_code, is_active, kind, reference_rate from public.services where id = $1", [ids.serviceId]);
-  assert.deepEqual(service.rows[0], { currency_code: "USD", is_active: true, kind: "individual", reference_rate: "12.00" });
+  assert.deepEqual(service.rows[0], { currency_code: "USD", is_active: true, kind: "individual", reference_rate: "14.00" });
 });
 
 test("versionado: la versión histórica conserva la tarifa aunque cambie el servicio", { skip }, async () => {
@@ -98,7 +98,7 @@ test("versionado: la versión histórica conserva la tarifa aunque cambie el ser
     [ids.serviceId],
   );
   assert.deepEqual(versions.rows, [
-    { is_current: false, reference_rate: "12.00", unit_symbol: "m²", version_number: 1 },
+    { is_current: false, reference_rate: "14.00", unit_symbol: "m²", version_number: 1 },
     { is_current: true, reference_rate: "15.50", unit_symbol: "m²", version_number: 2 },
   ]);
 });
@@ -114,7 +114,7 @@ test("historial inmutable: no se modifican valores, no se reactiva ni se elimina
   await assert.rejects(query(`update public.service_versions set is_current = true ${where}`, [ids.serviceId]), { code: "55000" });
   await assert.rejects(query(`delete from public.service_versions ${where}`, [ids.serviceId]), { code: "55000" });
   const unchanged = await query(`select reference_rate, is_current from public.service_versions ${where}`, [ids.serviceId]);
-  assert.deepEqual(unchanged.rows[0], { is_current: false, reference_rate: "12.00" });
+  assert.deepEqual(unchanged.rows[0], { is_current: false, reference_rate: "14.00" });
 });
 
 test("integridad referencial: servicios, unidades y usuarios referenciados no se eliminan", { skip }, async () => {
@@ -137,7 +137,7 @@ test("restricciones: tarifa, moneda, códigos, nombres, escala y tipo de servici
     values ($1, $2, $3, $4, $5, $6, $7)
   `, [code, extra.name ?? "Servicio", extra.kind ?? "individual", ids.unitId, rate, extra.currency ?? "USD", extra.sortOrder ?? 0]);
 
-  await insertService("LLAVE-EN-MANO-PREMIUM", "900.00", { kind: "turnkey" });
+  await insertService("LLAVE-EN-MANO-PREMIUM", "940.00", { kind: "turnkey" });
   await insertService("TARIFA-MAXIMA", "999999999999.99");
   await insertService("BONIFICADO", "0");
   await assert.rejects(insertService("LLAVE-EN-MANO-PREMIUM", "1"), { code: "23505" });

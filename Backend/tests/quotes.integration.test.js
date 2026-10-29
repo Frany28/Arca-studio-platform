@@ -35,7 +35,7 @@ async function rows(sql, values = []) {
  */
 async function createService(overrides) {
   const service = await catalog.createService({
-    payload: { changeNote: null, description: null, isActive: true, measurementUnitId: ids.squareMeter, name: "Servicio", referenceRate: "12.00", sortOrder: 0, ...overrides },
+    payload: { changeNote: null, description: null, isActive: true, measurementUnitId: ids.squareMeter, name: "Servicio", referenceRate: "14.00", sortOrder: 0, ...overrides },
     user: { id: ids.admin },
   });
   return service.id;
@@ -78,16 +78,16 @@ after(async () => {
 
 test("alta y edición: COT- con el id, importes del motor y versiones inmutables", { skip }, async () => {
   const anteproyecto = await createService({ name: "Anteproyecto arquitectónico" });
-  const puntos = await createService({ measurementUnitId: ids.point, name: "Puntos eléctricos", referenceRate: "45.00" });
+  const puntos = await createService({ measurementUnitId: ids.point, name: "Puntos eléctricos", referenceRate: "47.00" });
   const created = await quotes.createQuote({
-    payload: quoteBody([{ quantity: "200.000", serviceId: anteproyecto, unitRate: "12.00" }, { quantity: "35.000", serviceId: puntos, unitRate: "45.00" }]),
+    payload: quoteBody([{ quantity: "200.000", serviceId: anteproyecto, unitRate: "14.00" }, { quantity: "35.000", serviceId: puntos, unitRate: "47.00" }]),
     user: { id: ids.admin },
   });
   assert.equal(created.code, `COT-${String(created.id).padStart(3, "0")}`);
-  assert.equal(created.servicesTotal, "3975.00");
+  assert.equal(created.servicesTotal, "4445.00");
 
   const updated = await quotes.updateQuote({
-    payload: { ...quoteBody([{ quantity: "100.000", serviceId: anteproyecto, unitRate: "12.00" }]), expectedVersion: 1 },
+    payload: { ...quoteBody([{ quantity: "100.000", serviceId: anteproyecto, unitRate: "14.00" }]), expectedVersion: 1 },
     quoteId: created.id,
     user: { id: ids.admin },
   });

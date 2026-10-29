@@ -94,11 +94,11 @@ export function service(id, { code, name, kind = "individual", unit = "m2", deno
  */
 export function sampleCatalog() {
   return [
-    service(1, { code: "TST-001", name: "Anteproyecto de prueba", denomination: "construccion", rate: "12.00", description: "Primera propuesta del espacio." }),
+    service(1, { code: "TST-001", name: "Anteproyecto de prueba", denomination: "construccion", rate: "14.00", description: "Primera propuesta del espacio." }),
     service(2, { code: "TST-002", name: "Diseño interior de prueba", denomination: "intervenir", rate: "1250.50", description: "   " }),
-    service(3, { code: "TST-003", name: "Paisajismo de prueba", kind: "turnkey", denomination: "intervenir", rate: "18.00", description: LONG_DESCRIPTION }),
+    service(3, { code: "TST-003", name: "Paisajismo de prueba", kind: "turnkey", denomination: "intervenir", rate: "19.00", description: LONG_DESCRIPTION }),
     service(4, { code: "TST-004", name: "Canalizaciones de prueba", unit: "ml", rate: "0.05", isActive: false }),
-    service(5, { code: "TST-005", name: "Puntos eléctricos de prueba", unit: "pto", denomination: "electrico", rate: "45.00", description: "Cada punto incluye cableado." }),
+    service(5, { code: "TST-005", name: "Puntos eléctricos de prueba", unit: "pto", denomination: "electrico", rate: "47.00", description: "Cada punto incluye cableado." }),
   ];
 }
 

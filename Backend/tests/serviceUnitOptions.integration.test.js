@@ -89,7 +89,7 @@ before(async () => {
   const [denomination] = await rows(`insert into public.measurement_unit_denominations (measurement_unit_id, denomination, created_by, updated_by)
     values ($1, 'de construcción', $2, $2) returning id::int`, [unit.square_meter, admin.id]);
   const [legacy] = await rows(`insert into public.services (code, name, kind, measurement_unit_id, unit_denomination_id, reference_rate, created_by, updated_by)
-    values ('LEGADO', 'Anteproyecto (legado)', 'individual', $1, $2, 12.00, $3, $3) returning id::int`, [unit.square_meter, denomination.id, admin.id]);
+    values ('LEGADO', 'Anteproyecto (legado)', 'individual', $1, $2, 14.00, $3, $3) returning id::int`, [unit.square_meter, denomination.id, admin.id]);
   const [legacyVersion] = await rows(`insert into public.service_versions (
       service_id, version_number, code, name, kind, measurement_unit_id, unit_code, unit_name, unit_symbol, unit_allows_decimals,
       unit_denomination_id, unit_denomination, reference_rate, currency_code, is_active, sort_order, changed_by)
@@ -99,9 +99,9 @@ before(async () => {
     join public.measurement_unit_denominations d on d.id = s.unit_denomination_id where s.id = $1 returning id::int`, [legacy.id, admin.id]);
   const [quote] = await rows("insert into public.quotes (code, created_by, updated_by) values ('COT-900', $1, $1) returning id::int", [admin.id]);
   const [quoteVersion] = await rows(`insert into public.quote_versions (quote_id, version_number, client_id, client_name, project_id, project_name, services_total, created_by)
-    values ($1, 1, $2, 'Cliente Tabulador', $3, 'Local 3.2', 2400.00, $4) returning id::int`, [quote.id, client.id, project.id, admin.id]);
+    values ($1, 1, $2, 'Cliente Tabulador', $3, 'Local 3.2', 2800.00, $4) returning id::int`, [quote.id, client.id, project.id, admin.id]);
   await rows(`insert into public.quote_items (quote_version_id, line_number, service_id, service_version_id, quantity, unit_rate, reference_rate, subtotal)
-    values ($1, 1, $2, $3, 200, 12.00, 12.00, 2400.00)`, [quoteVersion.id, legacy.id, legacyVersion.id]);
+    values ($1, 1, $2, $3, 200, 14.00, 14.00, 2800.00)`, [quoteVersion.id, legacy.id, legacyVersion.id]);
 
   await applyMigration(database.client, MIGRATION);
   ids = { admin: admin.id, client: client.id, denomination: denomination.id, legacy: legacy.id, legacyVersion: legacyVersion.id, project: project.id, unit };
@@ -122,9 +122,9 @@ after(async () => {
 test("migración: la unidad actual de servicios, versiones y conceptos pasa a la posición 1 sin perder la protección", { skip }, async () => {
   assert.deepEqual(await rows(`select position, measurement_unit_id::int, unit_denomination_id::int, reference_rate
     from public.service_unit_options where service_id = $1`, [ids.legacy]), [
-    { measurement_unit_id: ids.unit.square_meter, position: 1, reference_rate: "12.00", unit_denomination_id: ids.denomination },
+    { measurement_unit_id: ids.unit.square_meter, position: 1, reference_rate: "14.00", unit_denomination_id: ids.denomination },
   ]);
-  assert.deepEqual(await versionOptionsOf(ids.legacy), [[1, 1, "m²", null, "12.00"]]);
+  assert.deepEqual(await versionOptionsOf(ids.legacy), [[1, 1, "m²", null, "14.00"]]);
   const [item] = await rows(`select i.service_version_unit_option_id = o.id as linked from public.quote_items i
     join public.service_version_unit_options o on o.service_version_id = i.service_version_id and o.position = 1`);
   assert.equal(item.linked, true, "El concepto cotizado apunta a la unidad principal de su versión");
@@ -136,34 +136,40 @@ test("migración: la unidad actual de servicios, versiones y conceptos pasa a la
   assert.deepEqual(rls.map((row) => row.relrowsecurity), [true, true]);
   // El servicio heredado se sigue leyendo con su etiqueta y una sola unidad.
   const service = await catalog.getService(ids.legacy);
-  assert.deepEqual([service.unitLabel, service.unitOptions.length, service.unitOptions[0].referenceRate], ["m² de construcción", 1, "12.00"]);
+  assert.deepEqual([service.unitLabel, service.unitOptions.length, service.unitOptions[0].referenceRate], ["m² de construcción", 1, "14.00"]);
 });
 
 test("tabulador 3.2: varias unidades sin inventar tarifas y texto comercial «Global por Proyecto»", { skip }, async () => {
   tabulator.modeling = await createService({
-    description: "Modelo 3D + 3 a 5 renders hiperrealistas.", name: "Modelado 3D & Renders", referenceRate: "450.00",
-    unitOptions: [{ measurementUnitId: ids.unit.project, referenceRate: "450.00" }, { measurementUnitId: ids.unit.space, referenceRate: null }],
+    description: "Modelo 3D + 3 a 5 renders hiperrealistas.", name: "Modelado 3D & Renders", referenceRate: "320.00",
+    unitOptions: [{ measurementUnitId: ids.unit.project, referenceRate: "320.00" }, { measurementUnitId: ids.unit.space, referenceRate: null }],
   });
   tabulator.virtualTour = await createService({
-    description: "Video renderizado 4K o experiencia inmersiva VR.", name: "Recorrido Virtual / VR", referenceRate: "600.00",
-    unitOptions: [{ measurementUnitId: ids.unit.minute }, { measurementUnitId: ids.unit.project }],
+    description: "Video renderizado 4K o experiencia inmersiva VR.", name: "Recorrido Virtual / VR", referenceRate: "275.00",
+    unitOptions: [{ measurementUnitId: ids.unit.minute, referenceRate: "275.00" }, { measurementUnitId: ids.unit.project, referenceRate: "275.00" }],
+  });
+  // Servicio ficticio (no pertenece al tabulador) sin ninguna tarifa confirmada.
+  tabulator.pendingOnly = await createService({
+    name: "Servicio sin tarifa confirmada", referenceRate: "300.00",
+    unitOptions: [{ measurementUnitId: ids.unit.hour }, { measurementUnitId: ids.unit.week }],
   });
   tabulator.permits = await createService({
-    description: "Tratamiento de variables urbanas, bomberos y alcaldía.", name: "Permisología & Legal", referenceRate: "800.00",
+    description: "Tratamiento de variables urbanas, bomberos y alcaldía.", name: "Permisología & Legal", referenceRate: "510.00",
     unitOptions: [{ measurementUnitId: ids.unit.project, presentationLabel: "Global por Proyecto" }],
   });
   const summary = (service) => service.unitOptions.map((option) => [option.label, option.referenceRate, option.ratePending]);
-  assert.deepEqual(summary(tabulator.modeling), [["proy.", "450.00", false], ["esp.", null, true]]);
-  assert.deepEqual(summary(tabulator.virtualTour), [["min", null, true], ["proy.", null, true]]);
+  assert.deepEqual(summary(tabulator.modeling), [["proy.", "320.00", false], ["esp.", null, true]]);
+  assert.deepEqual(summary(tabulator.virtualTour), [["min", "275.00", false], ["proy.", "275.00", false]]);
+  assert.deepEqual(summary(tabulator.pendingOnly), [["hrs", null, true], ["sem.", null, true]]);
   // Una sola unidad usa la tarifa del servicio; el texto comercial es la etiqueta principal.
-  assert.deepEqual(summary(tabulator.permits), [["Global por Proyecto", "800.00", false]]);
+  assert.deepEqual(summary(tabulator.permits), [["Global por Proyecto", "510.00", false]]);
   assert.equal(tabulator.permits.unitLabel, "Global por Proyecto");
   // La tarifa de referencia del servicio se conserva tal como la indica el tabulador.
-  assert.deepEqual([tabulator.modeling.referenceRate, tabulator.virtualTour.referenceRate], ["450.00", "600.00"]);
+  assert.deepEqual([tabulator.modeling.referenceRate, tabulator.virtualTour.referenceRate], ["320.00", "275.00"]);
   // services conserva la unidad principal y la versión 1 copia todas las unidades.
   const [primary] = await rows("select measurement_unit_id::int from public.services where id = $1", [tabulator.virtualTour.id]);
   assert.equal(primary.measurement_unit_id, ids.unit.minute);
-  assert.deepEqual(await versionOptionsOf(tabulator.modeling.id), [[1, 1, "proy.", null, "450.00"], [1, 2, "esp.", null, null]]);
+  assert.deepEqual(await versionOptionsOf(tabulator.modeling.id), [[1, 1, "proy.", null, "320.00"], [1, 2, "esp.", null, null]]);
   // El filtro por unidad encuentra también las alternativas.
   const bySpace = await catalog.getServicesPage({ measurementUnitId: ids.unit.space });
   assert.deepEqual(bySpace.services.map((service) => service.id), [tabulator.modeling.id]);
@@ -172,21 +178,21 @@ test("tabulador 3.2: varias unidades sin inventar tarifas y texto comercial «Gl
 test("versionado: confirmar una tarifa crea la versión 2 y la 1 conserva la pendiente; las copias son inmutables", { skip }, async () => {
   const updated = await catalog.updateService({
     payload: { expectedVersion: 1, unitOptions: [
-      { measurementUnitId: ids.unit.project, referenceRate: "450.00" }, { measurementUnitId: ids.unit.space, referenceRate: "380.00" },
+      { measurementUnitId: ids.unit.project, referenceRate: "320.00" }, { measurementUnitId: ids.unit.space, referenceRate: "380.00" },
     ] },
     serviceId: tabulator.modeling.id,
     user: { id: ids.admin },
   });
   assert.deepEqual([updated.changed, updated.changedFields, updated.service.currentVersion], [true, ["unitOptions"], 2]);
   assert.deepEqual(await versionOptionsOf(tabulator.modeling.id), [
-    [1, 1, "proy.", null, "450.00"], [1, 2, "esp.", null, null], [2, 1, "proy.", null, "450.00"], [2, 2, "esp.", null, "380.00"],
+    [1, 1, "proy.", null, "320.00"], [1, 2, "esp.", null, null], [2, 1, "proy.", null, "320.00"], [2, 2, "esp.", null, "380.00"],
   ]);
   await assert.rejects(rows("update public.service_version_unit_options set reference_rate = 1"), { code: "55000" });
   await assert.rejects(rows("delete from public.service_version_unit_options"), { code: "55000" });
   // Intercambiar la principal y la alternativa no choca con la unicidad y mueve la unidad del servicio.
   const swapped = await catalog.updateService({
     payload: { expectedVersion: 2, unitOptions: [
-      { measurementUnitId: ids.unit.space, referenceRate: "380.00" }, { measurementUnitId: ids.unit.project, referenceRate: "450.00" },
+      { measurementUnitId: ids.unit.space, referenceRate: "380.00" }, { measurementUnitId: ids.unit.project, referenceRate: "320.00" },
     ] },
     serviceId: tabulator.modeling.id,
     user: { id: ids.admin },
@@ -214,10 +220,13 @@ test("coherencia en PostgreSQL: escrituras directas sincronizan la principal y u
   await rows("update public.service_unit_options set presentation_label = 'Metro lineal comercial' where service_id = $1", [direct.id]);
   await rows("update public.services set measurement_unit_id = $2, reference_rate = 25.00 where id = $1", [direct.id, ids.unit.meter]);
   assert.deepEqual(await option(direct.id), [{ measurement_unit_id: ids.unit.meter, position: 1, presentation_label: null, reference_rate: "25.00" }]);
-  // Con varias unidades, la tarifa del tabulador no altera las de las unidades.
-  await rows("update public.services set reference_rate = 650.00 where id = $1", [tabulator.virtualTour.id]);
-  assert.deepEqual((await option(tabulator.virtualTour.id)).map((row) => row.reference_rate), [null, null]);
-  await rows("update public.services set reference_rate = 600.00 where id = $1", [tabulator.virtualTour.id]);
+  // Con varias unidades, la tarifa del tabulador no altera las de las unidades (ni las confirmadas
+  // ni las pendientes).
+  await rows("update public.services set reference_rate = 650.00 where id = any($1::bigint[])", [[tabulator.virtualTour.id, tabulator.pendingOnly.id]]);
+  assert.deepEqual((await option(tabulator.virtualTour.id)).map((row) => row.reference_rate), ["275.00", "275.00"]);
+  assert.deepEqual((await option(tabulator.pendingOnly.id)).map((row) => row.reference_rate), [null, null]);
+  await rows("update public.services set reference_rate = 275.00 where id = $1", [tabulator.virtualTour.id]);
+  await rows("update public.services set reference_rate = 300.00 where id = $1", [tabulator.pendingOnly.id]);
 
   // Reglas diferidas: sin unidades, con huecos o con una principal distinta no se confirma.
   for (const sql of [
@@ -249,19 +258,27 @@ test("cotización: solo unidades con tarifa confirmada, con su referencia, y el 
     payload: quoteBody([{ quantity: "1", serviceId: tabulator.modeling.id, unitOptionPosition, unitRate: "380.00" }]),
     user: { id: ids.admin },
   });
-  // Recorrido VR: ninguna de sus unidades tiene tarifa confirmada.
+  // Un servicio sin ninguna tarifa confirmada no se cotiza con ninguna de sus unidades.
   for (const unitOptionPosition of [1, 2]) {
     await assert.rejects(
-      quotes.createQuote({ payload: quoteBody([{ quantity: "1", serviceId: tabulator.virtualTour.id, unitOptionPosition, unitRate: "600.00" }]), user: { id: ids.admin } }),
+      quotes.createQuote({ payload: quoteBody([{ quantity: "1", serviceId: tabulator.pendingOnly.id, unitOptionPosition, unitRate: "300.00" }]), user: { id: ids.admin } }),
       (error) => /pendiente de validación comercial/.test(error.fields?.["items.0.unitOptionPosition"]),
     );
   }
+  // Recorrido VR: se elige minuto o proyecto (ambos a la misma tarifa) y el importe sale de la cantidad y la
+  // tarifa propuesta, que puede modificarse sin alterar la referencia del tabulador.
+  const tourQuote = (item) => quotes.createQuote({ payload: quoteBody([{ serviceId: tabulator.virtualTour.id, ...item }]), user: { id: ids.admin } });
+  await assert.rejects(tourQuote({ quantity: "3", unitRate: "275.00" }), (error) => /Elige la unidad/.test(error.fields?.["items.0.unitOptionPosition"]));
+  const byMinute = (await tourQuote({ quantity: "3", unitOptionPosition: 1, unitRate: "275.00" })).items[0];
+  assert.deepEqual([byMinute.unit.label, byMinute.unit.position, byMinute.referenceRate, byMinute.unitRate, byMinute.subtotal], ["min", 1, "275.00", "275.00", "825.00"]);
+  const byProject = (await tourQuote({ quantity: "1", unitOptionPosition: 2, unitRate: "250.00" })).items[0];
+  assert.deepEqual([byProject.unit.label, byProject.unit.position, byProject.referenceRate, byProject.unitRate, byProject.subtotal], ["proy.", 2, "275.00", "250.00", "250.00"]);
   await assert.rejects(modelingQuote(undefined), (error) => /Elige la unidad/.test(error.fields?.["items.0.unitOptionPosition"]));
   const created = await modelingQuote(1);
   assert.deepEqual([created.items[0].unit.label, created.items[0].referenceRate], ["esp.", "380.00"]);
 
   const permits = await quotes.createQuote({
-    payload: quoteBody([{ quantity: "1", serviceId: tabulator.permits.id, unitRate: "800.00" }]),
+    payload: quoteBody([{ quantity: "1", serviceId: tabulator.permits.id, unitRate: "510.00" }]),
     user: { id: ids.admin },
   });
   assert.equal(buildQuoteDocument(permits).items[0].unitLabel, "Global por Proyecto");

@@ -28,7 +28,7 @@ function quoteWith(items, overrides = {}) {
     items,
     notes: "  Incluye visitas de obra.  ",
     project: { id: 9, name: "Apto. 910" },
-    servicesTotal: "3975.00",
+    servicesTotal: "4445.00",
     ...overrides,
   };
 }
@@ -80,17 +80,17 @@ test("la fecha impresa usa la zona del navegador y UTC si es desconocida", () =>
 });
 
 test("el modelo del documento conserva los textos guardados y omite observaciones vacías", () => {
-  const document = buildQuoteDocument(quoteWith([item("Anteproyecto arquitectónico", "200.000", "12.00", "2400.00")]), { timeZone: "UTC" });
+  const document = buildQuoteDocument(quoteWith([item("Anteproyecto arquitectónico", "200.000", "14.00", "2800.00")]), { timeZone: "UTC" });
   assert.deepEqual(document, {
     clientName: "Leonel Pérez",
     code: "COT-001",
     currency: "USD",
     date: "24/03/2026",
     fileName: "COT-001.pdf",
-    items: [{ quantity: "200", serviceName: "Anteproyecto arquitectónico", subtotal: "$2,400.00", unitLabel: "m² de construcción", unitRate: "$12.00" }],
+    items: [{ quantity: "200", serviceName: "Anteproyecto arquitectónico", subtotal: "$2,800.00", unitLabel: "m² de construcción", unitRate: "$14.00" }],
     notes: "Incluye visitas de obra.",
     projectName: "Apto. 910",
-    total: "$3,975.00",
+    total: "$4,445.00",
   });
   assert.equal(buildQuoteDocument(quoteWith([], { notes: "   " })).notes, null);
 });
@@ -106,7 +106,7 @@ test("el PDF se genera con Inter y pagina conceptos y observaciones largas", asy
   assert.deepEqual(Object.keys(assets.fonts).sort(), ["bold", "medium", "regular"]);
   assert.equal(await loadQuotePdfAssets(), assets, "Los recursos se leen una sola vez por proceso");
 
-  const short = await readAll(renderQuotePdf(buildQuoteDocument(quoteWith([item("Anteproyecto", "200.000", "12.00", "2400.00")])), assets));
+  const short = await readAll(renderQuotePdf(buildQuoteDocument(quoteWith([item("Anteproyecto", "200.000", "14.00", "2800.00")])), assets));
   assert.equal(short.subarray(0, 5).toString(), "%PDF-");
   assert.equal((short.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 1);
   assert.match(short.toString("latin1"), /Inter/);

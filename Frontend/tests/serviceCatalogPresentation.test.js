@@ -38,7 +38,7 @@ test("modalidad: solo el kind real del contrato; ausente o desconocido no invent
   assert.deepEqual(getServiceModalityBadge({ kind: "individual" }), { label: "Detalle por detalle", theme: "Brand 2", rawKind: null });
   assert.deepEqual(getServiceModalityBadge({ kind: "turnkey" }), { label: "Llave en mano", theme: "Brand 2", rawKind: null });
   // Nunca se deduce del nombre, la unidad ni la tarifa.
-  assert.deepEqual(getServiceModalityBadge({ name: "Llave en mano premium", unitLabel: "m²", referenceRate: "900.00" }), { label: "Sin modalidad", theme: "Disabled", rawKind: null });
+  assert.deepEqual(getServiceModalityBadge({ name: "Llave en mano premium", unitLabel: "m²", referenceRate: "940.00" }), { label: "Sin modalidad", theme: "Disabled", rawKind: null });
   for (const kind of [null, undefined, "", "   ", 3]) {
     assert.deepEqual(getServiceModalityBadge({ kind }), { label: "Sin modalidad", theme: "Disabled", rawKind: null }, String(kind));
   }

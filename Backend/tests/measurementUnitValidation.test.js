@@ -100,7 +100,7 @@ test("listados: unidades base con inactivas explícitas; denominaciones con filt
 
 test("servicios: unitDenominationId es opcional, admite null y cuenta como campo editable", () => {
   // El alta no admite código ni tipo: los fija el sistema.
-  const base = { measurementUnitId: 1, name: "Anteproyecto", referenceRate: "12" };
+  const base = { measurementUnitId: 1, name: "Anteproyecto", referenceRate: "14" };
   assert.equal(serviceCreateSchema.safeParse({ body: base }).data.body.unitDenominationId, undefined);
   assert.equal(serviceCreateSchema.safeParse({ body: { ...base, unitDenominationId: 7 } }).data.body.unitDenominationId, 7);
   assert.equal(serviceCreateSchema.safeParse({ body: { ...base, unitDenominationId: null } }).data.body.unitDenominationId, null);
@@ -109,7 +109,7 @@ test("servicios: unitDenominationId es opcional, admite null y cuenta como campo
   assert.equal(update.success, true);
   assert.equal(serviceListSchema.safeParse({ query: { unitDenominationId: "7" } }).data.query.unitDenominationId, 7);
 
-  const current = { description: null, isActive: true, kind: "turnkey", measurementUnit: { id: 1 }, name: "Llave", referenceRate: "900.00", sortOrder: 1, unitDenomination: { id: 7 } };
+  const current = { description: null, isActive: true, kind: "turnkey", measurementUnit: { id: 1 }, name: "Llave", referenceRate: "940.00", sortOrder: 1, unitDenomination: { id: 7 } };
   assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, {})), []);
   assert.deepEqual(listChangedServiceFields(current, mergeServiceChanges(current, { unitDenominationId: 7 })), []);
   // Cambiar la denominación cambia también la unidad principal de `unitOptions`.

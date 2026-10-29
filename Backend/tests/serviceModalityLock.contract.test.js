@@ -30,7 +30,7 @@ const CURRENT = {
   kind: "individual",
   measurementUnit: { code: "square_meter", id: 1 },
   name: "Anteproyecto",
-  referenceRate: "12.00",
+  referenceRate: "14.00",
   sortOrder: 1,
   unitDenomination: null,
 };
@@ -109,7 +109,7 @@ function unitOptionRow(service) {
  * @returns {Promise<object>} Cliente HTTP, estado y escrituras.
  */
 async function startCatalog(context, { isActive = true, used }) {
-  const service = { isActive, kind: "individual", name: "Anteproyecto", referenceRate: "12.00", used, version: 1 };
+  const service = { isActive, kind: "individual", name: "Anteproyecto", referenceRate: "14.00", used, version: 1 };
   const writes = [];
   const statements = [];
   const respond = (sql) => {

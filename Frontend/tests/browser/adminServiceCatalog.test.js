@@ -122,7 +122,7 @@ test("carga: columnas de Figma, códigos, unidades, tarifas decimales y estados 
   // Unidad: etiqueta oficial de la API (con o sin denominación).
   assert.deepEqual(await page.locator("tbody tr td:nth-child(5)").allInnerTexts(), ["m² de construcción", "m² a intervenir", "m² a intervenir", "m.l.", "pto. eléctrico"]);
   // Tarifa: texto decimal formateado sin redondear (céntimos solo si no son cero, miles agrupados).
-  assert.deepEqual(await page.locator("tbody tr td:nth-child(6)").allInnerTexts(), ["$12", "$1,250.50", "$18", "$0.05", "$45"]);
+  assert.deepEqual(await page.locator("tbody tr td:nth-child(6)").allInnerTexts(), ["$14", "$1,250.50", "$19", "$0.05", "$47"]);
   assert.deepEqual(await page.locator("tbody tr td:nth-child(7)").allInnerTexts(), ["Activo", "Activo", "Activo", "Inactivo", "Activo"]);
   // Indicadores derivados de la colección completa.
   await page.waitForFunction(() => document.querySelector('[aria-label="Indicadores de servicios y cotizaciones"]')?.textContent.includes("Servicios totales5"));

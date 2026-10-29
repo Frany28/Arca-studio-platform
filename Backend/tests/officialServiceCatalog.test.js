@@ -29,10 +29,10 @@ function sampleCatalog() {
     denominations: [{ denomination: "de construcción", unit: "square_meter" }],
     expectedTotals: { denominations: 1, individual: 3, services: 4, turnkey: 1 },
     services: [
-      { description: "Planimetría 2D.", kind: "individual", name: "Anteproyecto", order: 1, referenceRate: "12", units: [{ denomination: "de construcción", unit: "square_meter" }] },
-      { description: null, kind: "individual", name: "Modelado", order: 2, referenceRate: "450.00", units: [{ referenceRate: "450.00", unit: "project" }, { referenceRate: null, unit: "space" }] },
-      { description: null, kind: "individual", name: "Permisos", order: 3, referenceRate: "800.00", units: [{ presentationLabel: " Global  por Proyecto ", unit: "project" }] },
-      { description: null, kind: "turnkey", name: "Llave en mano", order: 4, referenceRate: "550.00", units: [{ unit: "square_meter" }] },
+      { description: "Planimetría 2D.", kind: "individual", name: "Anteproyecto", order: 1, referenceRate: "14", units: [{ denomination: "de construcción", unit: "square_meter" }] },
+      { description: null, kind: "individual", name: "Modelado", order: 2, referenceRate: "320.00", units: [{ referenceRate: "320.00", unit: "project" }, { referenceRate: null, unit: "space" }] },
+      { description: null, kind: "individual", name: "Permisos", order: 3, referenceRate: "510.00", units: [{ presentationLabel: " Global  por Proyecto ", unit: "project" }] },
+      { description: null, kind: "turnkey", name: "Llave en mano", order: 4, referenceRate: "610.00", units: [{ unit: "square_meter" }] },
     ],
     source: "Documento de prueba",
   };
@@ -86,8 +86,8 @@ function existingService(expected, id) {
 
 test("archivo del catálogo: normaliza tarifas y textos y conserva null como tarifa pendiente", () => {
   const catalog = officialServiceCatalogSchema.parse(sampleCatalog());
-  assert.equal(catalog.services[0].referenceRate, "12.00");
-  assert.deepEqual(catalog.services[1].units.map((unit) => unit.referenceRate), ["450.00", null]);
+  assert.equal(catalog.services[0].referenceRate, "14.00");
+  assert.deepEqual(catalog.services[1].units.map((unit) => unit.referenceRate), ["320.00", null]);
   assert.equal(catalog.services[2].units[0].presentationLabel, "Global por Proyecto");
   assert.equal(catalog.services[3].units[0].denomination, null);
 });
@@ -106,7 +106,7 @@ test("archivo del catálogo: rechaza orden no contiguo, totales distintos y nomb
 test("archivo del catálogo: no inventa tarifas y exige denominaciones declaradas", () => {
   const catalog = sampleCatalog();
   delete catalog.services[1].units[1].referenceRate;
-  catalog.services[2].units[0].referenceRate = "800.00";
+  catalog.services[2].units[0].referenceRate = "510.00";
   catalog.services[3].units = [{ denomination: "de exterior", unit: "square_meter" }];
   catalog.denominations.push({ denomination: "De Construcción", unit: "square_meter" });
   catalog.expectedTotals.denominations = 2;
@@ -122,9 +122,9 @@ test("cuerpo de alta: es el de POST /admin/services y con una sola unidad no env
   const body = toServiceCreateBody(anteproyecto.entry, { changeNote: "Carga · carga abc", unitOptions: anteproyecto.unitOptions });
   assert.deepEqual(body.unitOptions, [{ measurementUnitId: 1, presentationLabel: null, unitDenominationId: 7 }]);
   assert.equal(serviceCreateSchema.safeParse({ body }).success, true);
-  assert.deepEqual(modelado.unitOptions.map((option) => option.referenceRate), ["450.00", null]);
+  assert.deepEqual(modelado.unitOptions.map((option) => option.referenceRate), ["320.00", null]);
   // El estado esperado aplica la regla del dominio: una sola unidad lleva la tarifa del servicio.
-  assert.equal(anteproyecto.expected.unitOptions[0].referenceRate, "12.00");
+  assert.equal(anteproyecto.expected.unitOptions[0].referenceRate, "14.00");
   assert.equal(anteproyecto.expected.sortOrder, 1);
 });
 
@@ -182,10 +182,18 @@ test("catálogo oficial (archivo privado): estructura y totales del tabulador 3.
 }, async () => {
   const catalog = officialServiceCatalogSchema.parse(JSON.parse(await readFile(process.env.ARCA_OFFICIAL_CATALOG_FILE, "utf8")));
   assert.deepEqual(catalog.expectedTotals, { denominations: 7, individual: 16, services: 19, turnkey: 3 });
+  // Reglas decididas sobre el documento, sin repetir aquí sus importes (el repositorio es público).
   const byName = Object.fromEntries(catalog.services.map((service) => [service.name, service]));
-  assert.deepEqual(byName["Modelado 3D & Renders"].units.map((unit) => [unit.unit, unit.referenceRate]), [["project", "450.00"], ["space", null]]);
-  assert.equal(byName["Recorrido Virtual / VR"].referenceRate, "600.00");
-  assert.deepEqual(byName["Recorrido Virtual / VR"].units.map((unit) => [unit.unit, unit.referenceRate]), [["minute", null], ["project", null]]);
+  // Modelado 3D: proyecto con la tarifa del tabulador y espacio pendiente (sin importe inventado).
+  const modeling = byName["Modelado 3D & Renders"];
+  assert.deepEqual(modeling.units.map((unit) => [unit.unit, unit.referenceRate]), [["project", modeling.referenceRate], ["space", null]]);
+  // Recorrido VR: minuto (principal) y proyecto, ambas cotizables con la tarifa del tabulador.
+  const tour = byName["Recorrido Virtual / VR"];
+  assert.deepEqual(tour.units.map((unit) => [unit.unit, unit.referenceRate]), [["minute", tour.referenceRate], ["project", tour.referenceRate]]);
+  // Unidad base con texto comercial del documento.
   assert.deepEqual(byName["Permisología & Legal"].units, [{ denomination: null, presentationLabel: "Global por Proyecto", unit: "project" }]);
-  assert.equal(byName["Permisología & Legal"].referenceRate, "800.00");
+  assert.deepEqual(byName["Inspección Técnica Obra"].units, [{ denomination: null, presentationLabel: "Honorario Mensual", unit: "month" }]);
+  // Solo esos dos servicios tienen varias unidades y solo espacio queda pendiente.
+  assert.deepEqual(catalog.services.filter((service) => service.units.length > 1).map((service) => service.name), ["Modelado 3D & Renders", "Recorrido Virtual / VR"]);
+  assert.equal(catalog.services.flatMap((service) => service.units).filter((unit) => unit.referenceRate === null).length, 1);
 });

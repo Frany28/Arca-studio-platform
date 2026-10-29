@@ -22,7 +22,7 @@ const SERVICE = {
   description: "Primera propuesta.",
   measurementUnit: { id: 1, code: "square_meter", symbol: "m²" },
   unitDenomination: { id: 10, denomination: "de construcción", isActive: true },
-  referenceRate: "12.00",
+  referenceRate: "14.00",
   currentVersion: 3,
 };
 const VALID_DRAFT = { name: "Servicio", kind: "individual", description: "", measurementUnitId: 1, unitDenomination: null, referenceRate: "12.50" };
@@ -46,18 +46,18 @@ test("borrador: vacío en el alta y con los datos guardados (sin convertir la ta
     description: "Primera propuesta.",
     measurementUnitId: 1,
     unitDenomination: { id: 10, denomination: "de construcción" },
-    referenceRate: "12.00",
+    referenceRate: "14.00",
     ...noAlternatives,
   });
 });
 
-// «Modelado 3D & Renders» (tabulador 3.2): proyecto a $450 y espacio pendiente de validación comercial.
+// «Modelado 3D & Renders» (tabulador 3.2): proyecto con tarifa (ficticia) y espacio pendiente de validación comercial.
 const PROJECT = { id: 38, code: "project", symbol: "proy.", name: "Proyecto" };
 const SPACE = { id: 39, code: "space", symbol: "esp.", name: "Espacio" };
 const MODELING = {
-  ...SERVICE, kind: "individual", measurementUnit: PROJECT, unitDenomination: null, referenceRate: "450.00",
+  ...SERVICE, kind: "individual", measurementUnit: PROJECT, unitDenomination: null, referenceRate: "320.00",
   unitOptions: [
-    { id: 1, label: "proy.", measurementUnit: PROJECT, position: 1, presentationLabel: null, ratePending: false, referenceRate: "450.00", unitDenomination: null },
+    { id: 1, label: "proy.", measurementUnit: PROJECT, position: 1, presentationLabel: null, ratePending: false, referenceRate: "320.00", unitDenomination: null },
     { id: 2, label: "esp.", measurementUnit: SPACE, position: 2, presentationLabel: null, ratePending: true, referenceRate: null, unitDenomination: null },
   ],
 };
@@ -65,20 +65,20 @@ const BASES = [{ id: 1, label: "m²", description: "Metro cuadrado" }, { id: 6, 
 
 test("varias unidades: borrador, envío y edición sin inventar tarifas", () => {
   const draft = createServiceDraft(MODELING);
-  assert.deepEqual([draft.primaryUnitRate, draft.alternativeUnits.length, draft.alternativeUnits[0].measurementUnitId, draft.alternativeUnits[0].referenceRate], ["450.00", 1, 39, ""]);
+  assert.deepEqual([draft.primaryUnitRate, draft.alternativeUnits.length, draft.alternativeUnits[0].measurementUnitId, draft.alternativeUnits[0].referenceRate], ["320.00", 1, 39, ""]);
   // Sin cambios no se envía nada; la tarifa vacía viaja como null (pendiente), nunca copiada.
   assert.equal(toUpdateServiceChanges(draft, MODELING), null);
   const confirmed = { ...draft, alternativeUnits: [{ ...draft.alternativeUnits[0], referenceRate: "380.00" }] };
   assert.deepEqual(toUpdateServiceChanges(confirmed, MODELING), {
     expectedVersion: 3,
     unitOptions: [
-      { measurementUnitId: 38, unitDenominationId: null, presentationLabel: null, referenceRate: "450.00" },
+      { measurementUnitId: 38, unitDenominationId: null, presentationLabel: null, referenceRate: "320.00" },
       { measurementUnitId: 39, unitDenominationId: null, presentationLabel: null, referenceRate: "380.00" },
     ],
   });
   // Alta con alternativas: lista completa con tarifa por unidad.
   const created = toCreateServicePayload({ ...confirmed, name: "Modelado 3D & Renders", alternativeUnits: [{ ...draft.alternativeUnits[0] }] });
-  assert.deepEqual(created.unitOptions.map((option) => option.referenceRate), ["450.00", null]);
+  assert.deepEqual(created.unitOptions.map((option) => option.referenceRate), ["320.00", null]);
   assert.equal("measurementUnitId" in created, false);
   // Texto comercial con una sola unidad: también viaja en la lista, sin tarifa (la del servicio).
   const permits = toCreateServicePayload({ ...VALID_DRAFT, measurementUnitId: 38, presentationLabel: " Global por Proyecto " });
@@ -175,7 +175,7 @@ test("alta: con la modalidad elegida, sin código, sin descripción vacía y con
 test("edición: solo campos cambiados con expectedVersion; la base arrastra la denominación", () => {
   const draft = createServiceDraft(SERVICE);
   assert.equal(toUpdateServiceChanges(draft, SERVICE), null, "Sin cambios no hay petición");
-  assert.equal(toUpdateServiceChanges({ ...draft, referenceRate: "12" }, SERVICE), null, "12 equivale a 12.00");
+  assert.equal(toUpdateServiceChanges({ ...draft, referenceRate: "14" }, SERVICE), null, "14 equivale a 14.00");
   assert.deepEqual(toUpdateServiceChanges({ ...draft, referenceRate: "15.5" }, SERVICE), { expectedVersion: 3, referenceRate: "15.5" });
   assert.deepEqual(toUpdateServiceChanges({ ...draft, description: "  " }, SERVICE), { expectedVersion: 3, description: null });
   assert.deepEqual(toUpdateServiceChanges({ ...draft, unitDenomination: null }, SERVICE), { expectedVersion: 3, unitDenominationId: null });
