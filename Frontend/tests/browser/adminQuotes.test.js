@@ -320,6 +320,17 @@ test("seleccionar servicios: cinco filas visibles con ScrollBar vertical, sin pa
   assert.equal(await scrollBar.getAttribute("aria-valuenow"), "0");
   await picker.getByRole("checkbox", { name: "Seleccionar Servicio de lista 02" }).click();
 
+  // Una fila desplazada bajo la cabecera no se pinta encima: con 50 px, la casilla de la primera
+  // fila queda justo bajo «Seleccionar todos», y el punto central sigue siendo de la cabecera.
+  const coveredByRow = await viewport.evaluate((node) => {
+    node.scrollTop = 50;
+    const headerBox = node.querySelector("thead [role='checkbox']").getBoundingClientRect();
+    const hit = document.elementFromPoint(headerBox.left + headerBox.width / 2, headerBox.top + headerBox.height / 2);
+    node.scrollTop = 0;
+    return !node.querySelector("thead").contains(hit);
+  });
+  assert.equal(coveredByRow, false, "La casilla de una fila no tapa la de la cabecera fija");
+
   // Arrastrar el ScrollBar hasta el final muestra las últimas filas con la cabecera fija.
   const track = await scrollBar.boundingBox();
   await page.mouse.move(track.x + track.width / 2, track.y + 4);

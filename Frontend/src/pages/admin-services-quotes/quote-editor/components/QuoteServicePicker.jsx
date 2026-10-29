@@ -167,7 +167,8 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
                   <th scope="col" className="px-[24px] py-[16px] text-right">Tarifa base</th>
                 </tr>
               </thead>
-              <tbody>
+              {/* isolate: el z-index interno del Checkbox no sale del cuerpo ni tapa la cabecera fija. */}
+              <tbody className="isolate">
                 {visible.map((service) => {
                   const included = includedIds.has(service.id);
                   const checked = included || selectedIds.has(service.id);
