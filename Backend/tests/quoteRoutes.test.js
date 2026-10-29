@@ -97,33 +97,26 @@ test("alta: calcula importes en el servidor, genera COT-001 y bloquea cliente, p
   assert.ok(statements.some((sql) => sql.includes("order by id for share")), "Servicios FOR SHARE en orden de id");
 });
 
-test("varias unidades: exige elegir, rechaza la tarifa pendiente y cotiza la confirmada con su referencia", async (context) => {
-  // Servicio 4 «Modelado 3D & Renders»: proyecto ($320) y espacio (pendiente de validación comercial).
+test("unidad única: cotiza la unidad del servicio con su tarifa de referencia y la tarifa aplicada elegida", async (context) => {
+  // Servicio 4 «Modelado 3D & Renders»: versión anterior a la unidad única, con proyecto ($320) y
+  // una alternativa histórica (espacio). Solo se cotiza la unidad del servicio (posición 1).
   const server = await startServer(context);
-  const line = { quantity: "1", serviceId: 4, unitRate: "320" };
-  for (const [item, message] of [
-    [line, /Elige la unidad/],
-    [{ ...line, unitOptionPosition: 2 }, /pendiente de validación comercial/],
-    [{ ...line, unitOptionPosition: 3 }, /no existe/],
-  ]) {
-    const rejected = await createQuote(server, { items: [item] });
-    assert.equal(rejected.status, 400, JSON.stringify(item));
-    assert.match(rejected.body.fields["items.0.unitOptionPosition"], message);
-  }
-  assert.ok(!server.database.statements.some((sql) => sql.startsWith("insert into")), "Ningún rechazo escribe");
+  const line = { quantity: "1", serviceId: 4, unitRate: "300" };
+  const rejected = await createQuote(server, { items: [{ ...line, unitOptionPosition: 2 }] });
+  assert.equal(rejected.status, 400, "El concepto ya no elige unidad");
+  assert.equal(rejected.body.code, "VALIDATION_ERROR");
+  assert.deepEqual(server.database.statements, [], "Se rechaza antes de consultar PostgreSQL");
 
-  const created = await createQuote(server, { items: [{ ...line, unitOptionPosition: 1 }] });
+  const created = await createQuote(server, { items: [line] });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const [item] = created.body.quote.items;
-  assert.deepEqual([item.unit.label, item.unit.position, item.referenceRate, item.subtotal], ["proy.", 1, "320.00", "320.00"]);
+  // La tarifa aplicada la decide el administrador; la de referencia sigue siendo la del tabulador.
+  assert.deepEqual([item.unit.label, item.unit.position, item.referenceRate, item.unitRate, item.subtotal], ["proy.", 1, "320.00", "300.00", "300.00"]);
   assert.equal(server.database.state.items[0].serviceVersionUnitOptionId, 400, "Se guarda la unidad copiada de la versión");
 
-  // Editar sin reenviar la posición conserva la unidad cotizada; cambiar a la pendiente se rechaza.
   const kept = await server.send("PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1, items: [{ ...line, quantity: "2" }] });
   assert.equal(kept.status, 200, JSON.stringify(kept.body));
   assert.equal(kept.body.quote.items[0].unit.position, 1);
-  const pending = await server.send("PATCH", "/1", { ...VALID_CREATE, expectedVersion: 2, items: [{ ...line, unitOptionPosition: 2 }] });
-  assert.equal(pending.status, 400);
 });
 
 test("alta: rechaza cliente inactivo, proyecto ajeno o eliminado y servicios inactivos o repetidos sin escribir", async (context) => {

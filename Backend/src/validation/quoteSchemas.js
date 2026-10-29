@@ -7,7 +7,6 @@ import {
   QUOTE_SORT_FIELDS,
 } from "../domain/quote.js";
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
-import { SERVICE_UNIT_OPTIONS_MAX } from "../domain/serviceUnitOptions.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { scaledDecimalText } from "./decimalSchemas.js";
 
@@ -23,12 +22,10 @@ const quoteNotes = z.union([z.string(), z.null()]).optional()
   .transform((value) => value?.trim() || null)
   .refine((value) => !value || value.length <= QUOTE_NOTES_MAX_LENGTH, `Admite como máximo ${QUOTE_NOTES_MAX_LENGTH} caracteres.`);
 
-// `unitOptionPosition`: unidad del servicio elegida (1 = principal). Puede omitirse si el servicio
-// tiene una sola unidad o si el concepto ya estaba cotizado con una unidad.
+// La unidad es la del servicio: el concepto solo indica servicio, cantidad y tarifa aplicada.
 const quoteItem = z.object({
   quantity: scaledDecimalText(QUOTE_DECIMAL_FORMATS.quantity),
   serviceId: bodyId,
-  unitOptionPosition: z.number().int().min(1).max(SERVICE_UNIT_OPTIONS_MAX).optional(),
   unitRate: scaledDecimalText(QUOTE_DECIMAL_FORMATS.unitRate),
 }).strict();
 

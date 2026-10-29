@@ -1,9 +1,10 @@
 import { pool, query } from "../config/db.js";
 
 /*
- * Consultas de solo lectura para el mantenimiento del catálogo (carga oficial del tabulador):
- * identidad de la base, estado de la migración de unidades, próximos ids de las secuencias,
- * unidades por código, denominaciones equivalentes y resumen de versiones. Las escrituras las
+ * Consultas de solo lectura para el mantenimiento del catálogo (carga oficial del tabulador y
+ * separación de servicios con unidades alternativas): identidad de la base, estado de la
+ * migración de unidades, próximos ids de las secuencias, unidades por código, denominaciones
+ * equivalentes, resumen de versiones, referencias en cotizaciones y huella del historial. Las escrituras las
  * hacen siempre los servicios del dominio (serviceCatalogService, measurementUnitService).
  */
 
@@ -123,30 +124,103 @@ export async function listAllServiceIds() {
 }
 
 /**
- * Resume el historial de cada servicio: número de versiones, versión vigente y unidades
- * copiadas en la vigente. Permite verificar tras la carga que cada servicio tiene su versión 1
- * con todas sus unidades.
+ * Resume el historial de cada servicio: número de versiones, versión vigente, unidades copiadas
+ * en la vigente y unidades vigentes. Permite verificar tras la carga que cada servicio tiene una
+ * sola unidad, también en su versión vigente.
  *
  * @param {Array<number>} serviceIds - Servicios consultados.
  * @returns {Promise<Map<number, { versionCount: number, currentVersion: number|null,
- *   currentVersionUnitCount: number }>>} Resumen por servicio.
+ *   currentVersionUnitCount: number, currentUnitCount: number }>>} Resumen por servicio.
  */
 export async function summarizeServiceVersions(serviceIds) {
   const result = await query(
     `select s.id as service_id,
        (select count(*) from public.service_versions v where v.service_id = s.id)::int as version_count,
        cv.version_number as current_version,
-       (select count(*) from public.service_version_unit_options o where o.service_version_id = cv.id)::int as current_unit_count
+       (select count(*) from public.service_version_unit_options o where o.service_version_id = cv.id)::int as current_version_unit_count,
+       (select count(*) from public.service_unit_options o where o.service_id = s.id)::int as current_unit_count
      from public.services s
      left join public.service_versions cv on cv.service_id = s.id and cv.is_current
      where s.id = any($1::bigint[])`,
     [serviceIds],
   );
   return new Map(result.rows.map((row) => [Number(row.service_id), {
+    currentUnitCount: row.current_unit_count,
     currentVersion: row.current_version === null ? null : Number(row.current_version),
-    currentVersionUnitCount: row.current_unit_count,
+    currentVersionUnitCount: row.current_version_unit_count,
     versionCount: row.version_count,
   }]));
+}
+
+/**
+ * Lista los servicios que conservan unidades alternativas vigentes (más de una fila en
+ * service_unit_options), anteriores a la unidad única, con su versión vigente.
+ *
+ * @returns {Promise<Array<{ id: number, code: string, unitCount: number, currentVersion: number|null }>>} Servicios por id.
+ */
+export async function listServicesWithAlternativeUnits() {
+  const result = await query(
+    `select s.id, s.code, count(o.id)::int as unit_count, v.version_number as current_version
+     from public.services s
+     inner join public.service_unit_options o on o.service_id = s.id
+     left join public.service_versions v on v.service_id = s.id and v.is_current
+     group by s.id, s.code, v.version_number
+     having count(o.id) > 1
+     order by s.id`,
+  );
+  return result.rows.map((row) => ({
+    code: row.code,
+    currentVersion: row.current_version === null ? null : Number(row.current_version),
+    id: Number(row.id),
+    unitCount: row.unit_count,
+  }));
+}
+
+/**
+ * Resume las cotizaciones: totales y conceptos que incluyen alguno de los servicios indicados
+ * (en cualquier versión de la cotización, vigente o histórica).
+ *
+ * @param {Array<number>} serviceIds - Servicios consultados.
+ * @returns {Promise<{ quotes: number, quoteVersions: number, quoteItems: number, affectedQuoteItems: number }>} Conteos.
+ */
+export async function summarizeQuoteReferences(serviceIds) {
+  const result = await query(
+    `select (select count(*) from public.quotes)::int as quotes,
+       (select count(*) from public.quote_versions)::int as quote_versions,
+       (select count(*) from public.quote_items)::int as quote_items,
+       (select count(*) from public.quote_items where service_id = any($1::bigint[]))::int as affected_quote_items`,
+    [serviceIds],
+  );
+  const [row] = result.rows;
+  return { affectedQuoteItems: row.affected_quote_items, quoteItems: row.quote_items, quoteVersions: row.quote_versions, quotes: row.quotes };
+}
+
+/**
+ * Calcula una huella del historial de servicios y cotizaciones: número de filas, id máximo y un
+ * resumen md5 del contenido de service_versions (sin la marca de vigencia, que es lo único que una
+ * versión nueva cambia), service_version_unit_options y quote_items. Con `upTo` se limita a las
+ * filas existentes en una huella anterior, para comprobar que una operación no alteró el historial.
+ *
+ * @param {{ versionId: number, versionUnitId: number, quoteItemId: number }} [upTo] - Ids máximos de la huella anterior.
+ * @returns {Promise<{ versions: object, versionUnits: object, quoteItems: object }>} Huella por tabla
+ *   (`count`, `maxId`, `digest`).
+ */
+export async function fingerprintServiceHistory(upTo) {
+  const result = await query(
+    `select
+       (select json_build_object('count', count(*), 'maxId', coalesce(max(id), 0),
+          'digest', md5(coalesce(string_agg((to_jsonb(v) - 'is_current')::text, '|' order by id), '')))
+        from public.service_versions v where $1::bigint is null or id <= $1) as versions,
+       (select json_build_object('count', count(*), 'maxId', coalesce(max(id), 0),
+          'digest', md5(coalesce(string_agg(to_jsonb(o)::text, '|' order by id), '')))
+        from public.service_version_unit_options o where $2::bigint is null or id <= $2) as version_units,
+       (select json_build_object('count', count(*), 'maxId', coalesce(max(id), 0),
+          'digest', md5(coalesce(string_agg(to_jsonb(i)::text, '|' order by id), '')))
+        from public.quote_items i where $3::bigint is null or id <= $3) as quote_items`,
+    [upTo?.versionId ?? null, upTo?.versionUnitId ?? null, upTo?.quoteItemId ?? null],
+  );
+  const [row] = result.rows;
+  return { quoteItems: row.quote_items, versionUnits: row.version_units, versions: row.versions };
 }
 
 /**

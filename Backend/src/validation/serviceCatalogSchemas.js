@@ -2,11 +2,7 @@ import { z } from "zod";
 
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
 import { DEFAULT_SERVICE_KIND, SERVICE_KINDS } from "../domain/serviceCatalog.js";
-import {
-  PRESENTATION_LABEL_MAX_LENGTH,
-  SERVICE_UNIT_OPTIONS_MAX,
-  normalizePresentationLabel,
-} from "../domain/serviceUnitOptions.js";
+import { PRESENTATION_LABEL_MAX_LENGTH, normalizePresentationLabel } from "../domain/serviceUnitOptions.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { scaledDecimalText } from "./decimalSchemas.js";
 
@@ -32,38 +28,11 @@ const serviceDescription = z.union([z.string(), z.null()]).optional()
 // Tarifa con la precisión de NUMERIC(14,2), normalizada a texto con dos decimales ("12.00").
 const referenceRate = scaledDecimalText(RATE_FORMAT);
 
-// Unidad de medida del servicio. Su tarifa es opcional: null u omitida = pendiente de validación
-// comercial (con una sola unidad, la tarifa es la del servicio). El texto comercial vacío o null
-// usa la etiqueta compuesta.
-const unitOption = z.object({
-  measurementUnitId: z.number({ error: "Elige la unidad de medida." }).int().positive().max(Number.MAX_SAFE_INTEGER),
-  presentationLabel: z.union([z.string(), z.null()]).optional()
-    .transform((value) => normalizePresentationLabel(value))
-    .refine((value) => !value || value.length <= PRESENTATION_LABEL_MAX_LENGTH, `Admite como máximo ${PRESENTATION_LABEL_MAX_LENGTH} caracteres.`),
-  referenceRate: z.union([referenceRate, z.null()]).optional().transform((value) => value ?? null),
-  unitDenominationId,
-}).strict();
-const unitOptions = z.array(unitOption)
-  .min(1, "Indica al menos una unidad de medida.")
-  .max(SERVICE_UNIT_OPTIONS_MAX, `Un servicio admite como máximo ${SERVICE_UNIT_OPTIONS_MAX} unidades de medida.`);
-
-/**
- * Exige una sola forma de indicar la unidad: `unitOptions` (lista completa) o el atajo
- * `measurementUnitId` / `unitDenominationId` (solo la principal). En el alta una es obligatoria.
- *
- * @param {{ required: boolean }} options - Si la unidad es obligatoria (alta).
- * @returns {(body: object, context: import("zod").RefinementCtx) => void} Refinamiento de Zod.
- */
-function exclusiveUnitInput({ required }) {
-  return (body, context) => {
-    const usesShortcut = body.measurementUnitId !== undefined || body.unitDenominationId !== undefined;
-    if (body.unitOptions !== undefined && usesShortcut) {
-      context.addIssue({ code: "custom", message: "Indica las unidades en unitOptions o en measurementUnitId, no en ambos.", path: ["unitOptions"] });
-    } else if (required && body.unitOptions === undefined && body.measurementUnitId === undefined) {
-      context.addIssue({ code: "custom", message: "Elige la unidad de medida.", path: ["measurementUnitId"] });
-    }
-  };
-}
+// Texto comercial opcional de la unidad («Global por Proyecto»): vacío o null usa la etiqueta
+// compuesta. El formulario no lo edita; lo usan el catálogo oficial y el mantenimiento.
+const presentationLabel = z.union([z.string(), z.null()]).optional()
+  .transform((value) => (value === undefined ? undefined : normalizePresentationLabel(value)))
+  .refine((value) => !value || value.length <= PRESENTATION_LABEL_MAX_LENGTH, `Admite como máximo ${PRESENTATION_LABEL_MAX_LENGTH} caracteres.`);
 
 /**
  * Comprueba que un cursor del catálogo contenga el orden de visualización y el id del último
@@ -115,13 +84,13 @@ export const serviceCreateSchema = z.object({
     kind: serviceKind.optional().default(DEFAULT_SERVICE_KIND),
     description: serviceDescription,
     isActive: z.boolean().optional().default(true),
-    measurementUnitId: positiveId.optional(),
+    measurementUnitId: positiveId,
     name: serviceName,
+    presentationLabel,
     referenceRate,
     sortOrder: sortOrder.optional().default(0),
     unitDenominationId,
-    unitOptions: unitOptions.optional(),
-  }).strict().superRefine(exclusiveUnitInput({ required: true })),
+  }).strict(),
 });
 
 // El código y la moneda no son editables: `.strict()` rechaza cualquier campo no listado.
@@ -135,15 +104,15 @@ export const serviceUpdateSchema = z.object({
     kind: serviceKind.optional(),
     measurementUnitId: positiveId.optional(),
     name: serviceName.optional(),
+    presentationLabel,
     referenceRate: referenceRate.optional(),
     sortOrder: sortOrder.optional(),
     unitDenominationId,
-    unitOptions: unitOptions.optional(),
   }).strict().refine(
-    (body) => ["description", "isActive", "kind", "measurementUnitId", "name", "referenceRate", "sortOrder", "unitDenominationId", "unitOptions"]
+    (body) => ["description", "isActive", "kind", "measurementUnitId", "name", "presentationLabel", "referenceRate", "sortOrder", "unitDenominationId"]
       .some((field) => body[field] !== undefined),
     { message: "Indica al menos un campo para modificar.", path: ["request"] },
-  ).superRefine(exclusiveUnitInput({ required: false })),
+  ),
 });
 
 export const serviceStatusSchema = z.object({

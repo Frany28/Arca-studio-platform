@@ -904,11 +904,10 @@ model quote_items {
   @@index([service_version_unit_option_id], map: "idx_quote_items_service_version_unit_option_id")
 }
 
-/// Unidades vigentes de cada servicio (1 a 10, posiciones 1..n). La posición 1 es la principal y
-/// coincide con services.measurement_unit_id / unit_denomination_id (trigger diferido
-/// service_unit_options_consistent). reference_rate NULL = tarifa pendiente de validación
-/// comercial (no se cotiza); con una sola unidad, su tarifa es la del servicio.
-/// uq_service_unit_options_unit usa NULLS NOT DISTINCT y se define en la migración.
+/// Unidad vigente de cada servicio: una sola fila (posición 1, chk_service_unit_options_single)
+/// que coincide con services.measurement_unit_id / unit_denomination_id y con su tarifa (trigger
+/// diferido service_unit_options_consistent; chk_service_unit_options_rate_confirmed). Aporta el
+/// texto comercial opcional. uq_service_unit_options_unit usa NULLS NOT DISTINCT y se define en la migración.
 /// This table contains check constraints and requires additional setup for migrations.
 /// This model contains row level security and requires additional setup for migrations.
 model service_unit_options {
@@ -931,9 +930,10 @@ model service_unit_options {
   @@index([unit_denomination_id], map: "idx_service_unit_options_unit_denomination_id", where: raw("(unit_denomination_id IS NOT NULL)"))
 }
 
-/// Copia inmutable de las unidades de una versión de servicio (trigger
+/// Copia inmutable de la unidad de una versión de servicio (trigger
 /// service_version_unit_options_immutable: sin UPDATE ni DELETE). Conserva unidad, denominación,
-/// etiqueta comercial y tarifa (NULL = pendiente) vigentes al versionar.
+/// etiqueta comercial y tarifa vigentes al versionar. Las versiones nuevas copian una sola unidad
+/// (CHECK NOT VALID); las anteriores a la unidad única pueden conservar alternativas como historial.
 /// This table contains check constraints and requires additional setup for migrations.
 /// This model contains row level security and requires additional setup for migrations.
 model service_version_unit_options {

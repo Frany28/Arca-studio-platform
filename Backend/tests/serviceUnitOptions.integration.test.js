@@ -3,23 +3,24 @@ import { after, before, test } from "node:test";
 
 import { applyMigration, createIsolatedMigrationDatabase } from "./helpers/isolatedMigrationDatabase.js";
 
-// Varias unidades por servicio contra PostgreSQL real. Opcional y aislada, como el catálogo:
+// Unidad de medida de los servicios contra PostgreSQL real. Opcional y aislada, como el catálogo:
 // ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL (solo localhost).
-// Aplica el historial hasta antes de la migración, prepara un servicio, una versión y un concepto
-// cotizado con el modelo anterior, aplica la migración y ejecuta los servicios reales.
+// Recorre el historial: un servicio y un concepto del modelo inicial, la migración de unidades
+// alternativas con servicios que las usaron (y una cotización con una alternativa), la separación
+// con el servicio real y la migración de unidad única. Importes ficticios.
 const enabled = process.env.ARCA_SERVICE_CATALOG_DB_TESTS === "1";
 const createApiRoles = process.env.ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES === "1";
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
 const MIGRATION = "20261027120000_service_unit_options";
+const SINGLE_UNIT_MIGRATION = "20261030120000_service_single_unit_option";
 
 let database;
 let db;
 let catalog;
 let quotes;
-let units;
 let buildQuoteDocument;
 let ids;
-const tabulator = {};
+const services = {};
 
 /**
  * Consulta la base aislada con el cliente de preparación (fuera del pool de la aplicación).
@@ -46,6 +47,17 @@ function createService(payload) {
 }
 
 /**
+ * Edita un servicio con el servicio real del catálogo como el administrador de la prueba.
+ *
+ * @param {number} serviceId - Servicio editado.
+ * @param {object} payload - Cuerpo validado de la edición.
+ * @returns {Promise<{ service: object, changed: boolean, changedFields: Array<string> }>} Resultado.
+ */
+function updateService(serviceId, payload) {
+  return catalog.updateService({ payload, serviceId, user: { id: ids.admin } });
+}
+
+/**
  * Unidades copiadas en cada versión de un servicio: [versión, posición, símbolo, texto, tarifa].
  *
  * @param {number} serviceId - Servicio consultado.
@@ -56,6 +68,42 @@ async function versionOptionsOf(serviceId) {
     from public.service_version_unit_options o join public.service_versions v on v.id = o.service_version_id
     where v.service_id = $1 order by v.version_number, o.position`, [serviceId]))
     .map((row) => [row.version_number, row.position, row.unit_symbol, row.presentation_label, row.reference_rate]);
+}
+
+/**
+ * Unidades vigentes de un servicio: [posición, símbolo, texto, tarifa].
+ *
+ * @param {number} serviceId - Servicio consultado.
+ * @returns {Promise<Array<Array<unknown>>>} Unidades en orden.
+ */
+async function currentOptionsOf(serviceId) {
+  return (await rows(`select o.position, u.symbol, o.presentation_label, o.reference_rate
+    from public.service_unit_options o join public.measurement_units u on u.id = o.measurement_unit_id
+    where o.service_id = $1 order by o.position`, [serviceId]))
+    .map((row) => [row.position, row.symbol, row.presentation_label, row.reference_rate]);
+}
+
+/**
+ * Registra, como lo hacía el backend con varias unidades, un servicio con una unidad alternativa
+ * y su versión 1 (el trigger copia ambas unidades en la versión).
+ *
+ * @param {object} service - Datos del servicio.
+ * @returns {Promise<{ id: number, versionId: number }>} Servicio y versión 1.
+ */
+async function insertServiceWithAlternative({ alternative, code, name, rate, unitId }) {
+  await rows("begin");
+  const [service] = await rows(`insert into public.services (code, name, kind, measurement_unit_id, reference_rate, sort_order, created_by, updated_by)
+    values ($1, $2, 'individual', $3, $4, 0, $5, $5) returning id::int`, [code, name, unitId, rate, ids.admin]);
+  await rows("insert into public.service_unit_options (service_id, position, measurement_unit_id, reference_rate) values ($1, 2, $2, $3)",
+    [service.id, alternative.unitId, alternative.rate]);
+  const [version] = await rows(`insert into public.service_versions (
+      service_id, version_number, code, name, kind, measurement_unit_id, unit_code, unit_name, unit_symbol, unit_allows_decimals,
+      reference_rate, currency_code, is_active, sort_order, changed_by)
+    select s.id, 1, s.code, s.name, s.kind, u.id, u.code, u.name, u.symbol, u.allows_decimals, s.reference_rate, s.currency_code,
+      s.is_active, s.sort_order, $2
+    from public.services s join public.measurement_units u on u.id = s.measurement_unit_id where s.id = $1 returning id::int`, [service.id, ids.admin]);
+  await rows("commit");
+  return { id: service.id, versionId: version.id };
 }
 
 /**
@@ -85,7 +133,7 @@ before(async () => {
   const unitRows = await rows("select id::int, code from public.measurement_units");
   const unit = Object.fromEntries(unitRows.map((row) => [row.code, row.id]));
 
-  // Datos con el modelo anterior: un servicio con denominación, su versión 1 y un concepto cotizado.
+  // Datos con el modelo inicial: un servicio con denominación, su versión 1 y un concepto cotizado.
   const [denomination] = await rows(`insert into public.measurement_unit_denominations (measurement_unit_id, denomination, created_by, updated_by)
     values ($1, 'de construcción', $2, $2) returning id::int`, [unit.square_meter, admin.id]);
   const [legacy] = await rows(`insert into public.services (code, name, kind, measurement_unit_id, unit_denomination_id, reference_rate, created_by, updated_by)
@@ -106,11 +154,25 @@ before(async () => {
   await applyMigration(database.client, MIGRATION);
   ids = { admin: admin.id, client: client.id, denomination: denomination.id, legacy: legacy.id, legacyVersion: legacyVersion.id, project: project.id, unit };
 
+  // Servicios con unidades alternativas y una cotización que usó una alternativa, como antes de la unidad única.
+  services.modeling = await insertServiceWithAlternative({
+    alternative: { rate: null, unitId: unit.space }, code: "SERV-901", name: "Modelado 3D & Renders", rate: "320.00", unitId: unit.project,
+  });
+  services.tour = await insertServiceWithAlternative({
+    alternative: { rate: "275.00", unitId: unit.project }, code: "SERV-902", name: "Recorrido Virtual / VR", rate: "275.00", unitId: unit.minute,
+  });
+  const [tourQuote] = await rows("insert into public.quotes (code, created_by, updated_by) values ('COT-901', $1, $1) returning id::int", [admin.id]);
+  const [tourQuoteVersion] = await rows(`insert into public.quote_versions (quote_id, version_number, client_id, client_name, project_id, project_name, services_total, created_by)
+    values ($1, 1, $2, 'Cliente Tabulador', $3, 'Local 3.2', 250.00, $4) returning id::int`, [tourQuote.id, client.id, project.id, admin.id]);
+  await rows(`insert into public.quote_items (quote_version_id, line_number, service_id, service_version_id, service_version_unit_option_id, quantity, unit_rate, reference_rate, subtotal)
+    select $1, 1, $2, $3, o.id, 1, 250.00, o.reference_rate, 250.00
+    from public.service_version_unit_options o where o.service_version_id = $3 and o.position = 2`, [tourQuoteVersion.id, services.tour.id, services.tour.versionId]);
+  ids.tourQuote = tourQuote.id;
+
   Object.assign(process.env, { DATABASE_POOL_MAX: "5", DATABASE_URL: database.databaseUrl, NODE_ENV: "test" });
   db = await import("../src/config/db.js");
   catalog = await import("../src/services/serviceCatalogService.js");
   quotes = await import("../src/services/quoteService.js");
-  units = await import("../src/services/measurementUnitService.js");
   ({ buildQuoteDocument } = await import("../src/domain/quoteDocument.js"));
 });
 
@@ -119,196 +181,139 @@ after(async () => {
   if (database) await database.drop();
 });
 
-test("migración: la unidad actual de servicios, versiones y conceptos pasa a la posición 1 sin perder la protección", { skip }, async () => {
+test("migración de unidades: la unidad de servicios, versiones y conceptos iniciales pasa a la posición 1", { skip }, async () => {
   assert.deepEqual(await rows(`select position, measurement_unit_id::int, unit_denomination_id::int, reference_rate
     from public.service_unit_options where service_id = $1`, [ids.legacy]), [
     { measurement_unit_id: ids.unit.square_meter, position: 1, reference_rate: "14.00", unit_denomination_id: ids.denomination },
   ]);
   assert.deepEqual(await versionOptionsOf(ids.legacy), [[1, 1, "m²", null, "14.00"]]);
   const [item] = await rows(`select i.service_version_unit_option_id = o.id as linked from public.quote_items i
-    join public.service_version_unit_options o on o.service_version_id = i.service_version_id and o.position = 1`);
-  assert.equal(item.linked, true, "El concepto cotizado apunta a la unidad principal de su versión");
-  // El trigger de conceptos se reactivó dentro de la migración y RLS cubre las tablas nuevas.
+    join public.service_version_unit_options o on o.service_version_id = i.service_version_id and o.position = 1
+    where i.service_id = $1`, [ids.legacy]);
+  assert.equal(item.linked, true, "El concepto cotizado apunta a la unidad de su versión");
   const [trigger] = await rows("select tgenabled from pg_trigger where tgname = 'quote_items_immutable'");
   assert.equal(trigger.tgenabled, "O");
   await assert.rejects(rows("update public.quote_items set quantity = 1"), { code: "55000" });
-  const rls = await rows("select relname, relrowsecurity from pg_class where relname in ('service_unit_options', 'service_version_unit_options') order by relname");
-  assert.deepEqual(rls.map((row) => row.relrowsecurity), [true, true]);
-  // El servicio heredado se sigue leyendo con su etiqueta y una sola unidad.
   const service = await catalog.getService(ids.legacy);
-  assert.deepEqual([service.unitLabel, service.unitOptions.length, service.unitOptions[0].referenceRate], ["m² de construcción", 1, "14.00"]);
+  assert.deepEqual([service.unitLabel, service.presentationLabel, "unitOptions" in service], ["m² de construcción", null, false]);
 });
 
-test("tabulador 3.2: varias unidades sin inventar tarifas y texto comercial «Global por Proyecto»", { skip }, async () => {
-  tabulator.modeling = await createService({
-    description: "Modelo 3D + 3 a 5 renders hiperrealistas.", name: "Modelado 3D & Renders", referenceRate: "320.00",
-    unitOptions: [{ measurementUnitId: ids.unit.project, referenceRate: "320.00" }, { measurementUnitId: ids.unit.space, referenceRate: null }],
+test("unidad única: alta y edición con una unidad, texto comercial conservado y versionado", { skip }, async () => {
+  services.permits = await createService({
+    description: "Variables urbanas, bomberos y alcaldía.", measurementUnitId: ids.unit.project, name: "Permisología & Legal",
+    presentationLabel: "Global por Proyecto", referenceRate: "510.00",
   });
-  tabulator.virtualTour = await createService({
-    description: "Video renderizado 4K o experiencia inmersiva VR.", name: "Recorrido Virtual / VR", referenceRate: "275.00",
-    unitOptions: [{ measurementUnitId: ids.unit.minute, referenceRate: "275.00" }, { measurementUnitId: ids.unit.project, referenceRate: "275.00" }],
-  });
-  // Servicio ficticio (no pertenece al tabulador) sin ninguna tarifa confirmada.
-  tabulator.pendingOnly = await createService({
-    name: "Servicio sin tarifa confirmada", referenceRate: "300.00",
-    unitOptions: [{ measurementUnitId: ids.unit.hour }, { measurementUnitId: ids.unit.week }],
-  });
-  tabulator.permits = await createService({
-    description: "Tratamiento de variables urbanas, bomberos y alcaldía.", name: "Permisología & Legal", referenceRate: "510.00",
-    unitOptions: [{ measurementUnitId: ids.unit.project, presentationLabel: "Global por Proyecto" }],
-  });
-  const summary = (service) => service.unitOptions.map((option) => [option.label, option.referenceRate, option.ratePending]);
-  assert.deepEqual(summary(tabulator.modeling), [["proy.", "320.00", false], ["esp.", null, true]]);
-  assert.deepEqual(summary(tabulator.virtualTour), [["min", "275.00", false], ["proy.", "275.00", false]]);
-  assert.deepEqual(summary(tabulator.pendingOnly), [["hrs", null, true], ["sem.", null, true]]);
-  // Una sola unidad usa la tarifa del servicio; el texto comercial es la etiqueta principal.
-  assert.deepEqual(summary(tabulator.permits), [["Global por Proyecto", "510.00", false]]);
-  assert.equal(tabulator.permits.unitLabel, "Global por Proyecto");
-  // La tarifa de referencia del servicio se conserva tal como la indica el tabulador.
-  assert.deepEqual([tabulator.modeling.referenceRate, tabulator.virtualTour.referenceRate], ["320.00", "275.00"]);
-  // services conserva la unidad principal y la versión 1 copia todas las unidades.
-  const [primary] = await rows("select measurement_unit_id::int from public.services where id = $1", [tabulator.virtualTour.id]);
-  assert.equal(primary.measurement_unit_id, ids.unit.minute);
-  assert.deepEqual(await versionOptionsOf(tabulator.modeling.id), [[1, 1, "proy.", null, "320.00"], [1, 2, "esp.", null, null]]);
-  // El filtro por unidad encuentra también las alternativas.
-  const bySpace = await catalog.getServicesPage({ measurementUnitId: ids.unit.space });
-  assert.deepEqual(bySpace.services.map((service) => service.id), [tabulator.modeling.id]);
-});
-
-test("versionado: confirmar una tarifa crea la versión 2 y la 1 conserva la pendiente; las copias son inmutables", { skip }, async () => {
-  const updated = await catalog.updateService({
-    payload: { expectedVersion: 1, unitOptions: [
-      { measurementUnitId: ids.unit.project, referenceRate: "320.00" }, { measurementUnitId: ids.unit.space, referenceRate: "380.00" },
-    ] },
-    serviceId: tabulator.modeling.id,
-    user: { id: ids.admin },
-  });
-  assert.deepEqual([updated.changed, updated.changedFields, updated.service.currentVersion], [true, ["unitOptions"], 2]);
-  assert.deepEqual(await versionOptionsOf(tabulator.modeling.id), [
-    [1, 1, "proy.", null, "320.00"], [1, 2, "esp.", null, null], [2, 1, "proy.", null, "320.00"], [2, 2, "esp.", null, "380.00"],
+  assert.deepEqual([services.permits.unitLabel, services.permits.presentationLabel, services.permits.measurementUnit.code], ["Global por Proyecto", "Global por Proyecto", "project"]);
+  assert.deepEqual(await currentOptionsOf(services.permits.id), [[1, "proy.", "Global por Proyecto", "510.00"]]);
+  // Editar el nombre o la tarifa conserva el texto comercial y versiona una sola unidad.
+  const renamed = await updateService(services.permits.id, { expectedVersion: 1, name: "Permisología & Legal (global)", referenceRate: "520.00" });
+  assert.deepEqual([renamed.changedFields, renamed.service.unitLabel], [["name", "referenceRate"], "Global por Proyecto"]);
+  // Cambiar la unidad sin texto nuevo lo retira (describía la unidad anterior).
+  const otherUnit = await updateService(services.permits.id, { expectedVersion: 2, measurementUnitId: ids.unit.month });
+  assert.deepEqual([otherUnit.changedFields, otherUnit.service.unitLabel], [["measurementUnitId", "presentationLabel"], "mes"]);
+  assert.deepEqual(await versionOptionsOf(services.permits.id), [
+    [1, 1, "proy.", "Global por Proyecto", "510.00"], [2, 1, "proy.", "Global por Proyecto", "520.00"], [3, 1, "mes", null, "520.00"],
   ]);
-  await assert.rejects(rows("update public.service_version_unit_options set reference_rate = 1"), { code: "55000" });
-  await assert.rejects(rows("delete from public.service_version_unit_options"), { code: "55000" });
-  // Intercambiar la principal y la alternativa no choca con la unicidad y mueve la unidad del servicio.
-  const swapped = await catalog.updateService({
-    payload: { expectedVersion: 2, unitOptions: [
-      { measurementUnitId: ids.unit.space, referenceRate: "380.00" }, { measurementUnitId: ids.unit.project, referenceRate: "320.00" },
-    ] },
-    serviceId: tabulator.modeling.id,
-    user: { id: ids.admin },
-  });
-  assert.deepEqual([swapped.service.measurementUnit.code, swapped.service.unitLabel], ["space", "esp."]);
-  // Repetir una unidad se rechaza antes de escribir.
-  await assert.rejects(
-    catalog.updateService({
-      payload: { expectedVersion: 3, unitOptions: [{ measurementUnitId: ids.unit.space }, { measurementUnitId: ids.unit.space }] },
-      serviceId: tabulator.modeling.id,
-      user: { id: ids.admin },
-    }),
-    (error) => error.code === "VALIDATION_ERROR" && Boolean(error.fields["unitOptions.1.measurementUnitId"]),
-  );
+  // Un servicio independiente por cada forma de cobro, con nombres diferenciados.
+  services.space = await createService({ measurementUnitId: ids.unit.space, name: "Modelado 3D & Renders — Por espacio", referenceRate: "320.00", sortOrder: 2 });
+  assert.deepEqual([services.space.unitLabel, services.space.referenceRate, services.space.sortOrder], ["esp.", "320.00", 2]);
+  const bySpace = await catalog.getServicesPage({ measurementUnitId: ids.unit.space });
+  assert.deepEqual(bySpace.services.map((service) => service.id), [services.space.id], "El filtro usa la unidad del servicio");
 });
 
-test("coherencia en PostgreSQL: escrituras directas sincronizan la principal y una lista incompleta no se confirma", { skip }, async () => {
-  // Un alta directa (contrato anterior) registra su unidad en la posición 1.
-  const [direct] = await rows(`insert into public.services (code, name, measurement_unit_id, reference_rate)
-    values ('DIRECTO', 'Directo', $1, 20.00) returning id::int`, [ids.unit.linear_meter]);
-  const option = async (serviceId) => rows(`select position, measurement_unit_id::int, presentation_label, reference_rate
-    from public.service_unit_options where service_id = $1 order by position`, [serviceId]);
-  assert.deepEqual(await option(direct.id), [{ measurement_unit_id: ids.unit.linear_meter, position: 1, presentation_label: null, reference_rate: "20.00" }]);
-  // Con una sola unidad, la tarifa del servicio y el cambio de unidad se sincronizan (y se retira el texto comercial).
-  await rows("update public.service_unit_options set presentation_label = 'Metro lineal comercial' where service_id = $1", [direct.id]);
-  await rows("update public.services set measurement_unit_id = $2, reference_rate = 25.00 where id = $1", [direct.id, ids.unit.meter]);
-  assert.deepEqual(await option(direct.id), [{ measurement_unit_id: ids.unit.meter, position: 1, presentation_label: null, reference_rate: "25.00" }]);
-  // Con varias unidades, la tarifa del tabulador no altera las de las unidades (ni las confirmadas
-  // ni las pendientes).
-  await rows("update public.services set reference_rate = 650.00 where id = any($1::bigint[])", [[tabulator.virtualTour.id, tabulator.pendingOnly.id]]);
-  assert.deepEqual((await option(tabulator.virtualTour.id)).map((row) => row.reference_rate), ["275.00", "275.00"]);
-  assert.deepEqual((await option(tabulator.pendingOnly.id)).map((row) => row.reference_rate), [null, null]);
-  await rows("update public.services set reference_rate = 275.00 where id = $1", [tabulator.virtualTour.id]);
-  await rows("update public.services set reference_rate = 300.00 where id = $1", [tabulator.pendingOnly.id]);
-
-  // Reglas diferidas: sin unidades, con huecos o con una principal distinta no se confirma.
-  for (const sql of [
-    "delete from public.service_unit_options where service_id = $1",
-    "update public.service_unit_options set position = 3 where service_id = $1 and position = 2",
-  ]) {
-    await rows("begin");
-    await rows(sql, [tabulator.virtualTour.id]);
-    await assert.rejects(rows("commit"), { code: "23514" }, sql);
+test("migración de unidad única: aborta mientras queden alternativas y la separación conserva el historial", { skip }, async () => {
+  await assert.rejects(applyMigration(database.client, SINGLE_UNIT_MIGRATION), { code: "55000" });
+  // La migración es una sola transacción: el fallo no deja ninguna restricción a medias.
+  await rows("rollback");
+  assert.deepEqual(await rows("select 1 from pg_constraint where conname = 'chk_service_unit_options_single'"), []);
+  // El comando de separación se bloquea si una cotización incluye un servicio por separar.
+  const split = await import("../src/services/serviceUnitSplitService.js");
+  const { parseOfficialCatalog } = await import("../src/services/officialServiceCatalogLoadService.js");
+  const minimalCatalog = parseOfficialCatalog({
+    catalogId: "prueba", changeNote: "Prueba", denominations: [], expectedTotals: { denominations: 0, individual: 1, services: 1, turnkey: 0 },
+    services: [{ description: null, kind: "individual", name: "Servicio", order: 1, referenceRate: "1.00", unit: "project" }], source: "Prueba",
+  });
+  const blocked = await split.planServiceUnitSplit(minimalCatalog, { runId: "quotes" });
+  assert.equal(blocked.ready, false);
+  assert.match(blocked.blockers.join("\n"), /1 conceptos de cotización incluyen servicios que se separarían/);
+  const historyBefore = await rows("select count(*)::int as count from public.service_version_unit_options");
+  // La separación versiona el original: la versión nueva copia una sola unidad y la 1 conserva las dos.
+  for (const [service, name] of [[services.modeling, "Modelado 3D & Renders — Por proyecto"], [services.tour, "Recorrido Virtual / VR — Por minuto"]]) {
+    const result = await updateService(service.id, { changeNote: "Separación de unidades", expectedVersion: 1, name });
+    assert.deepEqual([result.changedFields, result.service.currentVersion, result.service.name], [["name"], 2, name]);
   }
+  assert.deepEqual(await currentOptionsOf(services.tour.id), [[1, "min", null, "275.00"]]);
+  assert.deepEqual(await versionOptionsOf(services.tour.id), [[1, 1, "min", null, "275.00"], [1, 2, "proy.", null, "275.00"], [2, 1, "min", null, "275.00"]]);
+  assert.deepEqual(await versionOptionsOf(services.modeling.id), [[1, 1, "proy.", null, "320.00"], [1, 2, "esp.", null, null], [2, 1, "proy.", null, "320.00"]]);
+  const [historyAfter] = await rows("select count(*)::int as count from public.service_version_unit_options");
+  assert.equal(historyAfter.count, historyBefore[0].count + 2, "Solo se añaden las copias de las versiones nuevas");
+
+  await applyMigration(database.client, SINGLE_UNIT_MIGRATION);
+  const constraints = await rows(`select conname, convalidated from pg_constraint
+    where conname like 'chk_service%unit_options_single' or conname like 'chk_service%unit_options_rate_confirmed' order by conname`);
+  assert.deepEqual(constraints.map((row) => [row.conname, row.convalidated]), [
+    ["chk_service_unit_options_rate_confirmed", true], ["chk_service_unit_options_single", true],
+    ["chk_service_version_unit_options_rate_confirmed", false], ["chk_service_version_unit_options_single", false],
+  ]);
+  // Cualquier escritor queda limitado a una unidad vigente con tarifa, también en versiones nuevas.
   await assert.rejects(
-    rows("insert into public.service_unit_options (service_id, position, measurement_unit_id) values ($1, 3, $2)", [tabulator.virtualTour.id, ids.unit.minute]),
-    { code: "23505", constraint: "uq_service_unit_options_unit" },
+    rows("insert into public.service_unit_options (service_id, position, measurement_unit_id, reference_rate) values ($1, 2, $2, 1)", [services.tour.id, ids.unit.hour]),
+    { code: "23514", constraint: "chk_service_unit_options_single" },
   );
+  const [currentVersion] = await rows("select id::int from public.service_versions where service_id = $1 and is_current", [services.tour.id]);
   await assert.rejects(
-    rows("insert into public.service_unit_options (service_id, position, measurement_unit_id) values ($1, 11, $2)", [tabulator.virtualTour.id, ids.unit.hour]),
-    { code: "23514" },
+    rows(`insert into public.service_version_unit_options (service_version_id, position, measurement_unit_id, unit_code, unit_name, unit_symbol, unit_allows_decimals, reference_rate)
+      values ($1, 2, $2, 'hour', 'Hora', 'hrs', true, 1)`, [currentVersion.id, ids.unit.hour]),
+    { code: "23514", constraint: "chk_service_version_unit_options_single" },
   );
-  // Una denominación de otra base no puede asignarse a una unidad (FK compuesta).
-  await assert.rejects(
-    rows("insert into public.service_unit_options (service_id, position, measurement_unit_id, unit_denomination_id) values ($1, 3, $2, $3)",
-      [tabulator.virtualTour.id, ids.unit.hour, ids.denomination]),
-    { code: "23503", constraint: "fk_service_unit_options_unit_denomination" },
-  );
+  await assert.rejects(rows("delete from public.service_version_unit_options where position = 2"), { code: "55000" });
+  // La sincronización y el versionado siguen funcionando con la restricción.
+  const edited = await updateService(services.tour.id, { expectedVersion: 2, referenceRate: "280.00" });
+  assert.deepEqual(await currentOptionsOf(services.tour.id), [[1, "min", null, "280.00"]]);
+  assert.equal(edited.service.currentVersion, 3);
 });
 
-test("cotización: solo unidades con tarifa confirmada, con su referencia, y el PDF usa el texto comercial", { skip }, async () => {
-  const modelingQuote = (unitOptionPosition) => quotes.createQuote({
-    payload: quoteBody([{ quantity: "1", serviceId: tabulator.modeling.id, unitOptionPosition, unitRate: "380.00" }]),
+test("cotización: la unidad del servicio con tarifa editable; lo cotizado conserva su unidad, tarifa y etiqueta en el PDF", { skip }, async () => {
+  // La cotización anterior conserva la alternativa (proyecto) y su tarifa, también al editarla.
+  const historical = await quotes.getQuote(ids.tourQuote);
+  assert.deepEqual([historical.items[0].unit.label, historical.items[0].unit.position, historical.items[0].unitRate], ["proy.", 2, "250.00"]);
+  assert.equal(buildQuoteDocument(historical).items[0].unitLabel, "proy.");
+  const reedited = await quotes.updateQuote({
+    payload: { ...quoteBody([{ quantity: "2", serviceId: services.tour.id, unitRate: "250.00" }]), expectedVersion: 1 },
+    quoteId: ids.tourQuote,
     user: { id: ids.admin },
   });
-  // Un servicio sin ninguna tarifa confirmada no se cotiza con ninguna de sus unidades.
-  for (const unitOptionPosition of [1, 2]) {
-    await assert.rejects(
-      quotes.createQuote({ payload: quoteBody([{ quantity: "1", serviceId: tabulator.pendingOnly.id, unitOptionPosition, unitRate: "300.00" }]), user: { id: ids.admin } }),
-      (error) => /pendiente de validación comercial/.test(error.fields?.["items.0.unitOptionPosition"]),
-    );
-  }
-  // Recorrido VR: se elige minuto o proyecto (ambos a la misma tarifa) y el importe sale de la cantidad y la
-  // tarifa propuesta, que puede modificarse sin alterar la referencia del tabulador.
-  const tourQuote = (item) => quotes.createQuote({ payload: quoteBody([{ serviceId: tabulator.virtualTour.id, ...item }]), user: { id: ids.admin } });
-  await assert.rejects(tourQuote({ quantity: "3", unitRate: "275.00" }), (error) => /Elige la unidad/.test(error.fields?.["items.0.unitOptionPosition"]));
-  const byMinute = (await tourQuote({ quantity: "3", unitOptionPosition: 1, unitRate: "275.00" })).items[0];
-  assert.deepEqual([byMinute.unit.label, byMinute.unit.position, byMinute.referenceRate, byMinute.unitRate, byMinute.subtotal], ["min", 1, "275.00", "275.00", "825.00"]);
-  const byProject = (await tourQuote({ quantity: "1", unitOptionPosition: 2, unitRate: "250.00" })).items[0];
-  assert.deepEqual([byProject.unit.label, byProject.unit.position, byProject.referenceRate, byProject.unitRate, byProject.subtotal], ["proy.", 2, "275.00", "250.00", "250.00"]);
-  await assert.rejects(modelingQuote(undefined), (error) => /Elige la unidad/.test(error.fields?.["items.0.unitOptionPosition"]));
-  const created = await modelingQuote(1);
-  assert.deepEqual([created.items[0].unit.label, created.items[0].referenceRate], ["esp.", "380.00"]);
+  const [kept] = reedited.quote.items;
+  assert.deepEqual([kept.unit.label, kept.unit.position, kept.referenceRate, kept.subtotal], ["proy.", 2, "275.00", "500.00"]);
+  const [original] = await rows(`select i.unit_rate, i.subtotal from public.quote_items i join public.quote_versions v on v.id = i.quote_version_id
+    where v.quote_id = $1 and v.version_number = 1`, [ids.tourQuote]);
+  assert.deepEqual([original.unit_rate, original.subtotal], ["250.00", "250.00"], "La versión 1 de la cotización no cambia");
 
-  const permits = await quotes.createQuote({
-    payload: quoteBody([{ quantity: "1", serviceId: tabulator.permits.id, unitRate: "510.00" }]),
+  // Una cotización nueva usa la unidad única de la versión vigente y la tarifa aplicada elegida.
+  const created = await quotes.createQuote({
+    payload: quoteBody([
+      { quantity: "3", serviceId: services.tour.id, unitRate: "260.00" },
+      { quantity: "1", serviceId: services.space.id, unitRate: "320.00" },
+    ]),
     user: { id: ids.admin },
   });
-  assert.equal(buildQuoteDocument(permits).items[0].unitLabel, "Global por Proyecto");
-  // La unidad cotizada debe pertenecer a la misma versión del servicio (FK compuesta): se añade el
-  // servicio heredado a la cotización de Permisología con una unidad copiada de otra versión.
+  assert.deepEqual(created.items.map((item) => [item.unit.label, item.unit.position, item.referenceRate, item.unitRate, item.subtotal]), [
+    ["min", 1, "280.00", "260.00", "780.00"], ["esp.", 1, "320.00", "320.00", "320.00"],
+  ]);
+  assert.equal(created.servicesTotal, "1100.00");
+
+  // El texto comercial copiado en la versión cotizada es la etiqueta del documento.
+  const inspection = await createService({
+    measurementUnitId: ids.unit.month, name: "Inspección Técnica Obra", presentationLabel: "Honorario Mensual", referenceRate: "510.00",
+  });
+  const inspectionQuote = await quotes.createQuote({ payload: quoteBody([{ quantity: "2", serviceId: inspection.id, unitRate: "510.00" }]), user: { id: ids.admin } });
+  assert.deepEqual(buildQuoteDocument(inspectionQuote).items.map((item) => [item.unitLabel, item.subtotal]), [["Honorario Mensual", "$1,020.00"]]);
+  // La unidad cotizada debe pertenecer a la misma versión del servicio (FK compuesta).
   const [foreign] = await rows("select id::int from public.service_version_unit_options where service_version_id <> $1 limit 1", [ids.legacyVersion]);
   await assert.rejects(
     rows(`insert into public.quote_items (quote_version_id, line_number, service_id, service_version_id, service_version_unit_option_id, quantity, unit_rate, reference_rate, subtotal)
       select quote_version_id, 9, $2, $3, $1, 1, 1, 1, 1 from public.quote_items where service_id = $4 limit 1`,
-    [foreign.id, ids.legacy, ids.legacyVersion, tabulator.permits.id]),
+    [foreign.id, ids.legacy, ids.legacyVersion, services.space.id]),
     { code: "23503", constraint: "fk_quote_items_service_version_unit_option" },
   );
-});
-
-test("denominaciones: usada solo como unidad alternativa cuenta como en uso y su base no cambia", { skip }, async () => {
-  const exhibit = await units.createDenomination({ payload: { denomination: "de exhibición", measurementUnitId: ids.unit.space }, user: { id: ids.admin } });
-  await createService({
-    name: "Stand", referenceRate: "300.00",
-    unitOptions: [{ measurementUnitId: ids.unit.square_meter, referenceRate: "300.00" }, { measurementUnitId: ids.unit.space, unitDenominationId: exhibit.id }],
-  });
-  const read = await units.getDenomination(exhibit.id);
-  assert.deepEqual([read.activeServiceCount, read.baseUnitEditable], [1, false]);
-  await assert.rejects(
-    units.updateDenomination({ denominationId: exhibit.id, payload: { measurementUnitId: ids.unit.project }, user: { id: ids.admin } }),
-    { code: "MEASUREMENT_UNIT_BASE_IN_USE" },
-  );
-  await assert.rejects(
-    units.changeDenominationStatus({ denominationId: exhibit.id, payload: { isActive: false }, user: { id: ids.admin } }),
-    (error) => /IN_USE/.test(error.code),
-  );
-  // PostgreSQL también lo impide aunque se salte el backend.
-  await assert.rejects(rows("update public.measurement_unit_denominations set measurement_unit_id = $1 where id = $2", [ids.unit.project, exhibit.id]), { code: "55000" });
 });

@@ -16,7 +16,7 @@ import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
  * en el mismo campo las filtra por símbolo, categoría o nombre de la base, sin distinguir
  * mayúsculas ni acentos. Conserva la composición de Figma: el símbolo de la base en el prefijo
  * («m²») y la categoría como Tag con cierre («de construcción» o, sin denominación, el nombre de
- * la base), ambos derivados de la unidad elegida. Se reutiliza para las unidades alternativas.
+ * la base), ambos derivados de la unidad elegida. Cada servicio tiene una sola unidad.
  *
  * Tres estados, con la unidad del borrador (`measurementUnitId` + `unitDenomination`) como única
  * fuente de verdad y la búsqueda como estado temporal de interfaz:
@@ -36,7 +36,6 @@ import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
  *
  * @param {Object} props - Selección, opciones y callbacks.
  * @param {string} props.id - Id del campo nativo (enfoque inicial y etiqueta).
- * @param {string} [props.label="Unidad de medida"] - Etiqueta visible del campo.
  * @param {Array<{id: number, label: string, description?: string}>} [props.bases] - Bases activas que
  * pueden asignarse sin denominación (abreviatura en `label`, nombre en `description`).
  * @param {Array<Object>} props.denominations - Unidades registradas que se ofrecen (forma del
@@ -54,7 +53,7 @@ import ServiceUnitOptionsList from "./ServiceUnitOptionsList.jsx";
  * @returns {import("react").ReactElement} Campo de unidad con su listado.
  */
 function ServiceUnitField({
-  bases = [], denominations, disabled, hint, id, invalid, label = "Unidad de medida", measurementUnitId, onChange, selectedBaseOption, unitDenomination,
+  bases = [], denominations, disabled, hint, id, invalid, measurementUnitId, onChange, selectedBaseOption, unitDenomination,
 }) {
   // La consulta pertenece a esta combinación. Un cambio externo de base o unidad (modalidad,
   // alta contextual) no puede reutilizar texto anterior ni necesita sincronizarlo con un efecto.
@@ -150,7 +149,7 @@ function ServiceUnitField({
         id={id}
         type="Tags"
         size="M"
-        label={label}
+        label="Unidad de medida"
         required
         showLabel
         showLabelInfo={false}

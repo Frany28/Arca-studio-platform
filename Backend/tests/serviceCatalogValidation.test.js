@@ -152,11 +152,10 @@ test("estado, detalle y listado validan identificadores, filtros y cursor", () =
 test("dominio: detecta solo cambios efectivos en los campos versionados", () => {
   assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, {})), []);
   assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { name: "Anteproyecto", referenceRate: "14.00" })), []);
-  // Con una sola unidad, su tarifa es la del servicio: cambiarla cambia también `unitOptions`.
-  assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { referenceRate: "15.50", isActive: false })), ["unitOptions", "referenceRate", "isActive"]);
+  assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { referenceRate: "15.50", isActive: false })), ["referenceRate", "isActive"]);
   assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { description: "Nueva" })), ["description"]);
   assert.deepEqual(listChangedServiceFields({ ...CURRENT, description: "Algo" }, mergeServiceChanges({ ...CURRENT, description: "Algo" }, { description: null })), ["description"]);
-  assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { measurementUnitId: 2, kind: "turnkey" })), ["kind", "measurementUnitId", "unitOptions"]);
+  assert.deepEqual(listChangedServiceFields(CURRENT, mergeServiceChanges(CURRENT, { measurementUnitId: 2, kind: "turnkey" })), ["kind", "measurementUnitId"]);
 });
 
 test("errores de PostgreSQL se traducen sin exponer detalles internos", () => {

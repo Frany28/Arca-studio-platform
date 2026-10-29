@@ -181,15 +181,15 @@ function chooseServiceVersions(items, services, current) {
 }
 
 /**
- * Elige la unidad copiada de cada concepto (posición enviada, la ya cotizada con esa misma
- * versión o la única del servicio) y rechaza las pendientes de validación comercial.
+ * Elige la unidad copiada de cada concepto: la ya cotizada con esa misma versión o la única
+ * unidad del servicio.
  *
- * @param {Array<{ serviceId: number, unitOptionPosition?: number }>} items - Conceptos recibidos.
+ * @param {Array<{ serviceId: number }>} items - Conceptos recibidos.
  * @param {Array<number>} versionIds - Versión de servicio por concepto.
  * @param {Map<number, Array<object>>} unitOptionsByVersion - Unidades copiadas por versión.
  * @param {object|null} current - Cotización vigente al editar.
  * @returns {Array<object>} Unidad elegida por concepto, en el mismo orden.
- * @throws {ValidationError} Con `fields.items.N.unitOptionPosition` si alguna unidad no puede cotizarse.
+ * @throws {ValidationError} Con `fields.items.N.serviceId` si la versión no tiene una unidad cotizable.
  */
 function chooseUnitOptions(items, versionIds, unitOptionsByVersion, current) {
   const fields = {};
@@ -197,10 +197,9 @@ function chooseUnitOptions(items, versionIds, unitOptionsByVersion, current) {
   const options = items.map((item, index) => {
     const choice = chooseQuoteUnitOption({
       quotedPosition: quotedPositions.get(`${item.serviceId}:${versionIds[index]}`) ?? null,
-      requestedPosition: item.unitOptionPosition,
       unitOptions: unitOptionsByVersion.get(versionIds[index]) ?? [],
     });
-    if (choice.error) fields[`items.${index}.unitOptionPosition`] = choice.error;
+    if (choice.error) fields[`items.${index}.serviceId`] = choice.error;
     return choice.option ?? null;
   });
   if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
@@ -209,12 +208,12 @@ function chooseUnitOptions(items, versionIds, unitOptionsByVersion, current) {
 
 /**
  * Resuelve los conceptos en la transacción: rechaza servicios repetidos, bloquea los servicios
- * FOR SHARE (SERVICE_MODALITY_IN_USE), fija versión y unidad con tarifa confirmada (su referencia),
+ * FOR SHARE (SERVICE_MODALITY_IN_USE), fija versión y unidad (su tarifa es la de referencia),
  * exige cantidades enteras en unidades sin decimales y calcula los importes con el motor único.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la operación.
- * @param {Array<{ serviceId: number, unitOptionPosition?: number, quantity: string, unitRate: string }>} options.items - Conceptos validados.
+ * @param {Array<{ serviceId: number, quantity: string, unitRate: string }>} options.items - Conceptos validados.
  * @param {object|null} options.current - Cotización vigente al editar; null al crear.
  * @returns {Promise<{ lines: Array<object>, servicesTotal: string }>} Conceptos con subtotal y total.
  * @throws {ValidationError} Si algún concepto no puede guardarse.

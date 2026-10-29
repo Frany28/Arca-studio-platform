@@ -12,8 +12,7 @@
  *   `POST /admin/measurement-unit-denominations`; el backend los vuelve a validar.
  */
 
-import { SERVICE_CURRENCY, formatGeneratedServiceCode } from "./serviceCatalog.js";
-import { currentUnitOptions, resolveUnitOptions, toCanonicalUnitOption } from "./serviceUnitOptions.js";
+import { SERVICE_CURRENCY, currentServiceUnit, formatGeneratedServiceCode } from "./serviceCatalog.js";
 
 /** Origen registrado en auditoría para las operaciones del comando. */
 export const CATALOG_LOAD_AUDIT_SOURCE = "maintenance:load-official-service-catalog";
@@ -31,57 +30,58 @@ export function catalogVersionNote(changeNote, runId) {
 }
 
 /**
- * Convierte las unidades de un servicio del catálogo en las unidades del cuerpo de alta
- * (`unitOptions`), con los ids reales de unidad y denominación. Con una sola unidad no se envía
- * tarifa aparte: el backend usa la del servicio.
+ * Unidad de un servicio del catálogo con los ids reales de unidad base y denominación.
  *
  * @param {object} entry - Servicio validado del catálogo.
  * @param {object} lookups - Ids resueltos.
  * @param {Map<string, { id: number }>} lookups.unitsByCode - Unidades base por código.
  * @param {(unit: string, denomination: string) => number} lookups.denominationId - Id de una denominación.
- * @returns {Array<object>} Unidades del cuerpo de alta.
+ * @returns {{ measurementUnitId: number, unitDenominationId: number|null, presentationLabel: string|null }} Unidad.
  */
-export function toCatalogUnitOptions(entry, { denominationId, unitsByCode }) {
-  return entry.units.map((unit) => ({
-    measurementUnitId: unitsByCode.get(unit.unit).id,
-    presentationLabel: unit.presentationLabel,
-    unitDenominationId: unit.denomination === null ? null : denominationId(unit.unit, unit.denomination),
-    ...(entry.units.length > 1 ? { referenceRate: unit.referenceRate } : {}),
-  }));
+export function toCatalogServiceUnit(entry, { denominationId, unitsByCode }) {
+  return {
+    measurementUnitId: unitsByCode.get(entry.unit).id,
+    presentationLabel: entry.presentationLabel,
+    unitDenominationId: entry.denomination === null ? null : denominationId(entry.unit, entry.denomination),
+  };
 }
 
 /**
  * Cuerpo de alta de un servicio del catálogo, como el de `POST /admin/services`: activo, con su
- * orden de visualización igual a su orden en el documento y la nota de versión de la carga.
+ * única unidad, su orden de visualización (`sortOrder`, por defecto su orden en el documento) y
+ * la nota de versión de la carga. El texto comercial solo se envía si existe.
  *
  * @param {object} entry - Servicio validado del catálogo.
  * @param {object} options - Datos de la carga.
- * @param {Array<object>} options.unitOptions - Unidades resueltas (toCatalogUnitOptions).
+ * @param {{ measurementUnitId: number, unitDenominationId: number|null, presentationLabel: string|null }} options.unit
+ *   - Unidad resuelta (toCatalogServiceUnit).
  * @param {string} options.changeNote - Nota de la versión 1.
  * @returns {object} Cuerpo de alta.
  */
-export function toServiceCreateBody(entry, { changeNote, unitOptions }) {
+export function toServiceCreateBody(entry, { changeNote, unit }) {
   return {
     changeNote,
     description: entry.description,
     isActive: true,
     kind: entry.kind,
+    measurementUnitId: unit.measurementUnitId,
     name: entry.name,
+    ...(unit.presentationLabel ? { presentationLabel: unit.presentationLabel } : {}),
     referenceRate: entry.referenceRate,
-    sortOrder: entry.order,
-    unitOptions,
+    sortOrder: entry.sortOrder,
+    unitDenominationId: unit.unitDenominationId,
   };
 }
 
 /**
- * Estado esperado de un servicio del catálogo en la forma canónica del dominio, para compararlo
- * con un servicio existente: con una sola unidad su tarifa es la del servicio.
+ * Estado esperado de un servicio del catálogo, para compararlo con un servicio existente.
  *
  * @param {object} entry - Servicio validado del catálogo.
- * @param {Array<object>} unitOptions - Unidades resueltas (toCatalogUnitOptions).
+ * @param {{ measurementUnitId: number, unitDenominationId: number|null, presentationLabel: string|null }} unit
+ *   - Unidad resuelta (toCatalogServiceUnit).
  * @returns {object} Estado esperado.
  */
-export function expectedServiceState(entry, unitOptions) {
+export function expectedServiceState(entry, unit) {
   return {
     currency: SERVICE_CURRENCY,
     description: entry.description,
@@ -89,14 +89,14 @@ export function expectedServiceState(entry, unitOptions) {
     kind: entry.kind,
     name: entry.name,
     referenceRate: entry.referenceRate,
-    sortOrder: entry.order,
-    unitOptions: resolveUnitOptions({ changes: { unitOptions }, current: [], referenceRate: entry.referenceRate }),
+    sortOrder: entry.sortOrder,
+    unit: { ...unit, presentationLabel: unit.presentationLabel ?? null },
   };
 }
 
 /**
  * Enumera los campos en que un servicio existente difiere del estado esperado del catálogo.
- * Las unidades se comparan en forma canónica (orden, unidad, denominación, texto y tarifa).
+ * La unidad se compara por base, denominación y texto comercial.
  *
  * @param {object} service - Servicio existente (forma pública del repositorio).
  * @param {object} expected - Estado esperado (expectedServiceState).
@@ -105,8 +105,10 @@ export function expectedServiceState(entry, unitOptions) {
 export function diffServiceFromCatalog(service, expected) {
   const fields = ["name", "description", "kind", "referenceRate", "sortOrder", "isActive", "currency"]
     .filter((field) => service[field] !== expected[field]);
-  const actualUnits = JSON.stringify(currentUnitOptions(service));
-  if (actualUnits !== JSON.stringify(expected.unitOptions.map(toCanonicalUnitOption))) fields.push("unitOptions");
+  const actual = currentServiceUnit(service);
+  for (const field of ["measurementUnitId", "unitDenominationId", "presentationLabel"]) {
+    if (actual[field] !== expected.unit[field]) fields.push(field);
+  }
   return fields;
 }
 

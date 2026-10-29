@@ -8,11 +8,11 @@ import {
   expectedServiceState,
   planDenomination,
   planServices,
-  toCatalogUnitOptions,
+  toCatalogServiceUnit,
   toServiceCreateBody,
 } from "../domain/officialServiceCatalog.js";
 import { formatGeneratedServiceCode } from "../domain/serviceCatalog.js";
-import { collectUnitOptionErrors, formatUnitOptionLabel, toCanonicalUnitOption } from "../domain/serviceUnitOptions.js";
+import { formatUnitOptionLabel } from "../domain/serviceUnitOptions.js";
 import { insertAuditLog } from "../repositories/auditLogRepository.js";
 import {
   findEquivalentDenomination,
@@ -89,8 +89,8 @@ function describeSchemaIssues(subject, error) {
  * @returns {Promise<{ unitsByCode: Map<string, object>, problems: Array<string> }>} Unidades por
  *   código y problemas encontrados.
  */
-async function loadCatalogUnits(catalog) {
-  const codes = [...new Set([...catalog.denominations.map((item) => item.unit), ...catalog.services.flatMap((service) => service.units.map((unit) => unit.unit))])];
+export async function loadCatalogUnits(catalog) {
+  const codes = [...new Set([...catalog.denominations.map((item) => item.unit), ...catalog.services.map((service) => service.unit)])];
   const unitsByCode = await listMeasurementUnitsByCode(codes);
   const problems = [];
   for (const code of codes) {
@@ -110,7 +110,7 @@ async function loadCatalogUnits(catalog) {
  * @param {Array<string>} blockers - Bloqueos acumulados (se modifica).
  * @returns {Promise<Array<object>>} Pasos de denominación en el orden del archivo.
  */
-async function planCatalogDenominations(catalog, unitsByCode, blockers) {
+export async function planCatalogDenominations(catalog, unitsByCode, blockers) {
   let nextId = await readNextSerialId(DENOMINATION_TABLE, "id");
   const steps = [];
   for (const [index, item] of catalog.denominations.entries()) {
@@ -142,39 +142,32 @@ async function planCatalogDenominations(catalog, unitsByCode, blockers) {
 }
 
 /**
- * Describe las unidades de un servicio para el informe: etiqueta visible, tarifa efectiva y si
- * queda pendiente de validación comercial (no cotizable).
+ * Etiqueta visible de la unidad de un servicio del catálogo, para el informe: el texto comercial
+ * o la composición de la abreviatura y la denominación.
  *
  * @param {object} entry - Servicio del catálogo.
  * @param {Map<string, object>} unitsByCode - Unidades base por código.
- * @returns {Array<{ label: string, referenceRate: string|null, pending: boolean }>} Unidades.
+ * @returns {string} Etiqueta.
  */
-function describeEntryUnits(entry, unitsByCode) {
-  return entry.units.map((unit) => {
-    const referenceRate = entry.units.length === 1 ? entry.referenceRate : unit.referenceRate;
-    return {
-      label: formatUnitOptionLabel({ denomination: unit.denomination, presentationLabel: unit.presentationLabel, symbol: unitsByCode.get(unit.unit)?.symbol ?? unit.unit }),
-      pending: referenceRate === null,
-      referenceRate,
-    };
-  });
+function describeEntryUnit(entry, unitsByCode) {
+  return formatUnitOptionLabel({ denomination: entry.denomination, presentationLabel: entry.presentationLabel, symbol: unitsByCode.get(entry.unit)?.symbol ?? entry.unit });
 }
 
 /**
- * Lee todos los servicios existentes, de cualquier estado, en su forma pública (con unidades y
+ * Lee todos los servicios existentes, de cualquier estado, en su forma pública (con su unidad y
  * versión vigente). El catálogo es pequeño: una lectura por servicio basta.
  *
  * @returns {Promise<Array<object>>} Servicios.
  */
-async function readExistingServices() {
+export async function readExistingServices() {
   const services = [];
   for (const id of await listAllServiceIds()) services.push(await findServiceById(id));
   return services;
 }
 
 /**
- * Prepara cada servicio del catálogo con sus unidades resueltas y su estado esperado, y valida
- * su cuerpo de alta con serviceCreateSchema y las reglas de unidades del dominio.
+ * Prepara cada servicio del catálogo con su unidad resuelta y su estado esperado, y valida su
+ * cuerpo de alta con serviceCreateSchema.
  *
  * @param {object} catalog - Catálogo validado.
  * @param {object} options - Datos resueltos.
@@ -184,16 +177,13 @@ async function readExistingServices() {
  * @param {Array<string>} [blockers] - Bloqueos acumulados (se modifica si se indica).
  * @returns {Array<{ entry: object, body: object, expected: object }>} Servicios preparados.
  */
-function prepareCatalogServices(catalog, { changeNote, denominationId, unitsByCode }, blockers = []) {
+export function prepareCatalogServices(catalog, { changeNote, denominationId, unitsByCode }, blockers = []) {
   return catalog.services.map((entry) => {
-    const unitOptions = toCatalogUnitOptions(entry, { denominationId, unitsByCode });
-    const body = toServiceCreateBody(entry, { changeNote, unitOptions });
-    const subject = formatGeneratedServiceCode(entry.order);
+    const unit = toCatalogServiceUnit(entry, { denominationId, unitsByCode });
+    const body = toServiceCreateBody(entry, { changeNote, unit });
     const parsed = serviceCreateSchema.safeParse({ body });
-    if (!parsed.success) blockers.push(...describeSchemaIssues(subject, parsed.error));
-    const unitErrors = collectUnitOptionErrors(unitOptions.map(toCanonicalUnitOption), entry.referenceRate);
-    for (const [field, message] of Object.entries(unitErrors)) blockers.push(`${subject}: ${field} ${message}`);
-    return { body, entry, expected: expectedServiceState(entry, unitOptions) };
+    if (!parsed.success) blockers.push(...describeSchemaIssues(formatGeneratedServiceCode(entry.order), parsed.error));
+    return { body, entry, expected: expectedServiceState(entry, unit) };
   });
 }
 
@@ -204,7 +194,7 @@ function prepareCatalogServices(catalog, { changeNote, denominationId, unitsByCo
  * @param {Array<object>} denominationSteps - Pasos de denominación.
  * @returns {(unit: string, denomination: string) => number} Resolución de ids.
  */
-function denominationResolver(denominationSteps) {
+export function denominationResolver(denominationSteps) {
   const byKey = new Map(denominationSteps.map((step) => [step.key, step]));
   return (unit, denomination) => {
     const step = byKey.get(catalogDenominationKey(unit, denomination));
@@ -227,7 +217,7 @@ export async function planOfficialCatalogLoad(catalog, { runId }) {
   const target = await readDatabaseIdentity();
   if (target.inRecovery) blockers.push("La base está en recuperación (solo lectura).");
   const migration = await readServiceUnitOptionsMigrationState();
-  if (!migration.structureReady) blockers.push("Falta la estructura de varias unidades por servicio: aplica la migración 20261027120000_service_unit_options.");
+  if (!migration.structureReady) blockers.push("Falta la estructura de unidades por servicio: aplica la migración 20261027120000_service_unit_options.");
   if (migration.migrationFinished === false) blockers.push("La migración 20261027120000_service_unit_options no figura como terminada en _prisma_migrations.");
   if (blockers.length) return { blockers, denominations: [], migration, pendingWrites: 0, ready: false, services: [], target };
 
@@ -246,7 +236,7 @@ export async function planOfficialCatalogLoad(catalog, { runId }) {
     ...step,
     kind: prepared[index].entry.kind,
     referenceRate: prepared[index].entry.referenceRate,
-    units: describeEntryUnits(prepared[index].entry, unitsByCode),
+    unitLabel: describeEntryUnit(prepared[index].entry, unitsByCode),
   }));
   const pendingWrites = denominations.filter((step) => step.action === "create").length
     + services.filter((step) => step.action === "create").length;
@@ -264,17 +254,18 @@ export async function planOfficialCatalogLoad(catalog, { runId }) {
  * @param {number} options.entityId - Entidad creada.
  * @param {string} options.description - Descripción breve.
  * @param {object} options.values - Valores registrados (se añaden ejecución y catálogo).
- * @param {object} options.run - Ejecución: `runId`, `catalogId`, `catalogSha256`.
+ * @param {object} options.run - Ejecución: `runId`, `catalogId`, `catalogSha256` y, opcional,
+ *   `auditSource` (comando de origen; por defecto la carga del catálogo).
  * @returns {Promise<void>}
  */
-async function auditCatalogWrite({ action, description, entityId, entityType, run, user, values }) {
+export async function auditCatalogWrite({ action, description, entityId, entityType, run, user, values }) {
   await insertAuditLog({
     action,
     description,
     entityId,
     entityType,
     newValues: { ...values, catalogId: run.catalogId, catalogSha256: run.catalogSha256, runId: run.runId },
-    userAgent: CATALOG_LOAD_AUDIT_SOURCE,
+    userAgent: run.auditSource ?? CATALOG_LOAD_AUDIT_SOURCE,
     userId: user.id,
   });
 }
@@ -323,7 +314,7 @@ async function createPendingDenominations(denominations, { completed, run, units
  * @returns {Promise<void>}
  * @throws {ConflictError} CATALOG_LOAD_SEQUENCE_CHANGED o CATALOG_LOAD_CODE_MISMATCH.
  */
-async function createPendingServices(steps, prepared, { completed, run, user }) {
+export async function createPendingServices(steps, prepared, { completed, run, user }) {
   for (const [index, step] of steps.entries()) {
     if (step.action !== "create") continue;
     const nextServiceId = await readNextSerialId(SERVICE_TABLE, "id");
@@ -393,8 +384,9 @@ export async function applyOfficialCatalogLoad(catalog, { catalogSha256, runId, 
 
 /**
  * Verifica en solo lectura que la base contiene el catálogo: denominaciones activas e idénticas,
- * cada servicio con su código, datos y unidades exactos, una versión vigente que copia todas sus
- * unidades y ningún servicio ajeno al catálogo. `ok` es true solo sin incidencias.
+ * cada servicio con su código, datos y unidad exactos, una sola unidad vigente, una versión
+ * vigente que copia una sola unidad y ningún servicio ajeno al catálogo. `ok` es true solo sin
+ * incidencias.
  *
  * @param {object} catalog - Catálogo validado.
  * @returns {Promise<{ ok: boolean, issues: Array<string>, notes: Array<string>, services: Array<object> }>} Verificación.
@@ -427,7 +419,8 @@ export async function verifyOfficialCatalog(catalog) {
     if (differences.length) issues.push(`${code} difiere del catálogo en: ${differences.join(", ")}.`);
     const history = versions.get(service.id);
     if (!history?.currentVersion) issues.push(`${code} no tiene versión vigente.`);
-    else if (history.currentVersionUnitCount !== entry.units.length) issues.push(`${code}: su versión vigente copia ${history.currentVersionUnitCount} unidades y el catálogo declara ${entry.units.length}.`);
+    else if (history.currentVersionUnitCount !== 1) issues.push(`${code}: su versión vigente copia ${history.currentVersionUnitCount} unidades; debe copiar una.`);
+    if (history && history.currentUnitCount !== 1) issues.push(`${code} tiene ${history.currentUnitCount} unidades vigentes; debe tener una.`);
     if (history?.currentVersion && history.currentVersion !== 1) notes.push(`${code} está en la versión ${history.currentVersion} (editado después de la carga).`);
     return { code, currentVersion: history?.currentVersion ?? null, differences, name: service.name, status: differences.length ? "different" : "ok", versionCount: history?.versionCount ?? 0 };
   });

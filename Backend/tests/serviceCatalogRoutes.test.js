@@ -102,18 +102,10 @@ function createCatalogDatabase() {
       inserts.push({ params, sql });
       return { rowCount: 1, rows: [{ id: "1" }] };
     }
-    // Unidades del servicio (una, con la tarifa del servicio); su copia en la versión la hace un trigger.
-    if (sql.includes("insert into public.service_unit_options")) return { rowCount: params[1].length, rows: [] };
-    if (inserted && sql.includes("from public.service_unit_options o")) {
-      const unit = UNIT_ROWS[inserted[5]];
-      return {
-        rowCount: 1,
-        rows: [{
-          denomination_id: null, option_id: "70", position: 1, presentation_label: null, reference_rate: inserted[6], service_id: inserted[0],
-          unit_allows_decimals: unit.allows_decimals, unit_code: unit.code, unit_id: unit.id, unit_is_active: true, unit_name: unit.name,
-          unit_symbol: unit.symbol,
-        }],
-      };
+    // Unidad del servicio, con la tarifa del servicio; su copia en la versión la hace un trigger.
+    if (sql.includes("insert into public.service_unit_options")) {
+      inserts.push({ params, sql });
+      return { rowCount: 1, rows: [] };
     }
     if (inserted && /from public\.services s\b/.test(sql)) {
       const unit = UNIT_ROWS[inserted[5]];
@@ -149,9 +141,11 @@ test("alta: crea servicios individuales y llave en mano con código generado y v
     assert.equal(response.body.service.code, "SERV-007", "El código lo genera el sistema a partir del id");
     assert.equal(response.body.service.currentVersion, 1);
     assert.equal(response.body.service.referenceRate, body.referenceRate === "850.50" ? "850.50" : "14.00");
-    // La modalidad elegida es la que se inserta y la versión 1 se escribe en la misma transacción.
-    const [serviceInsert, versionInsert] = database.inserts;
+    // La modalidad elegida es la que se inserta; su única unidad (con la tarifa del servicio) y la
+    // versión 1 se escriben en la misma transacción.
+    const [serviceInsert, unitInsert, versionInsert] = database.inserts;
     assert.equal(serviceInsert.params[4], expectedKind);
+    assert.deepEqual(unitInsert.params, [7, 1, body.measurementUnitId, null, null, body.referenceRate === "850.50" ? "850.50" : "14.00"]);
     assert.match(versionInsert.sql, /insert into public\.service_versions/);
     assert.equal(versionInsert.params.includes(1), true, "Versión 1");
     assert.ok(server.queries.includes("commit"));

@@ -4,7 +4,6 @@ import path from "node:path";
 import test from "node:test";
 
 import { QUOTE_DECIMAL_FORMATS } from "../src/domain/quoteTotals.js";
-import { SERVICE_UNIT_OPTIONS_MAX } from "../src/domain/serviceUnitOptions.js";
 import {
   assertPrismaMatchesMigrations,
   backendDirectory,
@@ -15,6 +14,9 @@ import {
 } from "./helpers/migrationSchema.js";
 
 const MIGRATION_NAME = "20261027120000_service_unit_options";
+const SINGLE_UNIT_MIGRATION = "20261030120000_service_single_unit_option";
+// Límite histórico de unidades por servicio fijado por 20261027120000 (antes de la unidad única).
+const HISTORICAL_UNIT_OPTIONS_MAX = 10;
 const NEW_TABLES = ["service_unit_options", "service_version_unit_options"];
 const RATE_TYPE = `NUMERIC(${QUOTE_DECIMAL_FORMATS.unitRate.maxIntegerDigits + QUOTE_DECIMAL_FORMATS.unitRate.scale},${QUOTE_DECIMAL_FORMATS.unitRate.scale})`;
 
@@ -46,7 +48,7 @@ test("tarifas por unidad con la escala del motor y NULL como tarifa pendiente de
     assert.equal(columns.get("reference_rate"), RATE_TYPE);
     assert.equal(columns.get("position"), "SMALLINT NOT NULL");
     assert.equal(columns.get("presentation_label"), "VARCHAR(80)");
-    assert.match(sql, new RegExp(`chk_${table}_position CHECK \\(position BETWEEN 1 AND ${SERVICE_UNIT_OPTIONS_MAX}\\)`));
+    assert.match(sql, new RegExp(`chk_${table}_position CHECK \\(position BETWEEN 1 AND ${HISTORICAL_UNIT_OPTIONS_MAX}\\)`));
     assert.match(sql, new RegExp(`chk_${table}_reference_rate CHECK \\(reference_rate IS NULL OR reference_rate >= 0\\)`));
   }
 });
@@ -118,4 +120,27 @@ test("alcance: solo añade objetos, rellena la posición 1 y restaura el trigger
   const enable = sql.indexOf("ALTER TABLE public.quote_items ENABLE TRIGGER quote_items_immutable;");
   assert.ok(disable > 0 && disable < update && update < enable, "El trigger se desactiva solo alrededor del relleno");
   assert.ok(sql.trim().startsWith("BEGIN;") && sql.trim().endsWith("COMMIT;"), "Una sola transacción");
+});
+
+test("unidad única: la migración nueva va después y exige una unidad vigente con tarifa sin revalidar el historial", async () => {
+  const migrations = await listMigrations();
+  assert.ok(migrations.indexOf(SINGLE_UNIT_MIGRATION) > migrations.indexOf(MIGRATION_NAME));
+  const sql = await readMigrationStatements(SINGLE_UNIT_MIGRATION);
+  assert.ok(sql.trim().startsWith("BEGIN;") && sql.trim().endsWith("COMMIT;"), "Una sola transacción");
+  // Aborta antes de añadir restricciones si queda algún servicio por separar.
+  assert.match(sql, /IF EXISTS \(SELECT 1 FROM public\.service_unit_options WHERE position > 1 OR reference_rate IS NULL\) THEN\s+RAISE EXCEPTION/);
+  assert.ok(sql.includes("chk_service_unit_options_single CHECK (position = 1),"));
+  assert.ok(sql.includes("chk_service_unit_options_rate_confirmed CHECK (reference_rate IS NOT NULL);"));
+  // Las copias históricas (versiones con alternativas o tarifa pendiente) no se revalidan.
+  assert.ok(sql.includes("chk_service_version_unit_options_single CHECK (position = 1) NOT VALID,"));
+  assert.ok(sql.includes("chk_service_version_unit_options_rate_confirmed CHECK (reference_rate IS NOT NULL) NOT VALID;"));
+});
+
+test("unidad única: solo añade restricciones; no modifica datos, triggers, secuencias ni la migración anterior", async () => {
+  const sql = await readMigrationStatements(SINGLE_UNIT_MIGRATION);
+  const statements = sql.replace(/\$\$[\s\S]*?\$\$/g, "");
+  assert.doesNotMatch(statements, /\b(DROP|TRUNCATE|DELETE|UPDATE|INSERT|DISABLE TRIGGER|ENABLE TRIGGER|SEQUENCE|setval|RESTART)\b/i);
+  assert.deepEqual([...statements.matchAll(/ALTER TABLE public\.(\w+)/g)].map(([, table]) => table), ["service_unit_options", "service_version_unit_options"]);
+  const previous = await readMigrationStatements(MIGRATION_NAME);
+  assert.doesNotMatch(previous, /chk_service_(version_)?unit_options_(single|rate_confirmed) CHECK/, "La migración aplicada no se edita");
 });

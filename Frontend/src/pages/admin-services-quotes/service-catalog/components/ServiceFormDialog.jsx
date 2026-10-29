@@ -6,18 +6,16 @@ import { useInlineDenominationCreator } from "../hooks/useInlineDenominationCrea
 import { useServiceDetail } from "../hooks/useServiceDetail.js";
 import { useServiceFormSubmit } from "../hooks/useServiceFormSubmit.js";
 import { getServiceFormErrorFeedback } from "../utils/serviceCatalogErrors.js";
-import { createServiceDraft, getServiceUnitOptions, getStoredUnitKeys, validateServiceDraft } from "../utils/serviceFormValues.js";
+import { createServiceDraft, validateServiceDraft } from "../utils/serviceFormValues.js";
 import { getServiceUnitCatalog, preservesServiceUnit } from "../utils/serviceUnitSelection.js";
 import ServiceFormModal from "./ServiceFormModal.jsx";
 
 const NO_ERRORS = Object.freeze({});
 
 /**
- * Flujo del formulario de servicios: alta o edición en un único modal. «Unidad de medida» admite
- * una base activa sola o con una denominación activa de esa base, y unidades alternativas con su
- * tarifa (vacía = pendiente de validación comercial). En la edición conserva las unidades guardadas
- * aunque estén inactivas. «+ Crear unidad»
- * despliega dentro del mismo modal la fila de alta de una unidad de medida (Figma 5767:342334;
+ * Flujo del formulario de servicios: alta o edición en un único modal. Cada servicio tiene una
+ * sola «Unidad de medida»: una base activa sola o con una denominación activa de esa base. En la
+ * edición conserva la unidad guardada aunque esté inactiva. «+ Crear unidad» despliega dentro del mismo modal la fila de alta de una unidad de medida (Figma 5767:342334;
  * useInlineDenominationCreator), sin abrir otro diálogo: el borrador del servicio no se toca.
  * Crear la unidad la añade a las opciones, la elige en el borrador y devuelve el foco al campo de
  * unidad; cancelar cierra solo la fila con el foco en «+ Crear unidad». Crear la unidad no guarda
@@ -80,23 +78,10 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   const activeDenominations = useActiveDenominations({ enabled: status === "ready" });
   const unitCatalog = useMemo(() => getServiceUnitCatalog(baseUnits.options, activeDenominations.options),
     [activeDenominations.options, baseUnits.options]);
-  // Bases por id para mostrar el símbolo y el nombre de cualquier unidad elegida: las del catálogo
-  // y las guardadas en el servicio (también alternativas), aunque ya no estén disponibles.
-  const baseOptionsById = useMemo(() => {
-    const byId = new Map(baseOptions.map((option) => [option.id, option]));
-    for (const option of getServiceUnitOptions(service)) {
-      const unit = option.measurementUnit;
-      if (unit?.id && !byId.has(unit.id)) byId.set(unit.id, { id: unit.id, code: unit.code, label: unit.symbol, description: unit.name });
-    }
-    return byId;
-  }, [baseOptions, service]);
-  const findBaseOption = (baseId) => baseOptionsById.get(baseId) ?? null;
   // La base guardada puede mostrarse sin estar disponible para otra asignación.
-  const selectedBaseOption = findBaseOption(draft.measurementUnitId);
-  const primaryUnitLabel = [selectedBaseOption?.label, draft.unitDenomination?.denomination].filter(Boolean).join(" ");
-  // La unidad principal guardada (con o sin denominación) puede conservarse aunque sea histórica.
+  const selectedBaseOption = baseOptions.find((option) => option.id === draft.measurementUnitId) ?? null;
+  // La unidad guardada (con o sin denominación) puede conservarse aunque sea histórica.
   const preserveStoredUnit = preservesServiceUnit(draft, service);
-  const storedUnitKeys = useMemo(() => getStoredUnitKeys(service), [service]);
   const catalogUnavailable = !editing && (Boolean(baseUnits.error) || baseUnits.options.length === 0);
   const unitHint = activeDenominations.error
     || (activeDenominations.loading ? "Cargando unidades de medida..." : "")
@@ -170,7 +155,6 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       availableBases: unitCatalog.prefixOptions,
       availableDenominations: unitCatalog.denominations,
       preserveStoredUnit,
-      storedUnitKeys,
     });
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
@@ -206,8 +190,6 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
       submitting={form.submitting}
       selectedBaseOption={selectedBaseOption}
       bases={unitCatalog.prefixOptions}
-      findBaseOption={findBaseOption}
-      primaryUnitLabel={primaryUnitLabel}
       denominations={{ ...activeDenominations, options: unitCatalog.denominations }}
       unitHint={unitHint}
       unitNotice={unitNotice}

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { DENOMINATION_MAX_LENGTH, normalizeUnitText } from "../domain/measurementUnitLabel.js";
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
 import { SERVICE_KINDS } from "../domain/serviceCatalog.js";
-import { PRESENTATION_LABEL_MAX_LENGTH, SERVICE_UNIT_OPTIONS_MAX, normalizePresentationLabel } from "../domain/serviceUnitOptions.js";
+import { PRESENTATION_LABEL_MAX_LENGTH, normalizePresentationLabel } from "../domain/serviceUnitOptions.js";
 import { scaledDecimalText } from "./decimalSchemas.js";
 
 /*
@@ -16,9 +16,10 @@ import { scaledDecimalText } from "./decimalSchemas.js";
  * - totales declarados (`expectedTotals`) que coinciden con el contenido, para detectar archivos
  *   truncados o con servicios de más;
  * - cada denominación usada está declarada una sola vez;
- * - con una sola unidad, su tarifa es la del servicio y no se indica aparte; con varias, cada
- *   unidad declara su tarifa de forma explícita (texto decimal, o null = pendiente de validación
- *   comercial), de modo que nunca se copia ni se supone un precio.
+ * - cada servicio tiene una sola unidad (`unit`, `denomination` y `presentationLabel` opcionales)
+ *   con la tarifa del servicio: un servicio que se cobra de dos formas son dos servicios;
+ * - `sortOrder` (opcional, por defecto `order`) coloca juntos en el tabulador servicios cuyo
+ *   código es posterior, sin renumerar los demás.
  */
 
 const MAX_CATALOG_SERVICES = 100;
@@ -41,24 +42,19 @@ export function catalogDenominationKey(unit, denomination) {
   return `${unit}:${denomination === null ? "" : denomination.normalize("NFKC").toLowerCase()}`;
 }
 
-const catalogUnit = z.object({
-  denomination: z.union([denominationText, z.null()]).optional().transform((value) => value ?? null),
-  presentationLabel: z.union([z.string(), z.null()]).optional()
-    .transform((value) => normalizePresentationLabel(value))
-    .refine((value) => !value || value.length <= PRESENTATION_LABEL_MAX_LENGTH, `Admite como máximo ${PRESENTATION_LABEL_MAX_LENGTH} caracteres.`),
-  // undefined (omitida) y null (pendiente) se distinguen: con varias unidades es obligatoria.
-  referenceRate: z.union([rate, z.null()]).optional(),
-  unit: unitCode,
-}).strict();
-
 const catalogService = z.object({
+  denomination: z.union([denominationText, z.null()]).optional().transform((value) => value ?? null),
   description: z.union([z.string().trim().max(2000), z.null()]).transform((value) => value || null),
   kind: z.enum([SERVICE_KINDS.INDIVIDUAL, SERVICE_KINDS.TURNKEY]),
   name: z.string().trim().min(1).max(150),
   order: z.number().int().min(1),
+  presentationLabel: z.union([z.string(), z.null()]).optional()
+    .transform((value) => normalizePresentationLabel(value))
+    .refine((value) => !value || value.length <= PRESENTATION_LABEL_MAX_LENGTH, `Admite como máximo ${PRESENTATION_LABEL_MAX_LENGTH} caracteres.`),
   referenceRate: rate,
-  units: z.array(catalogUnit).min(1).max(SERVICE_UNIT_OPTIONS_MAX),
-}).strict();
+  sortOrder: z.number().int().min(0).max(2147483647).optional(),
+  unit: unitCode,
+}).strict().transform((service) => ({ ...service, sortOrder: service.sortOrder ?? service.order }));
 
 const catalogDenomination = z.object({ denomination: denominationText, unit: unitCode }).strict();
 
@@ -70,37 +66,8 @@ const expectedTotals = z.object({
 }).strict();
 
 /**
- * Comprueba las reglas de unidades de un servicio del catálogo: sin combinaciones repetidas,
- * denominaciones declaradas y tarifas explícitas solo cuando hay varias unidades.
- *
- * @param {object} service - Servicio ya validado por catalogService.
- * @param {number} index - Posición del servicio en el archivo.
- * @param {Set<string>} declared - Claves de las denominaciones declaradas.
- * @param {import("zod").RefinementCtx} context - Contexto de Zod para añadir errores.
- * @returns {void}
- */
-function checkServiceUnits(service, index, declared, context) {
-  const seen = new Set();
-  service.units.forEach((unit, unitIndex) => {
-    const path = ["services", index, "units", unitIndex];
-    const key = catalogDenominationKey(unit.unit, unit.denomination);
-    if (seen.has(key)) context.addIssue({ code: "custom", message: "La unidad se repite en el servicio.", path });
-    seen.add(key);
-    if (unit.denomination !== null && !declared.has(key)) {
-      context.addIssue({ code: "custom", message: "La denominación no está declarada en `denominations`.", path: [...path, "denomination"] });
-    }
-    if (service.units.length === 1 && unit.referenceRate !== undefined) {
-      context.addIssue({ code: "custom", message: "Con una sola unidad, su tarifa es la del servicio: no la indiques aparte.", path: [...path, "referenceRate"] });
-    }
-    if (service.units.length > 1 && unit.referenceRate === undefined) {
-      context.addIssue({ code: "custom", message: "Con varias unidades, indica la tarifa de cada una (o null si está pendiente).", path: [...path, "referenceRate"] });
-    }
-  });
-}
-
-/**
  * Comprueba la coherencia global del catálogo: orden contiguo, nombres únicos, denominaciones
- * sin duplicados, unidades de cada servicio y totales declarados.
+ * sin duplicados y declaradas, y totales declarados.
  *
  * @param {object} catalog - Catálogo validado campo a campo.
  * @param {import("zod").RefinementCtx} context - Contexto de Zod para añadir errores.
@@ -120,7 +87,9 @@ function checkCatalogConsistency(catalog, context) {
     }
     if (names.has(service.name)) context.addIssue({ code: "custom", message: "El nombre del servicio está repetido.", path: ["services", index, "name"] });
     names.add(service.name);
-    checkServiceUnits(service, index, declared, context);
+    if (service.denomination !== null && !declared.has(catalogDenominationKey(service.unit, service.denomination))) {
+      context.addIssue({ code: "custom", message: "La denominación no está declarada en `denominations`.", path: ["services", index, "denomination"] });
+    }
   });
   const actual = {
     denominations: catalog.denominations.length,

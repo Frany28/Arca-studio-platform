@@ -8,9 +8,7 @@ import {
   createLineFromService,
   draftFromQuote,
   isQuoteDraftDirty,
-  isServiceQuotable,
   normalizeServerFields,
-  selectLineUnit,
   toEditableDecimal,
   toQuotePayload,
   validateQuoteDraft,
@@ -33,71 +31,31 @@ test("decimales editables sin ceros sobrantes y conceptos con la tarifa de refer
   assert.equal(toEditableDecimal("12.50"), "12.5");
   assert.equal(toEditableDecimal("100"), "100");
   assert.equal(toEditableDecimal("abc"), "abc");
-  // Con una sola unidad (contrato anterior, sin unitOptions) se elige sola, con la tarifa del servicio.
   assert.deepEqual(createLineFromService(POINT_SERVICE), {
     key: "service-2", quantity: "", referenceRate: "45.50", serviceCode: "SERV-002", serviceDescription: "Planos y memoria",
     serviceId: 2, serviceName: "Puntos eléctricos", unitAllowsDecimals: false, unitLabel: "m² de construcción", unitRate: "45.5",
-    unitChoices: [{ allowsDecimals: false, label: "m² de construcción", position: 1, referenceRate: "45.50" }], unitOptionPosition: 1,
   });
 });
 
-// «Modelado 3D & Renders» (tabulador 3.2): proyecto con tarifa (ficticia) y espacio pendiente de validación comercial.
-const MODELING = {
-  ...SERVICE, code: "SERV-002", id: 4, name: "Modelado 3D & Renders", referenceRate: "320.00", unitLabel: "proy.",
-  unitOptions: [
-    { label: "proy.", measurementUnit: { allowsDecimals: false }, position: 1, ratePending: false, referenceRate: "320.00" },
-    { label: "esp.", measurementUnit: { allowsDecimals: false }, position: 2, ratePending: true, referenceRate: null },
-  ],
-};
-// «Recorrido Virtual / VR» (tabulador 3.2): minuto (principal) y proyecto, ambas con la misma tarifa (ficticia).
-const VIRTUAL_TOUR = {
-  ...MODELING, code: "SERV-014", id: 5, name: "Recorrido Virtual / VR", referenceRate: "275.00", unitLabel: "min",
-  unitOptions: [
-    { label: "min", measurementUnit: { allowsDecimals: false }, position: 1, ratePending: false, referenceRate: "275.00" },
-    { label: "proy.", measurementUnit: { allowsDecimals: false }, position: 2, ratePending: false, referenceRate: "275.00" },
-  ],
-};
-// Servicio ficticio (no pertenece al tabulador) sin ninguna tarifa confirmada.
-const PENDING_ONLY = {
-  ...MODELING, id: 6, name: "Servicio sin tarifa confirmada", referenceRate: "300.00",
-  unitOptions: [{ ...MODELING.unitOptions[1], label: "hrs", position: 1 }, { ...MODELING.unitOptions[1], label: "sem.", position: 2 }],
-};
+/// Cada forma de cobro es un servicio independiente con una sola unidad (importes ficticios).
+const MODELING_BY_PROJECT = { ...SERVICE, code: "SERV-002", id: 4, measurementUnit: { allowsDecimals: false }, name: "Modelado 3D & Renders — Por proyecto", referenceRate: "320.00", unitLabel: "proy." };
+const MODELING_BY_SPACE = { ...MODELING_BY_PROJECT, code: "SERV-020", id: 20, name: "Modelado 3D & Renders — Por espacio", unitLabel: "esp." };
+const TOUR_BY_MINUTE = { ...SERVICE, code: "SERV-014", id: 14, measurementUnit: { allowsDecimals: false }, name: "Recorrido Virtual / VR — Por minuto", referenceRate: "275.00", unitLabel: "min" };
+const TOUR_BY_PROJECT = { ...TOUR_BY_MINUTE, code: "SERV-021", id: 21, name: "Recorrido Virtual / VR — Por proyecto", unitLabel: "proy." };
 
-test("varias unidades: solo se eligen las cotizables y nunca con una tarifa pendiente", () => {
-  assert.equal(isServiceQuotable(MODELING), true);
-  assert.equal(isServiceQuotable(PENDING_ONLY), false, "Sin ninguna tarifa confirmada no se cotiza");
-  // Proyecto es la única cotizable: se elige sola con su tarifa de referencia.
-  const line = createLineFromService(MODELING);
-  assert.deepEqual([line.unitOptionPosition, line.unitLabel, line.referenceRate, line.unitRate], [1, "proy.", "320.00", "320"]);
-  assert.deepEqual(selectLineUnit([line], line.key, 2)[0], line, "Espacio está pendiente y no se aplica");
-  // Con varias cotizables hay que elegir; sin elegir no hay tarifa ni se puede enviar.
-  const confirmed = { ...MODELING, unitOptions: [MODELING.unitOptions[0], { ...MODELING.unitOptions[1], ratePending: false, referenceRate: "380.00" }] };
-  const open = createLineFromService(confirmed);
-  assert.deepEqual([open.unitOptionPosition, open.referenceRate, open.unitRate], [null, null, ""]);
-  const draft = { client: { id: 3 }, lines: [{ ...open, quantity: "1" }], notes: "", project: { id: 9 } };
-  assert.match(validateQuoteDraft(draft, calculateQuotePreview(draft.lines))["items.0.unitOptionPosition"], /Elige la unidad/);
-  const [chosen] = selectLineUnit(draft.lines, open.key, 2);
-  assert.deepEqual([chosen.unitOptionPosition, chosen.unitLabel, chosen.referenceRate, chosen.unitRate], [2, "esp.", "380.00", "380"]);
-  assert.equal(toQuotePayload({ ...draft, lines: [chosen] }).items[0].unitOptionPosition, 2);
-});
-
-test("Recorrido VR: se cotiza por minuto o por proyecto y el importe sale de la cantidad y la tarifa", () => {
-  assert.equal(isServiceQuotable(VIRTUAL_TOUR), true);
-  // Dos unidades cotizables: el arquitecto debe elegir antes de enviar.
-  const line = { ...createLineFromService(VIRTUAL_TOUR), quantity: "3" };
-  assert.deepEqual([line.unitOptionPosition, line.unitRate], [null, ""]);
-  const draft = { client: { id: 3 }, lines: [line], notes: "", project: { id: 9 } };
-  assert.match(validateQuoteDraft(draft, calculateQuotePreview(draft.lines))["items.0.unitOptionPosition"], /Elige la unidad/);
-  // Por minuto: 3 × $275.
-  const [byMinute] = selectLineUnit(draft.lines, line.key, 1);
-  assert.deepEqual([byMinute.unitLabel, byMinute.referenceRate, byMinute.unitRate, byMinute.unitAllowsDecimals], ["min", "275.00", "275", false]);
-  assert.equal(calculateQuotePreview([byMinute]).lines[0].subtotal, "825.00");
-  // Por proyecto, con la tarifa propuesta modificada en esta cotización: 1 × $250.
-  const [byProject] = selectLineUnit([{ ...byMinute, quantity: "1" }], line.key, 2);
-  assert.deepEqual([byProject.unitLabel, byProject.referenceRate, byProject.unitRate], ["proy.", "275.00", "275"]);
-  const edited = { ...byProject, unitRate: "250" };
-  assert.equal(calculateQuotePreview([edited]).lines[0].subtotal, "250.00");
-  assert.deepEqual(toQuotePayload({ ...draft, lines: [edited] }).items[0], { quantity: "1", serviceId: 5, unitOptionPosition: 2, unitRate: "250" });
+test("una unidad por servicio: cada variante es un concepto propio con su unidad y tarifa editable", () => {
+  const lines = addServicesToLines([], [MODELING_BY_PROJECT, MODELING_BY_SPACE, TOUR_BY_MINUTE, TOUR_BY_PROJECT]);
+  assert.deepEqual(lines.map((line) => [line.serviceId, line.unitLabel, line.referenceRate, line.unitRate]), [
+    [4, "proy.", "320.00", "320"], [20, "esp.", "320.00", "320"], [14, "min", "275.00", "275"], [21, "proy.", "275.00", "275"],
+  ]);
+  // La tarifa aplicada se modifica en la cotización; la de referencia sigue siendo la del tabulador.
+  const edited = lines.map((line) => ({ ...line, quantity: line.serviceId === 14 ? "3" : "1", unitRate: line.serviceId === 21 ? "250" : line.unitRate }));
+  const preview = calculateQuotePreview(edited);
+  assert.deepEqual(preview.lines.map((line) => line.subtotal), ["320.00", "320.00", "825.00", "250.00"]);
+  const draft = { client: { id: 3 }, lines: edited, notes: "", project: { id: 9 } };
+  assert.deepEqual(validateQuoteDraft(draft, preview), {});
+  // El cuerpo no elige unidad: cada servicio tiene la suya.
+  assert.deepEqual(toQuotePayload(draft).items.at(-1), { quantity: "1", serviceId: 21, unitRate: "250" });
 });
 
 test("agregar servicios: cada servicio una sola vez y en el orden elegido", () => {
@@ -113,7 +71,7 @@ test("payload: ids, observaciones vacías como null y decimales normalizados", (
     notes: "   ",
     project: { id: 9, name: "Apto. 910" },
   };
-  assert.deepEqual(toQuotePayload(draft), { clientId: 3, items: [{ quantity: "200.5", serviceId: 1, unitOptionPosition: 1, unitRate: "14" }], notes: null, projectId: 9 });
+  assert.deepEqual(toQuotePayload(draft), { clientId: 3, items: [{ quantity: "200.5", serviceId: 1, unitRate: "14" }], notes: null, projectId: 9 });
   assert.equal(toQuotePayload({ ...draft, notes: " Visita " }).notes, "Visita");
 });
 

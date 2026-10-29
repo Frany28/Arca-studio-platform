@@ -20,98 +20,25 @@ export function toEditableDecimal(value) {
 }
 
 /**
- * Unidades con las que puede cotizarse un servicio del tabulador: posición, etiqueta, decimales y
- * tarifa de referencia (null = pendiente de validación comercial, no cotizable). Sin `unitOptions`
- * (contrato anterior) la unidad principal es la única, con la tarifa del servicio.
- *
- * @param {Object} service - Servicio de `GET /admin/services`.
- * @returns {Array<{position: number, label: string, allowsDecimals: boolean, referenceRate: string|null}>} Unidades.
- */
-export function getServiceUnitChoices(service) {
-  const options = Array.isArray(service?.unitOptions) && service.unitOptions.length ? service.unitOptions : null;
-  if (!options) {
-    return [{ allowsDecimals: service.measurementUnit?.allowsDecimals !== false, label: service.unitLabel, position: 1, referenceRate: service.referenceRate }];
-  }
-  return options.map((option) => ({
-    allowsDecimals: option.measurementUnit?.allowsDecimals !== false,
-    label: option.label,
-    position: option.position,
-    referenceRate: option.referenceRate ?? null,
-  }));
-}
-
-/**
- * Indica si un servicio tiene al menos una unidad con tarifa confirmada (puede cotizarse).
- *
- * @param {Object} service - Servicio de `GET /admin/services`.
- * @returns {boolean} true si alguna unidad es cotizable.
- */
-export function isServiceQuotable(service) {
-  return getServiceUnitChoices(service).some((choice) => choice.referenceRate !== null);
-}
-
-/**
- * Aplica a un concepto la unidad elegida: su etiqueta, sus decimales y su tarifa de referencia,
- * que también pasa a ser la tarifa aplicada propuesta (editable).
- *
- * @param {Object} line - Concepto.
- * @param {{position: number, label: string, allowsDecimals: boolean, referenceRate: string}} choice - Unidad cotizable.
- * @returns {Object} Concepto con la unidad aplicada.
- */
-function withUnitChoice(line, choice) {
-  return {
-    ...line,
-    referenceRate: choice.referenceRate,
-    unitAllowsDecimals: choice.allowsDecimals,
-    unitLabel: choice.label,
-    unitOptionPosition: choice.position,
-    unitRate: toEditableDecimal(choice.referenceRate),
-  };
-}
-
-/**
  * Crea un concepto a partir de un servicio activo del tabulador. La cantidad empieza vacía para
- * que el administrador la escriba. Con una sola unidad cotizable se elige sola y su tarifa es la
- * aplicada propuesta; con varias, el concepto queda sin unidad hasta que se elija una. Las
- * unidades pendientes de validación comercial nunca se eligen ni aportan tarifa.
+ * que el administrador la escriba; la tarifa aplicada empieza en la tarifa de referencia.
  *
  * @param {Object} service - Servicio de `GET /admin/services`.
  * @returns {Object} Concepto del borrador.
  */
 export function createLineFromService(service) {
-  const unitChoices = getServiceUnitChoices(service);
-  const quotable = unitChoices.filter((choice) => choice.referenceRate !== null);
-  const line = {
+  return {
     key: `service-${service.id}`,
     quantity: "",
-    referenceRate: null,
+    referenceRate: service.referenceRate,
     serviceCode: service.code,
     serviceDescription: service.description ?? null,
     serviceId: service.id,
     serviceName: service.name,
-    unitAllowsDecimals: true,
-    unitChoices,
-    unitLabel: "",
-    unitOptionPosition: null,
-    unitRate: "",
+    unitAllowsDecimals: service.measurementUnit?.allowsDecimals !== false,
+    unitLabel: service.unitLabel,
+    unitRate: toEditableDecimal(service.referenceRate),
   };
-  return quotable.length === 1 ? withUnitChoice(line, quotable[0]) : line;
-}
-
-/**
- * Cambia la unidad de un concepto por otra cotizable del mismo servicio; una pendiente no se aplica.
- *
- * @param {Array<Object>} lines - Conceptos actuales.
- * @param {string} key - Concepto que cambia.
- * @param {number} position - Posición de la unidad elegida.
- * @returns {Array<Object>} Conceptos resultantes (los mismos si la unidad no es cotizable).
- */
-export function selectLineUnit(lines, key, position) {
-  return lines.map((line) => {
-    if (line.key !== key) return line;
-    const choice = (line.unitChoices ?? []).find((candidate) => candidate.position === position);
-    return choice && choice.referenceRate !== null ? withUnitChoice(line, choice) : line;
-  });
 }
 
 /**
@@ -152,7 +79,6 @@ export function replaceLineService(lines, key, service) {
 export function draftFromQuote(quote) {
   return {
     client: { id: quote.client.id, name: quote.client.name, profilePhotoUrl: "" },
-    // La unidad cotizada pertenece a la versión guardada: es la única opción de la fila.
     lines: quote.items.map((item) => ({
       key: `service-${item.service.id}`,
       quantity: toEditableDecimal(item.quantity),
@@ -163,9 +89,7 @@ export function draftFromQuote(quote) {
       serviceIsActive: item.service.isActive,
       serviceName: item.service.name,
       unitAllowsDecimals: item.unit.allowsDecimals,
-      unitChoices: [{ allowsDecimals: item.unit.allowsDecimals, label: item.unit.label, position: item.unit.position ?? 1, referenceRate: item.referenceRate }],
       unitLabel: item.unit.label,
-      unitOptionPosition: item.unit.position ?? null,
       unitRate: toEditableDecimal(item.unitRate),
     })),
     notes: quote.notes ?? "",
@@ -188,8 +112,7 @@ function toPayloadDecimal(value, format) {
 
 /**
  * Traduce el borrador al cuerpo de `POST/PATCH /admin/quotes`: ids del cliente y del proyecto,
- * observaciones (vacías → null) y conceptos con cantidad y tarifa como texto decimal y, si se
- * conoce, la posición de la unidad elegida (`unitOptionPosition`).
+ * observaciones (vacías → null) y conceptos con cantidad y tarifa como texto decimal.
  *
  * @param {Object} draft - Borrador.
  * @returns {{clientId: number|null, projectId: number|null, notes: string|null, items: Array<Object>}} Cuerpo.
@@ -200,7 +123,6 @@ export function toQuotePayload(draft) {
     items: draft.lines.map((line) => ({
       quantity: toPayloadDecimal(line.quantity, QUOTE_INPUT_FORMATS.quantity),
       serviceId: line.serviceId,
-      ...(line.unitOptionPosition ? { unitOptionPosition: line.unitOptionPosition } : {}),
       unitRate: toPayloadDecimal(line.unitRate, QUOTE_INPUT_FORMATS.unitRate),
     })),
     notes: draft.notes.trim() || null,
@@ -224,12 +146,6 @@ export function validateQuoteDraft(draft, preview) {
   if (draft.notes.trim().length > QUOTE_NOTES_MAX_LENGTH) fields.notes = `Admite como máximo ${QUOTE_NOTES_MAX_LENGTH} caracteres.`;
   preview.lines.forEach((line, index) => {
     for (const [field, message] of Object.entries(line.errors)) fields[`items.${index}.${field === "subtotal" ? "quantity" : field}`] = message;
-  });
-  // Un servicio con varias unidades cotizables necesita una elegida (mismo mensaje que el backend).
-  draft.lines.forEach((line, index) => {
-    if (!line.unitOptionPosition && (line.unitChoices ?? []).length > 1) {
-      fields[`items.${index}.unitOptionPosition`] = "Elige la unidad de medida con la que se cotiza este servicio.";
-    }
   });
   return fields;
 }

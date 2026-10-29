@@ -39,9 +39,6 @@ export function translateServiceCatalogError(error) {
       if (VERSION_UNIQUE_CONSTRAINTS.has(error.constraint)) {
         return new ConflictError("SERVICE_VERSION_CONFLICT", SERVICE_VERSION_CONFLICT_MESSAGE, error);
       }
-      if (error.constraint === "uq_service_unit_options_unit") {
-        return new ValidationError(undefined, { unitOptions: "Una unidad de medida está repetida en el servicio." });
-      }
       return new ConflictError("SERVICE_CONFLICT", "El servicio entra en conflicto con un registro existente.", error);
     case "23503":
       if (UNIT_FOREIGN_KEYS.has(error.constraint)) {

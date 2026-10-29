@@ -1,5 +1,6 @@
 import { formatGeneratedCode } from "./generatedCode.js";
 import { QUOTE_DECIMAL_FORMATS } from "./quoteTotals.js";
+import { SERVICE_UNIT_POSITION } from "./serviceUnitOptions.js";
 import { parseScaledDecimal } from "../utils/scaledDecimal.js";
 
 /*
@@ -8,8 +9,9 @@ import { parseScaledDecimal } from "../utils/scaledDecimal.js";
  * - Código visible generado por el sistema a partir del id (`COT-001`, `COT-1000`).
  * - Moneda única USD, como el tabulador.
  * - Cada servicio aparece una sola vez por cotización: su cantidad expresa todo el alcance.
- * - Cada concepto se cotiza con una unidad del servicio con tarifa confirmada; las pendientes de
- *   validación comercial no se cotizan.
+ * - Cada concepto se cotiza con la única unidad de la versión del servicio; la tarifa de referencia
+ *   es la del tabulador y la tarifa aplicada la decide el administrador. Un concepto ya guardado
+ *   con la misma versión conserva su unidad copiada (también una alternativa histórica).
  * - Una unidad sin decimales (unidades contables, entregables) solo admite cantidades enteras.
  * - Guardar sin cambios efectivos no crea una versión nueva.
  */
@@ -55,25 +57,21 @@ export function collectDuplicateServiceErrors(items, fields) {
 }
 
 /**
- * Elige la unidad de un concepto entre las copiadas en la versión del servicio cotizada. Usa la
- * posición recibida; si falta, la del concepto ya cotizado o, si el servicio tiene una sola
- * unidad, esa. Una unidad con tarifa pendiente de validación comercial no se cotiza nunca: no se
- * sustituye por otra tarifa ni se calcula con la tarifa de referencia del servicio.
+ * Elige la unidad de un concepto entre las copiadas en la versión del servicio cotizada: la del
+ * concepto ya guardado con esa misma versión (conserva lo cotizado aunque fuera una alternativa
+ * anterior a la unidad única) o, si no, la unidad del servicio (posición 1). Una unidad sin tarifa
+ * confirmada no se cotiza: no se sustituye por otra tarifa.
  *
  * @param {object} options - Datos del concepto.
  * @param {Array<{ id: number, position: number, referenceRate: string|null }>} options.unitOptions - Unidades de la versión.
- * @param {number} [options.requestedPosition] - Posición enviada por el cliente.
  * @param {number|null} [options.quotedPosition] - Posición del concepto ya guardado con esta versión.
  * @returns {{ option: object }|{ error: string }} Unidad elegida o motivo del rechazo.
  */
-export function chooseQuoteUnitOption({ quotedPosition = null, requestedPosition, unitOptions }) {
-  const position = requestedPosition ?? quotedPosition ?? (unitOptions.length === 1 ? unitOptions[0].position : null);
-  if (position === null) return { error: "Elige la unidad de medida con la que se cotiza este servicio." };
+export function chooseQuoteUnitOption({ quotedPosition = null, unitOptions }) {
+  const position = quotedPosition ?? SERVICE_UNIT_POSITION;
   const option = unitOptions.find((candidate) => candidate.position === position);
-  if (!option) return { error: "La unidad elegida no existe en este servicio." };
-  if (option.referenceRate === null) {
-    return { error: "La tarifa de esta unidad está pendiente de validación comercial; no puede cotizarse todavía." };
-  }
+  if (!option) return { error: "La versión vigente del servicio no tiene una unidad de medida registrada." };
+  if (option.referenceRate === null) return { error: "La tarifa de este servicio no está confirmada; no puede cotizarse." };
   return { option };
 }
 

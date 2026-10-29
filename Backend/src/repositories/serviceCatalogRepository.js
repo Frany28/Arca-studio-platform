@@ -1,5 +1,5 @@
 import { query } from "../config/db.js";
-import { formatUnitOptionLabel } from "../domain/serviceUnitOptions.js";
+import { SERVICE_UNIT_POSITION, formatUnitOptionLabel } from "../domain/serviceUnitOptions.js";
 import { toContainsPattern } from "../utils/sqlPatterns.js";
 
 const SERVICE_COLUMNS = `
@@ -8,13 +8,16 @@ const SERVICE_COLUMNS = `
   u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
   u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active,
   d.id as denomination_id, d.denomination as denomination_text, d.is_active as denomination_is_active,
+  o.presentation_label,
   v.version_number as current_version,
   exists (select 1 from public.quote_items qi where qi.service_id = s.id) as kind_locked`;
 
+// La unidad del servicio está en services; service_unit_options (posición 1) aporta su texto comercial.
 const SERVICE_FROM = `
   from public.services s
   inner join public.measurement_units u on u.id = s.measurement_unit_id
   left join public.measurement_unit_denominations d on d.id = s.unit_denomination_id
+  left join public.service_unit_options o on o.service_id = s.id and o.position = ${SERVICE_UNIT_POSITION}
   left join public.service_versions v on v.service_id = s.id and v.is_current`;
 
 /**
@@ -30,71 +33,16 @@ function toServiceDenomination(row) {
 }
 
 /**
- * Transforma una unidad vigente del servicio en su forma pública: unidad base, denominación,
- * texto comercial, etiqueta visible y tarifa (null = pendiente de validación comercial).
- *
- * @param {object} row - Fila de service_unit_options unida a su unidad y denominación.
- * @returns {object} Unidad del servicio.
- */
-function toServiceUnitOption(row) {
-  const unitDenomination = toServiceDenomination(row);
-  return {
-    id: Number(row.option_id),
-    label: formatUnitOptionLabel({ denomination: unitDenomination?.denomination, presentationLabel: row.presentation_label, symbol: row.unit_symbol }),
-    measurementUnit: {
-      allowsDecimals: row.unit_allows_decimals,
-      code: row.unit_code,
-      id: Number(row.unit_id),
-      isActive: row.unit_is_active,
-      name: row.unit_name,
-      symbol: row.unit_symbol,
-    },
-    position: row.position,
-    presentationLabel: row.presentation_label,
-    ratePending: row.reference_rate === null,
-    referenceRate: row.reference_rate,
-    unitDenomination,
-  };
-}
-
-/**
- * Lee en una sola consulta las unidades vigentes de varios servicios, en su orden, con su unidad
- * base y su denominación. Evita una consulta por servicio al listar el catálogo.
- *
- * @param {Array<number>} serviceIds - Servicios consultados.
- * @param {{ query: Function }} executor - Pool o cliente de una transacción.
- * @returns {Promise<Map<number, Array<object>>>} Unidades por servicio.
- */
-async function listServiceUnitOptions(serviceIds, executor) {
-  const byService = new Map(serviceIds.map((id) => [id, []]));
-  if (serviceIds.length === 0) return byService;
-  const result = await executor.query(
-    `select o.id as option_id, o.service_id, o.position, o.presentation_label, o.reference_rate,
-       u.id as unit_id, u.code as unit_code, u.name as unit_name, u.symbol as unit_symbol,
-       u.allows_decimals as unit_allows_decimals, u.is_active as unit_is_active,
-       d.id as denomination_id, d.denomination as denomination_text, d.is_active as denomination_is_active
-     from public.service_unit_options o
-     inner join public.measurement_units u on u.id = o.measurement_unit_id
-     left join public.measurement_unit_denominations d on d.id = o.unit_denomination_id
-     where o.service_id = any($1::bigint[])
-     order by o.service_id, o.position`,
-    [serviceIds],
-  );
-  for (const row of result.rows) byService.get(Number(row.service_id))?.push(toServiceUnitOption(row));
-  return byService;
-}
-
-/**
  * Transforma una fila del catálogo en la representación pública de un servicio: tarifa como texto
- * decimal, unidades (`unitOptions`, la primera es la principal), etiqueta de la principal
- * (`unitLabel`) y `kindLocked` si está incluido en alguna cotización (SERVICE_MODALITY_IN_USE).
+ * decimal, su única unidad con el texto comercial opcional y la etiqueta visible (`unitLabel`), y
+ * `kindLocked` si está incluido en alguna cotización (SERVICE_MODALITY_IN_USE).
  *
  * @param {object} row - Fila con columnas del servicio, su unidad, denominación y versión vigente.
- * @param {Array<object>} unitOptions - Unidades vigentes del servicio en su orden.
- * @returns {object} Servicio con su unidad de medida, denominación, unidades y versión vigente.
+ * @returns {object} Servicio con su unidad de medida, denominación y versión vigente.
  */
-function toService(row, unitOptions) {
+function toService(row) {
   const unitDenomination = toServiceDenomination(row);
+  const presentationLabel = row.presentation_label ?? null;
   return {
     code: row.code,
     createdAt: new Date(row.created_at).toISOString(),
@@ -114,41 +62,26 @@ function toService(row, unitOptions) {
       symbol: row.unit_symbol,
     },
     name: row.name,
+    presentationLabel,
     referenceRate: row.reference_rate,
     sortOrder: row.sort_order,
     unitDenomination,
-    unitLabel: unitOptions[0]?.label
-      ?? formatUnitOptionLabel({ denomination: unitDenomination?.denomination, symbol: row.unit_symbol }),
-    unitOptions,
+    unitLabel: formatUnitOptionLabel({ denomination: unitDenomination?.denomination, presentationLabel, symbol: row.unit_symbol }),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 
 /**
- * Completa filas del catálogo con sus unidades leídas en una sola consulta adicional y las
- * transforma en servicios públicos, conservando el orden de las filas.
- *
- * @param {Array<object>} rows - Filas de servicios.
- * @param {{ query: Function }} executor - Pool o cliente de una transacción.
- * @returns {Promise<Array<object>>} Servicios públicos en el mismo orden.
- */
-async function toServices(rows, executor) {
-  const unitOptions = await listServiceUnitOptions(rows.map((row) => Number(row.id)), executor);
-  return rows.map((row) => toService(row, unitOptions.get(Number(row.id)) ?? []));
-}
-
-/**
  * Lista servicios del catálogo en orden de visualización estable (sort_order, id) con cursor.
  * Pide un elemento adicional para que el servicio determine si existe otra página. Filtra
- * por texto en nombre o código, estado, unidad y tipo, siempre con parámetros. La unidad y la
- * denominación coinciden con cualquiera de las unidades del servicio, no solo la principal.
+ * por texto en nombre o código, estado, unidad y tipo, siempre con parámetros.
  *
  * @param {object} options - Filtros y paginación.
  * @param {Array<number>|null} options.cursor - [sortOrder, id] del último servicio visto.
  * @param {number} options.limit - Tamaño de página.
  * @param {string} [options.search] - Texto a buscar en nombre o código.
  * @param {boolean} [options.isActive] - Filtra por estado.
- * @param {number} [options.measurementUnitId] - Filtra por unidad (principal o alternativa).
+ * @param {number} [options.measurementUnitId] - Filtra por unidad de medida.
  * @param {number} [options.unitDenominationId] - Filtra por denominación (útil para reasignar servicios).
  * @param {string} [options.kind] - Filtra por tipo de servicio.
  * @returns {Promise<Array<object>>} Hasta limit + 1 servicios.
@@ -159,12 +92,10 @@ export async function listServices({ cursor, isActive, kind, limit, measurementU
      ${SERVICE_FROM}
      where ($1::text is null or s.name ilike $1 escape '\\' or s.code ilike $1 escape '\\')
        and ($2::boolean is null or s.is_active = $2)
-       and ($3::bigint is null or exists (
-         select 1 from public.service_unit_options o where o.service_id = s.id and o.measurement_unit_id = $3))
+       and ($3::bigint is null or s.measurement_unit_id = $3)
        and ($4::public.service_kind is null or s.kind = $4)
        and ($5::integer is null or (s.sort_order, s.id) > ($5, $6::bigint))
-       and ($8::bigint is null or exists (
-         select 1 from public.service_unit_options o where o.service_id = s.id and o.unit_denomination_id = $8))
+       and ($8::bigint is null or s.unit_denomination_id = $8)
      order by s.sort_order, s.id
      limit $7`,
     [
@@ -178,7 +109,7 @@ export async function listServices({ cursor, isActive, kind, limit, measurementU
       unitDenominationId ?? null,
     ],
   );
-  return toServices(result.rows, { query });
+  return result.rows.map(toService);
 }
 
 /**
@@ -191,9 +122,7 @@ export async function listServices({ cursor, isActive, kind, limit, measurementU
  */
 export async function findServiceById(serviceId, executor = { query }) {
   const result = await executor.query(`select ${SERVICE_COLUMNS} ${SERVICE_FROM} where s.id = $1`, [serviceId]);
-  if (!result.rows[0]) return null;
-  const [service] = await toServices(result.rows, executor);
-  return service;
+  return result.rows[0] ? toService(result.rows[0]) : null;
 }
 
 /**
@@ -297,37 +226,28 @@ export async function updateServiceRecord(client, serviceId, state, userId) {
 }
 
 /**
- * Sustituye las unidades vigentes de un servicio por las indicadas, en posiciones 1..n. Las
- * unidades vigentes no tienen historial propio (lo conserva service_version_unit_options), así
- * que se reemplazan por completo. Debe llamarse antes de actualizar la fila del servicio (así un
- * intercambio entre la principal y una alternativa no choca con uq_service_unit_options_unit al
- * sincronizar la posición 1); el trigger diferido comprueba al COMMIT que la posición 1 coincida
- * con la unidad del servicio y que una sola unidad tenga la tarifa del servicio.
+ * Sustituye la unidad vigente de un servicio (posición 1) por la indicada y retira cualquier
+ * otra fila: un servicio anterior a la unidad única pierde así sus alternativas vigentes, que su
+ * versión anterior conserva en service_version_unit_options. Las unidades vigentes no tienen
+ * historial propio, así que se reemplazan por completo. Debe llamarse antes de actualizar la fila
+ * del servicio; el trigger diferido comprueba al COMMIT que coincida con la unidad y la tarifa del
+ * servicio.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {number} serviceId - Servicio.
- * @param {Array<{ measurementUnitId: number, unitDenominationId: number|null, presentationLabel: string|null,
- *   referenceRate: string|null }>} unitOptions - Unidades canónicas en su orden.
+ * @param {{ measurementUnitId: number, unitDenominationId: number|null, presentationLabel: string|null,
+ *   referenceRate: string }} unit - Unidad del servicio.
  * @returns {Promise<void>}
- * @throws {Error} Si no se insertaron todas las unidades.
+ * @throws {Error} Si la unidad no se registró.
  */
-export async function replaceServiceUnitOptions(client, serviceId, unitOptions) {
+export async function replaceServiceUnitOption(client, serviceId, unit) {
   await client.query("delete from public.service_unit_options where service_id = $1", [serviceId]);
   const result = await client.query(
     `insert into public.service_unit_options (service_id, position, measurement_unit_id, unit_denomination_id, presentation_label, reference_rate)
-     select $1, option.position, option.measurement_unit_id, option.unit_denomination_id, option.presentation_label, option.reference_rate
-     from unnest($2::smallint[], $3::bigint[], $4::bigint[], $5::varchar[], $6::numeric[])
-       as option(position, measurement_unit_id, unit_denomination_id, presentation_label, reference_rate)`,
-    [
-      serviceId,
-      unitOptions.map((_option, index) => index + 1),
-      unitOptions.map((option) => option.measurementUnitId),
-      unitOptions.map((option) => option.unitDenominationId),
-      unitOptions.map((option) => option.presentationLabel),
-      unitOptions.map((option) => option.referenceRate),
-    ],
+     values ($1, $2, $3, $4, $5, $6::numeric)`,
+    [serviceId, SERVICE_UNIT_POSITION, unit.measurementUnitId, unit.unitDenominationId, unit.presentationLabel, unit.referenceRate],
   );
-  if (result.rowCount !== unitOptions.length) throw new Error("service_catalog: no se registraron todas las unidades del servicio.");
+  if (result.rowCount !== 1) throw new Error("service_catalog: no se registró la unidad del servicio.");
 }
 
 /**

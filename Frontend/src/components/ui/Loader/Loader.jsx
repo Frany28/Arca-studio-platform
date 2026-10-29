@@ -408,10 +408,10 @@ function ServiceFormFieldSkeleton({ controlHeight, delay, labelWidth }) {
 }
 
 // Formulario «Servicio» (Figma 5764:226084) mientras se lee el servicio editado: nombre,
-// modalidad, descripción, en dos columnas unidad de medida con «+ Crear unidad» y tarifa USD de
-// 125 px, y la fila «Añadir unidad alternativa». Las alturas son las de los controles reales (42,
-// 41, 134, 44 y 42 px; botones de 36 px) con 16 px entre campos, para que el formulario ocupe lo
-// mismo al terminar la carga. El título y el pie reales del modal permanecen fuera del skeleton.
+// modalidad, descripción y, en dos columnas, unidad de medida con «+ Crear unidad» y tarifa USD
+// de 125 px. Las alturas son las de los controles reales (42, 41, 134, 44 y 42 px; botón de
+// 36 px) con 16 px entre campos, para que el formulario ocupe lo mismo al terminar la carga. El
+// título y el pie reales del modal permanecen fuera del skeleton.
 function ServiceFormSkeleton() {
   return (
     <div className="flex w-full flex-col gap-[16px]" data-skeleton-preset="serviceForm">
@@ -426,11 +426,6 @@ function ServiceFormSkeleton() {
         <div className="w-[125px] shrink-0">
           <ServiceFormFieldSkeleton controlHeight={42} delay={180} labelWidth={70} />
         </div>
-      </div>
-      {/* «Añadir unidad alternativa» y, debajo, el enlace «Añadir texto comercial» (Button S: 36 px). */}
-      <div className="flex flex-col items-start gap-[8px]">
-        <SkeletonBlock className="h-[36px] w-[220px] max-w-full rounded-[var(--radius-2)]" delay={240} tone="muted" />
-        <SkeletonBlock className="h-[36px] w-[150px] max-w-full rounded-[var(--radius-2)]" delay={270} tone="muted" />
       </div>
     </div>
   );

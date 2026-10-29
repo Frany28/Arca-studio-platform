@@ -78,17 +78,14 @@ function buildQuote(id, payload, version, createdAt, services = SERVICES) {
     id,
     items: payload.items.map((item, index) => {
       const service = services.find((candidate) => candidate.id === item.serviceId);
-      // Como la API: la unidad elegida (la principal si el servicio tiene una sola) y su tarifa.
-      const position = item.unitOptionPosition ?? 1;
-      const option = service.unitOptions?.find((candidate) => candidate.position === position)
-        ?? { label: service.unitLabel, measurementUnit: service.measurementUnit, position: 1, referenceRate: service.referenceRate };
+      // Como la API: la única unidad del servicio, con la tarifa del tabulador como referencia.
       return {
         lineNumber: index + 1,
         quantity: totals.items[index].quantity,
-        referenceRate: option.referenceRate,
+        referenceRate: service.referenceRate,
         service: { code: service.code, description: service.description, id: service.id, isActive: service.isActive, kind: service.kind, name: service.name, versionId: service.id * 10 },
         subtotal: totals.items[index].subtotal,
-        unit: { allowsDecimals: option.measurementUnit.allowsDecimals, label: option.label, optionId: service.id * 100 + position, position },
+        unit: { allowsDecimals: service.measurementUnit.allowsDecimals, label: service.unitLabel, optionId: service.id * 100 + 1, position: 1 },
         unitRate: totals.items[index].unitRate,
       };
     }),
@@ -265,33 +262,29 @@ test("visor: PDF real del backend en el visor PDF.js, con archivo, peso y accion
 const PROJECT_UNIT = { allowsDecimals: false, code: "project", id: 38, isActive: true, name: "Proyecto", symbol: "proy." };
 const SPACE_UNIT = { allowsDecimals: false, code: "space", id: 39, isActive: true, name: "Espacio", symbol: "esp." };
 const MINUTE_UNIT = { allowsDecimals: false, code: "minute", id: 31, isActive: true, name: "Minuto", symbol: "min" };
-const HOUR_UNIT = { allowsDecimals: true, code: "hour", id: 30, isActive: true, name: "Hora", symbol: "hrs" };
-const WEEK_UNIT = { allowsDecimals: true, code: "week", id: 33, isActive: true, name: "Semana", symbol: "sem." };
 
 /**
- * Unidad de un servicio con la forma de la API (`unitOptions`).
+ * Servicio de una sola unidad sin denominación, con la forma de la API (tarifas ficticias).
  *
- * @param {number} position - Posición (1 = principal).
+ * @param {number} id - Identificador (también el código SERV-00N).
+ * @param {string} name - Nombre con su forma de cobro.
  * @param {Object} measurementUnit - Unidad base.
- * @param {string|null} referenceRate - Tarifa o null (pendiente de validación comercial).
- * @returns {Object} Unidad del servicio.
+ * @param {string} referenceRate - Tarifa base del tabulador.
+ * @returns {Object} Servicio.
  */
-function unitOption(position, measurementUnit, referenceRate) {
+function singleUnitService(id, name, measurementUnit, referenceRate) {
   return {
-    id: 900 + position, label: measurementUnit.symbol, measurementUnit, position, presentationLabel: null,
-    ratePending: referenceRate === null, referenceRate, unitDenomination: null,
+    ...SERVICES[0], code: `SERV-${String(id).padStart(3, "0")}`, description: null, id, measurementUnit, name, presentationLabel: null,
+    referenceRate, unitDenomination: null, unitLabel: measurementUnit.symbol,
   };
 }
 
-// Tabulador 3.2: «Por Proyecto / Espacio» (proyecto con tarifa, espacio pendiente) y «Por Minuto /
-// Proyecto» (ambas con la misma tarifa); tarifas ficticias, y un servicio ficticio sin ninguna tarifa confirmada.
-const MULTI_UNIT_SERVICES = [
-  { ...SERVICES[0], code: "SERV-004", description: null, id: 4, measurementUnit: PROJECT_UNIT, name: "Modelado 3D & Renders", referenceRate: "320.00",
-    unitDenomination: null, unitLabel: "proy.", unitOptions: [unitOption(1, PROJECT_UNIT, "320.00"), unitOption(2, SPACE_UNIT, null)] },
-  { ...SERVICES[0], code: "SERV-005", description: null, id: 5, measurementUnit: MINUTE_UNIT, name: "Recorrido Virtual / VR", referenceRate: "275.00",
-    unitDenomination: null, unitLabel: "min", unitOptions: [unitOption(1, MINUTE_UNIT, "275.00"), unitOption(2, PROJECT_UNIT, "275.00")] },
-  { ...SERVICES[0], code: "SERV-006", description: null, id: 6, measurementUnit: HOUR_UNIT, name: "Servicio sin tarifa confirmada", referenceRate: "300.00",
-    unitDenomination: null, unitLabel: "hrs", unitOptions: [unitOption(1, HOUR_UNIT, null), unitOption(2, WEEK_UNIT, null)] },
+// Tabulador 3.2 con una unidad por servicio: cada forma de cobro de Modelado y del Recorrido VR es un servicio.
+const VARIANT_SERVICES = [
+  singleUnitService(4, "Modelado 3D & Renders — Por proyecto", PROJECT_UNIT, "320.00"),
+  singleUnitService(20, "Modelado 3D & Renders — Por espacio", SPACE_UNIT, "320.00"),
+  singleUnitService(14, "Recorrido Virtual / VR — Por minuto", MINUTE_UNIT, "275.00"),
+  singleUnitService(21, "Recorrido Virtual / VR — Por proyecto", PROJECT_UNIT, "275.00"),
 ];
 
 test("seleccionar servicios: diez por página, la selección se conserva entre páginas y buscar vuelve a la primera", async (context) => {
@@ -329,56 +322,41 @@ test("seleccionar servicios: diez por página, la selección se conserva entre p
   }
 });
 
-test("varias unidades: solo se cotiza con tarifa confirmada, se elige la unidad y se envía su posición", async (context) => {
-  const backend = createBackend({ services: [...SERVICES, ...MULTI_UNIT_SERVICES] });
+test("una unidad por servicio: cada forma de cobro es un concepto con su unidad fija y tarifa editable", async (context) => {
+  const backend = createBackend({ services: [...SERVICES, ...VARIANT_SERVICES] });
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
   await page.locator("#quote-client").fill("Leo");
   await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
   await page.locator("#quote-project").click();
   await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
 
-  // Un servicio sin ninguna tarifa confirmada se ve con sus unidades, pero no se puede elegir.
+  // El selector muestra una sola unidad por servicio, sin estados de tarifa pendiente.
   const picker = page.getByRole("region", { name: "Seleccionar servicios" });
-  const pendingRow = picker.locator("tbody tr", { hasText: "Servicio sin tarifa confirmada" });
-  assert.equal(await pendingRow.getByRole("checkbox").count(), 0, "Sin tarifa confirmada no hay casilla que marcar");
-  assert.deepEqual(await pendingRow.locator("td").nth(2).locator(":scope > div > *").allInnerTexts(), ["hrs", "sem."]);
-  await pendingRow.getByText("Tarifa pendiente de validación comercial: aún no se puede cotizar.").waitFor();
-  // El Recorrido VR está disponible con sus dos unidades.
-  const tourRow = picker.locator("tbody tr", { hasText: "Recorrido Virtual / VR" });
-  assert.deepEqual(await tourRow.locator("td").nth(2).locator(":scope > div > *").allInnerTexts(), ["min", "proy."]);
-  assert.equal(await tourRow.getByText("Tarifa pendiente de validación comercial: aún no se puede cotizar.").count(), 0);
-
-  await picker.getByRole("checkbox", { name: "Seleccionar Modelado 3D & Renders" }).click();
-  await picker.getByRole("checkbox", { name: "Seleccionar Recorrido Virtual / VR" }).click();
+  for (const service of VARIANT_SERVICES) {
+    const row = picker.locator("tbody tr", { hasText: service.name });
+    assert.deepEqual(await row.locator("td").nth(2).locator(":scope > div > *").allInnerTexts(), [service.unitLabel], service.name);
+    await picker.getByRole("checkbox", { name: `Seleccionar ${service.name}` }).click();
+  }
+  assert.equal(await picker.getByText(/pendiente de validación comercial/).count(), 0);
   await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
 
-  // Modelado: proyecto es su única unidad cotizable y se elige sola con su tarifa; espacio se nombra pendiente.
-  await page.getByRole("button", { name: "Unidad de Modelado 3D & Renders: proy." }).waitFor();
-  await page.getByText("Tarifa pendiente de validación comercial: esp.", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Modelado 3D & Renders en USD" }).inputValue(), "320");
-  // Recorrido VR: con dos unidades cotizables hay que elegir minuto o proyecto antes de guardar.
-  await page.getByRole("textbox", { name: "Cantidad de Modelado 3D & Renders" }).fill("1");
-  await page.getByRole("textbox", { name: "Cantidad de Recorrido Virtual / VR" }).fill("3");
-  await page.getByRole("button", { name: "Guardar" }).click();
-  await page.getByText("Elige la unidad de medida con la que se cotiza este servicio.", { exact: true }).waitFor();
-  assert.equal(backend.requests.some((request) => request.method === "POST"), false, "Sin unidad elegida no se envía");
-  await page.getByRole("button", { name: "Unidad de Recorrido Virtual / VR" }).click();
-  assert.deepEqual(await page.getByRole("menuitem").allInnerTexts(), ["min", "proy."]);
-  await page.getByRole("menuitem", { name: "proy." }).click();
-  const tourRate = page.getByRole("textbox", { name: "Tarifa base de Recorrido Virtual / VR en USD" });
-  assert.equal(await tourRate.inputValue(), "275");
-  await page.getByRole("button", { name: "Unidad de Recorrido Virtual / VR: proy." }).click();
-  await page.getByRole("menuitem", { name: "min" }).click();
-  assert.equal(await tourRate.inputValue(), "275");
-  // La tarifa propuesta se puede modificar en esta cotización.
-  await tourRate.fill("250");
+  // En la tabla de incluidos la unidad es fija (sin desplegable) y la tarifa base se propone editable.
+  for (const service of VARIANT_SERVICES) {
+    await page.getByRole("textbox", { name: `Cantidad de ${service.name}` }).fill(service.id === 14 ? "3" : "1");
+    assert.equal(await page.getByRole("textbox", { name: `Tarifa base de ${service.name} en USD` }).inputValue(), String(Number(service.referenceRate)));
+    assert.equal(await page.getByRole("button", { name: new RegExp(`^Unidad de ${service.name}`) }).count(), 0, "Sin selector de unidad");
+  }
+  // La tarifa aplicada se modifica en esta cotización sin alterar la del tabulador.
+  await page.getByRole("textbox", { name: "Tarifa base de Recorrido Virtual / VR — Por proyecto en USD" }).fill("250");
 
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByText("Has creado la cotización exitosamente").waitFor();
   const [post] = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
   assert.deepEqual(post.body.items, [
-    { quantity: "1", serviceId: 4, unitOptionPosition: 1, unitRate: "320" },
-    { quantity: "3", serviceId: 5, unitOptionPosition: 1, unitRate: "250" },
+    { quantity: "1", serviceId: 4, unitRate: "320" },
+    { quantity: "1", serviceId: 20, unitRate: "320" },
+    { quantity: "3", serviceId: 14, unitRate: "275" },
+    { quantity: "1", serviceId: 21, unitRate: "250" },
   ]);
 });
 
@@ -423,7 +401,7 @@ test("alta: validación local, cliente y proyecto reales, servicios del tabulado
   assert.deepEqual(posts[0].body, {
     clientId: 3,
     // Con una sola unidad cotizable, el concepto envía su posición (1, la principal).
-    items: [{ quantity: "200", serviceId: 1, unitOptionPosition: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitOptionPosition: 1, unitRate: "47" }],
+    items: [{ quantity: "200", serviceId: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitRate: "47" }],
     notes: "Incluye dos visitas.",
     projectId: 9,
   });
@@ -576,7 +554,7 @@ test("edición: datos guardados, PATCH con expectedVersion y conflicto de versi�
   const patch = backend.requests.find((request) => request.method === "PATCH");
   assert.equal(patch.body.expectedVersion, 1);
   // El concepto guardado conserva su unidad cotizada (posición 1).
-  assert.deepEqual(patch.body.items[0], { quantity: "100", serviceId: 1, unitOptionPosition: 1, unitRate: "14" });
+  assert.deepEqual(patch.body.items[0], { quantity: "100", serviceId: 1, unitRate: "14" });
   await page.getByRole("button", { name: "Recargar cotización" }).waitFor();
 });
 

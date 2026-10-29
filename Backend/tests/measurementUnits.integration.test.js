@@ -249,7 +249,7 @@ test("versionado: cambiar o retirar la denominación crea versiones y exige cohe
   const id = created.llavePremium;
   const [commercial] = (await units.getDenominationsPage({ search: "recorrido" })).unitDenominations;
   const moved = await catalog.updateService({ payload: { expectedVersion: 1, unitDenominationId: commercial.id }, serviceId: id, user: { id: ids.admin } });
-  assert.deepEqual([moved.changedFields, moved.service.unitLabel, moved.service.currentVersion], [["unitDenominationId", "unitOptions"], "m² de recorrido comercial", 2]);
+  assert.deepEqual([moved.changedFields, moved.service.unitLabel, moved.service.currentVersion], [["unitDenominationId"], "m² de recorrido comercial", 2]);
   const cleared = await catalog.updateService({ payload: { expectedVersion: 2, unitDenominationId: null }, serviceId: id, user: { id: ids.admin } });
   assert.deepEqual([cleared.service.unitLabel, cleared.service.unitDenomination], ["m²", null]);
   assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.unit_denomination]), [[1, "de construcción"], [2, "de recorrido comercial"], [3, null]]);

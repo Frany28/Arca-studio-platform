@@ -67,26 +67,6 @@ const FORM_FIELD_BY_PATH = {
   unitDenominationId: "unit",
 };
 
-/**
- * Control del formulario para un error de la lista `unitOptions` (`unitOptions.N.campo`): la
- * posición 0 es la unidad principal y las demás, la fila de alternativa N - 1.
- *
- * @param {string} path - Ruta del error sin el prefijo `body.`.
- * @returns {string|null} Campo del formulario o null si no es de `unitOptions`.
- */
-function unitOptionFormField(path) {
-  if (path === "unitOptions") return "alternatives";
-  const match = /^unitOptions\.(\d+)\.(\w+)$/.exec(path);
-  if (!match) return null;
-  const [, rawIndex, property] = match;
-  const index = Number(rawIndex);
-  if (index === 0) {
-    if (property === "referenceRate") return "primaryUnitRate";
-    return property === "presentationLabel" ? "presentationLabel" : "unit";
-  }
-  return property === "referenceRate" ? `alternativeRate.${index - 1}` : `alternative.${index - 1}`;
-}
-
 // 409 del alta y la edición que se explican en el formulario sin cerrarlo.
 const FORM_CONFLICT_MESSAGES = {
   SERVICE_VERSION_CONFLICT: "Otro administrador guardó cambios en este servicio. Tus datos se conservan: cierra el formulario y vuelve a abrirlo para editar la versión vigente.",
@@ -107,9 +87,8 @@ function getServiceFormFieldErrors(error) {
   // Regla SERVICE_MODALITY_IN_USE (Backend/ARCHITECTURE.md): el motivo va junto a la modalidad.
   if (error?.code === "SERVICE_MODALITY_IN_USE") return { kind: error.message || SERVICE_MODALITY_LOCKED_MESSAGE };
   const fieldErrors = {};
-  for (const [rawPath, message] of Object.entries(error?.fields || {})) {
-    const path = rawPath.replace(/^body\./, "");
-    const field = FORM_FIELD_BY_PATH[path] ?? unitOptionFormField(path);
+  for (const [path, message] of Object.entries(error?.fields || {})) {
+    const field = FORM_FIELD_BY_PATH[path.replace(/^body\./, "")];
     if (field && !fieldErrors[field]) fieldErrors[field] = message;
   }
   return fieldErrors;

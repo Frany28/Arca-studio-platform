@@ -3,28 +3,17 @@ import test from "node:test";
 
 import { chooseQuoteUnitOption } from "../src/domain/quote.js";
 import { listChangedServiceFields, mergeServiceChanges } from "../src/domain/serviceCatalog.js";
-import {
-  SERVICE_UNIT_OPTIONS_MAX,
-  collectUnitOptionErrors,
-  formatUnitOptionLabel,
-  isUnitOptionQuotable,
-  resolveUnitOptions,
-} from "../src/domain/serviceUnitOptions.js";
+import { SERVICE_UNIT_POSITION, formatUnitOptionLabel, resolvePresentationLabel } from "../src/domain/serviceUnitOptions.js";
 import { quoteCreateSchema } from "../src/validation/quoteSchemas.js";
 import { serviceCreateSchema, serviceUpdateSchema } from "../src/validation/serviceCatalogSchemas.js";
 
-// Varias unidades por servicio (tabulador 3.2): «Por Proyecto / Espacio» (tarifa confirmada por
-// proyecto y espacio pendiente) y «Por Minuto / Proyecto», sin inventar tarifas (importes ficticios).
+// Una sola unidad por servicio: los servicios que se cobran de dos formas son servicios
+// independientes («Modelado 3D & Renders — Por proyecto» y «— Por espacio»). Importes ficticios.
 
-const option = (unitId, overrides = {}) => ({
-  measurementUnit: { id: unitId }, presentationLabel: null, referenceRate: null, unitDenomination: null, ...overrides,
-});
-
-// «Modelado 3D & Renders»: proyecto (38) a $320 y espacio (39) pendiente.
-const MODELING = {
-  description: "Modelo 3D + 3 a 5 renders hiperrealistas.", isActive: true, kind: "individual",
-  measurementUnit: { id: 38 }, name: "Modelado 3D & Renders", referenceRate: "320.00", sortOrder: 2, unitDenomination: null,
-  unitOptions: [option(38, { referenceRate: "320.00" }), option(39)],
+// «Permisología & Legal»: proyecto (38) con el texto comercial «Global por Proyecto».
+const PERMITS = {
+  description: null, isActive: true, kind: "individual", measurementUnit: { id: 38 }, name: "Permisología & Legal",
+  presentationLabel: "Global por Proyecto", referenceRate: "510.00", sortOrder: 15, unitDenomination: null,
 };
 
 /**
@@ -43,83 +32,51 @@ test("etiqueta: el texto comercial sustituye a la composición; sin él, abrevia
   assert.equal(formatUnitOptionLabel({ denomination: "de construcción", symbol: "m²" }), "m² de construcción");
 });
 
-test("tarifas: una unidad pendiente no es cotizable y una sola unidad usa la tarifa del servicio", () => {
-  assert.equal(isUnitOptionQuotable({ referenceRate: null }), false);
-  assert.equal(isUnitOptionQuotable({ referenceRate: "0.00" }), true);
-  // Alta con el atajo: una unidad base sin denominación toma la tarifa del servicio.
-  assert.deepEqual(resolveUnitOptions({ changes: { measurementUnitId: 6 }, current: [], referenceRate: "12.00" }), [
-    { measurementUnitId: 6, presentationLabel: null, referenceRate: "12.00", unitDenominationId: null },
-  ]);
-  // Varias unidades: una tarifa omitida queda pendiente; nunca se copia la del servicio.
-  const recorrido = resolveUnitOptions({
-    changes: { unitOptions: [{ measurementUnitId: 31 }, { measurementUnitId: 38 }] }, current: [], referenceRate: "275.00",
-  });
-  assert.deepEqual(recorrido.map((item) => item.referenceRate), [null, null]);
+test("texto comercial: se conserva con la misma unidad y se retira al cambiarla sin texto nuevo", () => {
+  const current = { measurementUnitId: 38, presentationLabel: "Global por Proyecto", unitDenominationId: null };
+  assert.equal(resolvePresentationLabel({ current, next: { measurementUnitId: 38, unitDenominationId: null } }), "Global por Proyecto");
+  assert.equal(resolvePresentationLabel({ current, next: { measurementUnitId: 44, unitDenominationId: null } }), null);
+  assert.equal(resolvePresentationLabel({ current, next: { measurementUnitId: 44, unitDenominationId: null }, requested: " Honorario  Mensual " }), "Honorario Mensual");
+  assert.equal(resolvePresentationLabel({ current, next: { measurementUnitId: 38, unitDenominationId: null }, requested: null }), null);
+  assert.equal(resolvePresentationLabel({ current: null, next: { measurementUnitId: 38, unitDenominationId: null } }), null);
 });
 
-test("reglas: entre 1 y el máximo, sin repetir unidad y denominación, tarifa única coherente", () => {
-  assert.deepEqual(collectUnitOptionErrors(null, "12.00"), {}, "El atajo no se valida aquí");
-  assert.equal(SERVICE_UNIT_OPTIONS_MAX, 10);
-  const many = Array.from({ length: SERVICE_UNIT_OPTIONS_MAX + 1 }, (_value, index) => ({ measurementUnitId: index + 1, unitDenominationId: null }));
-  assert.ok(collectUnitOptionErrors(many, "1.00").unitOptions);
-  // La misma base admite denominaciones distintas, pero no la misma combinación dos veces.
-  assert.deepEqual(collectUnitOptionErrors([{ measurementUnitId: 1, unitDenominationId: 1 }, { measurementUnitId: 1, unitDenominationId: 2 }], "1.00"), {});
-  assert.deepEqual(
-    Object.keys(collectUnitOptionErrors([{ measurementUnitId: 38, unitDenominationId: null }, { measurementUnitId: 38, unitDenominationId: null }], "1.00")),
-    ["unitOptions.1.measurementUnitId"],
-  );
-  assert.deepEqual(
-    Object.keys(collectUnitOptionErrors([{ measurementUnitId: 38, referenceRate: "500.00", unitDenominationId: null }], "510.00")),
-    ["unitOptions.0.referenceRate"],
-  );
+test("versionado: editar otros campos conserva el texto comercial; cambiar la unidad lo retira", () => {
+  assert.deepEqual(listChangedServiceFields(PERMITS, mergeServiceChanges(PERMITS, {})), []);
+  const renamed = mergeServiceChanges(PERMITS, { name: "Permisología & Legal — Global" });
+  assert.equal(renamed.presentationLabel, "Global por Proyecto");
+  assert.deepEqual(listChangedServiceFields(PERMITS, renamed), ["name"]);
+  const otherUnit = mergeServiceChanges(PERMITS, { measurementUnitId: 44 });
+  assert.deepEqual(listChangedServiceFields(PERMITS, otherUnit), ["measurementUnitId", "presentationLabel"]);
+  assert.deepEqual(listChangedServiceFields(PERMITS, mergeServiceChanges(PERMITS, { referenceRate: "520" })), ["referenceRate"]);
 });
 
-test("versionado: las unidades cambian con su orden, tarifa o texto; el atajo conserva las alternativas", () => {
-  assert.deepEqual(listChangedServiceFields(MODELING, mergeServiceChanges(MODELING, {})), []);
-  // Confirmar la tarifa de espacio es un cambio versionado de las unidades.
-  const confirmed = mergeServiceChanges(MODELING, { unitOptions: [
-    { measurementUnitId: 38, referenceRate: "320.00" }, { measurementUnitId: 39, referenceRate: "380.00" },
-  ] });
-  assert.deepEqual(listChangedServiceFields(MODELING, confirmed), ["unitOptions"]);
-  // En un servicio con varias unidades, la tarifa del tabulador no cambia las de las unidades.
-  assert.deepEqual(listChangedServiceFields(MODELING, mergeServiceChanges(MODELING, { referenceRate: "500.00" })), ["referenceRate"]);
-  // El atajo cambia solo la principal y conserva espacio pendiente.
-  const replaced = mergeServiceChanges(MODELING, { measurementUnitId: 44 });
-  assert.deepEqual(replaced.unitOptions.map((item) => [item.measurementUnitId, item.referenceRate]), [[44, "320.00"], [39, null]]);
-  assert.equal(replaced.measurementUnitId, 44);
+test("cotización: se cotiza la unidad del servicio; un concepto ya cotizado conserva la suya", () => {
+  // Versión anterior a la unidad única: la alternativa (posición 2) es historial.
+  const unitOptions = [{ id: 400, position: 1, referenceRate: "320.00" }, { id: 401, position: 2, referenceRate: "320.00" }];
+  assert.equal(SERVICE_UNIT_POSITION, 1);
+  assert.deepEqual(chooseQuoteUnitOption({ unitOptions }), { option: unitOptions[0] });
+  assert.deepEqual(chooseQuoteUnitOption({ quotedPosition: 2, unitOptions }), { option: unitOptions[1] });
+  assert.match(chooseQuoteUnitOption({ unitOptions: [] }).error, /no tiene una unidad/);
+  assert.match(chooseQuoteUnitOption({ unitOptions: [{ id: 402, position: 1, referenceRate: null }] }).error, /no está confirmada/);
 });
 
-test("cotización: se elige la unidad por posición y nunca una con tarifa pendiente", () => {
-  const unitOptions = [{ id: 400, position: 1, referenceRate: "320.00" }, { id: 401, position: 2, referenceRate: null }];
-  assert.deepEqual(chooseQuoteUnitOption({ requestedPosition: 1, unitOptions }), { option: unitOptions[0] });
-  assert.match(chooseQuoteUnitOption({ requestedPosition: 2, unitOptions }).error, /pendiente de validación comercial/);
-  assert.match(chooseQuoteUnitOption({ unitOptions }).error, /Elige la unidad/, "Con varias unidades hay que elegir");
-  assert.match(chooseQuoteUnitOption({ requestedPosition: 3, unitOptions }).error, /no existe/);
-  // El concepto ya cotizado conserva su unidad aunque no se reenvíe la posición.
-  assert.deepEqual(chooseQuoteUnitOption({ quotedPosition: 1, unitOptions }), { option: unitOptions[0] });
-  // Con una sola unidad no hace falta indicarla.
-  assert.deepEqual(chooseQuoteUnitOption({ unitOptions: [unitOptions[0]] }), { option: unitOptions[0] });
-});
-
-test("contrato: unitOptions o el atajo de unidad, nunca ambos; tarifa por unidad opcional y texto comercial normalizado", () => {
-  const base = { name: "Modelado 3D & Renders", referenceRate: "320" };
-  const created = serviceCreateSchema.safeParse({ body: { ...base, unitOptions: [
-    { measurementUnitId: 38, referenceRate: "320" }, { measurementUnitId: 39, presentationLabel: "  Por  Espacio " },
-  ] } });
+test("contrato: una unidad por servicio, sin unitOptions; texto comercial opcional y normalizado", () => {
+  const base = { measurementUnitId: 38, name: "Modelado 3D & Renders — Por proyecto", referenceRate: "320" };
+  const created = serviceCreateSchema.safeParse({ body: { ...base, presentationLabel: "  Global  por Proyecto " } });
   assert.equal(created.success, true, JSON.stringify(created.error?.issues));
-  assert.deepEqual(created.data.body.unitOptions.map((item) => [item.referenceRate, item.presentationLabel]), [["320.00", null], [null, "Por Espacio"]]);
-  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: base })), ["body.measurementUnitId"]);
-  assert.deepEqual(
-    errorPaths(serviceCreateSchema.safeParse({ body: { ...base, measurementUnitId: 38, unitOptions: [{ measurementUnitId: 38 }] } })),
-    ["body.unitOptions"],
-  );
-  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...base, unitOptions: [] } })), ["body.unitOptions"]);
-  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...base, unitOptions: [{ measurementUnitId: 38, referenceRate: "-1" }] } })), ["body.unitOptions.0.referenceRate"]);
-  // La edición acepta solo unitOptions como cambio.
-  const updated = serviceUpdateSchema.safeParse({ params: { serviceId: "2" }, body: { expectedVersion: 1, unitOptions: [{ measurementUnitId: 38 }] } });
-  assert.equal(updated.success, true);
-  // En la cotización, la posición de la unidad es opcional y acotada.
+  assert.equal(created.data.body.presentationLabel, "Global por Proyecto");
+  assert.equal(serviceCreateSchema.safeParse({ body: base }).data.body.presentationLabel, undefined);
+  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { name: base.name, referenceRate: "320" } })), ["body.measurementUnitId"]);
+  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...base, unitOptions: [{ measurementUnitId: 38 }] } })), ["body"]);
+  assert.deepEqual(errorPaths(serviceCreateSchema.safeParse({ body: { ...base, presentationLabel: "x".repeat(81) } })), ["body.presentationLabel"]);
+  // La edición acepta el texto comercial solo (null lo retira) y rechaza unitOptions.
+  const cleared = serviceUpdateSchema.safeParse({ params: { serviceId: "2" }, body: { expectedVersion: 1, presentationLabel: null } });
+  assert.equal(cleared.success, true);
+  assert.equal(cleared.data.body.presentationLabel, null);
+  assert.equal(serviceUpdateSchema.safeParse({ params: { serviceId: "2" }, body: { expectedVersion: 1, unitOptions: [] } }).success, false);
+  // En la cotización ya no se elige unidad.
   const item = { quantity: "1", serviceId: 4, unitRate: "320" };
-  assert.equal(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 1 }], projectId: 9 } }).success, true);
-  assert.deepEqual(errorPaths(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 0 }], projectId: 9 } })), ["body.items.0.unitOptionPosition"]);
+  assert.equal(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [item], projectId: 9 } }).success, true);
+  assert.deepEqual(errorPaths(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 1 }], projectId: 9 } })), ["body.items.0"]);
 });
