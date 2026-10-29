@@ -819,7 +819,12 @@ Validación, capturas y diferencias respecto a Figma:
     cliente y proyecto con `Input` `Tags` y búsqueda en la API (solo opciones existentes; el
     proyecto depende del cliente), selector de servicios activos, tabla de incluidos con cantidad y
     tarifa editables y total previo calculado con el mismo motor decimal que el backend
-    (`quoteAmounts.js`, prueba de paridad). Los servicios ya incluidos aparecen marcados y
+    (`quoteAmounts.js`, prueba de paridad). El selector muestra diez servicios por página, como el
+    tabulador, Unidades y Cotizaciones: paginación local (la lista completa ya está en memoria para
+    buscar y para el menú de cambio de servicio) con `CursorPaginationNav` bajo la tabla y sin
+    scroll vertical interno; buscar vuelve a la primera página, la selección se conserva entre
+    páginas y «Seleccionar todos» marca solo la página visible (`servicePickerPagination.js`; el
+    skeleton `quoteServicePicker` reserva diez filas). Los servicios ya incluidos aparecen marcados y
     deshabilitados en el selector; su contador separa ambos conjuntos («1 de 2 seleccionados · 1 ya
     incluido», `formatServicePickerCount`). Cada fila de servicios incluidos tiene el
     `DropdownMenu` de su servicio (Figma 5771:367425) con `portal`, para que el desplazamiento

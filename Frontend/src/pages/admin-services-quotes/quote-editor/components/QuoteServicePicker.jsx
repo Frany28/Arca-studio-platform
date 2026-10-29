@@ -9,17 +9,17 @@ import Input from "../../../../components/ui/Input/Input.jsx";
 import Loader from "../../../../components/ui/Loader/Loader.jsx";
 import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import { normalizeTagSearchText } from "../../../../components/ui/Input/tags/tagUtils.js";
+import CursorPaginationNav from "../../components/CursorPaginationNav.jsx";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatReferenceRate, getServiceDescription, getServiceUnitBadges } from "../../service-catalog/utils/serviceCatalogPresentation.js";
 import { isServiceQuotable } from "../utils/quoteDraft.js";
 import { formatServicePickerCount } from "../utils/servicePickerCount.js";
+import { getServicePickerPage } from "../utils/servicePickerPagination.js";
 
 const PENDING_SERVICE_NOTE = "Tarifa pendiente de validación comercial: aún no se puede cotizar.";
 
 // Figma 5771:463261: selección 48, Servicio 350 y Unidad/Tarifa flexibles (mínimo 150).
 const PICKER_TABLE_MIN_WIDTH = 48 + 350 + 150 + 150;
-// Cinco filas de 50 px visibles bajo el encabezado de 49 px; el resto se desplaza.
-const PICKER_BODY_MAX_HEIGHT = 49 + 5 * 50;
 
 /**
  * Indica si un servicio coincide con la búsqueda por nombre o código, sin distinguir acentos ni
@@ -36,9 +36,11 @@ function matchesService(service, query) {
 
 /**
  * «Seleccionar servicios» del formulario (Figma 5771:463257): busca en los servicios activos del
- * tabulador, marca varios y los añade a «Servicios incluidos». Los ya incluidos aparecen marcados
- * y bloqueados, porque cada servicio va una sola vez por cotización; los que no tienen ninguna
- * unidad con tarifa confirmada se muestran bloqueados con el motivo. «Cancelar» limpia la
+ * tabulador, marca varios y los añade a «Servicios incluidos». Muestra diez por página, como las
+ * demás tablas del módulo (paginación local: la lista completa ya está en memoria); buscar vuelve a
+ * la primera página y la selección se conserva al cambiar de página. Los ya incluidos aparecen
+ * marcados y bloqueados, porque cada servicio va una sola vez por cotización; los que no tienen
+ * ninguna unidad con tarifa confirmada se muestran bloqueados con el motivo. «Cancelar» limpia la
  * selección sin añadir nada.
  *
  * @param {Object} props - Catálogo, estado y callbacks.
@@ -55,8 +57,11 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [openHintId, setOpenHintId] = useState(null);
+  const [pageIndex, setPageIndex] = useState(0);
   const visible = useMemo(() => services.filter((service) => matchesService(service, query)), [query, services]);
-  const selectable = visible.filter((service) => !includedIds.has(service.id) && isServiceQuotable(service));
+  // La página se ajusta sola si la lista se reduce; «Seleccionar todos» actúa sobre la página visible.
+  const page = getServicePickerPage({ items: visible, pageIndex });
+  const selectable = page.items.filter((service) => !includedIds.has(service.id) && isServiceQuotable(service));
   // Solo cuentan los servicios seleccionables presentes: un servicio ya añadido deja de contar.
   const selected = services.filter((service) => selectedIds.has(service.id) && !includedIds.has(service.id) && isServiceQuotable(service));
   // Incluidos del listado (un servicio cotizado que ya está inactivo no figura en él).
@@ -80,7 +85,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   }
 
   /**
-   * Marca todos los servicios seleccionables visibles o, si ya lo estaban, los desmarca.
+   * Marca todos los servicios seleccionables de la página visible o, si ya lo estaban, los desmarca.
    *
    * @returns {void}
    */
@@ -110,72 +115,70 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   } else {
     body = (
       <HorizontalScrollViewport scrollBarLabel="Desplazar servicios disponibles horizontalmente">
-        <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--color-neutral-400)_transparent] [scrollbar-width:thin]" style={{ maxHeight: PICKER_BODY_MAX_HEIGHT }}>
-          <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: PICKER_TABLE_MIN_WIDTH }}>
-            <caption className="sr-only">Servicios activos del tabulador</caption>
-            <colgroup>
-              <col style={{ width: 48 }} />
-              <col style={{ width: 350 }} />
-              <col />
-              <col />
-            </colgroup>
-            <thead className="sticky top-0 z-[1] bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
-              <tr className="text-heading-8 h-[49px]">
-                <th scope="col" className="p-[16px]">
-                  <Checkbox size="S" checked={allSelected ? "Yes" : someSelected ? "Indeterminate" : "No"} interactive={selectable.length > 0 && !disabled} aria-label="Seleccionar todos los servicios visibles" onCheckedChange={toggleAll} />
-                </th>
-                <th scope="col" className="px-[24px] py-[16px]">Servicio</th>
-                <th scope="col" className="px-[24px] py-[16px]">Unidad</th>
-                <th scope="col" className="px-[24px] py-[16px] text-right">Tarifa base</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((service) => {
-                const included = includedIds.has(service.id);
-                const quotable = isServiceQuotable(service);
-                const checked = included || (quotable && selectedIds.has(service.id));
-                const description = getServiceDescription(service);
-                return (
-                  <tr key={service.id} className={`h-[50px] transition-colors duration-150 ${checked ? "bg-[var(--color-neutral-300)]" : "bg-[var(--color-neutral-100)]"}`} data-selected={checked ? "true" : undefined}>
-                    <td className="px-[16px]">
-                      <Checkbox
-                        size="S"
-                        checked={checked ? "Yes" : "No"}
-                        interactive={!included && quotable && !disabled}
-                        // Sin tarifa confirmada no es una casilla: `onCheckedChange` la haría pulsable.
-                        disabled={!quotable}
-                        aria-label={included ? `${service.name} ya está incluido` : quotable ? `Seleccionar ${service.name}` : `${service.name}: ${PENDING_SERVICE_NOTE}`}
-                        onCheckedChange={() => toggle(service.id)}
-                      />
-                    </td>
-                    <td className="px-[24px]">
-                      <div className="flex min-w-0 items-center gap-[2px]">
-                        <span className="text-heading-8 truncate text-[var(--color-text-300)]" title={service.name}>{service.name}</span>
-                        {description ? (
-                          <ServiceDescriptionHint
-                            serviceName={service.name}
-                            description={description}
-                            open={openHintId === service.id}
-                            onOpenChange={(open) => setOpenHintId(open ? service.id : null)}
-                          />
-                        ) : null}
-                      </div>
-                      {quotable ? null : <p className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={PENDING_SERVICE_NOTE}>{PENDING_SERVICE_NOTE}</p>}
-                    </td>
-                    <td className="px-[24px]">
-                      <div className="flex min-w-0 gap-[4px] overflow-hidden">
-                        {getServiceUnitBadges(service).map((unit) => (
-                          <Badge key={unit.key} label={unit.label} theme="Brand 2" variation="Simple" size="S" truncate className="min-w-0 shrink" />
-                        ))}
-                      </div>
-                    </td>
-                    <td className="text-heading-8 truncate px-[24px] text-right text-[var(--color-text-300)] tabular-nums">{formatReferenceRate(service.referenceRate, service.currency)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: PICKER_TABLE_MIN_WIDTH }}>
+          <caption className="sr-only">Servicios activos del tabulador</caption>
+          <colgroup>
+            <col style={{ width: 48 }} />
+            <col style={{ width: 350 }} />
+            <col />
+            <col />
+          </colgroup>
+          <thead className="bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
+            <tr className="text-heading-8 h-[49px]">
+              <th scope="col" className="p-[16px]">
+                <Checkbox size="S" checked={allSelected ? "Yes" : someSelected ? "Indeterminate" : "No"} interactive={selectable.length > 0 && !disabled} aria-label="Seleccionar todos los servicios visibles" onCheckedChange={toggleAll} />
+              </th>
+              <th scope="col" className="px-[24px] py-[16px]">Servicio</th>
+              <th scope="col" className="px-[24px] py-[16px]">Unidad</th>
+              <th scope="col" className="px-[24px] py-[16px] text-right">Tarifa base</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.items.map((service) => {
+              const included = includedIds.has(service.id);
+              const quotable = isServiceQuotable(service);
+              const checked = included || (quotable && selectedIds.has(service.id));
+              const description = getServiceDescription(service);
+              return (
+                <tr key={service.id} className={`h-[50px] transition-colors duration-150 ${checked ? "bg-[var(--color-neutral-300)]" : "bg-[var(--color-neutral-100)]"}`} data-selected={checked ? "true" : undefined}>
+                  <td className="px-[16px]">
+                    <Checkbox
+                      size="S"
+                      checked={checked ? "Yes" : "No"}
+                      interactive={!included && quotable && !disabled}
+                      // Sin tarifa confirmada no es una casilla: `onCheckedChange` la haría pulsable.
+                      disabled={!quotable}
+                      aria-label={included ? `${service.name} ya está incluido` : quotable ? `Seleccionar ${service.name}` : `${service.name}: ${PENDING_SERVICE_NOTE}`}
+                      onCheckedChange={() => toggle(service.id)}
+                    />
+                  </td>
+                  <td className="px-[24px]">
+                    <div className="flex min-w-0 items-center gap-[2px]">
+                      <span className="text-heading-8 truncate text-[var(--color-text-300)]" title={service.name}>{service.name}</span>
+                      {description ? (
+                        <ServiceDescriptionHint
+                          serviceName={service.name}
+                          description={description}
+                          open={openHintId === service.id}
+                          onOpenChange={(open) => setOpenHintId(open ? service.id : null)}
+                        />
+                      ) : null}
+                    </div>
+                    {quotable ? null : <p className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={PENDING_SERVICE_NOTE}>{PENDING_SERVICE_NOTE}</p>}
+                  </td>
+                  <td className="px-[24px]">
+                    <div className="flex min-w-0 gap-[4px] overflow-hidden">
+                      {getServiceUnitBadges(service).map((unit) => (
+                        <Badge key={unit.key} label={unit.label} theme="Brand 2" variation="Simple" size="S" truncate className="min-w-0 shrink" />
+                      ))}
+                    </div>
+                  </td>
+                  <td className="text-heading-8 truncate px-[24px] text-right text-[var(--color-text-300)] tabular-nums">{formatReferenceRate(service.referenceRate, service.currency)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </HorizontalScrollViewport>
     );
   }
@@ -199,13 +202,30 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
             leftIcon={<SearchNormal1 size="20" color="currentColor" />}
             className="w-full"
             aria-label="Buscar servicios por nombre o código"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPageIndex(0);
+            }}
           />
         </div>
       </div>
 
-      <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
-        {body}
+      <div className="flex flex-col gap-[16px]">
+        <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
+          {body}
+        </div>
+        {!loading && !error && visible.length ? (
+          <CursorPaginationNav
+            ariaLabel="Paginación de servicios disponibles"
+            className="self-end"
+            pagination={{
+              hasNext: page.hasNext && !disabled,
+              hasPrevious: page.hasPrevious && !disabled,
+              next: () => setPageIndex(page.pageIndex + 1),
+              previous: () => setPageIndex(page.pageIndex - 1),
+            }}
+          />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-y-[16px]">

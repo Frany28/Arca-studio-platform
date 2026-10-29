@@ -294,6 +294,41 @@ const MULTI_UNIT_SERVICES = [
     unitDenomination: null, unitLabel: "hrs", unitOptions: [unitOption(1, HOUR_UNIT, null), unitOption(2, WEEK_UNIT, null)] },
 ];
 
+test("seleccionar servicios: diez por página, la selección se conserva entre páginas y buscar vuelve a la primera", async (context) => {
+  // Doce servicios activos ficticios (más de una página).
+  const many = Array.from({ length: 12 }, (_, index) => ({
+    ...SERVICES[0], code: `SERV-${String(index + 1).padStart(3, "0")}`, description: null, id: index + 1, name: `Servicio de página ${String(index + 1).padStart(2, "0")}`, sortOrder: index + 1,
+  }));
+  const backend = createBackend({ services: many });
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  const pagination = picker.getByRole("navigation", { name: "Paginación de servicios disponibles" });
+  const names = () => picker.locator("tbody tr td:nth-child(2) span.text-heading-8").allInnerTexts();
+  await picker.getByText("Servicio de página 01", { exact: true }).waitFor();
+
+  assert.equal(await picker.locator("tbody tr").count(), 10, "Una página muestra diez servicios");
+  assert.equal(await pagination.getByRole("button", { name: "Anterior" }).isDisabled(), true);
+  await picker.getByRole("checkbox", { name: "Seleccionar Servicio de página 02" }).click();
+  await pagination.getByRole("button", { name: "Siguiente pág." }).click();
+  assert.deepEqual(await names(), ["Servicio de página 11", "Servicio de página 12"]);
+  assert.equal(await pagination.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
+  // «Seleccionar todos» marca solo la página visible; la selección de la página anterior se conserva.
+  await picker.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
+  await picker.getByText("3 de 12 seleccionados", { exact: true }).waitFor();
+
+  // Buscar vuelve a la primera página de los resultados.
+  await picker.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("página 0");
+  assert.deepEqual(await names(), Array.from({ length: 9 }, (_, index) => `Servicio de página 0${index + 1}`));
+  assert.equal(await pagination.getByRole("button", { name: "Anterior" }).isDisabled(), true);
+  assert.equal(await pagination.getByRole("button", { name: "Siguiente pág." }).isDisabled(), true);
+
+  await picker.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("");
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+  for (const name of ["Servicio de página 02", "Servicio de página 11", "Servicio de página 12"]) {
+    await page.getByRole("textbox", { name: `Cantidad de ${name}` }).waitFor();
+  }
+});
+
 test("varias unidades: solo se cotiza con tarifa confirmada, se elige la unidad y se envía su posición", async (context) => {
   const backend = createBackend({ services: [...SERVICES, ...MULTI_UNIT_SERVICES] });
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
