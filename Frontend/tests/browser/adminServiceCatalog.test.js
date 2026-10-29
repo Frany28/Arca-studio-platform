@@ -444,9 +444,12 @@ test("capas: seleccionar descarta ayudas, un menú bloquea todos los tooltips y 
   const menu = page.getByRole("menu", { name: "Acciones para TST-001" });
   await menu.waitFor();
   await tooltip.waitFor({ state: "detached" });
-  // Ni otra descripción ni un botón de otra fila pueden superponerse al menú.
-  await page.getByRole("button", { name: "Ver descripción de Paisajismo de prueba" }).hover();
-  await page.getByRole("button", { name: "Editar TST-002 Diseño interior de prueba" }).hover();
+  // Ni otra descripción ni un botón de otra fila pueden superponerse al menú. Según el desplazamiento
+  // de la página, el menú (alineado a la derecha del disparador) tapa o no el botón de la fila
+  // siguiente: `force` mueve el puntero a su posición en ambos casos en lugar de esperar a que
+  // quede libre, que es lo que hacía intermitente esta prueba.
+  await page.getByRole("button", { name: "Ver descripción de Paisajismo de prueba" }).hover({ force: true });
+  await page.getByRole("button", { name: "Editar TST-002 Diseño interior de prueba" }).hover({ force: true });
   assert.equal(await tooltip.count(), 0);
   await page.keyboard.press("Escape");
   await menu.waitFor({ state: "detached" });

@@ -843,7 +843,8 @@ test("unidad en la edición: conserva la unidad guardada aunque esté inactiva y
  * @returns {Promise<void>}
  */
 async function chooseAlternativeUnit(page, index, label) {
-  await page.locator(`#service-form-alternative-${index}`).click();
+  // Como unitShell: el campo nativo puede no tener ancho propio; se pulsa la carcasa del Input.
+  await page.locator(`[data-input-shell]:has(#service-form-alternative-${index})`).click();
   const listbox = page.getByRole("listbox", UNIT_LISTBOX);
   await listbox.getByRole("option", { name: new RegExp(`^${escapeRegExp(label)}(,|$)`) }).click();
   await listbox.waitFor({ state: "detached" });

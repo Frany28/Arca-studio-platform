@@ -42,9 +42,8 @@ import {
   scheduleExpiredSessionCleanup,
 } from "../services/sessionService.js";
 import { prepareUpload, uploadPolicies } from "../services/fileUploadService.js";
+import { verifyUserCredentials } from "../services/credentialService.js";
 
-const FAKE_BCRYPT_HASH =
-  "$2a$10$rN2S9IoJgP1Fx41s6fWaIOY6PksHh4EYoJ.13YZRbrxIJpV66F79i";
 const PASSWORD_RESET_ACCEPTED_RESPONSE = {
   message: "Si el correo está registrado, enviaremos un enlace de recuperación.",
 };
@@ -149,11 +148,9 @@ export async function login(req, res, next) {
       return;
     }
 
-    const userRecord = await findUserByEmail(email);
-    const passwordHash = userRecord?.password_hash || FAKE_BCRYPT_HASH;
-    const passwordMatches = await bcrypt.compare(password, passwordHash);
+    const { status, userRecord } = await verifyUserCredentials({ email, password });
 
-    if (!userRecord || !passwordMatches) {
+    if (status === "invalid") {
       res.status(401).json({
         code: "INVALID_CREDENTIALS",
         message: "Correo o contraseña invalidos.",
@@ -161,7 +158,7 @@ export async function login(req, res, next) {
       return;
     }
 
-    if (userRecord.status !== "active") {
+    if (status === "inactive") {
       res.status(409).json({
         code: "ACCOUNT_NOT_ACTIVE",
         message: "La cuenta no esta activa. Contacta a soporte.",

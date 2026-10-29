@@ -29,8 +29,12 @@ import { INPUT_OPTIONS_ANCHOR_OFFSET, getInputOptionClassName } from "../../../.
  */
 function ServiceUnitOptionsList({ activeIndex, groups, highlightedIndex, id, listboxRef, onHover, onSelect, optionId, position, selectedId }) {
   if (typeof document === "undefined") return null;
+  // Índice plano de la primera opción de cada grupo (sin reasignar variables durante el render).
+  const groupStarts = groups.reduce((starts, group, groupIndex) => {
+    starts.push(groupIndex ? starts[groupIndex - 1] + groups[groupIndex - 1].options.length : 0);
+    return starts;
+  }, []);
   const optionCount = groups.reduce((count, group) => count + group.options.length, 0);
-  let nextIndex = 0;
   return createPortal(
     <InputOptionsPanel
       ref={listboxRef}
@@ -54,7 +58,7 @@ function ServiceUnitOptionsList({ activeIndex, groups, highlightedIndex, id, lis
         }
         : { visibility: "hidden" }}
     >
-      {groups.map((group) => {
+      {groups.map((group, groupIndex) => {
         const headerId = `${id}-group-${group.key}`;
         return (
           <div key={group.key} role="group" aria-labelledby={headerId} className="flex flex-col gap-[4px]">
@@ -66,9 +70,8 @@ function ServiceUnitOptionsList({ activeIndex, groups, highlightedIndex, id, lis
             >
               {group.title}
             </div>
-            {group.options.map((option) => {
-              const index = nextIndex;
-              nextIndex += 1;
+            {group.options.map((option, optionIndex) => {
+              const index = groupStarts[groupIndex] + optionIndex;
               return (
                 <div
                   key={option.id}

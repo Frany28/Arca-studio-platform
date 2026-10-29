@@ -142,6 +142,8 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
                         size="S"
                         checked={checked ? "Yes" : "No"}
                         interactive={!included && quotable && !disabled}
+                        // Sin tarifa confirmada no es una casilla: `onCheckedChange` la haría pulsable.
+                        disabled={!quotable}
                         aria-label={included ? `${service.name} ya está incluido` : quotable ? `Seleccionar ${service.name}` : `${service.name}: ${PENDING_SERVICE_NOTE}`}
                         onCheckedChange={() => toggle(service.id)}
                       />

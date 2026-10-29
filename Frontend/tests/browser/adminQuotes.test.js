@@ -61,9 +61,10 @@ after(async () => {
  * @param {Object} payload - Cuerpo de alta o edición.
  * @param {number} version - Versión vigente.
  * @param {string} createdAt - Fecha de creación.
+ * @param {Array<Object>} [services] - Servicios del tabulador simulado.
  * @returns {Object} Cotización.
  */
-function buildQuote(id, payload, version, createdAt) {
+function buildQuote(id, payload, version, createdAt, services = SERVICES) {
   const totals = calculateQuoteTotals({ items: payload.items, referenceVat: { enabled: false } });
   const client = CLIENTS.find((candidate) => candidate.id === payload.clientId);
   const project = PROJECTS[payload.clientId].find((candidate) => candidate.id === payload.projectId);
@@ -76,14 +77,18 @@ function buildQuote(id, payload, version, createdAt) {
     currentVersion: version,
     id,
     items: payload.items.map((item, index) => {
-      const service = SERVICES.find((candidate) => candidate.id === item.serviceId);
+      const service = services.find((candidate) => candidate.id === item.serviceId);
+      // Como la API: la unidad elegida (la principal si el servicio tiene una sola) y su tarifa.
+      const position = item.unitOptionPosition ?? 1;
+      const option = service.unitOptions?.find((candidate) => candidate.position === position)
+        ?? { label: service.unitLabel, measurementUnit: service.measurementUnit, position: 1, referenceRate: service.referenceRate };
       return {
         lineNumber: index + 1,
         quantity: totals.items[index].quantity,
-        referenceRate: service.referenceRate,
+        referenceRate: option.referenceRate,
         service: { code: service.code, description: service.description, id: service.id, isActive: service.isActive, kind: service.kind, name: service.name, versionId: service.id * 10 },
         subtotal: totals.items[index].subtotal,
-        unit: { allowsDecimals: service.measurementUnit.allowsDecimals, label: service.unitLabel },
+        unit: { allowsDecimals: option.measurementUnit.allowsDecimals, label: option.label, optionId: service.id * 100 + position, position },
         unitRate: totals.items[index].unitRate,
       };
     }),
@@ -98,10 +103,11 @@ function buildQuote(id, payload, version, createdAt) {
 /**
  * Backend simulado de cotizaciones con estado en memoria y registro de peticiones.
  *
- * @param {Object} [options] - Fallos inyectados por operación (`PATCH /api/admin/quotes/:id`).
+ * @param {Object} [options] - Fallos inyectados por operación (`PATCH /api/admin/quotes/:id`) y
+ * servicios del tabulador (por defecto, SERVICES).
  * @returns {Object} Estado y manejador de rutas.
  */
-function createBackend({ failures = {} } = {}) {
+function createBackend({ failures = {}, services = SERVICES } = {}) {
   const state = {
     quotes: [
       buildQuote(1, { clientId: 3, items: [{ quantity: "200", serviceId: 1, unitRate: "12" }, { quantity: "35", serviceId: 2, unitRate: "45" }], notes: "Incluye visitas.", projectId: 9 }, 1, "2026-03-23T15:00:00.000Z"),
@@ -125,7 +131,7 @@ function createBackend({ failures = {} } = {}) {
 
     if (path === "/api/auth/me") return json(route, 200, { user: { email: "ana@example.test", firstName: "Ana", id: 1, lastName: "Admin", role: "admin", status: "active" } });
     if (path === "/api/projects") return json(route, 200, { nextCursor: null, projects: [] });
-    if (path === "/api/admin/services") return json(route, 200, { nextCursor: null, services: SERVICES });
+    if (path === "/api/admin/services") return json(route, 200, { nextCursor: null, services });
     if (path === "/api/admin/quotes/summary") return json(route, 200, { summary: { total: state.quotes.length } });
     if (path === "/api/admin/quotes/clients") {
       const search = (url.searchParams.get("search") || "").toLowerCase();
@@ -142,7 +148,7 @@ function createBackend({ failures = {} } = {}) {
       return json(route, 200, { nextCursor: null, quotes });
     }
     if (path === "/api/admin/quotes" && method === "POST") {
-      const quote = buildQuote(state.quotes.length + 1, body, 1, new Date().toISOString());
+      const quote = buildQuote(state.quotes.length + 1, body, 1, new Date().toISOString(), services);
       state.quotes.push(quote);
       return json(route, 201, { message: "Cotización creada correctamente.", quote });
     }
@@ -162,7 +168,7 @@ function createBackend({ failures = {} } = {}) {
       const current = state.quotes[index];
       const { expectedVersion, ...content } = body;
       if (expectedVersion !== current.currentVersion) return json(route, 409, { code: "QUOTE_VERSION_CONFLICT", message: "Otro administrador modificó esta cotización. Recarga los datos antes de guardar." });
-      state.quotes[index] = buildQuote(current.id, content, current.currentVersion + 1, current.createdAt);
+      state.quotes[index] = buildQuote(current.id, content, current.currentVersion + 1, current.createdAt, services);
       return json(route, 200, { changed: true, message: "Cotización actualizada correctamente.", quote: state.quotes[index] });
     }
     state.requests.push({ method, path, unexpected: true });
@@ -256,6 +262,79 @@ test("visor: PDF real del backend en el visor PDF.js, con archivo, peso y accion
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones/1/editar`);
 });
 
+const PROJECT_UNIT = { allowsDecimals: false, code: "project", id: 38, isActive: true, name: "Proyecto", symbol: "proy." };
+const SPACE_UNIT = { allowsDecimals: false, code: "space", id: 39, isActive: true, name: "Espacio", symbol: "esp." };
+const MINUTE_UNIT = { allowsDecimals: false, code: "minute", id: 31, isActive: true, name: "Minuto", symbol: "min" };
+const LINEAR_UNIT = { allowsDecimals: true, code: "linear_meter", id: 6, isActive: true, name: "Metro lineal", symbol: "m.l." };
+
+/**
+ * Unidad de un servicio con la forma de la API (`unitOptions`).
+ *
+ * @param {number} position - Posición (1 = principal).
+ * @param {Object} measurementUnit - Unidad base.
+ * @param {string|null} referenceRate - Tarifa o null (pendiente de validación comercial).
+ * @returns {Object} Unidad del servicio.
+ */
+function unitOption(position, measurementUnit, referenceRate) {
+  return {
+    id: 900 + position, label: measurementUnit.symbol, measurementUnit, position, presentationLabel: null,
+    ratePending: referenceRate === null, referenceRate, unitDenomination: null,
+  };
+}
+
+// Tabulador 3.2: «Por Proyecto / Espacio» (proyecto a $450, espacio pendiente) y «Por Minuto /
+// Proyecto» ($600 de referencia, sin tarifa por unidad); y un servicio con dos unidades confirmadas.
+const MULTI_UNIT_SERVICES = [
+  { ...SERVICES[0], code: "SERV-004", description: null, id: 4, measurementUnit: PROJECT_UNIT, name: "Modelado 3D & Renders", referenceRate: "450.00",
+    unitDenomination: null, unitLabel: "proy.", unitOptions: [unitOption(1, PROJECT_UNIT, "450.00"), unitOption(2, SPACE_UNIT, null)] },
+  { ...SERVICES[0], code: "SERV-005", description: null, id: 5, measurementUnit: MINUTE_UNIT, name: "Recorrido Virtual / VR", referenceRate: "600.00",
+    unitDenomination: null, unitLabel: "min", unitOptions: [unitOption(1, MINUTE_UNIT, null), unitOption(2, PROJECT_UNIT, null)] },
+  { ...SERVICES[0], code: "SERV-006", description: null, id: 6, measurementUnit: PROJECT_UNIT, name: "Servicio de dos unidades", referenceRate: "25.00",
+    unitDenomination: null, unitLabel: "proy.", unitOptions: [unitOption(1, PROJECT_UNIT, "25.00"), unitOption(2, LINEAR_UNIT, "12.00")] },
+];
+
+test("varias unidades: solo se cotiza con tarifa confirmada, se elige la unidad y se envía su posición", async (context) => {
+  const backend = createBackend({ services: [...SERVICES, ...MULTI_UNIT_SERVICES] });
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  await page.locator("#quote-client").fill("Leo");
+  await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  await page.locator("#quote-project").click();
+  await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
+
+  // El Recorrido VR se ve con sus dos unidades, pero sin tarifa confirmada no se puede elegir.
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  const tourRow = picker.locator("tbody tr", { hasText: "Recorrido Virtual / VR" });
+  assert.equal(await tourRow.getByRole("checkbox").count(), 0, "Sin tarifa confirmada no hay casilla que marcar");
+  assert.deepEqual(await tourRow.locator("td").nth(2).locator(":scope > div > *").allInnerTexts(), ["min", "proy."]);
+  await tourRow.getByText("Tarifa pendiente de validación comercial: aún no se puede cotizar.").waitFor();
+
+  await picker.getByRole("checkbox", { name: "Seleccionar Modelado 3D & Renders" }).click();
+  await picker.getByRole("checkbox", { name: "Seleccionar Servicio de dos unidades" }).click();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+
+  // Modelado: proyecto es su única unidad cotizable y se elige sola con su tarifa; espacio se nombra pendiente.
+  await page.getByRole("button", { name: "Unidad de Modelado 3D & Renders: proy." }).waitFor();
+  await page.getByText("Tarifa pendiente de validación comercial: esp.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Modelado 3D & Renders en USD" }).inputValue(), "450");
+  // Con dos unidades cotizables hay que elegir antes de guardar.
+  await page.getByRole("textbox", { name: "Cantidad de Modelado 3D & Renders" }).fill("1");
+  await page.getByRole("textbox", { name: "Cantidad de Servicio de dos unidades" }).fill("10");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await page.getByText("Elige la unidad de medida con la que se cotiza este servicio.", { exact: true }).waitFor();
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false, "Sin unidad elegida no se envía");
+  await page.getByRole("button", { name: "Unidad de Servicio de dos unidades" }).click();
+  await page.getByRole("menuitem", { name: "m.l." }).click();
+  assert.equal(await page.getByRole("textbox", { name: "Tarifa base de Servicio de dos unidades en USD" }).inputValue(), "12");
+
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await page.getByText("Has creado la cotización exitosamente").waitFor();
+  const [post] = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
+  assert.deepEqual(post.body.items, [
+    { quantity: "1", serviceId: 4, unitOptionPosition: 1, unitRate: "450" },
+    { quantity: "10", serviceId: 6, unitOptionPosition: 2, unitRate: "12" },
+  ]);
+});
+
 test("alta: validación local, cliente y proyecto reales, servicios del tabulador, total y POST exacto", async (context) => {
   const backend = createBackend();
   const page = await openQuotes(context, backend);
@@ -296,7 +375,8 @@ test("alta: validación local, cliente y proyecto reales, servicios del tabulado
   assert.equal(posts.length, 1, "Una sola alta");
   assert.deepEqual(posts[0].body, {
     clientId: 3,
-    items: [{ quantity: "200", serviceId: 1, unitRate: "12" }, { quantity: "35", serviceId: 2, unitRate: "45" }],
+    // Con una sola unidad cotizable, el concepto envía su posición (1, la principal).
+    items: [{ quantity: "200", serviceId: 1, unitOptionPosition: 1, unitRate: "12" }, { quantity: "35", serviceId: 2, unitOptionPosition: 1, unitRate: "45" }],
     notes: "Incluye dos visitas.",
     projectId: 9,
   });
@@ -448,7 +528,8 @@ test("edición: datos guardados, PATCH con expectedVersion y conflicto de versi�
   assert.equal(await quantity.inputValue(), "100", "El borrador se conserva");
   const patch = backend.requests.find((request) => request.method === "PATCH");
   assert.equal(patch.body.expectedVersion, 1);
-  assert.deepEqual(patch.body.items[0], { quantity: "100", serviceId: 1, unitRate: "12" });
+  // El concepto guardado conserva su unidad cotizada (posición 1).
+  assert.deepEqual(patch.body.items[0], { quantity: "100", serviceId: 1, unitOptionPosition: 1, unitRate: "12" });
   await page.getByRole("button", { name: "Recargar cotización" }).waitFor();
 });
 

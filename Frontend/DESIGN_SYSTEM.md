@@ -656,7 +656,8 @@ Validación, capturas y diferencias respecto a Figma:
       bases; escribir en el mismo campo filtra por símbolo, categoría o nombre de la base, sin
       distinguir mayúsculas ni acentos y con los superíndices como cifras («m2» encuentra «m²»;
       `filterServiceUnitOptions`). Elegir una opción fija base y denominación y cierra el listado;
-      volver a hacer clic o escribir busca otra, que la sustituye (una sola por servicio).
+      volver a hacer clic o escribir busca otra, que la sustituye (una por campo; las demás
+      unidades del servicio van en «Unidades alternativas»).
     - Estados: sin unidad, el texto ocupa el segmento derecho con «Buscar unidad». Con unidad, el
       símbolo y el Tag se ven siempre, con o sin foco; el campo nativo sigue enfocable sin ancho
       propio detrás del Tag, de modo que el contenedor de Tags no se desplaza y nunca oculta la
@@ -682,8 +683,9 @@ Validación, capturas y diferencias respecto a Figma:
       no es opción ni entra en el teclado, y la lista plana de índices sigue el orden visual.
     - El segmento del símbolo se ve siempre, separado del texto como en Figma; en el alta, vacío.
     - Búsqueda sin coincidencias: el listado se cierra y el campo indica crear la unidad con
-      «Crear unidad». `getServiceUnitCatalog` ofrece solo denominaciones activas de bases
-      activas, nunca las 48 bases sueltas, con cualquier modalidad.
+      «Crear unidad». `getServiceUnitCatalog` ofrece las denominaciones activas de bases activas
+      y, en cada grupo, la base sola como primera opción (categoría «sin denominación», sin Tag;
+      p. ej. «proyecto» para Permisología), con cualquier modalidad.
       El alta contextual conserva todas las bases activas, para crear la primera
       denominación de un símbolo, y su resultado queda elegido con su símbolo y su Tag. Sin
       catálogo se indica crear una unidad; siempre sigue disponible «+ Crear unidad» si hay bases
@@ -700,6 +702,23 @@ Validación, capturas y diferencias respecto a Figma:
       no genera cambios de unidad ni versiones innecesarias. El backend conserva la autoridad.
     - Las sugerencias usan la tira horizontal del Input (scroll con la barra oculta): con muchas
       unidades, las que no caben se alcanzan con Tab, la rueda o el gesto, o filtrando.
+  - Unidades alternativas (`ServiceUnitAlternatives`, bajo Unidad y Tarifa). Figma no tiene frames
+    para varias unidades: se componen solo con componentes existentes (`ServiceUnitField`,
+    `UnitRateField` y `Button`: enlaces S y quitar con icono). Hasta 10 unidades por servicio.
+    - «Añadir unidad alternativa» añade una fila: unidad (mismo combobox, con la base sola),
+      tarifa propia y quitar. Con alguna alternativa aparece «Tarifa de la unidad principal»; la
+      tarifa del servicio pasa a ser la de referencia del tabulador y nunca se copia a otra unidad.
+    - Una tarifa vacía es «pendiente de validación comercial» y es válida: la unidad se guarda pero
+      no se puede cotizar. Una unidad repetida se marca en su campo.
+    - «Añadir texto comercial» abre un Input opcional (80) para la unidad principal (p. ej.
+      «Global por Proyecto»); sustituye a la etiqueta compuesta en la tabla, la cotización y el PDF.
+    - Los dos enlaces van apilados (36 px cada uno); el skeleton `serviceForm` reserva ese espacio.
+    - Con una sola unidad se envía el atajo `measurementUnitId`/`unitDenominationId`; con
+      alternativas o texto comercial, la lista completa `unitOptions`. Los errores
+      `unitOptions.N.*` se muestran junto a su fila.
+  - Tabla del tabulador: un Badge por unidad en la columna Unidad (truncado si no cabe); una unidad
+    pendiente lleva el `title` «…: tarifa pendiente de validación comercial» (sin ella se conserva
+    el `title` automático de la etiqueta truncada). El filtro por unidad recorre todas.
   - «+ Crear unidad» (Figma `5767:342334`) despliega dentro del mismo modal, debajo de Unidad y
     Tarifa, la fila «Nombre de la unidad *» (`ServiceUnitCreateField`: Input «Prefix select» con la
     abreviatura y el texto, y «Guardar» con borde a la derecha); el botón cede su lugar a la fila.
@@ -807,6 +826,13 @@ Validación, capturas y diferencias respecto a Figma:
     horizontal de la tabla no recorte el menú: ofrece el servicio actual y los activos no incluidos,
     y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). Guardar
     crea o versiona; un 409 de versión conserva el borrador.
+  - Servicios con varias unidades: el selector muestra un Badge por unidad; un servicio sin
+    ninguna unidad con tarifa confirmada queda bloqueado (casilla `disabled`) con la nota «Tarifa
+    pendiente de validación comercial: aún no se puede cotizar.». En la tabla de incluidos, la
+    celda Unidad es un `DropdownMenu` (`LineUnitField`) con solo las unidades cotizables; elegir
+    otra trae su tarifa (`selectLineUnit`) y las pendientes se nombran en una nota. Un servicio con
+    una sola unidad conserva el Badge de siempre. El cuerpo envía `unitOptionPosition`; una línea ya
+    cotizada conserva su unidad aunque después cambie el tabulador.
   - Cambios sin guardar: toda salida pasa por `useUnsavedChangesGuard` (`src/hooks`). Cancelar,
     sidebar, breadcrumb, Atrás/Adelante y `navigate()` se detienen con `useBlocker` y se confirman
     en `QuoteDiscardDialog`; recargar o cerrar la pestaña muestra la confirmación nativa del
