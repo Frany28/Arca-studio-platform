@@ -389,10 +389,11 @@ function QuoteEditorSkeleton() {
       </div>
       <div className="flex flex-col gap-[16px]">
         <SkeletonBlock className="h-[191px] w-full rounded-[var(--radius-3)]" delay={300} />
-        {/* Resumen de importes: IVA referencial (solo referencia) y, debajo, el total de la cotización. */}
+        {/* Resumen de importes: IVA referencial y total estimado (informativos) y, al final, el total. */}
         <div className="flex flex-col items-end gap-[12px]">
           <SkeletonBlock className="h-[19px] w-[80px] rounded-[var(--radius-1)]" delay={330} tone="text" />
-          <SkeletonBlock className="h-[30px] w-[118px] rounded-[var(--radius-1)]" delay={345} tone="text" />
+          <SkeletonBlock className="h-[19px] w-[100px] rounded-[var(--radius-1)]" delay={345} tone="text" />
+          <SkeletonBlock className="h-[30px] w-[118px] rounded-[var(--radius-1)]" delay={360} tone="text" />
         </div>
         <ServiceFormFieldSkeleton controlHeight={130} delay={360} labelWidth={170} />
       </div>
