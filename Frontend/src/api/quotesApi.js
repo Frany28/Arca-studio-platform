@@ -59,6 +59,18 @@ export const quotesApi = {
   },
 
   /**
+   * Lee la tasa configurada del IVA referencial (informativo, no fiscal) para la vista previa del
+   * formulario. Sin tasa configurada responde `enabled=false` y `rate=null`.
+   *
+   * @param {Object} [options] - Cancelación.
+   * @param {AbortSignal} [options.signal] - Cancela la petición.
+   * @returns {Promise<{referenceVat: {enabled: boolean, rate: string|null}}>} Tasa configurada.
+   */
+  getReferenceVat({ signal } = {}) {
+    return apiRequest("/admin/quotes/reference-vat", { signal });
+  },
+
+  /**
    * Lee una cotización con su versión vigente (`currentVersion`) y sus conceptos.
    *
    * @param {Object} params - Cotización y cancelación.

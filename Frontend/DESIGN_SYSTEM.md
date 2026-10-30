@@ -581,6 +581,8 @@ Validación, capturas y diferencias respecto a Figma:
     junto al nombre solo si la descripción no está vacía; muestra el `Tooltip` del sistema en
     portal (máximo 224 px, flecha, encima del icono y dentro del viewport). Se abre con hover,
     foco de teclado o un toque (táctil), y se cierra con Escape, al salir o con un toque fuera.
+    Es `InfoHint` (`components/ui/Tooltip/InfoHint.jsx`), reutilizable para cualquier ayuda
+    breve junto a una etiqueta (`ServiceDescriptionHint` lo envuelve).
   - Barra: búsqueda en la API (nombre o código), filtro por unidad con las unidades que usan
     los servicios (base «m² · todas» con `measurementUnitId` o denominación con
     `unitDenominationId`, excluyentes), filtro por estado (`status`) y «Quitar filtros», que
@@ -809,8 +811,16 @@ Validación, capturas y diferencias respecto a Figma:
   - Editor (`/servicios-cotizaciones/cotizaciones/nueva` y `/:quoteId/editar`) con `Breadcrumb`:
     cliente y proyecto con `Input` `Tags` y búsqueda en la API (solo opciones existentes; el
     proyecto depende del cliente), selector de servicios activos, tabla de incluidos con cantidad y
-    tarifa editables y total previo calculado con el mismo motor decimal que el backend
-    (`quoteAmounts.js`, prueba de paridad). El selector no pagina: su tabla muestra cinco filas
+    tarifa editables y resumen de importes calculado con el motor del backend, importado sin
+    duplicar fórmulas (`quoteAmounts.js`, prueba de paridad). El resumen (`QuoteAmountsSummary`,
+    igual en crear y editar) es una lista de tres filas alineadas a los extremos: «Total de
+    servicios (sin IVA)» con el estilo del antiguo total (heading-7 / heading-4, `text-50`);
+    «IVA referencial (16 %)» con `InfoHint` («estimación informativa, no es una liquidación
+    fiscal definitiva») e importe en heading-7 `text-200`; y «Total estimado con IVA
+    (informativo)» en heading-6 `text-300`, separado del total de servicios. Sin tasa
+    configurada muestra «Pendiente de configuración» y «—» en el estimado (nunca un porcentaje
+    inventado); al editar, la tasa guardada de la cotización. El skeleton `quoteEditor` reserva
+    las tres filas. El selector no pagina: su tabla muestra cinco filas
     (cabecera fija de 49 px + 5 × 50 px) y el resto se recorre con el `ScrollBar` vertical
     interactivo (`useVerticalScrollBar`), situado sobre las filas en el margen derecho, además de
     rueda, touchpad y gestos; las barras nativas se ocultan. El mismo viewport conserva el

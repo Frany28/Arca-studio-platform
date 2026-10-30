@@ -147,3 +147,42 @@ test("listado: orden por total con cursor estable y filtro por intervalo de fech
   const future = await quotes.getQuotesPage({ createdFrom: new Date(Date.now() + 86_400_000).toISOString(), direction: "asc", sort: "code" });
   assert.deepEqual(future.quotes, []);
 });
+
+test("IVA referencial: se guarda con el redondeo del motor, la edición conserva la tasa y los CHECK rechazan incoherencias", { skip }, async () => {
+  const previous = process.env.QUOTE_REFERENCE_VAT_RATE;
+  try {
+    const service = await createService({ name: "Servicio con IVA" });
+    // 33.33 × 7.5 % = 2.49975 → 2.50 (mitad hacia arriba, igual que round() de PostgreSQL).
+    process.env.QUOTE_REFERENCE_VAT_RATE = "7.5";
+    const created = await quotes.createQuote({ payload: quoteBody([{ quantity: "1.000", serviceId: service, unitRate: "33.33" }]), user: { id: ids.admin } });
+    assert.deepEqual(created.referenceVat, { amount: "2.50", enabled: true, isReferenceOnly: true, rate: "7.50" });
+    assert.equal(created.estimatedTotalWithVat, "35.83");
+
+    process.env.QUOTE_REFERENCE_VAT_RATE = "16";
+    const updated = await quotes.updateQuote({
+      payload: { ...quoteBody([{ quantity: "2.000", serviceId: service, unitRate: "33.33" }]), expectedVersion: 1 },
+      quoteId: created.id,
+      user: { id: ids.admin },
+    });
+    assert.deepEqual([updated.quote.referenceVat.rate, updated.quote.referenceVat.amount, updated.quote.estimatedTotalWithVat], ["7.50", "5.00", "71.66"]);
+    // La versión 1 conserva sus importes aunque la vigente sea la 2 (historial inmutable).
+    assert.deepEqual(await rows(`select version_number, reference_vat_rate::text as rate, reference_vat_amount::text as amount
+      from public.quote_versions where quote_id = $1 order by version_number`, [created.id]),
+    [{ amount: "2.50", rate: "7.50", version_number: 1 }, { amount: "5.00", rate: "7.50", version_number: 2 }]);
+
+    delete process.env.QUOTE_REFERENCE_VAT_RATE;
+    const pending = await quotes.createQuote({ payload: quoteBody([{ quantity: "1.000", serviceId: service, unitRate: "10.00" }]), user: { id: ids.admin } });
+    assert.deepEqual([pending.referenceVat.enabled, pending.referenceVat.rate, pending.referenceVat.amount, pending.estimatedTotalWithVat], [false, null, "0.00", "10.00"]);
+
+    const insertVersion = (enabled, rate, amount) => rows(`insert into public.quote_versions (quote_id, version_number, client_id, client_name, project_id, project_name,
+        services_total, created_by, is_current, reference_vat_enabled, reference_vat_rate, reference_vat_amount)
+      values ($1, 99, $2, 'C', $3, 'P', 100, $4, false, $5, $6, $7)`, [created.id, ids.client, ids.project, ids.admin, enabled, rate, amount]);
+    await assert.rejects(insertVersion(true, 16, 15), { code: "23514" }, "Importe distinto del redondeo de la tasa");
+    await assert.rejects(insertVersion(true, null, 0), { code: "23514" }, "IVA habilitado sin tasa");
+    await assert.rejects(insertVersion(false, 16, 0), { code: "23514" }, "Tasa sin IVA habilitado");
+    await assert.rejects(insertVersion(true, 100.01, 100.01), { code: "23514" }, "Tasa mayor que 100");
+  } finally {
+    if (previous === undefined) delete process.env.QUOTE_REFERENCE_VAT_RATE;
+    else process.env.QUOTE_REFERENCE_VAT_RATE = previous;
+  }
+});

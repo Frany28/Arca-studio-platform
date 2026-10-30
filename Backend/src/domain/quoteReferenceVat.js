@@ -45,3 +45,16 @@ export function resolveQuoteReferenceVat({ configured, stored }) {
   if (stored?.enabled) return { enabled: true, rate: stored.rate };
   return configured.enabled ? { enabled: true, rate: configured.rate } : REFERENCE_VAT_NOT_CONFIGURED;
 }
+
+/**
+ * Escribe la tasa para mostrarla junto a «IVA referencial» sin los ceros decimales sobrantes de
+ * NUMERIC(5,2) («16.00» → «16», «12.50» → «12.5»). Trabaja sobre texto, sin convertir a Number.
+ *
+ * @param {string} rate - Tasa como texto decimal.
+ * @returns {string} Tasa para mostrar, sin el signo «%».
+ */
+export function formatReferenceVatRate(rate) {
+  const [integerPart, fractionPart = ""] = String(rate).split(".");
+  const fraction = fractionPart.replace(/0+$/, "");
+  return fraction ? `${integerPart}.${fraction}` : integerPart;
+}

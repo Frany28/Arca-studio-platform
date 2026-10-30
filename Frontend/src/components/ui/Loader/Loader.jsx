@@ -373,7 +373,7 @@ function QuoteServicePickerSkeleton() {
 
 // Formulario de cotización (Figma 5771:451934) mientras se lee la cotización editada: Datos
 // generales (dos campos de 320 × 61 px), selector de servicios (búsqueda, tabla de cinco filas de
-// 50 px y pie) y servicios incluidos (tabla, total y observaciones de 130 px). Los títulos, las
+// 50 px y pie) y servicios incluidos (tabla, resumen de importes y observaciones de 130 px). Los títulos, las
 // divisorias y el pie reales permanecen fuera del skeleton.
 function QuoteEditorSkeleton() {
   return (
@@ -389,7 +389,12 @@ function QuoteEditorSkeleton() {
       </div>
       <div className="flex flex-col gap-[16px]">
         <SkeletonBlock className="h-[191px] w-full rounded-[var(--radius-3)]" delay={300} />
-        <SkeletonBlock className="ml-auto h-[30px] w-[118px] rounded-[var(--radius-1)]" delay={330} tone="text" />
+        {/* Resumen de importes: total de servicios, IVA referencial y total estimado con IVA. */}
+        <div className="flex flex-col items-end gap-[12px]">
+          <SkeletonBlock className="h-[30px] w-[118px] rounded-[var(--radius-1)]" delay={330} tone="text" />
+          <SkeletonBlock className="h-[19px] w-[80px] rounded-[var(--radius-1)]" delay={345} tone="text" />
+          <SkeletonBlock className="h-[24px] w-[100px] rounded-[var(--radius-1)]" delay={360} tone="text" />
+        </div>
         <ServiceFormFieldSkeleton controlHeight={130} delay={360} labelWidth={170} />
       </div>
     </div>

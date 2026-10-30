@@ -17,6 +17,7 @@ const enabled = process.env.ARCA_SERVICE_CATALOG_DB_TESTS === "1";
 const createApiRoles = process.env.ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES === "1";
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
 const MIGRATION = "20261027120000_service_unit_options";
+const QUOTE_REFERENCE_VAT_MIGRATION = "20261031120000_quote_reference_vat";
 const PASSWORD = "Carga-Catalogo-2026!";
 
 let database;
@@ -159,6 +160,8 @@ test("migración: sin la estructura de unidades por servicio, o sin registrarla 
   assert.equal(plan.ready, false);
   assert.match(plan.blockers.join("\n"), /aplica la migración 20261027120000_service_unit_options/);
   await applyMigration(database.client, MIGRATION);
+  // Independiente de las unidades: deja quote_versions como en producción para cotizar.
+  await applyMigration(database.client, QUOTE_REFERENCE_VAT_MIGRATION);
   const unregistered = await loader.planOfficialCatalogLoad(catalog, { runId: "pre" });
   assert.deepEqual(unregistered.blockers, ["La migración 20261027120000_service_unit_options no figura como terminada en _prisma_migrations."]);
   // Registro equivalente al de `prisma migrate deploy`.

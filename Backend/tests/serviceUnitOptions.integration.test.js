@@ -12,6 +12,7 @@ const enabled = process.env.ARCA_SERVICE_CATALOG_DB_TESTS === "1";
 const createApiRoles = process.env.ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES === "1";
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
 const MIGRATION = "20261027120000_service_unit_options";
+const QUOTE_REFERENCE_VAT_MIGRATION = "20261031120000_quote_reference_vat";
 const SINGLE_UNIT_MIGRATION = "20261030120000_service_single_unit_option";
 
 let database;
@@ -152,6 +153,8 @@ before(async () => {
     values ($1, 1, $2, $3, 200, 14.00, 14.00, 2800.00)`, [quoteVersion.id, legacy.id, legacyVersion.id]);
 
   await applyMigration(database.client, MIGRATION);
+  // Independiente de las unidades: deja quote_versions como en producción para cotizar.
+  await applyMigration(database.client, QUOTE_REFERENCE_VAT_MIGRATION);
   ids = { admin: admin.id, client: client.id, denomination: denomination.id, legacy: legacy.id, legacyVersion: legacyVersion.id, project: project.id, unit };
 
   // Servicios con unidades alternativas y una cotización que usó una alternativa, como antes de la unidad única.

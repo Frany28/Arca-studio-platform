@@ -18,6 +18,18 @@ function toNumeric(value, scale) {
 }
 
 /**
+ * Suma dos importes NUMERIC(14,2) en centésimas, sin coma flotante, como la columna derivada.
+ *
+ * @param {string} left - Importe.
+ * @param {string} right - Importe.
+ * @returns {string} Suma con dos decimales.
+ */
+function addAmounts(left, right) {
+  const cents = BigInt(left.replace(".", "")) + BigInt(right.replace(".", ""));
+  return toNumeric(`${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`, 2);
+}
+
+/**
  * Crea el estado inicial: un administrador, dos clientes (uno inactivo), proyectos de cada uno y
  * servicios activos e inactivos con su versión vigente.
  *
@@ -91,7 +103,11 @@ function quoteRow(state, quote) {
     id: String(quote.id),
     notes: version.notes,
     project_id: String(version.projectId),
+    estimated_total_with_vat: addAmounts(version.servicesTotal, version.referenceVatAmount),
     project_name: version.projectName,
+    reference_vat_amount: version.referenceVatAmount,
+    reference_vat_enabled: version.referenceVatEnabled,
+    reference_vat_rate: version.referenceVatRate,
     services_total: version.servicesTotal,
     updated_at: quote.updatedAt,
     version_created_at: version.createdAt,
@@ -161,7 +177,9 @@ export function createQuoteDatabaseMock() {
       const id = state.nextVersionId++;
       state.versions.push({
         clientId: params[2], clientName: params[3], createdAt: new Date().toISOString(), createdBy: params[9], id, isCurrent: true,
-        notes: params[6], projectId: params[4], projectName: params[5], quoteId: params[0], servicesTotal: toNumeric(params[7], 2), versionNumber: params[1],
+        notes: params[6], projectId: params[4], projectName: params[5], quoteId: params[0],
+        referenceVatAmount: toNumeric(params[12], 2), referenceVatEnabled: params[10], referenceVatRate: params[11] === null ? null : toNumeric(params[11], 2),
+        servicesTotal: toNumeric(params[7], 2), versionNumber: params[1],
       });
       return result([{ id: String(id) }]);
     }

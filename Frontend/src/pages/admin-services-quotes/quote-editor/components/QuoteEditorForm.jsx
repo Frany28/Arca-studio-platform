@@ -5,6 +5,7 @@ import Button from "../../../../components/ui/Button/Button.jsx";
 import TextArea from "../../../../components/ui/TextArea/TextArea.jsx";
 import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard.js";
 import { useQuoteDraft } from "../hooks/useQuoteDraft.js";
+import { useQuoteReferenceVat } from "../hooks/useQuoteReferenceVat.js";
 import { useQuoteSubmit } from "../hooks/useQuoteSubmit.js";
 import { calculateQuotePreview } from "../utils/quoteAmounts.js";
 import { QUOTE_NOTES_MAX_LENGTH, isQuoteDraftDirty, validateQuoteDraft } from "../utils/quoteDraft.js";
@@ -46,7 +47,13 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   const [attempted, setAttempted] = useState(false);
   // Respuesta del alta confirmada mientras se muestra «Has creado la cotización»; null si no.
   const [createdResponse, setCreatedResponse] = useState(null);
-  const preview = useMemo(() => calculateQuotePreview(draft.lines), [draft.lines]);
+  const vat = useQuoteReferenceVat(quote?.referenceVat);
+  // La tasa es texto: depender de ella (no del objeto) evita recalcular en cada render.
+  const vatRate = vat.referenceVat?.rate ?? null;
+  const preview = useMemo(
+    () => calculateQuotePreview(draft.lines, vatRate === null ? null : { enabled: true, rate: vatRate }),
+    [draft.lines, vatRate],
+  );
   const activeServices = useMemo(() => catalog.services.filter((service) => service.isActive), [catalog.services]);
   const includedIds = useMemo(() => new Set(draft.lines.map((line) => line.serviceId)), [draft.lines]);
   const localErrors = validateQuoteDraft(draft, preview);
@@ -109,6 +116,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
           lines={draft.lines}
           services={activeServices}
           preview={preview}
+          vat={vat}
           errors={errors}
           disabled={submitting}
           onLineChange={(key, field, value) => actions.updateLine(key, field, value)}

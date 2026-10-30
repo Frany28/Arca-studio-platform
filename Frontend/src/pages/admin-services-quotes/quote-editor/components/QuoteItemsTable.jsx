@@ -10,6 +10,7 @@ import Input from "../../../../components/ui/Input/Input.jsx";
 import HorizontalScrollViewport from "../../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatDecimalMoney } from "../../utils/moneyFormat.js";
+import QuoteAmountsSummary from "./QuoteAmountsSummary.jsx";
 
 // Figma 5771:367433: 48 (vacía), Servicio 300, Unidad 200, Cantidad/Tarifa base/Subtotal
 // flexibles y Acciones 107. Mínimo de 1102 px como el resto de tablas del módulo.
@@ -80,12 +81,15 @@ function getLineServiceOptions(line, services, includedIds) {
  * «Servicios incluidos» del formulario (Figma 5771:367425): cada concepto con el desplegable de
  * su servicio (cambiarlo trae la unidad y la tarifa del nuevo), su unidad, cantidad y tarifa
  * aplicada editables, el subtotal calculado al momento y «Eliminar» en
- * el menú de la fila; debajo, el total de la cotización. Los importes mostrados son una vista
- * previa con las reglas del backend, que recalcula y guarda los definitivos.
+ * el menú de la fila; debajo, el resumen de importes (total de servicios, IVA referencial y total
+ * estimado con IVA). Los importes mostrados son una vista previa con el motor del backend, que
+ * recalcula y guarda los definitivos.
  *
  * @param {Object} props - Conceptos, importes, errores y callbacks.
  * @param {Array<Object>} props.lines - Conceptos del borrador.
- * @param {{lines: Array<{subtotal: string|null}>, total: string|null}} props.preview - Importes calculados.
+ * @param {{lines: Array<{subtotal: string|null}>, total: string|null, referenceVatAmount: string|null,
+ *   estimatedTotalWithVat: string|null}} props.preview - Importes calculados.
+ * @param {Object} props.vat - IVA referencial aplicado (useQuoteReferenceVat).
  * @param {Record<string, string>} props.errors - Errores por ruta (`items.0.quantity`).
  * @param {(key: string, field: "quantity"|"unitRate", value: string) => void} props.onLineChange - Edita un concepto.
  * @param {(key: string) => void} props.onRemove - Quita un concepto.
@@ -94,10 +98,9 @@ function getLineServiceOptions(line, services, includedIds) {
  * @param {boolean} props.disabled - Bloquea la edición durante el guardado.
  * @returns {import("react").ReactElement} Sección.
  */
-function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onServiceChange, preview, services }) {
+function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onServiceChange, preview, services, vat }) {
   const [openHintKey, setOpenHintKey] = useState(null);
   const includedIds = new Set(lines.map((line) => line.serviceId));
-  const total = preview.total === null ? "—" : formatDecimalMoney(preview.total, { alwaysShowCents: true });
 
   return (
     <section className="flex flex-col gap-[16px]" aria-labelledby="quote-items-title">
@@ -227,10 +230,7 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onSe
       </div>
       {errors.items ? <HintText hintText={errors.items} state="Error" role="alert" className="w-full" /> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-y-[16px]">
-        <p className="text-heading-7 text-[var(--color-text-50)]">Total de la cotización</p>
-        <p className="text-heading-4 text-[var(--color-text-50)] tabular-nums" aria-live="polite">{total}</p>
-      </div>
+      <QuoteAmountsSummary preview={preview} vat={vat} />
     </section>
   );
 }

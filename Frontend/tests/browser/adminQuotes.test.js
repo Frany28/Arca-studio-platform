@@ -7,6 +7,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 import { buildQuoteDocument } from "../../../Backend/src/domain/quoteDocument.js";
+import { REFERENCE_VAT_NOT_CONFIGURED, resolveQuoteReferenceVat } from "../../../Backend/src/domain/quoteReferenceVat.js";
 import { calculateQuoteTotals } from "../../../Backend/src/domain/quoteTotals.js";
 import { loadQuotePdfAssets } from "../../../Backend/src/services/quotePdfAssets.js";
 import { renderQuotePdf } from "../../../Backend/src/services/quotePdfRenderer.js";
@@ -62,10 +63,11 @@ after(async () => {
  * @param {number} version - Versión vigente.
  * @param {string} createdAt - Fecha de creación.
  * @param {Array<Object>} [services] - Servicios del tabulador simulado.
+ * @param {{enabled: boolean, rate: string|null}} [referenceVat] - IVA referencial aplicado (como el backend).
  * @returns {Object} Cotización.
  */
-function buildQuote(id, payload, version, createdAt, services = SERVICES) {
-  const totals = calculateQuoteTotals({ items: payload.items, referenceVat: { enabled: false } });
+function buildQuote(id, payload, version, createdAt, services = SERVICES, referenceVat = REFERENCE_VAT_NOT_CONFIGURED) {
+  const totals = calculateQuoteTotals({ items: payload.items, referenceVat });
   const client = CLIENTS.find((candidate) => candidate.id === payload.clientId);
   const project = PROJECTS[payload.clientId].find((candidate) => candidate.id === payload.projectId);
   return {
@@ -91,6 +93,8 @@ function buildQuote(id, payload, version, createdAt, services = SERVICES) {
     }),
     notes: payload.notes ?? null,
     project: { id: project.id, name: project.name },
+    estimatedTotalWithVat: totals.estimatedTotalWithVat,
+    referenceVat: { ...totals.referenceVat, rate: referenceVat.enabled ? totals.referenceVat.rate : null },
     servicesTotal: totals.servicesTotal,
     updatedAt: createdAt,
     version: { createdAt, createdBy: { hasProfilePhoto: false, id: 1, name: "Ana Admin" }, id: version },
@@ -100,12 +104,14 @@ function buildQuote(id, payload, version, createdAt, services = SERVICES) {
 /**
  * Backend simulado de cotizaciones con estado en memoria y registro de peticiones.
  *
- * @param {Object} [options] - Fallos inyectados por operación (`PATCH /api/admin/quotes/:id`) y
- * servicios del tabulador (por defecto, SERVICES).
+ * @param {Object} [options] - Fallos inyectados por operación (`PATCH /api/admin/quotes/:id`),
+ * servicios del tabulador (por defecto, SERVICES) y tasa configurada del IVA referencial (por
+ * defecto, pendiente de configuración). Las altas y ediciones aplican la tasa con las reglas reales.
  * @returns {Object} Estado y manejador de rutas.
  */
-function createBackend({ failures = {}, services = SERVICES } = {}) {
+function createBackend({ failures = {}, referenceVat = REFERENCE_VAT_NOT_CONFIGURED, services = SERVICES } = {}) {
   const state = {
+    referenceVat,
     quotes: [
       buildQuote(1, { clientId: 3, items: [{ quantity: "200", serviceId: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitRate: "47" }], notes: "Incluye visitas.", projectId: 9 }, 1, "2026-03-23T15:00:00.000Z"),
       buildQuote(2, { clientId: 4, items: [{ quantity: "10", serviceId: 1, unitRate: "14" }], projectId: 10 }, 1, "2026-04-12T15:00:00.000Z"),
@@ -130,6 +136,7 @@ function createBackend({ failures = {}, services = SERVICES } = {}) {
     if (path === "/api/projects") return json(route, 200, { nextCursor: null, projects: [] });
     if (path === "/api/admin/services") return json(route, 200, { nextCursor: null, services });
     if (path === "/api/admin/quotes/summary") return json(route, 200, { summary: { total: state.quotes.length } });
+    if (path === "/api/admin/quotes/reference-vat") return json(route, 200, { referenceVat: state.referenceVat });
     if (path === "/api/admin/quotes/clients") {
       const search = (url.searchParams.get("search") || "").toLowerCase();
       return json(route, 200, { clients: CLIENTS.filter((client) => client.name.toLowerCase().includes(search)), nextCursor: null });
@@ -145,7 +152,8 @@ function createBackend({ failures = {}, services = SERVICES } = {}) {
       return json(route, 200, { nextCursor: null, quotes });
     }
     if (path === "/api/admin/quotes" && method === "POST") {
-      const quote = buildQuote(state.quotes.length + 1, body, 1, new Date().toISOString(), services);
+      const vat = resolveQuoteReferenceVat({ configured: state.referenceVat, stored: null });
+      const quote = buildQuote(state.quotes.length + 1, body, 1, new Date().toISOString(), services, vat);
       state.quotes.push(quote);
       return json(route, 201, { message: "Cotización creada correctamente.", quote });
     }
@@ -165,7 +173,8 @@ function createBackend({ failures = {}, services = SERVICES } = {}) {
       const current = state.quotes[index];
       const { expectedVersion, ...content } = body;
       if (expectedVersion !== current.currentVersion) return json(route, 409, { code: "QUOTE_VERSION_CONFLICT", message: "Otro administrador modificó esta cotización. Recarga los datos antes de guardar." });
-      state.quotes[index] = buildQuote(current.id, content, current.currentVersion + 1, current.createdAt, services);
+      const vat = resolveQuoteReferenceVat({ configured: state.referenceVat, stored: current.referenceVat });
+      state.quotes[index] = buildQuote(current.id, content, current.currentVersion + 1, current.createdAt, services, vat);
       return json(route, 200, { changed: true, message: "Cotización actualizada correctamente.", quote: state.quotes[index] });
     }
     state.requests.push({ method, path, unexpected: true });
@@ -672,5 +681,134 @@ test("responsive y tema oscuro: listado y formulario sin desplazamiento horizont
     await page.getByRole("heading", { name: "Seleccionar servicios" }).waitFor();
     assert.equal(await overflow(), 0, `Formulario a ${viewport.width} px`);
     assert.equal(await page.evaluate(() => document.documentElement.classList.contains("dark")), true);
+  }
+});
+
+/**
+ * Textos del resumen de importes como pares [etiqueta, valor].
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<Array<[string, string]>>} Filas del resumen.
+ */
+function readAmountsSummary(page) {
+  return page.locator("[data-quote-amounts-summary] > div").evaluateAll((rows) => rows.map((row) => [
+    row.querySelector("dt").textContent.trim(),
+    row.querySelector("dd").textContent.trim(),
+  ]));
+}
+
+/**
+ * Añade Anteproyecto (200 m²) y Puntos eléctricos (35 pt.) al borrador: total de servicios 4445.00.
+ *
+ * @param {import("playwright").Page} page - Página del formulario.
+ * @returns {Promise<void>}
+ */
+async function addSampleServices(page) {
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).click();
+  await picker.getByRole("checkbox", { name: "Seleccionar Puntos eléctricos y fuerza" }).click();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+  await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).fill("200");
+  await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("35");
+}
+
+test("IVA referencial: total sin IVA, IVA con su tasa y total estimado en tiempo real; el POST no envía IVA", async (context) => {
+  const backend = createBackend({ referenceVat: { enabled: true, rate: "16.00" } });
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  await page.getByText("IVA referencial (16 %)", { exact: true }).waitFor();
+  assert.deepEqual(await readAmountsSummary(page), [
+    ["Total de servicios (sin IVA)", "$0.00"], ["IVA referencial (16 %)", "$0.00"], ["Total estimado con IVA (informativo)", "$0.00"],
+  ]);
+
+  await addSampleServices(page);
+  await page.getByText("$5,156.20", { exact: true }).waitFor();
+  assert.deepEqual(await readAmountsSummary(page), [
+    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (16 %)", "$711.20"], ["Total estimado con IVA (informativo)", "$5,156.20"],
+  ]);
+  // Tarifa personalizada: 200 × 14.05 + 35 × 47 = 4455.00; IVA 712.80.
+  await page.getByRole("textbox", { name: "Tarifa base de Anteproyecto arquitectónico en USD" }).fill("14.05");
+  await page.getByText("$5,167.80", { exact: true }).waitFor();
+  assert.deepEqual((await readAmountsSummary(page))[1], ["IVA referencial (16 %)", "$712.80"]);
+  // Una cantidad no válida no muestra cifras que el servidor rechazaría.
+  await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("");
+  assert.deepEqual((await readAmountsSummary(page)).map(([, value]) => value), ["—", "—", "—"]);
+  await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("35");
+
+  // La ayuda aclara que es una estimación y no una liquidación fiscal.
+  await page.getByRole("button", { name: "Información sobre el IVA referencial" }).click();
+  await page.getByText(/No es una liquidación fiscal definitiva/).waitFor();
+  await page.keyboard.press("Escape");
+
+  await page.locator("#quote-client").fill("Leo");
+  await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  await page.locator("#quote-project").click();
+  await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await page.getByText("Has creado la cotización exitosamente").waitFor();
+  const [post] = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
+  assert.deepEqual(Object.keys(post.body).sort(), ["clientId", "items", "notes", "projectId"], "La tasa la decide el servidor");
+  assert.deepEqual(backend.quotes.at(-1).referenceVat, { amount: "712.80", enabled: true, isReferenceOnly: true, rate: "16.00" });
+});
+
+test("IVA referencial: pendiente de configuración sin inventar una tasa, y tasa 0 %", async (context) => {
+  const pendingBackend = createBackend();
+  const page = await openQuotes(context, pendingBackend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  await page.getByText("Pendiente de configuración", { exact: true }).waitFor();
+  await addSampleServices(page);
+  await page.getByText("$4,445.00", { exact: true }).waitFor();
+  assert.deepEqual(await readAmountsSummary(page), [
+    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial", "Pendiente de configuración"], ["Total estimado con IVA (informativo)", "—"],
+  ]);
+  await page.getByRole("button", { name: "Información sobre el IVA referencial" }).click();
+  await page.getByText(/Aún no hay una tasa de IVA configurada/).waitFor();
+
+  const zeroBackend = createBackend({ referenceVat: { enabled: true, rate: "0.00" } });
+  const zeroPage = await openQuotes(context, zeroBackend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  await zeroPage.getByText("IVA referencial (0 %)", { exact: true }).waitFor();
+  await addSampleServices(zeroPage);
+  await zeroPage.getByText("$4,445.00", { exact: true }).first().waitFor();
+  assert.deepEqual(await readAmountsSummary(zeroPage), [
+    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (0 %)", "$0.00"], ["Total estimado con IVA (informativo)", "$4,445.00"],
+  ]);
+});
+
+test("IVA referencial al editar: conserva la tasa guardada aunque cambie la configurada y recalcula al cambiar cantidades", async (context) => {
+  const backend = createBackend({ referenceVat: { enabled: true, rate: "16.00" } });
+  // COT-001 se guardó con 12.5 %; la configuración actual es 16 %.
+  const saved = backend.quotes[0];
+  backend.quotes[0] = buildQuote(1, {
+    clientId: saved.client.id, items: saved.items.map((item) => ({ quantity: item.quantity, serviceId: item.service.id, unitRate: item.unitRate })),
+    notes: saved.notes, projectId: saved.project.id,
+  }, 1, saved.createdAt, SERVICES, { enabled: true, rate: "12.50" });
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/1/editar" });
+  await page.getByText("IVA referencial (12.5 %)", { exact: true }).waitFor();
+  // 4445.00 × 12.5 % = 555.625 → 555.63.
+  assert.deepEqual(await readAmountsSummary(page), [
+    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (12.5 %)", "$555.63"], ["Total estimado con IVA (informativo)", "$5,000.63"],
+  ]);
+  assert.equal(backend.requests.some((request) => request.path === "/api/admin/quotes/reference-vat"), false, "La tasa guardada no depende de la configurada");
+
+  await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).fill("100");
+  // 3045.00 × 12.5 % = 380.625 → 380.63.
+  await page.getByText("$3,425.63", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Actualizar" }).click();
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
+  assert.deepEqual([backend.quotes[0].currentVersion, backend.quotes[0].referenceVat.rate, backend.quotes[0].referenceVat.amount], [2, "12.50", "380.63"]);
+});
+
+test("IVA referencial: resumen dentro del viewport en móvil y escritorio, claro y oscuro", async (context) => {
+  for (const [theme, viewport] of [["dark", { height: 812, width: 375 }], ["light", { height: 812, width: 375 }], ["dark", { height: 900, width: 1440 }]]) {
+    const backend = createBackend({ referenceVat: { enabled: true, rate: "16.00" } });
+    const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", theme, viewport });
+    await addSampleServices(page);
+    await page.getByText("$5,156.20", { exact: true }).waitFor();
+    const layout = await page.locator("[data-quote-amounts-summary]").evaluate((summary) => ({
+      inside: [...summary.querySelectorAll("dt, dd")].every((cell) => {
+        const box = cell.getBoundingClientRect();
+        return box.left >= 0 && box.right <= document.documentElement.clientWidth;
+      }),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    }));
+    assert.deepEqual(layout, { inside: true, overflow: 0 }, `${theme} ${viewport.width} px`);
   }
 });

@@ -101,5 +101,38 @@ test("entradas del formulario: coma decimal, ceros sobrantes y unidades sin deci
   assert.equal(calculateLineAmount({ quantity: "2.5", unitAllowsDecimals: false, unitRate: "1" }).errors.quantity, "La unidad de este servicio solo admite cantidades enteras.");
   assert.equal(calculateLineAmount({ quantity: "2.000", unitAllowsDecimals: false, unitRate: "1" }).subtotal, "2.00");
   assert.equal(calculateQuotePreview([{ quantity: "", unitRate: "1" }]).total, null, "Sin cantidad no se muestra un total");
-  assert.deepEqual(calculateQuotePreview([]), { lines: [], total: "0.00" });
+  assert.deepEqual(calculateQuotePreview([]), { estimatedTotalWithVat: null, lines: [], referenceVatAmount: null, total: "0.00" });
+});
+
+test("IVA referencial: la vista previa usa el motor del backend con la tasa, 0 %, sin tasa y redondeos", () => {
+  const lines = [{ quantity: "200", unitAllowsDecimals: true, unitRate: "14" }, { quantity: "35", unitAllowsDecimals: true, unitRate: "47" }];
+  assert.deepEqual(
+    { ...calculateQuotePreview(lines, { enabled: true, rate: "16.00" }), lines: undefined },
+    { estimatedTotalWithVat: "5156.20", lines: undefined, referenceVatAmount: "711.20", total: "4445.00" },
+  );
+  // 33.33 × 7.5 % = 2.49975 → 2.50 (mitad hacia arriba); tasa 0 %: IVA 0.00 y total estimado = total.
+  const rounding = calculateQuotePreview([{ quantity: "1", unitRate: "33.33" }], { enabled: true, rate: "7.50" });
+  assert.deepEqual([rounding.referenceVatAmount, rounding.estimatedTotalWithVat], ["2.50", "35.83"]);
+  const zero = calculateQuotePreview(lines, { enabled: true, rate: "0.00" });
+  assert.deepEqual([zero.referenceVatAmount, zero.estimatedTotalWithVat], ["0.00", "4445.00"]);
+  // Pendiente de configuración, deshabilitado o tasa aún no leída: no se calcula IVA.
+  for (const vat of [null, { enabled: false, rate: null }]) {
+    const preview = calculateQuotePreview(lines, vat);
+    assert.deepEqual([preview.total, preview.referenceVatAmount, preview.estimatedTotalWithVat], ["4445.00", null, null]);
+  }
+  // Una línea inválida anula todos los totales; un total con IVA por encima del máximo, solo el estimado.
+  assert.equal(calculateQuotePreview([{ quantity: "", unitRate: "1" }], { enabled: true, rate: "16.00" }).referenceVatAmount, null);
+  const huge = calculateQuotePreview([{ quantity: "1", unitRate: "999999999999.99" }], { enabled: true, rate: "16.00" });
+  assert.deepEqual([huge.total, huge.estimatedTotalWithVat], ["999999999999.99", null]);
+});
+
+test("paridad del IVA: coincide con el motor en importes aleatorios y tasas con decimales", () => {
+  const random = seededRandom(20261031);
+  for (let index = 0; index < 200; index += 1) {
+    const items = [{ quantity: String(1 + Math.floor(random() * 500)), unitRate: randomDecimal(random, 4, 2) }];
+    const rate = randomDecimal(random, 2, 2);
+    const expected = calculateQuoteTotals({ items, referenceVat: { enabled: true, rate } });
+    const preview = calculateQuotePreview(items, { enabled: true, rate: expected.referenceVat.rate });
+    assert.deepEqual([preview.referenceVatAmount, preview.estimatedTotalWithVat], [expected.referenceVat.amount, expected.estimatedTotalWithVat], JSON.stringify({ items, rate }));
+  }
 });

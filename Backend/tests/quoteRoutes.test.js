@@ -55,7 +55,7 @@ function createQuote(server, overrides = {}) {
 test("sin sesión responde 401 y sin rol administrador 403, sin consultar PostgreSQL", async (context) => {
   const server = await startServer(context, { authenticated: false });
   const requests = [
-    ["GET", ""], ["GET", "/summary"], ["GET", "/clients"], ["GET", "/clients/3/projects"], ["GET", "/1"],
+    ["GET", ""], ["GET", "/summary"], ["GET", "/reference-vat"], ["GET", "/clients"], ["GET", "/clients/3/projects"], ["GET", "/1"],
     ["GET", "/1/pdf"], ["POST", "", VALID_CREATE], ["PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1 }],
   ];
   for (const [method, path, body] of requests) {
@@ -179,6 +179,72 @@ test("edición: versiona solo cambios efectivos y respeta expectedVersion", asyn
   const missing = await server.send("PATCH", "/999", { ...VALID_CREATE, expectedVersion: 1 });
   assert.equal(missing.status, 404);
   assert.equal(missing.body.code, "QUOTE_NOT_FOUND");
+});
+
+/**
+ * Fija la tasa configurada del IVA referencial durante la prueba y la restaura al terminar.
+ *
+ * @param {import("node:test").TestContext} context - Contexto de la prueba.
+ * @param {string|undefined} rate - Valor de QUOTE_REFERENCE_VAT_RATE; undefined la retira.
+ * @returns {void}
+ */
+function setReferenceVatRate(context, rate) {
+  const previous = process.env.QUOTE_REFERENCE_VAT_RATE;
+  if (rate === undefined) delete process.env.QUOTE_REFERENCE_VAT_RATE;
+  else process.env.QUOTE_REFERENCE_VAT_RATE = rate;
+  context.after(() => {
+    if (previous === undefined) delete process.env.QUOTE_REFERENCE_VAT_RATE;
+    else process.env.QUOTE_REFERENCE_VAT_RATE = previous;
+  });
+}
+
+test("IVA referencial: la tasa configurada se expone, pendiente sin valor y 500 si no es válida", async (context) => {
+  const server = await startServer(context);
+  setReferenceVatRate(context, undefined);
+  const pending = await server.send("GET", "/reference-vat");
+  assert.equal(pending.status, 200);
+  assert.equal(pending.headers.get?.("cache-control") ?? pending.headers["cache-control"], "no-store");
+  assert.deepEqual(pending.body, { referenceVat: { enabled: false, rate: null } });
+
+  process.env.QUOTE_REFERENCE_VAT_RATE = "16";
+  assert.deepEqual((await server.send("GET", "/reference-vat")).body, { referenceVat: { enabled: true, rate: "16.00" } });
+
+  process.env.QUOTE_REFERENCE_VAT_RATE = "16%";
+  const invalid = await server.send("GET", "/reference-vat");
+  assert.equal(invalid.status, 500);
+  assert.equal(invalid.body.code, "QUOTE_REFERENCE_VAT_MISCONFIGURED");
+  const rejected = await createQuote(server);
+  assert.equal(rejected.status, 500);
+  assert.equal(server.database.state.versions.length, 0, "Con una tasa no válida no se guarda nada");
+});
+
+test("IVA referencial: se guarda con la versión, la edición conserva la tasa y una pendiente adopta la configurada", async (context) => {
+  const server = await startServer(context);
+  setReferenceVatRate(context, "16");
+  const { quote } = (await createQuote(server)).body;
+  assert.equal(quote.servicesTotal, "4445.00");
+  assert.deepEqual(quote.referenceVat, { amount: "711.20", enabled: true, isReferenceOnly: true, rate: "16.00" });
+  assert.equal(quote.estimatedTotalWithVat, "5156.20");
+
+  // La configuración cambia: la cotización ya guardada conserva su 16 % al editarse.
+  process.env.QUOTE_REFERENCE_VAT_RATE = "10";
+  const edited = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, items: [{ quantity: "100", serviceId: 1, unitRate: "14.05" }] });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.quote.servicesTotal, "1405.00");
+  assert.deepEqual(edited.body.quote.referenceVat, { amount: "224.80", enabled: true, isReferenceOnly: true, rate: "16.00" });
+  assert.equal(edited.body.quote.estimatedTotalWithVat, "1629.80");
+  assert.deepEqual((await server.send("GET", `/${quote.id}`)).body.quote.referenceVat.rate, "16.00", "La lectura devuelve lo guardado");
+
+  // Guardada sin tasa (pendiente): sin IVA; con la tasa configurada después, guardar crea una versión con ella.
+  delete process.env.QUOTE_REFERENCE_VAT_RATE;
+  const pending = (await createQuote(server)).body.quote;
+  assert.deepEqual(pending.referenceVat, { amount: "0.00", enabled: false, isReferenceOnly: true, rate: null });
+  assert.equal(pending.estimatedTotalWithVat, pending.servicesTotal);
+  process.env.QUOTE_REFERENCE_VAT_RATE = "0";
+  const adopted = await server.send("PATCH", `/${pending.id}`, { ...VALID_CREATE, expectedVersion: 1 });
+  assert.equal(adopted.body.changed, true);
+  assert.deepEqual(adopted.body.quote.referenceVat, { amount: "0.00", enabled: true, isReferenceOnly: true, rate: "0.00" });
+  assert.equal(adopted.body.quote.estimatedTotalWithVat, "4445.00");
 });
 
 test("edición: un servicio ya cotizado conserva su versión aunque se desactive; uno nuevo inactivo se rechaza", async (context) => {

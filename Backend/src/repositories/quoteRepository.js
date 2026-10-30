@@ -5,7 +5,9 @@ import { toContainsPattern } from "../utils/sqlPatterns.js";
 
 const QUOTE_SUMMARY_COLUMNS = `
   q.id, q.code, q.created_at, q.updated_at,
-  v.version_number, v.client_id, v.client_name, v.project_id, v.project_name, v.services_total, v.currency_code`;
+  v.version_number, v.client_id, v.client_name, v.project_id, v.project_name, v.services_total, v.currency_code,
+  v.reference_vat_enabled, v.reference_vat_rate, v.reference_vat_amount,
+  (v.services_total + v.reference_vat_amount)::numeric(14,2) as estimated_total_with_vat`;
 
 const QUOTE_FROM = `
   from public.quotes q
@@ -51,7 +53,8 @@ function toUserName(firstName, lastName) {
 
 /**
  * Transforma una fila del listado en la representación pública de una cotización.
- * Los importes se conservan como texto decimal de PostgreSQL para no perder precisión.
+ * Los importes se conservan como texto decimal de PostgreSQL para no perder precisión. El IVA
+ * referencial es el guardado con la versión (informativo, no fiscal); sin tasa, deshabilitado.
  *
  * @param {object} row - Fila con la cotización y su versión vigente.
  * @returns {object} Resumen de la cotización.
@@ -64,7 +67,14 @@ function toQuoteSummary(row) {
     currency: row.currency_code,
     currentVersion: Number(row.version_number),
     id: Number(row.id),
+    estimatedTotalWithVat: row.estimated_total_with_vat,
     project: { id: Number(row.project_id), name: row.project_name },
+    referenceVat: {
+      amount: row.reference_vat_amount,
+      enabled: row.reference_vat_enabled,
+      isReferenceOnly: true,
+      rate: row.reference_vat_rate,
+    },
     servicesTotal: row.services_total,
     updatedAt: new Date(row.updated_at).toISOString(),
   };
@@ -296,6 +306,8 @@ export async function retireCurrentQuoteVersion(client, quoteId) {
  * @param {{ id: number, name: string }} version.project - Proyecto y su nombre copiado.
  * @param {string|null} version.notes - Observaciones.
  * @param {string} version.servicesTotal - Total calculado por el motor.
+ * @param {{ enabled: boolean, rate: string|null, amount: string }} version.referenceVat - IVA
+ *   referencial calculado por el motor.
  * @param {string} version.currency - Moneda (USD).
  * @param {number} version.userId - Administrador responsable.
  * @returns {Promise<number>} Id de la versión.
@@ -303,11 +315,13 @@ export async function retireCurrentQuoteVersion(client, quoteId) {
 export async function insertQuoteVersion(client, version) {
   const result = await client.query(
     `insert into public.quote_versions (
-       quote_id, version_number, client_id, client_name, project_id, project_name, notes, services_total, currency_code, created_by
-     ) values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9, $10)
+       quote_id, version_number, client_id, client_name, project_id, project_name, notes, services_total, currency_code, created_by,
+       reference_vat_enabled, reference_vat_rate, reference_vat_amount
+     ) values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9, $10, $11, $12::numeric, $13::numeric)
      returning id`,
     [version.quoteId, version.versionNumber, version.client.id, version.client.name, version.project.id,
-      version.project.name, version.notes, version.servicesTotal, version.currency, version.userId],
+      version.project.name, version.notes, version.servicesTotal, version.currency, version.userId,
+      version.referenceVat.enabled, version.referenceVat.rate, version.referenceVat.amount],
   );
   return Number(result.rows[0].id);
 }

@@ -5,6 +5,7 @@ import {
   getQuoteClientProjects,
   getQuoteClients,
   getQuotePdfDocument,
+  getQuoteReferenceVat,
   getQuotes,
   getQuotesSummary,
   patchQuote,
@@ -24,7 +25,7 @@ import {
 } from "../validation/quoteSchemas.js";
 
 // Cotizaciones administrativas (/api/admin/quotes), exclusivas de administradores como el resto
-// del módulo Servicios y cotizaciones. Las rutas fijas (summary, clients) se declaran antes de
+// del módulo Servicios y cotizaciones. Las rutas fijas (summary, reference-vat, clients) se declaran antes de
 // /:quoteId. No existe eliminación: las cotizaciones se conservan con su historial de versiones.
 const router = Router();
 router.use(requireAuth, requireRoles("admin"));
@@ -32,6 +33,7 @@ router.use(requireAuth, requireRoles("admin"));
 router.get("/", validate(quoteListSchema), getQuotes);
 router.post("/", adminRateLimits.quoteWrite, validate(quoteCreateSchema), postQuote);
 router.get("/summary", getQuotesSummary);
+router.get("/reference-vat", getQuoteReferenceVat);
 router.get("/clients", validate(quoteClientOptionsSchema), getQuoteClients);
 router.get("/clients/:clientId/projects", validate(quoteProjectOptionsSchema), getQuoteClientProjects);
 router.get("/:quoteId", validate(quoteDetailSchema), getQuoteById);

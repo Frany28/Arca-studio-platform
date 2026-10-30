@@ -118,9 +118,8 @@ function comparableDecimal(value, format) {
 
 /**
  * Representa el contenido versionado de una cotización como texto estable, para decidir si un
- * guardado cambia algo. Incluye cliente, proyecto, observaciones, el IVA referencial aplicado (una
- * versión guardada sin tasa que pasa a tenerla cambia) y, en orden, cada concepto con la versión
- * del servicio, la unidad elegida, la cantidad y la tarifa aplicada.
+ * guardado cambia algo: cliente, proyecto, observaciones, la tasa del IVA referencial y, en orden,
+ * cada concepto con la versión del servicio, la unidad elegida, la cantidad y la tarifa aplicada.
  *
  * @param {object} content - Contenido de la cotización.
  * @param {number} content.clientId - Cliente.

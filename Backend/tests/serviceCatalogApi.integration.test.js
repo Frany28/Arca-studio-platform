@@ -197,7 +197,7 @@ test("edición: sin cambios no crea versión; un cambio de tarifa crea la versi�
   });
   assert.equal(updated.changed, true);
   // Con una sola unidad, su tarifa es la del servicio: la unidad también se versiona.
-  assert.deepEqual(updated.changedFields.sort(), ["name", "referenceRate", "unitOptions"]);
+  assert.deepEqual(updated.changedFields.sort(), ["name", "referenceRate"]);
   assert.equal(updated.service.code, original.code, "La edición conserva el código");
   assert.equal(updated.service.currentVersion, 2);
   assert.deepEqual((await versionsOf(id)).map((v) => [v.version_number, v.code, v.reference_rate, v.is_current, v.changed_by]), [
@@ -276,7 +276,7 @@ test("edición: unidad inactiva se rechaza; cambiar a llave en mano conserva la 
   const moved = await catalog.updateService({
     payload: { expectedVersion: 2, measurementUnitId: ids.squareMeter }, serviceId: service.id, user: { id: ids.adminA },
   });
-  assert.deepEqual(moved.changedFields, ["measurementUnitId", "unitOptions"]);
+  assert.deepEqual(moved.changedFields, ["measurementUnitId"]);
   assert.equal(moved.service.code, service.code);
   assert.deepEqual((await versionsOf(service.id)).map((v) => v.unit_symbol), ["pt.", "pt.", "m²"]);
   // Editar otro campo de un servicio llave en mano no cambia su tipo.
