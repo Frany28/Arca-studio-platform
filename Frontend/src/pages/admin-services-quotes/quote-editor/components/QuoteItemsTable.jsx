@@ -99,7 +99,7 @@ function getLineServiceOptions(line, services, includedIds) {
  * @param {Array<Object>} props.lines - Conceptos del borrador.
  * @param {{lines: Array<{subtotal: string|null}>, total: string|null, referenceVatAmount: string|null,
  *   estimatedTotalWithVat: string|null}} props.preview - Importes calculados.
- * @param {Object} props.vat - IVA referencial aplicado (useQuoteReferenceVat).
+ * @param {{enabled: boolean, rate: string|null}} props.referenceVat - IVA referencial aplicado.
  * @param {Record<string, string>} props.errors - Errores por ruta (`items.0.quantity`).
  * @param {(key: string, field: "quantity"|"unitRate", value: string) => void} props.onLineChange - Edita un concepto.
  * @param {(key: string) => void} props.onRemove - Quita un concepto.
@@ -109,7 +109,7 @@ function getLineServiceOptions(line, services, includedIds) {
  * @param {boolean} props.disabled - Bloquea la edición durante el guardado.
  * @returns {import("react").ReactElement} Sección.
  */
-function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRemoveMany, onServiceChange, preview, services, vat }) {
+function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRemoveMany, onServiceChange, preview, referenceVat, services }) {
   const [openHintKey, setOpenHintKey] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const includedIds = new Set(lines.map((line) => line.serviceId));
@@ -313,7 +313,7 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRe
         </div>
       ) : null}
 
-      <QuoteAmountsSummary preview={preview} vat={vat} />
+      <QuoteAmountsSummary preview={preview} referenceVat={referenceVat} />
     </section>
   );
 }

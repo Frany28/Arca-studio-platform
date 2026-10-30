@@ -817,9 +817,10 @@ Validación, capturas y diferencias respecto a Figma:
     servicios (sin IVA)» con el estilo del antiguo total (heading-7 / heading-4, `text-50`);
     «IVA referencial (16 %)» con `InfoHint` («estimación informativa, no es una liquidación
     fiscal definitiva») e importe en heading-7 `text-200`; y «Total estimado con IVA
-    (informativo)» en heading-6 `text-300`, separado del total de servicios. Sin tasa
-    configurada muestra «Pendiente de configuración» y «—» en el estimado (nunca un porcentaje
-    inventado); al editar, la tasa guardada de la cotización. El skeleton `quoteEditor` reserva
+    (informativo)» en heading-6 `text-300`, separado del total de servicios. La tasa es la fija del
+    backend (16 %, `QUOTE_REFERENCE_VAT_RATE`, importada sin duplicarla); al editar, la de la versión
+    guardada. Una versión guardada antes del IVA referencial muestra «No incluido en esta versión»
+    y «—» en el estimado, con una ayuda que lo explica. El skeleton `quoteEditor` reserva
     las tres filas.
     «Observaciones (opcional)» ocupa todo el ancho del formulario y su caja mide 130 px con sus
     bordes (Figma 5771:452385): `TextArea` con `className="max-w-none"`, `rows={4}` y

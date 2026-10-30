@@ -7,7 +7,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 import { buildQuoteDocument } from "../../../Backend/src/domain/quoteDocument.js";
-import { REFERENCE_VAT_NOT_CONFIGURED, resolveQuoteReferenceVat } from "../../../Backend/src/domain/quoteReferenceVat.js";
+import { QUOTE_REFERENCE_VAT, REFERENCE_VAT_NOT_APPLIED, resolveQuoteReferenceVat } from "../../../Backend/src/domain/quoteReferenceVat.js";
 import { calculateQuoteTotals } from "../../../Backend/src/domain/quoteTotals.js";
 import { loadQuotePdfAssets } from "../../../Backend/src/services/quotePdfAssets.js";
 import { renderQuotePdf } from "../../../Backend/src/services/quotePdfRenderer.js";
@@ -66,7 +66,7 @@ after(async () => {
  * @param {{enabled: boolean, rate: string|null}} [referenceVat] - IVA referencial aplicado (como el backend).
  * @returns {Object} Cotización.
  */
-function buildQuote(id, payload, version, createdAt, services = SERVICES, referenceVat = REFERENCE_VAT_NOT_CONFIGURED) {
+function buildQuote(id, payload, version, createdAt, services = SERVICES, referenceVat = QUOTE_REFERENCE_VAT) {
   const totals = calculateQuoteTotals({ items: payload.items, referenceVat });
   const client = CLIENTS.find((candidate) => candidate.id === payload.clientId);
   const project = PROJECTS[payload.clientId].find((candidate) => candidate.id === payload.projectId);
@@ -104,14 +104,13 @@ function buildQuote(id, payload, version, createdAt, services = SERVICES, refere
 /**
  * Backend simulado de cotizaciones con estado en memoria y registro de peticiones.
  *
- * @param {Object} [options] - Fallos inyectados por operación (`PATCH /api/admin/quotes/:id`),
- * servicios del tabulador (por defecto, SERVICES) y tasa configurada del IVA referencial (por
- * defecto, pendiente de configuración). Las altas y ediciones aplican la tasa con las reglas reales.
+ * @param {Object} [options] - Fallos inyectados por operación (`PATCH /api/admin/quotes/:id`) y
+ * servicios del tabulador (por defecto, SERVICES). Las altas y ediciones aplican el IVA referencial
+ * con las reglas reales: 16 % al crear y, al editar, el de la versión guardada.
  * @returns {Object} Estado y manejador de rutas.
  */
-function createBackend({ failures = {}, referenceVat = REFERENCE_VAT_NOT_CONFIGURED, services = SERVICES } = {}) {
+function createBackend({ failures = {}, services = SERVICES } = {}) {
   const state = {
-    referenceVat,
     quotes: [
       buildQuote(1, { clientId: 3, items: [{ quantity: "200", serviceId: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitRate: "47" }], notes: "Incluye visitas.", projectId: 9 }, 1, "2026-03-23T15:00:00.000Z"),
       buildQuote(2, { clientId: 4, items: [{ quantity: "10", serviceId: 1, unitRate: "14" }], projectId: 10 }, 1, "2026-04-12T15:00:00.000Z"),
@@ -136,7 +135,6 @@ function createBackend({ failures = {}, referenceVat = REFERENCE_VAT_NOT_CONFIGU
     if (path === "/api/projects") return json(route, 200, { nextCursor: null, projects: [] });
     if (path === "/api/admin/services") return json(route, 200, { nextCursor: null, services });
     if (path === "/api/admin/quotes/summary") return json(route, 200, { summary: { total: state.quotes.length } });
-    if (path === "/api/admin/quotes/reference-vat") return json(route, 200, { referenceVat: state.referenceVat });
     if (path === "/api/admin/quotes/clients") {
       const search = (url.searchParams.get("search") || "").toLowerCase();
       return json(route, 200, { clients: CLIENTS.filter((client) => client.name.toLowerCase().includes(search)), nextCursor: null });
@@ -152,7 +150,7 @@ function createBackend({ failures = {}, referenceVat = REFERENCE_VAT_NOT_CONFIGU
       return json(route, 200, { nextCursor: null, quotes });
     }
     if (path === "/api/admin/quotes" && method === "POST") {
-      const vat = resolveQuoteReferenceVat({ configured: state.referenceVat, stored: null });
+      const vat = resolveQuoteReferenceVat({ stored: null });
       const quote = buildQuote(state.quotes.length + 1, body, 1, new Date().toISOString(), services, vat);
       state.quotes.push(quote);
       return json(route, 201, { message: "Cotización creada correctamente.", quote });
@@ -173,7 +171,7 @@ function createBackend({ failures = {}, referenceVat = REFERENCE_VAT_NOT_CONFIGU
       const current = state.quotes[index];
       const { expectedVersion, ...content } = body;
       if (expectedVersion !== current.currentVersion) return json(route, 409, { code: "QUOTE_VERSION_CONFLICT", message: "Otro administrador modificó esta cotización. Recarga los datos antes de guardar." });
-      const vat = resolveQuoteReferenceVat({ configured: state.referenceVat, stored: current.referenceVat });
+      const vat = resolveQuoteReferenceVat({ stored: current.referenceVat });
       state.quotes[index] = buildQuote(current.id, content, current.currentVersion + 1, current.createdAt, services, vat);
       return json(route, 200, { changed: true, message: "Cotización actualizada correctamente.", quote: state.quotes[index] });
     }
@@ -713,7 +711,7 @@ async function addSampleServices(page) {
 }
 
 test("IVA referencial: total sin IVA, IVA con su tasa y total estimado en tiempo real; el POST no envía IVA", async (context) => {
-  const backend = createBackend({ referenceVat: { enabled: true, rate: "16.00" } });
+  const backend = createBackend();
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
   await page.getByText("IVA referencial (16 %)", { exact: true }).waitFor();
   assert.deepEqual(await readAmountsSummary(page), [
@@ -750,31 +748,33 @@ test("IVA referencial: total sin IVA, IVA con su tasa y total estimado en tiempo
   assert.deepEqual(backend.quotes.at(-1).referenceVat, { amount: "712.80", enabled: true, isReferenceOnly: true, rate: "16.00" });
 });
 
-test("IVA referencial: pendiente de configuración sin inventar una tasa, y tasa 0 %", async (context) => {
-  const pendingBackend = createBackend();
-  const page = await openQuotes(context, pendingBackend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
-  await page.getByText("Pendiente de configuración", { exact: true }).waitFor();
-  await addSampleServices(page);
-  await page.getByText("$4,445.00", { exact: true }).waitFor();
+test("IVA referencial: una versión guardada sin IVA lo indica y lo conserva al guardar, sin inventar una tasa", async (context) => {
+  const backend = createBackend();
+  // COT-001 se guardó antes del IVA referencial.
+  const saved = backend.quotes[0];
+  backend.quotes[0] = buildQuote(1, {
+    clientId: saved.client.id, items: saved.items.map((item) => ({ quantity: item.quantity, serviceId: item.service.id, unitRate: item.unitRate })),
+    notes: saved.notes, projectId: saved.project.id,
+  }, 1, saved.createdAt, SERVICES, REFERENCE_VAT_NOT_APPLIED);
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/1/editar" });
+  await page.getByText("No incluido en esta versión", { exact: true }).waitFor();
   assert.deepEqual(await readAmountsSummary(page), [
-    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial", "Pendiente de configuración"], ["Total estimado con IVA (informativo)", "—"],
+    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial", "No incluido en esta versión"], ["Total estimado con IVA (informativo)", "—"],
   ]);
   await page.getByRole("button", { name: "Información sobre el IVA referencial" }).click();
-  await page.getByText(/Aún no hay una tasa de IVA configurada/).waitFor();
+  await page.getByText(/se guardó antes del IVA referencial/).waitFor();
+  await page.keyboard.press("Escape");
 
-  const zeroBackend = createBackend({ referenceVat: { enabled: true, rate: "0.00" } });
-  const zeroPage = await openQuotes(context, zeroBackend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
-  await zeroPage.getByText("IVA referencial (0 %)", { exact: true }).waitFor();
-  await addSampleServices(zeroPage);
-  await zeroPage.getByText("$4,445.00", { exact: true }).first().waitFor();
-  assert.deepEqual(await readAmountsSummary(zeroPage), [
-    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (0 %)", "$0.00"], ["Total estimado con IVA (informativo)", "$4,445.00"],
-  ]);
+  await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).fill("100");
+  await page.getByText("$3,045.00", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Actualizar" }).click();
+  await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
+  assert.deepEqual([backend.quotes[0].currentVersion, backend.quotes[0].referenceVat.enabled, backend.quotes[0].referenceVat.rate], [2, false, null]);
 });
 
-test("IVA referencial al editar: conserva la tasa guardada aunque cambie la configurada y recalcula al cambiar cantidades", async (context) => {
-  const backend = createBackend({ referenceVat: { enabled: true, rate: "16.00" } });
-  // COT-001 se guardó con 12.5 %; la configuración actual es 16 %.
+test("IVA referencial al editar: conserva la tasa histórica de la versión guardada y recalcula al cambiar cantidades", async (context) => {
+  const backend = createBackend();
+  // COT-001 se guardó con 12.5 %; la tasa fija actual es 16 %.
   const saved = backend.quotes[0];
   backend.quotes[0] = buildQuote(1, {
     clientId: saved.client.id, items: saved.items.map((item) => ({ quantity: item.quantity, serviceId: item.service.id, unitRate: item.unitRate })),
@@ -786,7 +786,6 @@ test("IVA referencial al editar: conserva la tasa guardada aunque cambie la conf
   assert.deepEqual(await readAmountsSummary(page), [
     ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (12.5 %)", "$555.63"], ["Total estimado con IVA (informativo)", "$5,000.63"],
   ]);
-  assert.equal(backend.requests.some((request) => request.path === "/api/admin/quotes/reference-vat"), false, "La tasa guardada no depende de la configurada");
 
   await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).fill("100");
   // 3045.00 × 12.5 % = 380.625 → 380.63.
@@ -798,7 +797,7 @@ test("IVA referencial al editar: conserva la tasa guardada aunque cambie la conf
 
 test("IVA referencial: resumen dentro del viewport en móvil y escritorio, claro y oscuro", async (context) => {
   for (const [theme, viewport] of [["dark", { height: 812, width: 375 }], ["light", { height: 812, width: 375 }], ["dark", { height: 900, width: 1440 }]]) {
-    const backend = createBackend({ referenceVat: { enabled: true, rate: "16.00" } });
+    const backend = createBackend();
     const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", theme, viewport });
     await addSampleServices(page);
     await page.getByText("$5,156.20", { exact: true }).waitFor();

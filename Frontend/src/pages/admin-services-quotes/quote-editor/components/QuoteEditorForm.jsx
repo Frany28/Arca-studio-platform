@@ -5,8 +5,8 @@ import Button from "../../../../components/ui/Button/Button.jsx";
 import TextArea from "../../../../components/ui/TextArea/TextArea.jsx";
 import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard.js";
 import { useQuoteDraft } from "../hooks/useQuoteDraft.js";
-import { useQuoteReferenceVat } from "../hooks/useQuoteReferenceVat.js";
 import { useQuoteSubmit } from "../hooks/useQuoteSubmit.js";
+import { resolveQuoteReferenceVat } from "../../../../../../Backend/src/domain/quoteReferenceVat.js";
 import { calculateQuotePreview } from "../utils/quoteAmounts.js";
 import { QUOTE_NOTES_MAX_LENGTH, isQuoteDraftDirty, validateQuoteDraft } from "../utils/quoteDraft.js";
 import { QuoteCreatedDialog, QuoteDiscardDialog } from "./QuoteEditorDialogs.jsx";
@@ -47,9 +47,10 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   const [attempted, setAttempted] = useState(false);
   // Respuesta del alta confirmada mientras se muestra «Has creado la cotización»; null si no.
   const [createdResponse, setCreatedResponse] = useState(null);
-  const vat = useQuoteReferenceVat(quote?.referenceVat);
+  // Misma regla que el backend: 16 % fijo al crear; al editar, el IVA de la versión guardada.
+  const referenceVat = resolveQuoteReferenceVat({ stored: quote?.referenceVat });
   // La tasa es texto: depender de ella (no del objeto) evita recalcular en cada render.
-  const vatRate = vat.referenceVat?.rate ?? null;
+  const vatRate = referenceVat.enabled ? referenceVat.rate : null;
   const preview = useMemo(
     () => calculateQuotePreview(draft.lines, vatRate === null ? null : { enabled: true, rate: vatRate }),
     [draft.lines, vatRate],
@@ -116,7 +117,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
           lines={draft.lines}
           services={activeServices}
           preview={preview}
-          vat={vat}
+          referenceVat={referenceVat}
           errors={errors}
           disabled={submitting}
           onLineChange={(key, field, value) => actions.updateLine(key, field, value)}
