@@ -7,7 +7,6 @@ import {
   formatDocumentDate,
   formatDocumentQuantity,
   isSupportedTimeZone,
-  REFERENCE_VAT_NOTICE,
 } from "../src/domain/quoteDocument.js";
 import { parseSvgVector } from "../src/services/quotePdfAssets.js";
 import { loadQuotePdfAssets } from "../src/services/quotePdfAssets.js";
@@ -91,27 +90,17 @@ test("el modelo del documento conserva los textos guardados y omite observacione
     items: [{ quantity: "200", serviceName: "Anteproyecto arquitectónico", subtotal: "$2,800.00", unitLabel: "m² de construcción", unitRate: "$14.00" }],
     notes: "Incluye visitas de obra.",
     projectName: "Apto. 910",
-    referenceVat: null,
     total: "$4,445.00",
   });
   assert.equal(buildQuoteDocument(quoteWith([], { notes: "   " })).notes, null);
 });
 
-test("IVA referencial: el documento usa la tasa y el importe guardados y su aviso; sin IVA, el total único", () => {
-  const saved = { estimatedTotalWithVat: "5156.20", referenceVat: { amount: "711.20", enabled: true, isReferenceOnly: true, rate: "16.00" } };
-  assert.deepEqual(buildQuoteDocument(quoteWith([], saved)).referenceVat, {
-    amount: "$711.20",
-    label: "IVA referencial (16 %)",
-    notice: REFERENCE_VAT_NOTICE,
-  });
-  // Tasa con decimales y tasa 0: se imprimen sin ceros sobrantes.
-  const decimal = { estimatedTotalWithVat: "4445.00", referenceVat: { amount: "0.00", enabled: true, rate: "12.50" } };
-  assert.equal(buildQuoteDocument(quoteWith([], decimal)).referenceVat.label, "IVA referencial (12.5 %)");
-  const zero = { estimatedTotalWithVat: "4445.00", referenceVat: { amount: "0.00", enabled: true, rate: "0.00" } };
-  assert.equal(buildQuoteDocument(quoteWith([], zero)).referenceVat.label, "IVA referencial (0 %)");
-  // Versión guardada sin tasa (pendiente) o anterior al IVA: el documento no cambia.
-  const pending = { estimatedTotalWithVat: "4445.00", referenceVat: { amount: "0.00", enabled: false, rate: null } };
-  assert.equal(buildQuoteDocument(quoteWith([], pending)).referenceVat, null);
+test("el PDF no imprime el IVA referencial: solo el total de la cotización guardado", () => {
+  const withVat = { estimatedTotalWithVat: "5156.20", referenceVat: { amount: "711.20", enabled: true, isReferenceOnly: true, rate: "16.00" } };
+  const document = buildQuoteDocument(quoteWith([], withVat));
+  assert.equal(document.total, "$4,445.00");
+  assert.equal(JSON.stringify(document).includes("711.20") || JSON.stringify(document).includes("5,156.20"), false);
+  assert.deepEqual(document, buildQuoteDocument(quoteWith([])), "Con o sin IVA guardado, el documento es el mismo");
 });
 
 test("los vectores de Figma se leen con su caja y sus rellenos", () => {
@@ -129,12 +118,6 @@ test("el PDF se genera con Inter y pagina conceptos y observaciones largas", asy
   assert.equal(short.subarray(0, 5).toString(), "%PDF-");
   assert.equal((short.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 1);
   assert.match(short.toString("latin1"), /Inter/);
-
-  const withVat = buildQuoteDocument(quoteWith([item("Anteproyecto", "200.000", "14.00", "2800.00")], {
-    estimatedTotalWithVat: "5156.20", referenceVat: { amount: "711.20", enabled: true, rate: "16.00" },
-  }));
-  const vatPdf = await readAll(renderQuotePdf(withVat, assets));
-  assert.equal((vatPdf.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 1, "El resumen con IVA cabe con el resto");
 
   const many = Array.from({ length: 30 }, (_, index) => item(`Servicio ${index + 1}`, "1.000", "10.00", "10.00"));
   const long = await readAll(renderQuotePdf(buildQuoteDocument(quoteWith(many, { notes: "Observación ".repeat(900) })), assets));

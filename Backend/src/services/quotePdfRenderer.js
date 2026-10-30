@@ -39,7 +39,6 @@ const TEXT = Object.freeze({
   sectionTitle: { color: COLORS.text200, font: "bold", lineHeight: 19, size: 16 },
   totalLabel: { color: COLORS.text200, font: "regular", lineHeight: 19, size: 16 },
   totalValue: { color: COLORS.text50, font: "bold", lineHeight: 24, size: 20 },
-  vatNotice: { color: COLORS.text100, font: "regular", lineHeight: 14, size: 12 },
 });
 
 // Columnas de «Detalle de servicios»: Servicio 210, Unidad 170 y tres columnas flexibles.
@@ -439,42 +438,6 @@ function drawPageFooter(doc, vectors, pageNumber) {
 }
 
 /**
- * Dibuja una fila del resumen de importes alineada a la derecha: el importe y, a su izquierda,
- * la etiqueta, ambos alineados por su borde inferior (Figma: items-end).
- *
- * @param {PDFKit.PDFDocument} doc - Documento.
- * @param {{ label: string, value: string, labelStyle: object, valueStyle: object }} row - Fila.
- * @param {number} top - Borde superior de la fila.
- * @returns {number} Borde inferior de la fila.
- */
-function drawTotalRow(doc, { label, labelStyle, value, valueStyle }, top) {
-  const valueWidth = textWidth(doc, value, valueStyle);
-  drawLine(doc, value, PAGE.padding, top, valueStyle, { align: "right", width: CONTENT_WIDTH });
-  drawLine(doc, label, PAGE.padding, top + valueStyle.lineHeight - labelStyle.lineHeight, labelStyle, {
-    align: "right",
-    width: CONTENT_WIDTH - valueWidth - PAGE.blockGap,
-  });
-  return top + valueStyle.lineHeight;
-}
-
-/**
- * Filas del resumen de importes. Sin IVA referencial, el total único de siempre; con él, encima,
- * el IVA con su tasa como referencia, que no se suma al total.
- *
- * @param {object} model - Resultado de buildQuoteDocument.
- * @returns {Array<{ label: string, value: string, labelStyle: object, valueStyle: object }>} Filas.
- */
-function totalRows(model) {
-  if (!model.referenceVat) {
-    return [{ label: `TOTAL ${model.currency}`, labelStyle: TEXT.totalLabel, value: model.total, valueStyle: TEXT.totalValue }];
-  }
-  return [
-    { label: model.referenceVat.label.toUpperCase(), labelStyle: TEXT.totalLabel, value: model.referenceVat.amount, valueStyle: TEXT.fieldValue },
-    { label: `TOTAL ${model.currency}`, labelStyle: TEXT.totalLabel, value: model.total, valueStyle: TEXT.totalValue },
-  ];
-}
-
-/**
  * Crea el PDF de una cotización a partir de su modelo de presentación y lo finaliza. El
  * documento es un stream legible: el contenido queda en memoria hasta que se consume.
  *
@@ -516,20 +479,17 @@ export function renderQuotePdf(model, { fonts, vectors }) {
     y = drawItemRow(doc, row, y, index < rows.length - 1);
   });
 
-  // El resumen no se parte entre páginas: filas separadas 8 px y, con IVA, el aviso debajo.
-  const summaryRows = totalRows(model);
-  const noticeHeight = model.referenceVat ? 8 + TEXT.vatNotice.lineHeight : 0;
-  const totalHeight = PAGE.blockGap + summaryRows.reduce((sum, row) => sum + row.valueStyle.lineHeight, 0) + (summaryRows.length - 1) * 8 + noticeHeight;
+  const totalHeight = PAGE.blockGap + TEXT.totalValue.lineHeight;
   if (y + totalHeight > CONTENT_BOTTOM) y = startPage() - PAGE.blockGap;
-  y += PAGE.blockGap;
-  summaryRows.forEach((row, index) => {
-    y = drawTotalRow(doc, row, y + (index ? 8 : 0));
+  const totalTop = y + PAGE.blockGap;
+  const valueWidth = textWidth(doc, model.total, TEXT.totalValue);
+  drawLine(doc, model.total, PAGE.padding, totalTop, TEXT.totalValue, { align: "right", width: CONTENT_WIDTH });
+  // Figma alinea etiqueta e importe por su borde inferior (items-end).
+  drawLine(doc, `TOTAL ${model.currency}`, PAGE.padding, totalTop + TEXT.totalValue.lineHeight - TEXT.totalLabel.lineHeight, TEXT.totalLabel, {
+    align: "right",
+    width: CONTENT_WIDTH - valueWidth - PAGE.blockGap,
   });
-  if (model.referenceVat) {
-    drawLine(doc, model.referenceVat.notice, PAGE.padding, y + 8, TEXT.vatNotice, { align: "right", width: CONTENT_WIDTH });
-    y += noticeHeight;
-  }
-  y += PAGE.sectionGap;
+  y = totalTop + TEXT.totalValue.lineHeight + PAGE.sectionGap;
 
   if (model.notes) {
     const lines = wrapTextLines(doc, model.notes, CONTENT_WIDTH, TEXT.notes);

@@ -5,11 +5,8 @@
  * Los importes llegan como texto decimal de PostgreSQL y se formatean como texto, sin convertirlos
  * a Number, para no introducir errores de coma flotante en un documento financiero.
  */
-import { formatReferenceVatRate } from "./quoteReferenceVat.js";
 
 const DEFAULT_TIME_ZONE = "UTC";
-/** Aviso impreso bajo el total estimado: el IVA referencial no es una liquidación fiscal. */
-export const REFERENCE_VAT_NOTICE = "IVA referencial: solo informativo, no se suma al total ni constituye una liquidación fiscal.";
 
 /**
  * Agrupa los miles de la parte entera de un decimal con comas (`3975` → `3,975`).
@@ -80,9 +77,7 @@ export function formatDocumentDate(isoDate, timeZone) {
 
 /**
  * Construye los textos del documento a partir de una cotización con su versión vigente.
- * Las observaciones vacías se omiten: el documento no imprime una sección sin contenido. El IVA
- * referencial solo se imprime si la versión se guardó con él, con el importe guardado y su aviso
- * (no se suma al total); sin él, el documento conserva el total único de siempre.
+ * Las observaciones vacías se omiten: el documento no imprime una sección sin contenido.
  *
  * @param {object} quote - Cotización devuelta por findQuoteById.
  * @param {object} [options] - Opciones de presentación.
@@ -90,8 +85,7 @@ export function formatDocumentDate(isoDate, timeZone) {
  * @returns {{
  *   code: string, date: string, fileName: string, clientName: string, projectName: string,
  *   items: Array<{ serviceName: string, unitLabel: string, quantity: string, unitRate: string, subtotal: string }>,
- *   total: string, currency: string, notes: string|null,
- *   referenceVat: { label: string, amount: string, notice: string }|null
+ *   total: string, currency: string, notes: string|null
  * }} Modelo listo para maquetar.
  */
 export function buildQuoteDocument(quote, { timeZone } = {}) {
@@ -111,13 +105,6 @@ export function buildQuoteDocument(quote, { timeZone } = {}) {
     })),
     notes: quote.notes?.trim() || null,
     projectName: quote.project.name,
-    referenceVat: quote.referenceVat?.enabled
-      ? {
-        amount: formatDocumentAmount(quote.referenceVat.amount),
-        label: `IVA referencial (${formatReferenceVatRate(quote.referenceVat.rate)} %)`,
-        notice: REFERENCE_VAT_NOTICE,
-      }
-      : null,
     total: formatDocumentAmount(quote.servicesTotal),
   };
 }

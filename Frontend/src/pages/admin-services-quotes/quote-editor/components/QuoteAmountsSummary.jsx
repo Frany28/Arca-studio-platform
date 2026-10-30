@@ -4,7 +4,7 @@ import { formatReferenceVatRate } from "../../../../../../Backend/src/domain/quo
 import InfoHint from "../../../../components/ui/Tooltip/InfoHint.jsx";
 import { formatDecimalMoney } from "../../utils/moneyFormat.js";
 
-const REFERENCE_VAT_HINT = "Referencia informativa calculada sobre el total. No se suma al total de la cotización, no es una liquidación fiscal definitiva ni modifica las tarifas del tabulador.";
+const REFERENCE_VAT_HINT = "Referencia informativa calculada sobre el total. No se suma al total de la cotización; el total estimado con IVA es solo orientativo y no es una liquidación fiscal definitiva.";
 const NOT_APPLIED_VAT_HINT = "Esta cotización se guardó antes del IVA referencial y lo conserva sin calcular. El total de la cotización no cambia.";
 
 /**
@@ -18,14 +18,15 @@ function formatAmount(amount) {
 }
 
 /**
- * Resumen de importes bajo «Servicios incluidos», igual en crear y editar: arriba, el IVA
- * referencial con su porcentaje y una ayuda que aclara que es solo una referencia; debajo, el
- * total de la cotización como importe principal. El IVA no se suma al total. Los importes son la
+ * Resumen de importes bajo «Servicios incluidos», igual en crear y editar: el IVA referencial con
+ * su porcentaje y una ayuda que aclara que es solo una referencia, el total estimado con IVA
+ * (informativo), ambos secundarios, y al final el total de la cotización (suma de los servicios
+ * sin IVA) como importe principal. El IVA no se suma al total. Los importes son la
  * vista previa del motor del backend (`calculateQuotePreview`) y cambian al editar cantidades o
  * tarifas. Una cotización guardada antes del IVA referencial lo indica sin calcularlo.
  *
  * @param {Object} props - Importes e IVA aplicado.
- * @param {{total: string|null, referenceVatAmount: string|null}} props.preview - Importes.
+ * @param {{total: string|null, referenceVatAmount: string|null, estimatedTotalWithVat: string|null}} props.preview - Importes.
  * @param {{enabled: boolean, rate: string|null}} props.referenceVat - IVA referencial aplicado.
  * @returns {import("react").ReactElement} Resumen.
  */
@@ -49,6 +50,10 @@ function QuoteAmountsSummary({ preview, referenceVat }) {
         <dd className="text-heading-7 text-[var(--color-text-200)] tabular-nums">
           {applied ? formatAmount(preview.referenceVatAmount) : "No incluido en esta versión"}
         </dd>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[4px]">
+        <dt className="text-heading-8 text-[var(--color-text-200)]">Total estimado con IVA (informativo)</dt>
+        <dd className="text-heading-7 text-[var(--color-text-200)] tabular-nums">{applied ? formatAmount(preview.estimatedTotalWithVat) : "—"}</dd>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-[16px] gap-y-[4px]">
         <dt className="text-heading-7 text-[var(--color-text-50)]">Total de la cotización</dt>

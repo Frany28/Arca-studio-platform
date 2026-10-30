@@ -1,7 +1,7 @@
 /*
  * Reglas del IVA referencial de las cotizaciones (informativo, no fiscal). Módulo puro: lo usan el
- * servicio de cotizaciones, el PDF y la vista previa del formulario (Frontend/.../quoteAmounts.js),
- * para que todos apliquen la misma tasa sin duplicar la regla.
+ * servicio de cotizaciones y la vista previa del formulario (Frontend/.../quoteAmounts.js), para
+ * que ambos apliquen la misma tasa sin duplicar la regla. El PDF no imprime el IVA referencial.
  */
 
 /** Tasa referencial fija de las cotizaciones nuevas (porcentaje, escala de QUOTE_DECIMAL_FORMATS.vatRate). */
