@@ -841,9 +841,11 @@ Validación, capturas y diferencias respecto a Figma:
     5771:367432: cabecera de 49 px + 2 × 71 px = 191 px) con el mismo `TableScrollViewport`. Su
     primera columna (48 px) tiene la casilla de cada fila y «Seleccionar todos» en la cabecera;
     la fila marcada usa `neutral-300`, como el tabulador. Con selección aparece debajo de la tabla
-    el contador «X de Y seleccionados» y «Eliminar» (`Button` Primary/Ghost/M con `CloseCircle`,
-    el patrón de las acciones masivas del tabulador), que quita del borrador los seleccionados sin
-    confirmación, igual que «Eliminar» de la fila; sin selección no se renderiza. Cada fila de servicios incluidos tiene el
+    el contador «X de Y seleccionados» a la izquierda y «Eliminar» centrado (`Button`
+    Primary/Ghost/M con `CloseCircle`, el patrón de las acciones masivas del tabulador; en
+    pantallas estrechas ambos se apilan centrados). «Eliminar» pide confirmación con el diálogo de
+    advertencia compartido (`StatusConfirmationModal`, variante Danger, Figma 3727:686871) y, al
+    confirmar, quita del borrador los seleccionados; sin selección no se renderiza. Cada fila de servicios incluidos tiene el
     `DropdownMenu` de su servicio (Figma 5771:367425) con `portal`, para que el desplazamiento
     horizontal de la tabla no recorte el menú: ofrece el servicio actual y los activos no incluidos,
     y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). El menú

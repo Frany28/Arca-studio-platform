@@ -860,7 +860,26 @@ test("servicios incluidos: dos filas visibles con ScrollBar, casillas y «Elimin
     return !node.querySelector("thead").contains(hit);
   });
   assert.equal(headerCovered, false);
+  // «Eliminar» queda centrado bajo la tabla.
+  const offCenter = await bulk.evaluate((node) => {
+    const bar = node.getBoundingClientRect();
+    const button = node.querySelector("button").getBoundingClientRect();
+    return Math.abs((button.left + button.width / 2) - (bar.left + bar.width / 2));
+  });
+  assert.ok(offCenter <= 1, `«Eliminar» desplazado ${offCenter}px del centro`);
+  // Eliminar pide confirmación con el diálogo de advertencia; cancelar no quita nada.
+  const confirmDialog = page.locator("[data-quote-items-remove-modal]");
   await bulk.getByRole("button", { name: "Eliminar 2 servicios seleccionados" }).click();
+  await confirmDialog.getByText("¿Eliminar servicios?", { exact: true }).waitFor();
+  await confirmDialog.getByText("Se quitarán 2 servicios seleccionados de la cotización. El cambio se aplica al guardar.", { exact: true }).waitFor();
+  assert.equal(await confirmDialog.locator('[data-quote-items-remove-icon="deactivate"]').count(), 1);
+  await confirmDialog.getByRole("button", { name: "Cancelar" }).click();
+  await confirmDialog.waitFor({ state: "detached" });
+  assert.equal(await section.getByRole("textbox", { name: "Cantidad de Servicio incluido 1" }).count(), 1);
+  await bulk.getByText("2 de 5 seleccionados", { exact: true }).waitFor();
+
+  await bulk.getByRole("button", { name: "Eliminar 2 servicios seleccionados" }).click();
+  await confirmDialog.getByRole("button", { name: "Eliminar" }).click();
   for (const n of [2, 3, 4]) await section.getByRole("textbox", { name: `Cantidad de Servicio incluido ${n}` }).waitFor();
   assert.equal(await section.getByRole("textbox", { name: "Cantidad de Servicio incluido 1" }).count(), 0);
   assert.equal(await section.getByRole("textbox", { name: "Cantidad de Servicio incluido 5" }).count(), 0);
@@ -872,6 +891,7 @@ test("servicios incluidos: dos filas visibles con ScrollBar, casillas y «Elimin
   await section.getByRole("checkbox", { name: "Seleccionar todos los servicios incluidos" }).click();
   await bulk.getByText("3 de 3 seleccionados", { exact: true }).waitFor();
   await bulk.getByRole("button", { name: "Eliminar 3 servicios seleccionados" }).click();
+  await confirmDialog.getByRole("button", { name: "Eliminar" }).click();
   await section.getByText("No se han agregado servicios", { exact: true }).waitFor();
   assert.equal(await scrollBar.count(), 0);
 });

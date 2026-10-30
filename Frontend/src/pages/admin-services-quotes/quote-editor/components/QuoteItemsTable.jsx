@@ -10,6 +10,7 @@ import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
 import TableScrollViewport from "../../../../components/ui/ScrollBar/TableScrollViewport.jsx";
+import StatusConfirmationModal from "../../components/StatusConfirmationModal.jsx";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatDecimalMoney } from "../../utils/moneyFormat.js";
 import QuoteAmountsSummary from "./QuoteAmountsSummary.jsx";
@@ -72,6 +73,26 @@ function LineNumberField({ disabled, error, id, label, onChange, prefix, value }
 }
 
 /**
+ * Textos de la confirmación de advertencia (Danger) antes de quitar los servicios seleccionados.
+ * Quitar solo afecta al borrador: la cotización cambia al guardarla.
+ *
+ * @param {{keys: Array<string>}|null} removal - Conceptos que se quitarán.
+ * @returns {{title: string, description: string, actionLabel: string, activating: boolean}} Textos.
+ */
+function describeRemoval(removal) {
+  const count = removal?.keys.length ?? 0;
+  const single = count === 1;
+  return {
+    actionLabel: "Eliminar",
+    activating: false,
+    description: single
+      ? "Se quitará el servicio seleccionado de la cotización. El cambio se aplica al guardar."
+      : `Se quitarán ${count} servicios seleccionados de la cotización. El cambio se aplica al guardar.`,
+    title: single ? "¿Eliminar servicio?" : "¿Eliminar servicios?",
+  };
+}
+
+/**
  * Opciones del desplegable de servicio de una fila: el servicio actual (aunque ya esté inactivo,
  * para mostrarlo seleccionado) y los servicios activos que no están en otra fila.
  *
@@ -112,6 +133,7 @@ function getLineServiceOptions(line, services, includedIds) {
 function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRemoveMany, onServiceChange, preview, referenceVat, services }) {
   const [openHintKey, setOpenHintKey] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
+  const [pendingRemoval, setPendingRemoval] = useState(null);
   const includedIds = new Set(lines.map((line) => line.serviceId));
   // Solo cuentan las filas presentes: un concepto quitado deja de estar seleccionado.
   const selected = lines.filter((line) => selectedKeys.has(line.key));
@@ -289,8 +311,13 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRe
       </div>
       {errors.items ? <HintText hintText={errors.items} state="Error" role="alert" className="w-full" /> : null}
       {selected.length ? (
-        <div className="flex flex-wrap items-center gap-x-[24px] gap-y-[12px]" data-quote-items-bulk-actions>
-          <span className="text-heading-8 text-[var(--color-text-300)]" aria-live="polite">
+        // Contador a la izquierda y «Eliminar» centrado: la tercera columna equilibra la primera.
+        // En pantallas estrechas ambos se apilan centrados para que el contador no se parta.
+        <div
+          className="grid grid-cols-1 items-center justify-items-center gap-x-[16px] gap-y-[12px] sm:grid-cols-[1fr_auto_1fr] sm:justify-items-start"
+          data-quote-items-bulk-actions
+        >
+          <span className="min-w-0 text-heading-8 text-[var(--color-text-300)]" aria-live="polite">
             {selected.length} de {lines.length} seleccionados
           </span>
           <Button
@@ -303,15 +330,28 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRe
             showRightIcon={false}
             disabled={disabled}
             aria-label={`Eliminar ${selected.length} ${selected.length === 1 ? "servicio seleccionado" : "servicios seleccionados"}`}
-            onClick={() => {
-              onRemoveMany(selected.map((line) => line.key));
-              setSelectedKeys(new Set());
-            }}
+            onClick={() => setPendingRemoval({ keys: selected.map((line) => line.key) })}
           >
             Eliminar
           </Button>
         </div>
       ) : null}
+      <StatusConfirmationModal
+        change={pendingRemoval}
+        submitting={false}
+        describe={describeRemoval}
+        dialogAttribute="data-quote-items-remove-modal"
+        iconAttribute="data-quote-items-remove-icon"
+        getReturnFocus={() => document.querySelector('[aria-label="Seleccionar todos los servicios incluidos"]')}
+        dialogShellClassName="!pb-0 pointer-events-none"
+        contentClassName="[&>*]:pointer-events-auto"
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={() => {
+          onRemoveMany(pendingRemoval.keys);
+          setSelectedKeys(new Set());
+          setPendingRemoval(null);
+        }}
+      />
 
       <QuoteAmountsSummary preview={preview} referenceVat={referenceVat} />
     </section>
