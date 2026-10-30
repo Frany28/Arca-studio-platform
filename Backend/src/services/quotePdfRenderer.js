@@ -458,8 +458,8 @@ function drawTotalRow(doc, { label, labelStyle, value, valueStyle }, top) {
 }
 
 /**
- * Filas del resumen de importes. Sin IVA referencial, el total único de siempre; con él, el total
- * de servicios sin IVA, el IVA con su tasa y el total estimado con IVA, separados.
+ * Filas del resumen de importes. Sin IVA referencial, el total único de siempre; con él, encima,
+ * el IVA con su tasa como referencia, que no se suma al total.
  *
  * @param {object} model - Resultado de buildQuoteDocument.
  * @returns {Array<{ label: string, value: string, labelStyle: object, valueStyle: object }>} Filas.
@@ -469,9 +469,8 @@ function totalRows(model) {
     return [{ label: `TOTAL ${model.currency}`, labelStyle: TEXT.totalLabel, value: model.total, valueStyle: TEXT.totalValue }];
   }
   return [
-    { label: `TOTAL DE SERVICIOS (SIN IVA) ${model.currency}`, labelStyle: TEXT.totalLabel, value: model.total, valueStyle: TEXT.fieldValue },
     { label: model.referenceVat.label.toUpperCase(), labelStyle: TEXT.totalLabel, value: model.referenceVat.amount, valueStyle: TEXT.fieldValue },
-    { label: `TOTAL ESTIMADO CON IVA ${model.currency}`, labelStyle: TEXT.totalLabel, value: model.referenceVat.estimatedTotal, valueStyle: TEXT.totalValue },
+    { label: `TOTAL ${model.currency}`, labelStyle: TEXT.totalLabel, value: model.total, valueStyle: TEXT.totalValue },
   ];
 }
 

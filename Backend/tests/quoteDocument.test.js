@@ -97,11 +97,10 @@ test("el modelo del documento conserva los textos guardados y omite observacione
   assert.equal(buildQuoteDocument(quoteWith([], { notes: "   " })).notes, null);
 });
 
-test("IVA referencial: el documento usa la tasa y los importes guardados y su aviso; sin IVA, el total único", () => {
+test("IVA referencial: el documento usa la tasa y el importe guardados y su aviso; sin IVA, el total único", () => {
   const saved = { estimatedTotalWithVat: "5156.20", referenceVat: { amount: "711.20", enabled: true, isReferenceOnly: true, rate: "16.00" } };
   assert.deepEqual(buildQuoteDocument(quoteWith([], saved)).referenceVat, {
     amount: "$711.20",
-    estimatedTotal: "$5,156.20",
     label: "IVA referencial (16 %)",
     notice: REFERENCE_VAT_NOTICE,
   });

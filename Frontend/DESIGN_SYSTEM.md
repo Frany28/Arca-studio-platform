@@ -813,15 +813,13 @@ Validación, capturas y diferencias respecto a Figma:
     proyecto depende del cliente), selector de servicios activos, tabla de incluidos con cantidad y
     tarifa editables y resumen de importes calculado con el motor del backend, importado sin
     duplicar fórmulas (`quoteAmounts.js`, prueba de paridad). El resumen (`QuoteAmountsSummary`,
-    igual en crear y editar) es una lista de tres filas alineadas a los extremos: «Total de
-    servicios (sin IVA)» con el estilo del antiguo total (heading-7 / heading-4, `text-50`);
-    «IVA referencial (16 %)» con `InfoHint` («estimación informativa, no es una liquidación
-    fiscal definitiva») e importe en heading-7 `text-200`; y «Total estimado con IVA
-    (informativo)» en heading-6 `text-300`, separado del total de servicios. La tasa es la fija del
-    backend (16 %, `QUOTE_REFERENCE_VAT_RATE`, importada sin duplicarla); al editar, la de la versión
-    guardada. Una versión guardada antes del IVA referencial muestra «No incluido en esta versión»
-    y «—» en el estimado, con una ayuda que lo explica. El skeleton `quoteEditor` reserva
-    las tres filas.
+    igual en crear y editar) tiene dos filas alineadas a los extremos: arriba «IVA referencial
+    (16 %)» con `InfoHint` («referencia informativa: no se suma al total ni es una liquidación
+    fiscal») e importe en heading-7 `text-200`; debajo, «Total de la cotización» como importe
+    principal (heading-7 / heading-4, `text-50`). El IVA no se suma: no hay total con IVA. La tasa
+    es la fija del backend (16 %, `QUOTE_REFERENCE_VAT_RATE`, importada sin duplicarla); al editar,
+    la de la versión guardada. Una versión guardada antes del IVA referencial muestra «No incluido
+    en esta versión». El skeleton `quoteEditor` reserva las filas del resumen.
     «Observaciones (opcional)» ocupa todo el ancho del formulario y su caja mide 130 px con sus
     bordes (Figma 5771:452385): `TextArea` con `className="max-w-none"`, `rows={4}` y
     `minHeight={102}` (102 de texto + 24 de relleno + 1 + 1 del borde transparente del campo +

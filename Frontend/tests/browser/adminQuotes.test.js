@@ -710,31 +710,30 @@ async function addSampleServices(page) {
   await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("35");
 }
 
-test("IVA referencial: total sin IVA, IVA con su tasa y total estimado en tiempo real; el POST no envía IVA", async (context) => {
+test("IVA referencial: IVA con su tasa encima del total de la cotización, sin sumarse, en tiempo real; el POST no envía IVA", async (context) => {
   const backend = createBackend();
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
   await page.getByText("IVA referencial (16 %)", { exact: true }).waitFor();
   assert.deepEqual(await readAmountsSummary(page), [
-    ["Total de servicios (sin IVA)", "$0.00"], ["IVA referencial (16 %)", "$0.00"], ["Total estimado con IVA (informativo)", "$0.00"],
+    ["IVA referencial (16 %)", "$0.00"], ["Total de la cotización", "$0.00"],
   ]);
 
   await addSampleServices(page);
-  await page.getByText("$5,156.20", { exact: true }).waitFor();
-  assert.deepEqual(await readAmountsSummary(page), [
-    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (16 %)", "$711.20"], ["Total estimado con IVA (informativo)", "$5,156.20"],
-  ]);
+  await page.getByText("$711.20", { exact: true }).waitFor();
+  // El IVA es solo una referencia: no se suma al total de la cotización.
+  assert.deepEqual(await readAmountsSummary(page), [["IVA referencial (16 %)", "$711.20"], ["Total de la cotización", "$4,445.00"]]);
   // Tarifa personalizada: 200 × 14.05 + 35 × 47 = 4455.00; IVA 712.80.
   await page.getByRole("textbox", { name: "Tarifa base de Anteproyecto arquitectónico en USD" }).fill("14.05");
-  await page.getByText("$5,167.80", { exact: true }).waitFor();
-  assert.deepEqual((await readAmountsSummary(page))[1], ["IVA referencial (16 %)", "$712.80"]);
+  await page.getByText("$712.80", { exact: true }).waitFor();
+  assert.deepEqual(await readAmountsSummary(page), [["IVA referencial (16 %)", "$712.80"], ["Total de la cotización", "$4,455.00"]]);
   // Una cantidad no válida no muestra cifras que el servidor rechazaría.
   await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("");
-  assert.deepEqual((await readAmountsSummary(page)).map(([, value]) => value), ["—", "—", "—"]);
+  assert.deepEqual((await readAmountsSummary(page)).map(([, value]) => value), ["—", "—"]);
   await page.getByRole("textbox", { name: "Cantidad de Puntos eléctricos y fuerza" }).fill("35");
 
-  // La ayuda aclara que es una estimación y no una liquidación fiscal.
+  // La ayuda aclara que es solo una referencia que no se suma al total.
   await page.getByRole("button", { name: "Información sobre el IVA referencial" }).click();
-  await page.getByText(/No es una liquidación fiscal definitiva/).waitFor();
+  await page.getByText(/No se suma al total de la cotización/).waitFor();
   await page.keyboard.press("Escape");
 
   await page.locator("#quote-client").fill("Leo");
@@ -759,7 +758,7 @@ test("IVA referencial: una versión guardada sin IVA lo indica y lo conserva al 
   const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/1/editar" });
   await page.getByText("No incluido en esta versión", { exact: true }).waitFor();
   assert.deepEqual(await readAmountsSummary(page), [
-    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial", "No incluido en esta versión"], ["Total estimado con IVA (informativo)", "—"],
+    ["IVA referencial", "No incluido en esta versión"], ["Total de la cotización", "$4,445.00"],
   ]);
   await page.getByRole("button", { name: "Información sobre el IVA referencial" }).click();
   await page.getByText(/se guardó antes del IVA referencial/).waitFor();
@@ -784,12 +783,12 @@ test("IVA referencial al editar: conserva la tasa histórica de la versión guar
   await page.getByText("IVA referencial (12.5 %)", { exact: true }).waitFor();
   // 4445.00 × 12.5 % = 555.625 → 555.63.
   assert.deepEqual(await readAmountsSummary(page), [
-    ["Total de servicios (sin IVA)", "$4,445.00"], ["IVA referencial (12.5 %)", "$555.63"], ["Total estimado con IVA (informativo)", "$5,000.63"],
+    ["IVA referencial (12.5 %)", "$555.63"], ["Total de la cotización", "$4,445.00"],
   ]);
 
   await page.getByRole("textbox", { name: "Cantidad de Anteproyecto arquitectónico" }).fill("100");
   // 3045.00 × 12.5 % = 380.625 → 380.63.
-  await page.getByText("$3,425.63", { exact: true }).waitFor();
+  await page.getByText("$380.63", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Actualizar" }).click();
   await page.waitForURL(`${origin}/servicios-cotizaciones/cotizaciones`);
   assert.deepEqual([backend.quotes[0].currentVersion, backend.quotes[0].referenceVat.rate, backend.quotes[0].referenceVat.amount], [2, "12.50", "380.63"]);
@@ -800,7 +799,7 @@ test("IVA referencial: resumen dentro del viewport en móvil y escritorio, claro
     const backend = createBackend();
     const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", theme, viewport });
     await addSampleServices(page);
-    await page.getByText("$5,156.20", { exact: true }).waitFor();
+    await page.getByText("$711.20", { exact: true }).waitFor();
     const layout = await page.locator("[data-quote-amounts-summary]").evaluate((summary) => ({
       inside: [...summary.querySelectorAll("dt, dd")].every((cell) => {
         const box = cell.getBoundingClientRect();
