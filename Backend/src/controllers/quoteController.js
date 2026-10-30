@@ -6,7 +6,6 @@ import {
   getClientProjectOptions,
   getQuote,
   getQuoteClientOptions,
-  getQuoteReferenceVatSettings,
   getQuoteSummary,
   getQuotesPage,
   updateQuote,
@@ -45,24 +44,6 @@ export async function getQuotes(req, res, next) {
 export async function getQuotesSummary(_req, res, next) {
   try {
     res.set("Cache-Control", NO_STORE).status(200).json({ summary: await getQuoteSummary() });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * Devuelve la tasa configurada del IVA referencial (informativo, no fiscal) para la vista previa
- * del formulario: `{ referenceVat: { enabled, rate } }`; sin tasa, `enabled=false` y `rate=null`.
- * Sin caché: la tasa puede cambiar con un redespliegue.
- *
- * @param {import("express").Request} _req - Solicitud HTTP (no se usa).
- * @param {import("express").Response} res - Respuesta HTTP.
- * @param {Function} next - Continúa con el middleware de errores.
- * @returns {void}
- */
-export function getQuoteReferenceVat(_req, res, next) {
-  try {
-    res.set("Cache-Control", NO_STORE).status(200).json({ referenceVat: getQuoteReferenceVatSettings() });
   } catch (error) {
     next(error);
   }
