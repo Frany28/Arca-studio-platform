@@ -812,3 +812,64 @@ test("IVA referencial: resumen dentro del viewport en móvil y escritorio, claro
     assert.deepEqual(layout, { inside: true, overflow: 0 }, `${theme} ${viewport.width} px`);
   }
 });
+
+test("servicios incluidos: dos filas visibles con ScrollBar, casillas y «Eliminar» para los seleccionados", async (context) => {
+  // Cinco servicios ficticios incluidos en la cotización.
+  const many = Array.from({ length: 5 }, (_, index) => ({
+    ...SERVICES[0], code: `SERV-${String(index + 1).padStart(3, "0")}`, description: null, id: index + 1, name: `Servicio incluido ${index + 1}`, sortOrder: index + 1,
+  }));
+  const backend = createBackend({ services: many });
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  await picker.getByRole("checkbox", { name: "Seleccionar todos los servicios visibles" }).click();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+
+  const section = page.getByRole("region", { name: "Servicios incluidos" });
+  const viewport = section.locator("[data-quote-items-viewport]");
+  const bulk = section.locator("[data-quote-items-bulk-actions]");
+  const scrollBar = section.getByRole("scrollbar", { name: "Desplazar servicios incluidos verticalmente" });
+  await section.getByRole("textbox", { name: "Cantidad de Servicio incluido 1" }).waitFor();
+  // Filas cuyo centro queda dentro del viewport, bajo la cabecera fija.
+  const visibleRows = () => viewport.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const header = node.querySelector("thead").getBoundingClientRect();
+    return [...node.querySelectorAll("tbody tr")].filter((row) => {
+      const rect = row.getBoundingClientRect();
+      const center = rect.top + rect.height / 2;
+      return center > header.bottom && center < box.bottom;
+    }).length;
+  });
+
+  // Figma 5771:367432: cabecera de 49 px y dos filas de 71 px; el resto con el ScrollBar vertical.
+  assert.equal(await viewport.evaluate((node) => node.clientHeight), 49 + 2 * 71);
+  assert.equal(await visibleRows(), 2);
+  await scrollBar.waitFor();
+  assert.equal(await bulk.count(), 0, "Sin selección no hay acciones");
+
+  // Seleccionar dos filas muestra el contador y «Eliminar» debajo de la tabla.
+  await section.getByRole("checkbox", { name: "Seleccionar Servicio incluido 1" }).click();
+  await section.getByRole("checkbox", { name: "Seleccionar Servicio incluido 5" }).click();
+  await bulk.getByText("2 de 5 seleccionados", { exact: true }).waitFor();
+  // Una fila bajo la cabecera fija no tapa la casilla «Seleccionar todos».
+  const headerCovered = await viewport.evaluate((node) => {
+    node.scrollTop = 71;
+    const box = node.querySelector("thead [role='checkbox']").getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return !node.querySelector("thead").contains(hit);
+  });
+  assert.equal(headerCovered, false);
+  await bulk.getByRole("button", { name: "Eliminar 2 servicios seleccionados" }).click();
+  for (const n of [2, 3, 4]) await section.getByRole("textbox", { name: `Cantidad de Servicio incluido ${n}` }).waitFor();
+  assert.equal(await section.getByRole("textbox", { name: "Cantidad de Servicio incluido 1" }).count(), 0);
+  assert.equal(await section.getByRole("textbox", { name: "Cantidad de Servicio incluido 5" }).count(), 0);
+  await bulk.waitFor({ state: "detached" });
+  // Los quitados vuelven a poder elegirse en el selector.
+  await picker.getByRole("checkbox", { name: "Seleccionar Servicio incluido 1" }).waitFor();
+
+  // «Seleccionar todos» y «Eliminar» vacían la tabla.
+  await section.getByRole("checkbox", { name: "Seleccionar todos los servicios incluidos" }).click();
+  await bulk.getByText("3 de 3 seleccionados", { exact: true }).waitFor();
+  await bulk.getByRole("button", { name: "Eliminar 3 servicios seleccionados" }).click();
+  await section.getByText("No se han agregado servicios", { exact: true }).waitFor();
+  assert.equal(await scrollBar.count(), 0);
+});

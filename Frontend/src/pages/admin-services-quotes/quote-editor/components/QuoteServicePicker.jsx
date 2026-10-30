@@ -1,5 +1,5 @@
 import { SearchNormal1 } from "iconsax-react";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
@@ -7,10 +7,8 @@ import Checkbox from "../../../../components/ui/Checkbox/Checkbox.jsx";
 import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
 import Loader from "../../../../components/ui/Loader/Loader.jsx";
-import ScrollBar from "../../../../components/ui/ScrollBar/ScrollBar.jsx";
+import TableScrollViewport from "../../../../components/ui/ScrollBar/TableScrollViewport.jsx";
 import { normalizeTagSearchText } from "../../../../components/ui/Input/tags/tagUtils.js";
-import { useHorizontalScrollBar } from "../../../../hooks/useHorizontalScrollBar.js";
-import { useVerticalScrollBar } from "../../../../hooks/useVerticalScrollBar.js";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatReferenceRate, getServiceDescription } from "../../service-catalog/utils/serviceCatalogPresentation.js";
 import { formatServicePickerCount } from "../utils/servicePickerCount.js";
@@ -59,10 +57,6 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [openHintId, setOpenHintId] = useState(null);
-  const horizontal = useHorizontalScrollBar();
-  const vertical = useVerticalScrollBar();
-  const { viewportRef: horizontalRef, syncScrollState: syncHorizontal } = horizontal;
-  const { viewportRef: verticalRef, syncScrollState: syncVertical } = vertical;
   const visible = useMemo(() => services.filter((service) => matchesService(service, query)), [query, services]);
   // «Seleccionar todos» actúa sobre todos los resultados de la búsqueda.
   const selectable = visible.filter((service) => !includedIds.has(service.id));
@@ -72,27 +66,6 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   const includedCount = services.filter((service) => includedIds.has(service.id)).length;
   const allSelected = selectable.length > 0 && selectable.every((service) => selectedIds.has(service.id));
   const someSelected = selectable.some((service) => selectedIds.has(service.id));
-
-  /**
-   * Registra el viewport de la tabla en los dos ScrollBar (horizontal y vertical).
-   *
-   * @param {HTMLElement|null} node - Viewport con desplazamiento en ambos ejes.
-   * @returns {void}
-   */
-  const viewportRef = useCallback((node) => {
-    horizontalRef(node);
-    verticalRef(node);
-  }, [horizontalRef, verticalRef]);
-
-  /**
-   * Mide ambos ejes al desplazar el viewport.
-   *
-   * @returns {void}
-   */
-  function syncScroll() {
-    syncHorizontal();
-    syncVertical();
-  }
 
   /**
    * Marca o desmarca un servicio seleccionable.
@@ -139,105 +112,76 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
     body = <EmptyState title="No hay coincidencias" description="No encontramos servicios activos con esta búsqueda." size="S" showFeaturedIcon={false} showActions={false} />;
   } else {
     body = (
-      <>
-        <div className="relative">
-          {/* Las barras nativas se ocultan porque los ScrollBar del sistema las sustituyen. */}
-          <div
-            ref={viewportRef}
-            className="w-full overflow-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            style={{ maxHeight: PICKER_VIEWPORT_MAX_HEIGHT }}
-            data-service-picker-viewport
-            onScroll={syncScroll}
-          >
-            <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: PICKER_TABLE_MIN_WIDTH }}>
-              <caption className="sr-only">Servicios activos del tabulador</caption>
-              <colgroup>
-                <col style={{ width: 48 }} />
-                <col style={{ width: 350 }} />
-                <col />
-                <col />
-              </colgroup>
-              <thead className="sticky top-0 z-[1] bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
-                <tr className="text-heading-8 h-[49px]">
-                  <th scope="col" className="p-[16px]">
-                    <Checkbox size="S" checked={allSelected ? "Yes" : someSelected ? "Indeterminate" : "No"} interactive={selectable.length > 0 && !disabled} aria-label="Seleccionar todos los servicios visibles" onCheckedChange={toggleAll} />
-                  </th>
-                  <th scope="col" className="px-[24px] py-[16px]">Servicio</th>
-                  <th scope="col" className="px-[24px] py-[16px]">Unidad</th>
-                  <th scope="col" className="px-[24px] py-[16px] text-right">Tarifa base</th>
-                </tr>
-              </thead>
-              {/* isolate: el z-index interno del Checkbox no sale del cuerpo ni tapa la cabecera fija. */}
-              <tbody className="isolate">
-                {visible.map((service) => {
-                  const included = includedIds.has(service.id);
-                  const checked = included || selectedIds.has(service.id);
-                  const description = getServiceDescription(service);
-                  return (
-                    <tr key={service.id} className={`h-[50px] transition-colors duration-150 ${checked ? "bg-[var(--color-neutral-300)]" : "bg-[var(--color-neutral-100)]"}`} data-selected={checked ? "true" : undefined}>
-                      <td className="px-[16px]">
-                        <Checkbox
-                          size="S"
-                          checked={checked ? "Yes" : "No"}
-                          interactive={!included && !disabled}
-                          aria-label={included ? `${service.name} ya está incluido` : `Seleccionar ${service.name}`}
-                          onCheckedChange={() => toggle(service.id)}
+      <TableScrollViewport
+        headerHeight={PICKER_HEADER_HEIGHT}
+        maxHeight={PICKER_VIEWPORT_MAX_HEIGHT}
+        resetKey={query}
+        disabled={disabled}
+        verticalLabel="Desplazar servicios disponibles verticalmente"
+        horizontalLabel="Desplazar servicios disponibles horizontalmente"
+        data-service-picker-viewport
+      >
+        <table className="w-full table-fixed border-collapse text-left" style={{ minWidth: PICKER_TABLE_MIN_WIDTH }}>
+          <caption className="sr-only">Servicios activos del tabulador</caption>
+          <colgroup>
+            <col style={{ width: 48 }} />
+            <col style={{ width: 350 }} />
+            <col />
+            <col />
+          </colgroup>
+          <thead className="sticky top-0 z-[1] bg-[var(--color-neutral-200)] text-[var(--color-text-300)]">
+            <tr className="text-heading-8 h-[49px]">
+              <th scope="col" className="p-[16px]">
+                <Checkbox size="S" checked={allSelected ? "Yes" : someSelected ? "Indeterminate" : "No"} interactive={selectable.length > 0 && !disabled} aria-label="Seleccionar todos los servicios visibles" onCheckedChange={toggleAll} />
+              </th>
+              <th scope="col" className="px-[24px] py-[16px]">Servicio</th>
+              <th scope="col" className="px-[24px] py-[16px]">Unidad</th>
+              <th scope="col" className="px-[24px] py-[16px] text-right">Tarifa base</th>
+            </tr>
+          </thead>
+          {/* isolate: el z-index interno del Checkbox no sale del cuerpo ni tapa la cabecera fija. */}
+          <tbody className="isolate">
+            {visible.map((service) => {
+              const included = includedIds.has(service.id);
+              const checked = included || selectedIds.has(service.id);
+              const description = getServiceDescription(service);
+              return (
+                <tr key={service.id} className={`h-[50px] transition-colors duration-150 ${checked ? "bg-[var(--color-neutral-300)]" : "bg-[var(--color-neutral-100)]"}`} data-selected={checked ? "true" : undefined}>
+                  <td className="px-[16px]">
+                    <Checkbox
+                      size="S"
+                      checked={checked ? "Yes" : "No"}
+                      interactive={!included && !disabled}
+                      aria-label={included ? `${service.name} ya está incluido` : `Seleccionar ${service.name}`}
+                      onCheckedChange={() => toggle(service.id)}
+                    />
+                  </td>
+                  <td className="px-[24px]">
+                    <div className="flex min-w-0 items-center gap-[2px]">
+                      <span className="text-heading-8 truncate text-[var(--color-text-300)]" title={service.name}>{service.name}</span>
+                      {description ? (
+                        <ServiceDescriptionHint
+                          serviceName={service.name}
+                          description={description}
+                          open={openHintId === service.id}
+                          onOpenChange={(open) => setOpenHintId(open ? service.id : null)}
                         />
-                      </td>
-                      <td className="px-[24px]">
-                        <div className="flex min-w-0 items-center gap-[2px]">
-                          <span className="text-heading-8 truncate text-[var(--color-text-300)]" title={service.name}>{service.name}</span>
-                          {description ? (
-                            <ServiceDescriptionHint
-                              serviceName={service.name}
-                              description={description}
-                              open={openHintId === service.id}
-                              onOpenChange={(open) => setOpenHintId(open ? service.id : null)}
-                            />
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-[24px]">
-                        <div className="flex min-w-0">
-                          {/* Figma 5771:451934: en modo oscuro la unidad va como texto, sin fondo ni borde de chip. */}
-                          <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate className="dark:border-transparent dark:bg-transparent" />
-                        </div>
-                      </td>
-                      <td className="text-heading-8 truncate px-[24px] text-right text-[var(--color-text-300)] tabular-nums">{formatReferenceRate(service.referenceRate, service.currency)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {vertical.hasOverflow ? (
-            // Pista sobre las filas, bajo la cabecera fija, en el margen derecho de «Tarifa base».
-            <ScrollBar
-              height={Math.max(vertical.scrollState.height - PICKER_HEADER_HEIGHT, 0)}
-              length={vertical.scrollState.length}
-              position={vertical.scrollState.position}
-              interactive={!disabled}
-              onPositionChange={vertical.handlePositionChange}
-              aria-label="Desplazar servicios disponibles verticalmente"
-              className="absolute right-0 z-[2]"
-              style={{ top: PICKER_HEADER_HEIGHT }}
-              trackContainerClassName="bg-transparent"
-            />
-          ) : null}
-        </div>
-        {horizontal.hasOverflow ? (
-          <ScrollBar
-            orientation="horizontal"
-            width={horizontal.scrollState.width}
-            length={horizontal.scrollState.length}
-            position={horizontal.scrollState.position}
-            interactive
-            onPositionChange={horizontal.handlePositionChange}
-            aria-label="Desplazar servicios disponibles horizontalmente"
-            className="block max-w-full"
-          />
-        ) : null}
-      </>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-[24px]">
+                    <div className="flex min-w-0">
+                      {/* Figma 5771:451934: en modo oscuro la unidad va como texto, sin fondo ni borde de chip. */}
+                      <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate className="dark:border-transparent dark:bg-transparent" />
+                    </div>
+                  </td>
+                  <td className="text-heading-8 truncate px-[24px] text-right text-[var(--color-text-300)] tabular-nums">{formatReferenceRate(service.referenceRate, service.currency)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableScrollViewport>
     );
   }
 
@@ -260,11 +204,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
             leftIcon={<SearchNormal1 size="20" color="currentColor" />}
             className="w-full"
             aria-label="Buscar servicios por nombre o código"
-            onChange={(event) => {
-              setQuery(event.target.value);
-              // Los resultados nuevos se muestran desde el principio.
-              vertical.handlePositionChange(0);
-            }}
+            onChange={(event) => setQuery(event.target.value)}
           />
         </div>
       </div>

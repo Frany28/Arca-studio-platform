@@ -121,6 +121,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
           disabled={submitting}
           onLineChange={(key, field, value) => actions.updateLine(key, field, value)}
           onRemove={actions.removeLine}
+          onRemoveMany={actions.removeLines}
           onServiceChange={(key, service) => {
             submission.clearFieldError("items");
             actions.replaceService(key, service);

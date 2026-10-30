@@ -822,14 +822,23 @@ Validación, capturas y diferencias respecto a Figma:
     inventado); al editar, la tasa guardada de la cotización. El skeleton `quoteEditor` reserva
     las tres filas. El selector no pagina: su tabla muestra cinco filas
     (cabecera fija de 49 px + 5 × 50 px) y el resto se recorre con el `ScrollBar` vertical
-    interactivo (`useVerticalScrollBar`), situado sobre las filas en el margen derecho, además de
-    rueda, touchpad y gestos; las barras nativas se ocultan. El mismo viewport conserva el
-    `ScrollBar` horizontal (`useHorizontalScrollBar`) cuando la tabla no cabe a lo ancho. Con cinco
+    interactivo, situado sobre las filas en el margen derecho, además de rueda, touchpad y gestos;
+    las barras nativas se ocultan. El mismo viewport conserva el `ScrollBar` horizontal cuando la
+    tabla no cabe a lo ancho. Ambos los compone `TableScrollViewport` (`components/ui/ScrollBar`,
+    con `useVerticalScrollBar` y `useHorizontalScrollBar`), compartido con «Servicios incluidos»;
+    la tabla fija su `thead` (sticky) y aísla su `tbody` (`isolate`) para que las casillas de las
+    filas no tapen la cabecera. Con cinco
     resultados o menos no hay ScrollBar vertical. Buscar vuelve al inicio de la lista y «Seleccionar
     todos» marca todos los resultados de la búsqueda (el skeleton `quoteServicePicker` reserva cinco
     filas). Los servicios ya incluidos aparecen marcados y
     deshabilitados en el selector; su contador separa ambos conjuntos («1 de 2 seleccionados · 1 ya
-    incluido», `formatServicePickerCount`). Cada fila de servicios incluidos tiene el
+    incluido», `formatServicePickerCount`). «Servicios incluidos» muestra dos filas (Figma
+    5771:367432: cabecera de 49 px + 2 × 71 px = 191 px) con el mismo `TableScrollViewport`. Su
+    primera columna (48 px) tiene la casilla de cada fila y «Seleccionar todos» en la cabecera;
+    la fila marcada usa `neutral-300`, como el tabulador. Con selección aparece debajo de la tabla
+    el contador «X de Y seleccionados» y «Eliminar» (`Button` Primary/Ghost/M con `CloseCircle`,
+    el patrón de las acciones masivas del tabulador), que quita del borrador los seleccionados sin
+    confirmación, igual que «Eliminar» de la fila; sin selección no se renderiza. Cada fila de servicios incluidos tiene el
     `DropdownMenu` de su servicio (Figma 5771:367425) con `portal`, para que el desplazamiento
     horizontal de la tabla no recorte el menú: ofrece el servicio actual y los activos no incluidos,
     y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). El menú

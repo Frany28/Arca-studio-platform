@@ -26,6 +26,8 @@ function quoteDraftReducer(draft, action) {
       return { ...draft, lines: replaceLineService(draft.lines, action.key, action.service) };
     case "removeLine":
       return { ...draft, lines: draft.lines.filter((line) => line.key !== action.key) };
+    case "removeLines":
+      return { ...draft, lines: draft.lines.filter((line) => !action.keys.includes(line.key)) };
     case "updateLine":
       return { ...draft, lines: draft.lines.map((line) => (line.key === action.key ? { ...line, [action.field]: action.value } : line)) };
     default:
@@ -46,6 +48,7 @@ export function useQuoteDraft(initialDraft) {
     actions: {
       addServices: (services) => dispatch({ services, type: "addServices" }),
       removeLine: (key) => dispatch({ key, type: "removeLine" }),
+      removeLines: (keys) => dispatch({ keys, type: "removeLines" }),
       replaceService: (key, service) => dispatch({ key, service, type: "replaceService" }),
       reset: (nextDraft) => dispatch({ draft: nextDraft, type: "reset" }),
       setClient: (client) => dispatch({ client, type: "setClient" }),
