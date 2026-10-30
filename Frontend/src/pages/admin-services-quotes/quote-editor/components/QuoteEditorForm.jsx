@@ -138,6 +138,12 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
           value={draft.notes}
           maxLength={QUOTE_NOTES_MAX_LENGTH}
           disabled={submitting}
+          // Figma 5771:452385: todo el ancho y caja de 130 px con su borde: 102 de texto, 12 + 12 de
+          // relleno, 1 + 1 del borde transparente del campo (foco) y 1 + 1 del borde de la caja.
+          // Con rows={4} la altura la fija minHeight.
+          rows={4}
+          minHeight={102}
+          className="max-w-none"
           onChange={(event) => actions.setNotes(event.target.value)}
         />
       </div>

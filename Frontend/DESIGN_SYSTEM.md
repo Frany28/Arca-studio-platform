@@ -820,7 +820,11 @@ Validación, capturas y diferencias respecto a Figma:
     (informativo)» en heading-6 `text-300`, separado del total de servicios. Sin tasa
     configurada muestra «Pendiente de configuración» y «—» en el estimado (nunca un porcentaje
     inventado); al editar, la tasa guardada de la cotización. El skeleton `quoteEditor` reserva
-    las tres filas. El selector no pagina: su tabla muestra cinco filas
+    las tres filas.
+    «Observaciones (opcional)» ocupa todo el ancho del formulario y su caja mide 130 px con sus
+    bordes (Figma 5771:452385): `TextArea` con `className="max-w-none"`, `rows={4}` y
+    `minHeight={102}` (102 de texto + 24 de relleno + 1 + 1 del borde transparente del campo +
+    1 + 1 del borde de la caja). El selector no pagina: su tabla muestra cinco filas
     (cabecera fija de 49 px + 5 × 50 px) y el resto se recorre con el `ScrollBar` vertical
     interactivo, situado sobre las filas en el margen derecho, además de rueda, touchpad y gestos;
     las barras nativas se ocultan. El mismo viewport conserva el `ScrollBar` horizontal cuando la

@@ -873,3 +873,18 @@ test("servicios incluidos: dos filas visibles con ScrollBar, casillas y «Elimin
   await section.getByText("No se han agregado servicios", { exact: true }).waitFor();
   assert.equal(await scrollBar.count(), 0);
 });
+
+test("observaciones: caja de Figma a todo el ancho del formulario y 130 px de alto", async (context) => {
+  for (const viewport of [{ height: 1000, width: 1440 }, { height: 812, width: 375 }]) {
+    const page = await openQuotes(context, createBackend(), { path: "/servicios-cotizaciones/cotizaciones/nueva", viewport });
+    const notes = page.getByRole("textbox", { name: "Observaciones (opcional)" });
+    await notes.waitFor();
+    const box = await notes.evaluate((textarea) => {
+      // Figma 5771:452385: el marco con relleno 12/16 mide 130 px y ocupa el ancho del formulario.
+      const frame = textarea.parentElement.parentElement.getBoundingClientRect();
+      const form = textarea.closest("form").getBoundingClientRect();
+      return { height: Math.round(frame.height), width: Math.round(frame.width) - Math.round(form.width) };
+    });
+    assert.deepEqual(box, { height: 130, width: 0 }, `${viewport.width} px`);
+  }
+});
