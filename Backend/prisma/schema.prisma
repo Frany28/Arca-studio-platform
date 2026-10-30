@@ -859,6 +859,10 @@ model quote_versions {
   project_name   String        @db.VarChar(150)
   notes          String?
   services_total Decimal       @db.Decimal(14, 2)
+  /// IVA referencial (informativo) con que se calculó la versión; sin tasa configurada, false.
+  reference_vat_enabled Boolean @default(false)
+  reference_vat_rate    Decimal? @db.Decimal(5, 2)
+  reference_vat_amount  Decimal @default(0) @db.Decimal(14, 2)
   currency_code  String        @default("USD") @db.Char(3)
   is_current     Boolean       @default(true)
   created_by     BigInt

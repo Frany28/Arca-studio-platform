@@ -1,4 +1,5 @@
 import { withTransaction } from "../config/db.js";
+import { getConfiguredReferenceVat } from "../config/quoteReferenceVat.js";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
   QUOTE_CURRENCY,
@@ -9,6 +10,7 @@ import {
   formatGeneratedQuoteCode,
   hasQuoteContentChanged,
 } from "../domain/quote.js";
+import { resolveQuoteReferenceVat } from "../domain/quoteReferenceVat.js";
 import { calculateQuoteTotals } from "../domain/quoteTotals.js";
 import {
   findQuoteClient,
@@ -33,8 +35,6 @@ import { decodeCursor, pageResult, parsePageLimit } from "../utils/pagination.js
 import { QUOTE_VERSION_CONFLICT_MESSAGE, translateQuoteError } from "./quoteErrors.js";
 
 const QUOTE_NOT_FOUND_MESSAGE = "La cotización solicitada no existe.";
-// El IVA referencial no forma parte del diseño de cotizaciones: el motor lo recibe deshabilitado.
-const WITHOUT_REFERENCE_VAT = Object.freeze({ enabled: false });
 
 /**
  * Obtiene una página del listado de cotizaciones con búsqueda, intervalo de fechas y orden por
@@ -83,6 +83,17 @@ export async function getQuote(quoteId) {
   const quote = await findQuoteById(quoteId);
   if (!quote) throw new NotFoundError("QUOTE_NOT_FOUND", QUOTE_NOT_FOUND_MESSAGE);
   return quote;
+}
+
+/**
+ * Devuelve la tasa configurada del IVA referencial, que el formulario usa para la vista previa de
+ * una cotización nueva (o de una guardada cuando la tasa estaba pendiente).
+ *
+ * @returns {{ enabled: boolean, rate: string|null }} Tasa habilitada o pendiente de configuración.
+ * @throws {AppError} QUOTE_REFERENCE_VAT_MISCONFIGURED si la tasa configurada no es válida.
+ */
+export function getQuoteReferenceVatSettings() {
+  return getConfiguredReferenceVat();
 }
 
 /**
@@ -215,10 +226,12 @@ function chooseUnitOptions(items, versionIds, unitOptionsByVersion, current) {
  * @param {object} options - Datos de la operación.
  * @param {Array<{ serviceId: number, quantity: string, unitRate: string }>} options.items - Conceptos validados.
  * @param {object|null} options.current - Cotización vigente al editar; null al crear.
- * @returns {Promise<{ lines: Array<object>, servicesTotal: string }>} Conceptos con subtotal y total.
+ * @param {{ enabled: boolean, rate: string|null }} options.referenceVat - IVA referencial que se aplica.
+ * @returns {Promise<{ lines: Array<object>, servicesTotal: string, referenceVat: { enabled: boolean,
+ *   rate: string|null, amount: string } }>} Conceptos con subtotal, total de servicios e IVA referencial.
  * @throws {ValidationError} Si algún concepto no puede guardarse.
  */
-async function resolveQuoteLines(client, { current, items }) {
+async function resolveQuoteLines(client, { current, items, referenceVat }) {
   const fields = {};
   collectDuplicateServiceErrors(items, fields);
   if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
@@ -240,9 +253,10 @@ async function resolveQuoteLines(client, { current, items }) {
   collectWholeQuantityErrors(lines, fields);
   if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
 
-  const totals = calculateQuoteTotals({ items: lines, referenceVat: WITHOUT_REFERENCE_VAT });
+  const totals = calculateQuoteTotals({ items: lines, referenceVat });
   return {
     lines: lines.map((line, index) => ({ ...line, subtotal: totals.items[index].subtotal })),
+    referenceVat: { amount: totals.referenceVat.amount, enabled: totals.referenceVat.enabled, rate: totals.referenceVat.rate },
     servicesTotal: totals.servicesTotal,
   };
 }
@@ -270,12 +284,15 @@ async function writeQuoteVersion(client, version) {
  * @param {{ id: number }} options.user - Administrador autenticado.
  * @returns {Promise<object>} Cotización creada con currentVersion = 1.
  * @throws {ValidationError} Si el cliente, el proyecto o algún concepto no son válidos.
+ * @throws {AppError} QUOTE_REFERENCE_VAT_MISCONFIGURED si la tasa configurada no es válida.
  */
 export async function createQuote({ payload, user }) {
+  // La tasa vigente al crear; sin tasa configurada la cotización se guarda sin IVA referencial.
+  const referenceVat = resolveQuoteReferenceVat({ configured: getConfiguredReferenceVat(), stored: null });
   try {
     return await withTransaction(async (client) => {
       const participants = await resolveQuoteParticipants(client, { ...payload, current: null });
-      const { lines, servicesTotal } = await resolveQuoteLines(client, { current: null, items: payload.items });
+      const { lines, referenceVat: vat, servicesTotal } = await resolveQuoteLines(client, { current: null, items: payload.items, referenceVat });
       const quoteId = await reserveQuoteId(client);
       await insertQuoteRecord(client, { code: formatGeneratedQuoteCode(quoteId), id: quoteId, userId: user.id });
       await writeQuoteVersion(client, {
@@ -283,6 +300,7 @@ export async function createQuote({ payload, user }) {
         lines,
         notes: payload.notes,
         quoteId,
+        referenceVat: vat,
         servicesTotal,
         userId: user.id,
         versionNumber: 1,
@@ -313,6 +331,7 @@ function toStoredContent(quote) {
     })),
     notes: quote.notes,
     projectId: quote.project.id,
+    referenceVat: { enabled: quote.referenceVat.enabled, rate: quote.referenceVat.rate },
   };
 }
 
@@ -330,8 +349,10 @@ function toStoredContent(quote) {
  * @throws {NotFoundError} QUOTE_NOT_FOUND si la cotización no existe.
  * @throws {ConflictError} QUOTE_VERSION_CONFLICT si otra edición se confirmó antes.
  * @throws {ValidationError} Si el cliente, el proyecto o algún concepto no son válidos.
+ * @throws {AppError} QUOTE_REFERENCE_VAT_MISCONFIGURED si la tasa configurada no es válida.
  */
 export async function updateQuote({ payload, quoteId, user }) {
+  const configuredVat = getConfiguredReferenceVat();
   try {
     return await withTransaction(async (client) => {
       const current = await lockQuoteForUpdate(client, quoteId);
@@ -341,8 +362,10 @@ export async function updateQuote({ payload, quoteId, user }) {
       }
 
       const participants = await resolveQuoteParticipants(client, { ...payload, current });
-      const { lines, servicesTotal } = await resolveQuoteLines(client, { current, items: payload.items });
-      const next = { clientId: payload.clientId, items: lines, notes: payload.notes, projectId: payload.projectId };
+      // Una cotización guardada con IVA conserva su tasa; si estaba pendiente, toma la configurada.
+      const referenceVat = resolveQuoteReferenceVat({ configured: configuredVat, stored: current.referenceVat });
+      const { lines, referenceVat: vat, servicesTotal } = await resolveQuoteLines(client, { current, items: payload.items, referenceVat });
+      const next = { clientId: payload.clientId, items: lines, notes: payload.notes, projectId: payload.projectId, referenceVat };
       if (!hasQuoteContentChanged(toStoredContent(current), next)) return { changed: false, quote: current };
 
       await retireCurrentQuoteVersion(client, quoteId);
@@ -351,6 +374,7 @@ export async function updateQuote({ payload, quoteId, user }) {
         lines,
         notes: payload.notes,
         quoteId,
+        referenceVat: vat,
         servicesTotal,
         userId: user.id,
         versionNumber: current.currentVersion + 1,

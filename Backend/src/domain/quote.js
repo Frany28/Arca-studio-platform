@@ -118,22 +118,25 @@ function comparableDecimal(value, format) {
 
 /**
  * Representa el contenido versionado de una cotización como texto estable, para decidir si un
- * guardado cambia algo. Incluye cliente, proyecto, observaciones y, en orden, cada concepto con
- * la versión del servicio, la unidad elegida, la cantidad y la tarifa aplicada.
+ * guardado cambia algo. Incluye cliente, proyecto, observaciones, el IVA referencial aplicado (una
+ * versión guardada sin tasa que pasa a tenerla cambia) y, en orden, cada concepto con la versión
+ * del servicio, la unidad elegida, la cantidad y la tarifa aplicada.
  *
  * @param {object} content - Contenido de la cotización.
  * @param {number} content.clientId - Cliente.
  * @param {number} content.projectId - Proyecto.
  * @param {string|null} content.notes - Observaciones.
+ * @param {{ enabled: boolean, rate: string|null }} [content.referenceVat] - IVA referencial aplicado; ausente, sin IVA.
  * @param {Array<{ serviceId: number, serviceVersionId: number, serviceVersionUnitOptionId: number, quantity: string,
  *   unitRate: string }>} content.items - Conceptos.
  * @returns {string} Huella comparable del contenido.
  */
-function quoteContentFingerprint({ clientId, items, notes, projectId }) {
+function quoteContentFingerprint({ clientId, items, notes, projectId, referenceVat }) {
   return JSON.stringify([
     Number(clientId),
     Number(projectId),
     notes ?? null,
+    referenceVat?.enabled ? comparableDecimal(referenceVat.rate, QUOTE_DECIMAL_FORMATS.vatRate) : null,
     items.map((item) => [
       Number(item.serviceId),
       Number(item.serviceVersionId),

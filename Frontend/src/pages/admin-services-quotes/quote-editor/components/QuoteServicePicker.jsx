@@ -199,7 +199,8 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
                       </td>
                       <td className="px-[24px]">
                         <div className="flex min-w-0">
-                          <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
+                          {/* Figma 5771:451934: en modo oscuro la unidad va como texto, sin fondo ni borde de chip. */}
+                          <Badge label={service.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate className="dark:border-transparent dark:bg-transparent" />
                         </div>
                       </td>
                       <td className="text-heading-8 truncate px-[24px] text-right text-[var(--color-text-300)] tabular-nums">{formatReferenceRate(service.referenceRate, service.currency)}</td>
