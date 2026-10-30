@@ -845,7 +845,10 @@ Validación, capturas y diferencias respecto a Figma:
     Primary/Ghost/M con `CloseCircle`, el patrón de las acciones masivas del tabulador; en
     pantallas estrechas ambos se apilan centrados). «Eliminar» pide confirmación con el diálogo de
     advertencia compartido (`StatusConfirmationModal`, variante Danger, Figma 3727:686871) y, al
-    confirmar, quita del borrador los seleccionados; sin selección no se renderiza. Cada fila de servicios incluidos tiene el
+    confirmar, quita del borrador los seleccionados; sin selección no se renderiza. La unidad de
+    cada fila es un `Badge` Brand 2/Simple/S (Figma claro 5771:367444); en oscuro (Figma
+    I5833:360601;5832:359967) usa fondo y borde `primary-300` y texto `neutral-100-uniform` con
+    clases `dark:`, sin cambiar la geometría. Cada fila de servicios incluidos tiene el
     `DropdownMenu` de su servicio (Figma 5771:367425) con `portal`, para que el desplazamiento
     horizontal de la tabla no recorte el menú: ofrece el servicio actual y los activos no incluidos,
     y cambiarlo trae su unidad y tarifa conservando la cantidad (`replaceLineService`). El menú

@@ -896,6 +896,40 @@ test("servicios incluidos: dos filas visibles con ScrollBar, casillas y «Elimin
   assert.equal(await scrollBar.count(), 0);
 });
 
+test("servicios incluidos: el badge de unidad sigue su variante de Figma en claro y oscuro, al crear y al editar", async (context) => {
+  // Figma claro 5771:367444 y oscuro I5833:360601;5832:359967: misma geometría, colores por tema.
+  const expected = {
+    dark: { background: "rgb(42, 41, 41)", border: "rgb(42, 41, 41)", color: "rgb(255, 255, 255)" },
+    light: { background: "rgba(42, 41, 41, 0.1)", border: "rgba(42, 41, 41, 0.1)", color: "rgb(42, 41, 41)" },
+  };
+  const cases = [
+    ["light", "/servicios-cotizaciones/cotizaciones/nueva", { height: 1000, width: 1440 }],
+    ["dark", "/servicios-cotizaciones/cotizaciones/nueva", { height: 1000, width: 1440 }],
+    ["light", "/servicios-cotizaciones/cotizaciones/1/editar", { height: 812, width: 375 }],
+    ["dark", "/servicios-cotizaciones/cotizaciones/1/editar", { height: 812, width: 375 }],
+  ];
+  for (const [theme, path, viewport] of cases) {
+    const page = await openQuotes(context, createBackend(), { path, theme, viewport });
+    if (path.endsWith("nueva")) await addSampleServices(page);
+    const badge = page.getByRole("region", { name: "Servicios incluidos" }).locator("[data-quote-line-unit]").first();
+    await badge.waitFor();
+    const style = await badge.evaluate((node) => {
+      const box = getComputedStyle(node);
+      const text = getComputedStyle(node.querySelector("span"));
+      return {
+        background: box.backgroundColor, border: box.borderTopColor, borderWidth: box.borderTopWidth, color: text.color,
+        fontSize: text.fontSize, height: node.getBoundingClientRect().height, lineHeight: text.lineHeight,
+        padding: `${box.paddingTop} ${box.paddingRight} ${box.paddingBottom} ${box.paddingLeft}`, radius: box.borderTopLeftRadius,
+      };
+    });
+    assert.deepEqual(style, {
+      ...expected[theme], borderWidth: "1px", fontSize: "12px", height: 20, lineHeight: "14px", padding: "2px 8px 2px 8px", radius: style.radius,
+    }, `${theme} ${path}`);
+    assert.ok(Number.parseFloat(style.radius) >= 10, "Radio completo");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 0);
+  }
+});
+
 test("observaciones: caja de Figma a todo el ancho del formulario y 130 px de alto", async (context) => {
   for (const viewport of [{ height: 1000, width: 1440 }, { height: 812, width: 375 }]) {
     const page = await openQuotes(context, createBackend(), { path: "/servicios-cotizaciones/cotizaciones/nueva", viewport });

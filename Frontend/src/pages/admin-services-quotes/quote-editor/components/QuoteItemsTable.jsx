@@ -252,7 +252,17 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRe
                     </th>
                     <td className="px-[24px] py-[16px]">
                       <div className="flex min-w-0">
-                        <Badge label={line.unitLabel} theme="Brand 2" variation="Simple" size="S" truncate />
+                        {/* Figma: claro 5771:367444 (Brand 2); oscuro I5833:360601;5832:359967 con
+                            fondo y borde primary-300 y texto neutral-100-uniform (los colores de Brand 1). */}
+                        <Badge
+                          label={line.unitLabel}
+                          theme="Brand 2"
+                          variation="Simple"
+                          size="S"
+                          truncate
+                          className="dark:border-[var(--color-primary-300)] dark:bg-[var(--color-primary-300)] dark:[&>span]:text-[var(--color-neutral-100-uniform)]"
+                          data-quote-line-unit
+                        />
                       </div>
                     </td>
                     <td className="px-[24px] py-[16px]">
