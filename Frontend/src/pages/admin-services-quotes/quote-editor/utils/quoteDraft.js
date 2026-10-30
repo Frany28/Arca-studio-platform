@@ -20,8 +20,8 @@ export function toEditableDecimal(value) {
 }
 
 /**
- * Crea un concepto a partir de un servicio activo del tabulador. La cantidad empieza vacía para
- * que el administrador la escriba; la tarifa aplicada empieza en la tarifa de referencia.
+ * Crea un concepto a partir de un servicio activo del tabulador. La cantidad empieza en 1 y el
+ * administrador la ajusta; la tarifa aplicada empieza en la tarifa de referencia.
  *
  * @param {Object} service - Servicio de `GET /admin/services`.
  * @returns {Object} Concepto del borrador.
@@ -29,7 +29,7 @@ export function toEditableDecimal(value) {
 export function createLineFromService(service) {
   return {
     key: `service-${service.id}`,
-    quantity: "",
+    quantity: "1",
     referenceRate: service.referenceRate,
     serviceCode: service.code,
     serviceDescription: service.description ?? null,

@@ -32,7 +32,7 @@ test("decimales editables sin ceros sobrantes y conceptos con la tarifa de refer
   assert.equal(toEditableDecimal("100"), "100");
   assert.equal(toEditableDecimal("abc"), "abc");
   assert.deepEqual(createLineFromService(POINT_SERVICE), {
-    key: "service-2", quantity: "", referenceRate: "45.50", serviceCode: "SERV-002", serviceDescription: "Planos y memoria",
+    key: "service-2", quantity: "1", referenceRate: "45.50", serviceCode: "SERV-002", serviceDescription: "Planos y memoria",
     serviceId: 2, serviceName: "Puntos eléctricos", unitAllowsDecimals: false, unitLabel: "m² de construcción", unitRate: "45.5",
   });
 });
