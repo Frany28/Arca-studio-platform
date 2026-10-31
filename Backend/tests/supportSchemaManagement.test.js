@@ -39,8 +39,8 @@ function recordSql(context) {
       return { rows: [{ created_at: new Date(), description: "d", id: "11", issue_type: null, status: "open", subject: "s", user_id: "5" }] };
     }
     if (/from public\.support_requests/i.test(sql)) return { rows: [{ id: "11", status: "open", user_id: "5" }] };
-    if (/insert into public\.support_request_files/i.test(sql)) return { rows: [{ id: "21" }] };
-    if (/update public\.support_request_files/i.test(sql)) {
+    if (/nextval\(pg_get_serial_sequence\('public\.support_request_files'/i.test(sql)) return { rows: [{ id: "21" }] };
+    if (/insert into public\.support_request_files/i.test(sql)) {
       return { rows: [{ created_at: new Date(), file_extension: "pdf", file_size: "4", file_type: "application/pdf", id: "21", original_name: "a.pdf", support_request_id: "11" }] };
     }
     return { rows: [] };
@@ -113,7 +113,9 @@ test("buscar y adjuntar archivos de soporte no ejecuta DDL", async (context) => 
     user,
   });
   assert.equal(file.id, 21);
-  assert.equal(statements.at(-1), "commit");
+  // P0-1: el adjunto se registra con una sola sentencia tras transferir el objeto, sin transacción abierta.
+  assert.match(statements.at(-1), /insert into public\.support_request_files/i);
+  assert.equal(pool.connect.mock.callCount(), 0);
   assert.deepEqual(statements.filter((sql) => DDL_PATTERN.test(sql)), []);
 });
 

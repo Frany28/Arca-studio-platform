@@ -43,6 +43,7 @@ import {
 } from "../services/sessionService.js";
 import { prepareUpload, uploadPolicies } from "../services/fileUploadService.js";
 import { verifyUserCredentials } from "../services/credentialService.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 
 const PASSWORD_RESET_ACCEPTED_RESPONSE = {
   message: "Si el correo está registrado, enviaremos un enlace de recuperación.",
@@ -445,8 +446,7 @@ export async function getProfilePhotoImage(req, res, next) {
     );
     res.setHeader("Cache-Control", "private, no-store");
     if (object.ContentLength !== undefined) res.setHeader("Content-Length", String(object.ContentLength));
-    object.Body.on?.("error", next);
-    object.Body.pipe(res);
+    await streamStoredObject(object.Body, res, "profile_photo");
   } catch (error) {
     if (
       error?.name === "NoSuchKey" ||

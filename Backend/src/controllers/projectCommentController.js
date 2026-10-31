@@ -16,6 +16,7 @@ import {
   getDocumentComments,
 } from "../services/documentCommentService.js";
 import { assertProjectOperationallyMutable } from "../services/projectService.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 
 const COMMENT_CONTENT_MAX_LENGTH = 2000;
 const ALLOWED_COMMENT_TYPES = new Set(["general", "image", "video", "panorama", "document"]);
@@ -158,8 +159,8 @@ export async function streamProjectCommentAuthorProfilePhoto(req, res, next) {
     if (photo.contentLength !== undefined) {
       res.setHeader("Content-Length", String(photo.contentLength));
     }
-    photo.body.on?.("error", next);
-    photo.body.pipe(res.status(200));
+    res.status(200);
+    await streamStoredObject(photo.body, res, "profile_photo");
   } catch (error) {
     next(error);
   }

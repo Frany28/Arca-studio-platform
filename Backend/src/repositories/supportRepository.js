@@ -1,14 +1,13 @@
-import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { objectStorage } from "../services/objectStorage.js";
+import { storeThenRecord } from "../services/storedUpload.js";
 
 import {
   buildStorageFileUrl,
   buildStorageObjectKey,
   getFileExtension,
-  getSupabaseS3Client,
   getSupabaseStorageConfig,
 } from "../config/storage.js";
-import { pool, query } from "../config/db.js";
+import { query } from "../config/db.js";
 
 // Las tablas support_requests y support_request_files se gestionan solo mediante
 // la migración 20261014120000_support_tables. Este repositorio no ejecuta DDL:
@@ -113,7 +112,8 @@ export async function findSupportRequestForUpload(supportRequestId, user) {
 
 /**
  * Carga el valor de soporte solicitud archivo coordinando la persistencia y el almacenamiento.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Transfiere el objeto sin conexiones abiertas y después lo registra con una única sentencia, de modo
+ * que nunca existe una fila sin objeto ni con clave vacía (P0-1).
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.body - Valor de `options.body` requerido por esta operación.
@@ -139,118 +139,104 @@ export async function uploadSupportRequestFile({
     throw new Error("SUPABASE_STORAGE_BUCKET is required");
   }
 
-  const s3Client = getSupabaseS3Client();
   const uploadedAt = new Date();
   const safeOriginalName = String(originalName || "archivo").trim();
   const fileType = getFileType(contentType, safeOriginalName);
   const fileExtension = getFileExtension(safeOriginalName);
-  const client = await pool.connect();
-  let uploadedStorageKey = null;
+  // Mismo patrón que las cotizaciones: el id se reserva sin transacción para construir la clave.
+  const reservedResult = await query(
+    "select nextval(pg_get_serial_sequence('public.support_request_files', 'id')) as id",
+  );
+  const fileId = Number(reservedResult.rows[0].id);
+  const storageKey = buildStorageObjectKey({
+    belongsTo: "support-requests",
+    fileId,
+    originalName: safeOriginalName,
+    ownerId: user.id,
+    parentId: supportRequestId,
+    uploadedAt,
+    versionNumber: 1,
+  });
+  const fileUrl = buildStorageFileUrl(storageKey);
 
-  try {
-    await client.query("begin");
+  const row = await storeThenRecord({
+    /**
+     * Comprueba si la fila del identificador reservado existe antes de compensar.
+     * Evita eliminar el objeto de un registro confirmado con resultado incierto.
+     *
+     * @returns {Promise<boolean>} true si el adjunto quedó registrado.
+     */
+    isRecorded: async () => {
+      const result = await query("select 1 from public.support_request_files where id = $1", [fileId]);
+      return result.rows.length > 0;
+    },
+    key: storageKey,
+    scope: "support_request_file",
+    /**
+     * Transfiere el contenido al almacenamiento sin conexiones de PostgreSQL abiertas.
+     * Usa la clave derivada del identificador reservado.
+     *
+     * @returns {Promise<unknown>} Respuesta del almacenamiento.
+     */
+    store: () => objectStorage.put({
+      body,
+      contentLength: size,
+      contentType: fileType,
+      key: storageKey,
+      metadata: {
+        belongs_to: "support_request",
+        support_request_file_id: String(fileId),
+        support_request_id: String(supportRequestId),
+        uploaded_by: String(user.id),
+        uploaded_year: String(uploadedAt.getUTCFullYear()),
+      },
+    }),
+    /**
+     * Registra el adjunto con su clave definitiva en una sola sentencia.
+     * La clave foránea rechaza la fila si la solicitud dejó de existir durante la transferencia.
+     *
+     * @returns {Promise<object>} Fila registrada.
+     */
+    record: async () => {
+      const result = await query(
+        `
+          insert into public.support_request_files (
+            id,
+            support_request_id,
+            uploaded_by,
+            original_name,
+            file_type,
+            file_extension,
+            file_size,
+            storage_key,
+            file_url
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          returning
+            id,
+            support_request_id,
+            uploaded_by,
+            original_name,
+            file_type,
+            file_extension,
+            file_size,
+            storage_key,
+            file_url,
+            created_at
+        `,
+        [fileId, supportRequestId, user.id, safeOriginalName, fileType, fileExtension, size, storageKey, fileUrl],
+      );
+      return result.rows[0];
+    },
+  });
 
-    const fileResult = await client.query(
-      `
-        insert into public.support_request_files (
-          support_request_id,
-          uploaded_by,
-          original_name,
-          file_type,
-          file_extension,
-          file_size,
-          storage_key,
-          file_url
-        )
-        values ($1, $2, $3, $4, $5, $6, '', '')
-        returning id
-      `,
-      [
-        supportRequestId,
-        user.id,
-        safeOriginalName,
-        fileType,
-        fileExtension,
-        size,
-      ],
-    );
-    const fileId = Number(fileResult.rows[0].id);
-    const storageKey = buildStorageObjectKey({
-      belongsTo: "support-requests",
-      fileId,
-      originalName: safeOriginalName,
-      ownerId: user.id,
-      parentId: supportRequestId,
-      uploadedAt,
-      versionNumber: 1,
-    });
-    const fileUrl = buildStorageFileUrl(storageKey);
-    uploadedStorageKey = storageKey;
-
-    await objectStorage.put({
-        body,
-        contentLength: size,
-        contentType: fileType,
-        key: storageKey,
-        metadata: {
-          belongs_to: "support_request",
-          support_request_file_id: String(fileId),
-          support_request_id: String(supportRequestId),
-          uploaded_by: String(user.id),
-          uploaded_year: String(uploadedAt.getUTCFullYear()),
-        },
-    });
-
-    const updatedResult = await client.query(
-      `
-        update public.support_request_files
-        set storage_key = $2,
-            file_url = $3
-        where id = $1
-        returning
-          id,
-          support_request_id,
-          uploaded_by,
-          original_name,
-          file_type,
-          file_extension,
-          file_size,
-          storage_key,
-          file_url,
-          created_at
-      `,
-      [fileId, storageKey, fileUrl],
-    );
-
-    await client.query("commit");
-
-    const row = updatedResult.rows[0];
-
-    return {
-      createdAt: row.created_at,
-      fileExtension: row.file_extension,
-      fileSize: Number(row.file_size),
-      fileType: row.file_type,
-      id: Number(row.id),
-      originalName: row.original_name,
-      supportRequestId: Number(row.support_request_id),
-    };
-  } catch (error) {
-    await client.query("rollback");
-
-    if (uploadedStorageKey) {
-      await s3Client
-        .send(
-          new DeleteObjectCommand({
-            Bucket: storageConfig.bucket,
-            Key: uploadedStorageKey,
-          }),
-        )
-        .catch(() => {});
-    }
-
-    throw error;
-  } finally {
-    client.release();
-  }
+  return {
+    createdAt: row.created_at,
+    fileExtension: row.file_extension,
+    fileSize: Number(row.file_size),
+    fileType: row.file_type,
+    id: Number(row.id),
+    originalName: row.original_name,
+    supportRequestId: Number(row.support_request_id),
+  };
 }

@@ -1,18 +1,16 @@
-import {
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
 import { objectStorage } from "../services/objectStorage.js";
 
 import {
   buildStorageFileUrl,
   buildStorageObjectKey,
   getFileExtension,
-  getSupabaseS3Client,
   getSupabaseStorageConfig,
   sanitizeStorageFileName,
 } from "../config/storage.js";
-import { pool, query } from "../config/db.js";
+import { pool, query, withTransaction } from "../config/db.js";
 import { getShowcaseFileName } from "../domain/projectPublicView.js";
+import { NotFoundError } from "../errors/appError.js";
+import { storeThenRecord } from "../services/storedUpload.js";
 import { isProjectFinalized, isProjectOperationallyReadOnly } from "../domain/projectStatus.js";
 
 const DEFAULT_FILE_STATUS = "active";
@@ -69,6 +67,59 @@ function toFileUpload(row) {
   };
 }
 
+// Ejecutor por defecto de las consultas que también pueden ejecutarse dentro de una transacción.
+const poolExecutor = { query };
+
+/**
+ * Crea el error de archivo duplicado con el código que los controladores traducen a 409.
+ * Conserva la forma del error anterior para no cambiar el contrato HTTP.
+ *
+ * @param {"DUPLICATE_PROJECT_FILE"|"DUPLICATE_PROJECT_REQUEST_FILE"} code - Código del duplicado.
+ * @returns {Error} Error con el código indicado.
+ */
+function createDuplicateFileError(code) {
+  const error = new Error(code === "DUPLICATE_PROJECT_FILE" ? "Duplicate project file" : "Duplicate project request file");
+  error.code = code;
+  return error;
+}
+
+/**
+ * Clasifica el archivo según su tipo MIME para la galería y los documentos.
+ * Es la misma regla que aplicaban las cargas antes de reorganizarlas.
+ *
+ * @param {string} fileType - Tipo MIME normalizado.
+ * @returns {"image"|"video"|"document"} Categoría del archivo.
+ */
+function getFileCategory(fileType) {
+  if (fileType.startsWith("image/")) return "image";
+  if (fileType.startsWith("video/")) return "video";
+  return "document";
+}
+
+/**
+ * Reserva el identificador del archivo antes de transferirlo, sin abrir transacciones ni bloqueos.
+ * La clave del objeto conserva así su formato (incluye el id) y la carga no retiene conexiones.
+ * Una reserva sin registro solo deja un hueco en la secuencia.
+ *
+ * @returns {Promise<number>} Identificador reservado para `public.files`.
+ */
+async function reserveFileId() {
+  const result = await query("select nextval(pg_get_serial_sequence('public.files', 'id')) as id");
+  return Number(result.rows[0].id);
+}
+
+/**
+ * Indica si el archivo con el identificador reservado llegó a registrarse.
+ * Decide la compensación: solo se elimina el objeto de una fila que no existe.
+ *
+ * @param {number} fileId - Identificador reservado.
+ * @returns {Promise<boolean>} true si la fila existe.
+ */
+async function isFileRecorded(fileId) {
+  const result = await query("select 1 from public.files where id = $1", [fileId]);
+  return result.rows.length > 0;
+}
+
 /**
  * Busca el valor de proyecto solicitud for archivo carga y devuelve null cuando no existe un registro accesible.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
@@ -109,10 +160,11 @@ export async function findProjectRequestForFileUpload(projectRequestId, user) {
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
  * @param {string} projectRequestId - Valor de `projectRequestId` requerido por esta operación.
+ * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
  * @returns {Promise<object>} Resultado producido por la operación.
  */
-export async function getProjectRequestFileUsage(projectRequestId) {
-  const result = await query(
+export async function getProjectRequestFileUsage(projectRequestId, executor = poolExecutor) {
+  const result = await executor.query(
     `
       select count(*)::integer as file_count, coalesce(sum(fv.file_size), 0)::bigint as total_bytes
       from public.files f
@@ -138,14 +190,15 @@ export async function getProjectRequestFileUsage(projectRequestId) {
  * @param {string} options.originalName - Valor de `options.originalName` requerido por esta operación.
  * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
  * @param {string} options.userId - Valor de `options.userId` requerido por esta operación.
+ * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
  * @returns {Promise<unknown>} Resultado producido por la operación.
  */
 export async function findExistingProjectRequestFile({
   originalName,
   projectRequestId,
   userId,
-}) {
-  const result = await query(
+}, executor = poolExecutor) {
+  const result = await executor.query(
     `
       select id, title
       from public.files
@@ -164,9 +217,12 @@ export async function findExistingProjectRequestFile({
 
 /**
  * Carga el archivo de la solicitud de proyecto coordinando la persistencia y el almacenamiento.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Transfiere el objeto sin conexiones abiertas y lo registra en una transacción corta que bloquea la
+ * solicitud y repite, ya serializadas, las comprobaciones de estado, duplicado y límites (P0-1).
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
+ * @param {(usage: { count: number, totalBytes: number }) => void} [options.assertWithinLimits] - Comprueba
+ *   los límites de la solicitud con el uso leído bajo bloqueo; lanza el error público si se superan.
  * @param {unknown} options.body - Valor de `options.body` requerido por esta operación.
  * @param {string} options.contentType - Valor de `options.contentType` requerido por esta operación.
  * @param {string} options.originalName - Valor de `options.originalName` requerido por esta operación.
@@ -177,6 +233,7 @@ export async function findExistingProjectRequestFile({
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function uploadProjectRequestFile({
+  assertWithinLimits,
   body,
   contentType,
   originalName,
@@ -190,7 +247,6 @@ export async function uploadProjectRequestFile({
     throw new Error("SUPABASE_STORAGE_BUCKET is required");
   }
 
-  const s3Client = getSupabaseS3Client();
   const uploadedAt = new Date();
   const versionNumber = 1;
   const safeOriginalName = String(originalName || "archivo").trim();
@@ -203,127 +259,157 @@ export async function uploadProjectRequestFile({
   });
 
   if (existingFile) {
-    const error = new Error("Duplicate project request file");
-    error.code = "DUPLICATE_PROJECT_REQUEST_FILE";
-    throw error;
+    throw createDuplicateFileError("DUPLICATE_PROJECT_REQUEST_FILE");
   }
 
-  const client = await pool.connect();
-  let uploadedStorageKey = null;
+  const fileId = await reserveFileId();
+  const storageKey = buildStorageObjectKey({
+    belongsTo: "project-requests",
+    fileId,
+    originalName: safeOriginalName,
+    ownerId: user.id,
+    parentId: projectRequestId,
+    uploadedAt,
+    versionNumber,
+  });
+  const fileUrl = buildStorageFileUrl(storageKey);
 
-  try {
-    await client.query("begin");
+  return storeThenRecord({
+    /**
+     * Comprueba si la fila del identificador reservado existe antes de compensar.
+     * Evita eliminar el objeto de una carga confirmada con resultado incierto.
+     *
+     * @returns {Promise<boolean>} true si el archivo quedó registrado.
+     */
+    isRecorded: () => isFileRecorded(fileId),
+    key: storageKey,
+    scope: "project_request_file",
+    /**
+     * Transfiere el contenido al almacenamiento sin conexiones de PostgreSQL abiertas.
+     * Usa la clave derivada del identificador reservado.
+     *
+     * @returns {Promise<unknown>} Respuesta del almacenamiento.
+     */
+    store: () => objectStorage.put({
+      body,
+      contentLength: size,
+      contentType: fileType,
+      key: storageKey,
+      metadata: {
+        belongs_to: "project_request",
+        file_id: String(fileId),
+        project_request_id: String(projectRequestId),
+        uploaded_by: String(user.id),
+        uploaded_year: String(uploadedAt.getUTCFullYear()),
+      },
+    }),
+    /**
+     * Registra el archivo y su versión en una transacción corta, tras la transferencia.
+     * Repite bajo bloqueo las comprobaciones que pudieron cambiar durante la carga.
+     *
+     * @returns {Promise<object>} Archivo registrado.
+     */
+    record: () => withTransaction(async (client) => {
+      // Mismo bloqueo que el envío de la solicitud: si se envió o eliminó durante la transferencia,
+      // el adjunto se rechaza en lugar de añadirse a una solicitud que ya no es editable.
+      const requestResult = await client.query(
+        `
+          select id
+          from public.project_requests
+          where id = $1
+            and deleted_at is null
+            and status in ('draft', 'changes_requested')
+          for update
+        `,
+        [projectRequestId],
+      );
 
-    const fileResult = await client.query(
-      `
-        insert into public.files (
-          project_request_id,
-          uploaded_by,
-          title,
-          file_type,
-          file_category,
-          current_version,
-          status
-        )
-        values ($1, $2, $3, $4, $5, $6, $7::file_status)
-        returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
-      `,
-      [
+      if (!requestResult.rows[0]) {
+        throw new NotFoundError(
+          "PROJECT_REQUEST_NOT_FOUND",
+          "No se encontró un borrador disponible para adjuntar archivos.",
+        );
+      }
+
+      const duplicate = await findExistingProjectRequestFile({
+        originalName: safeOriginalName,
         projectRequestId,
-        user.id,
-        safeOriginalName,
-        fileType,
-        fileType.startsWith("image/") ? "image" : fileType.startsWith("video/") ? "video" : "document",
-        versionNumber,
-        DEFAULT_FILE_STATUS,
-      ],
-    );
-    const file = fileResult.rows[0];
-    const storageKey = buildStorageObjectKey({
-      belongsTo: "project-requests",
-      fileId: file.id,
-      originalName: safeOriginalName,
-      ownerId: user.id,
-      parentId: projectRequestId,
-      uploadedAt,
-      versionNumber,
-    });
-    const fileUrl = buildStorageFileUrl(storageKey);
-    uploadedStorageKey = storageKey;
+        userId: user.id,
+      }, client);
 
-    await objectStorage.put({
-        body,
-        contentLength: size,
-        contentType: fileType,
-        key: storageKey,
-        metadata: {
-          belongs_to: "project_request",
-          file_id: String(file.id),
-          project_request_id: String(projectRequestId),
-          uploaded_by: String(user.id),
-          uploaded_year: String(uploadedAt.getUTCFullYear()),
-        },
-    });
+      if (duplicate) {
+        throw createDuplicateFileError("DUPLICATE_PROJECT_REQUEST_FILE");
+      }
 
-    const versionResult = await client.query(
-      `
-        insert into public.file_versions (
-          file_id,
-          uploaded_by,
-          version_number,
-          file_name,
-          original_name,
-          file_url,
-          file_extension,
-          file_size,
-          is_current
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, true)
-        returning id, version_number, file_name, original_name, file_url, file_size
-      `,
-      [
-        file.id,
-        user.id,
-        versionNumber,
-        storageKey,
-        sanitizeStorageFileName(safeOriginalName),
-        fileUrl,
-        fileExtension,
-        size,
-      ],
-    );
+      // Con la solicitud bloqueada, dos cargas simultáneas no pueden superar juntas los límites.
+      assertWithinLimits?.(await getProjectRequestFileUsage(projectRequestId, client));
 
-    await client.query("commit");
+      const fileResult = await client.query(
+        `
+          insert into public.files (
+            id,
+            project_request_id,
+            uploaded_by,
+            title,
+            file_type,
+            file_category,
+            current_version,
+            status
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8::file_status)
+          returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
+        `,
+        [
+          fileId,
+          projectRequestId,
+          user.id,
+          safeOriginalName,
+          fileType,
+          getFileCategory(fileType),
+          versionNumber,
+          DEFAULT_FILE_STATUS,
+        ],
+      );
+      const versionResult = await client.query(
+        `
+          insert into public.file_versions (
+            file_id,
+            uploaded_by,
+            version_number,
+            file_name,
+            original_name,
+            file_url,
+            file_extension,
+            file_size,
+            is_current
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, true)
+          returning id, version_number, file_name, original_name, file_url, file_size
+        `,
+        [
+          fileId,
+          user.id,
+          versionNumber,
+          storageKey,
+          sanitizeStorageFileName(safeOriginalName),
+          fileUrl,
+          fileExtension,
+          size,
+        ],
+      );
+      const version = versionResult.rows[0];
 
-    const version = versionResult.rows[0];
-
-    return toFileUpload({
-      ...file,
-      file_name: version.file_name,
-      file_size: version.file_size,
-      file_url: version.file_url,
-      original_name: version.original_name,
-      version_id: version.id,
-      version_number: version.version_number,
-    });
-  } catch (error) {
-    await client.query("rollback");
-
-    if (uploadedStorageKey) {
-      await s3Client
-        .send(
-          new DeleteObjectCommand({
-            Bucket: storageConfig.bucket,
-            Key: uploadedStorageKey,
-          }),
-        )
-        .catch(() => {});
-    }
-
-    throw error;
-  } finally {
-    client.release();
-  }
+      return toFileUpload({
+        ...fileResult.rows[0],
+        file_name: version.file_name,
+        file_size: version.file_size,
+        file_url: version.file_url,
+        original_name: version.original_name,
+        version_id: version.id,
+        version_number: version.version_number,
+      });
+    }),
+  });
 }
 
 /**
@@ -343,7 +429,6 @@ export async function deleteProjectRequestFile({
   user,
 }) {
   const storageConfig = getSupabaseStorageConfig();
-  const s3Client = getSupabaseS3Client();
   const client = await pool.connect();
   let storageKeys = [];
 
@@ -428,16 +513,8 @@ export async function deleteProjectRequestFile({
 
   if (storageConfig.bucket) {
     await Promise.all(
-      storageKeys.map((storageKey) =>
-        s3Client
-          .send(
-            new DeleteObjectCommand({
-              Bucket: storageConfig.bucket,
-              Key: storageKey,
-            }),
-          )
-          .catch(() => {}),
-      ),
+      // objectStorage aplica el plazo del almacenamiento: un borrado colgado no retiene la respuesta.
+      storageKeys.map((storageKey) => objectStorage.delete(storageKey).catch(() => {})),
     );
   }
 
@@ -499,13 +576,14 @@ export async function findProjectForFileUpload(projectId, user) {
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.originalName - Valor de `options.originalName` requerido por esta operación.
  * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
+ * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
  * @returns {Promise<unknown>} Resultado producido por la operación.
  */
 export async function findExistingProjectFile({
   originalName,
   projectId,
-}) {
-  const result = await query(
+}, executor = poolExecutor) {
+  const result = await executor.query(
     `
       select id, title
       from public.files
@@ -523,7 +601,9 @@ export async function findExistingProjectFile({
 
 /**
  * Guarda el archivo y su versión coordinando PostgreSQL con el almacenamiento existente.
- * Bloquea el proyecto y rechaza archived y finished antes de escribir datos o subir el objeto.
+ * Transfiere el objeto sin conexiones ni bloqueos abiertos (P0-1) y lo registra en una transacción
+ * corta que bloquea el proyecto y rechaza, ya serializados, archived, finished, eliminado y duplicados.
+ * El controlador comprueba el estado antes de la transferencia para no aceptar cargas inútiles.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.body - Valor de `options.body` requerido por esta operación.
@@ -549,7 +629,6 @@ export async function uploadProjectFile({
     throw new Error("SUPABASE_STORAGE_BUCKET is required");
   }
 
-  const s3Client = getSupabaseS3Client();
   const uploadedAt = new Date();
   const versionNumber = 1;
   const safeOriginalName = String(originalName || "archivo").trim();
@@ -561,147 +640,155 @@ export async function uploadProjectFile({
   });
 
   if (existingFile) {
-    const error = new Error("Duplicate project file");
-    error.code = "DUPLICATE_PROJECT_FILE";
-    throw error;
+    throw createDuplicateFileError("DUPLICATE_PROJECT_FILE");
   }
 
-  const client = await pool.connect();
-  let uploadedStorageKey = null;
+  const fileId = await reserveFileId();
+  const storageKey = buildStorageObjectKey({
+    belongsTo: "projects",
+    fileId,
+    originalName: safeOriginalName,
+    ownerId: user.id,
+    parentId: projectId,
+    uploadedAt,
+    versionNumber,
+  });
+  const fileUrl = buildStorageFileUrl(storageKey);
 
-  try {
-    await client.query("begin");
+  return storeThenRecord({
+    /**
+     * Comprueba si la fila del identificador reservado existe antes de compensar.
+     * Evita eliminar el objeto de una carga confirmada con resultado incierto.
+     *
+     * @returns {Promise<boolean>} true si el archivo quedó registrado.
+     */
+    isRecorded: () => isFileRecorded(fileId),
+    key: storageKey,
+    scope: "project_file",
+    /**
+     * Transfiere el contenido al almacenamiento sin conexiones de PostgreSQL abiertas.
+     * Usa la clave derivada del identificador reservado.
+     *
+     * @returns {Promise<unknown>} Respuesta del almacenamiento.
+     */
+    store: () => objectStorage.put({
+      body,
+      contentLength: size,
+      contentType: fileType,
+      key: storageKey,
+      metadata: {
+        belongs_to: "project",
+        file_id: String(fileId),
+        project_id: String(projectId),
+        uploaded_by: String(user.id),
+        uploaded_year: String(uploadedAt.getUTCFullYear()),
+      },
+    }),
+    /**
+     * Registra el archivo y su versión en una transacción corta, tras la transferencia.
+     * Repite bajo bloqueo las comprobaciones que pudieron cambiar durante la carga.
+     *
+     * @returns {Promise<object>} Archivo registrado.
+     */
+    record: () => withTransaction(async (client) => {
+      const projectStateResult = await client.query(
+        `
+          select status
+          from public.projects
+          where id = $1
+            and deleted_at is null
+          for update
+        `,
+        [projectId],
+      );
+      const project = projectStateResult.rows[0];
 
-    const projectStateResult = await client.query(
-      `
-        select status
-        from public.projects
-        where id = $1
-          and deleted_at is null
-        for update
-      `,
-      [projectId],
-    );
+      // El estado se comprueba de nuevo con el proyecto bloqueado: si se archivó, finalizó o eliminó
+      // durante la transferencia, la carga se rechaza y su objeto se compensa.
+      if (!project) {
+        throw new NotFoundError("PROJECT_NOT_FOUND", "No se encontro el proyecto.");
+      }
 
-    if (isProjectOperationallyReadOnly(projectStateResult.rows[0]?.status)) {
-      throw createProjectReadOnlyError(projectStateResult.rows[0].status);
-    }
+      if (isProjectOperationallyReadOnly(project.status)) {
+        throw createProjectReadOnlyError(project.status);
+      }
 
-    const fileResult = await client.query(
-      `
-        insert into public.files (
-          project_id,
-          uploaded_by,
-          title,
-          file_type,
-          file_category,
-          current_version,
-          status
-        )
-        values ($1, $2, $3, $4, $5, $6, $7::file_status)
-        returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
-      `,
-      [
-        projectId,
-        user.id,
-        safeOriginalName,
-        fileType,
-        fileType.startsWith("image/") ? "image" : fileType.startsWith("video/") ? "video" : "document",
-        versionNumber,
-        DEFAULT_FILE_STATUS,
-      ],
-    );
-    const file = fileResult.rows[0];
-    const storageKey = buildStorageObjectKey({
-      belongsTo: "projects",
-      fileId: file.id,
-      originalName: safeOriginalName,
-      ownerId: user.id,
-      parentId: projectId,
-      uploadedAt,
-      versionNumber,
-    });
-    const fileUrl = buildStorageFileUrl(storageKey);
-    uploadedStorageKey = storageKey;
+      // Bajo el bloqueo del proyecto, las cargas simultáneas con el mismo nombre se serializan aquí.
+      if (await findExistingProjectFile({ originalName: safeOriginalName, projectId }, client)) {
+        throw createDuplicateFileError("DUPLICATE_PROJECT_FILE");
+      }
 
-    await objectStorage.put({
-        body,
-        contentLength: size,
-        contentType: fileType,
-        key: storageKey,
-        metadata: {
-          belongs_to: "project",
-          file_id: String(file.id),
-          project_id: String(projectId),
-          uploaded_by: String(user.id),
-          uploaded_year: String(uploadedAt.getUTCFullYear()),
-        },
-    });
+      const fileResult = await client.query(
+        `
+          insert into public.files (
+            id,
+            project_id,
+            uploaded_by,
+            title,
+            file_type,
+            file_category,
+            current_version,
+            status
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8::file_status)
+          returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
+        `,
+        [
+          fileId,
+          projectId,
+          user.id,
+          safeOriginalName,
+          fileType,
+          getFileCategory(fileType),
+          versionNumber,
+          DEFAULT_FILE_STATUS,
+        ],
+      );
+      const versionResult = await client.query(
+        `
+          insert into public.file_versions (
+            file_id,
+            uploaded_by,
+            version_number,
+            file_name,
+            original_name,
+            file_url,
+            file_extension,
+            file_size,
+            is_current
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, true)
+          returning id, version_number, file_name, original_name, file_url, file_size, created_at
+        `,
+        [
+          fileId,
+          user.id,
+          versionNumber,
+          storageKey,
+          sanitizeStorageFileName(safeOriginalName),
+          fileUrl,
+          fileExtension,
+          size,
+        ],
+      );
+      const version = versionResult.rows[0];
 
-    const versionResult = await client.query(
-      `
-        insert into public.file_versions (
-          file_id,
-          uploaded_by,
-          version_number,
-          file_name,
-          original_name,
-          file_url,
-          file_extension,
-          file_size,
-          is_current
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, true)
-        returning id, version_number, file_name, original_name, file_url, file_size, created_at
-      `,
-      [
-        file.id,
-        user.id,
-        versionNumber,
-        storageKey,
-        sanitizeStorageFileName(safeOriginalName),
-        fileUrl,
-        fileExtension,
-        size,
-      ],
-    );
-
-    await client.query("commit");
-
-    const version = versionResult.rows[0];
-
-    return {
-      ...toFileUpload({
-        ...file,
-        file_name: version.file_name,
-        file_size: version.file_size,
-        file_url: version.file_url,
-        original_name: version.original_name,
-        version_id: version.id,
-        version_number: version.version_number,
-      }),
-      createdAt: version.created_at,
-      extension: fileExtension,
-      title: safeOriginalName,
-    };
-  } catch (error) {
-    await client.query("rollback");
-
-    if (uploadedStorageKey) {
-      await s3Client
-        .send(
-          new DeleteObjectCommand({
-            Bucket: storageConfig.bucket,
-            Key: uploadedStorageKey,
-          }),
-        )
-        .catch(() => {});
-    }
-
-    throw error;
-  } finally {
-    client.release();
-  }
+      return {
+        ...toFileUpload({
+          ...fileResult.rows[0],
+          file_name: version.file_name,
+          file_size: version.file_size,
+          file_url: version.file_url,
+          original_name: version.original_name,
+          version_id: version.id,
+          version_number: version.version_number,
+        }),
+        createdAt: version.created_at,
+        extension: fileExtension,
+        title: safeOriginalName,
+      };
+    }),
+  });
 }
 
 /**
@@ -717,7 +804,6 @@ export async function uploadProjectFile({
  */
 export async function deleteProjectFile({ fileId, projectId, user }) {
   const storageConfig = getSupabaseStorageConfig();
-  const s3Client = getSupabaseS3Client();
   const client = await pool.connect();
   let storageKeys = [];
 
@@ -825,16 +911,8 @@ export async function deleteProjectFile({ fileId, projectId, user }) {
 
   if (storageConfig.bucket) {
     await Promise.all(
-      storageKeys.map((storageKey) =>
-        s3Client
-          .send(
-            new DeleteObjectCommand({
-              Bucket: storageConfig.bucket,
-              Key: storageKey,
-            }),
-          )
-          .catch(() => {}),
-      ),
+      // objectStorage aplica el plazo del almacenamiento: un borrado colgado no retiene la respuesta.
+      storageKeys.map((storageKey) => objectStorage.delete(storageKey).catch(() => {})),
     );
   }
 

@@ -57,7 +57,16 @@ export function getSupabaseS3Client() {
     },
     endpoint: config.endpoint,
     forcePathStyle: true,
+    // Un reintento como máximo: limita la carga añadida cuando el proveedor está degradado.
+    // Las cargas con cuerpo en flujo no se pueden repetir; las lecturas y borrados son idempotentes.
+    maxAttempts: 2,
     region: config.region,
+    // Plazo de conexión TCP/TLS; los plazos de cada operación los aplica services/objectStorage.js.
+    requestHandler: {
+      connectionTimeout: Number(process.env.STORAGE_CONNECTION_TIMEOUT_MS) > 0
+        ? Number(process.env.STORAGE_CONNECTION_TIMEOUT_MS)
+        : 5000,
+    },
   });
 
   return s3Client;

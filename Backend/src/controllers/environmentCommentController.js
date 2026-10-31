@@ -4,6 +4,7 @@ import {
 } from "../services/environmentCommentService.js";
 import { getEnvironmentCommentAuthorProfilePhoto } from "../services/profilePhotoService.js";
 import { decodeCursor, parsePageLimit } from "../utils/pagination.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 
 /**
  * Lista los comentarios de entorno respetando el alcance y la paginación solicitados.
@@ -81,8 +82,8 @@ export async function streamEnvironmentCommentAuthorProfilePhoto(
     if (photo.contentLength !== undefined) {
       res.setHeader("Content-Length", String(photo.contentLength));
     }
-    photo.body.on?.("error", next);
-    photo.body.pipe(res.status(200));
+    res.status(200);
+    await streamStoredObject(photo.body, res, "profile_photo");
   } catch (error) {
     next(error);
   }

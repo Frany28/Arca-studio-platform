@@ -7,6 +7,7 @@ import {
   uploadProjectFile,
 } from "../repositories/fileRepository.js";
 import { getFileResponseSecurity } from "../utils/fileResponseSecurity.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 import { getProjectFileCacheHeaders } from "../utils/projectFileCache.js";
 import {
   prepareProjectRequestUpload,
@@ -294,7 +295,7 @@ export async function streamProjectFile(req, res, next) {
       res.setHeader("Content-Length", file.fileSize);
     }
 
-    object.Body.pipe(res);
+    await streamStoredObject(object.Body, res, "project_file");
   } catch (error) {
     next(error);
   }
@@ -342,7 +343,7 @@ export async function streamProjectRequestFile(req, res, next) {
     res.setHeader("Content-Disposition", `${security.disposition}; filename="${encodeURIComponent(file.originalName)}"`);
     res.vary("Cookie");
     if (object.ContentLength) res.setHeader("Content-Length", object.ContentLength);
-    object.Body.pipe(res);
+    await streamStoredObject(object.Body, res, "project_request_file");
   } catch (error) {
     next(error);
   }

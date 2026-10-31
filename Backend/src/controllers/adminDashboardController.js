@@ -7,6 +7,7 @@ import {
   manageAdminProjects,
 } from "../services/adminDashboardService.js";
 import { getAdminAssigneeProfilePhoto } from "../services/profilePhotoService.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 
 /**
  * Transmite la foto de perfil del responsable administrativo sin cargar el contenido completo en memoria.
@@ -29,8 +30,8 @@ export async function streamAdminAssigneeProfilePhoto(req, res, next) {
     if (photo.contentLength !== undefined) {
       res.setHeader("Content-Length", String(photo.contentLength));
     }
-    photo.body.on?.("error", next);
-    photo.body.pipe(res.status(200));
+    res.status(200);
+    await streamStoredObject(photo.body, res, "profile_photo");
   } catch (error) {
     next(error);
   }

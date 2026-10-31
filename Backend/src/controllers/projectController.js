@@ -5,6 +5,7 @@ import {
 } from "../services/projectService.js";
 import { getAssignedArchitectProfilePhoto } from "../services/profilePhotoService.js";
 import { decodeCursor, parsePageLimit } from "../utils/pagination.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 
 /**
  * Obtiene el valor de my proyectos para que el flujo llamador pueda continuar.
@@ -102,8 +103,8 @@ export async function streamAssignedArchitectProfilePhoto(req, res, next) {
     if (photo.contentLength !== undefined) {
       res.setHeader("Content-Length", String(photo.contentLength));
     }
-    photo.body.on?.("error", next);
-    photo.body.pipe(res.status(200));
+    res.status(200);
+    await streamStoredObject(photo.body, res, "profile_photo");
   } catch (error) {
     next(error);
   }

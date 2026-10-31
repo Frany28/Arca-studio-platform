@@ -11,6 +11,7 @@ import {
   revokeAdminUserSessions,
 } from "../services/adminUserService.js";
 import { getAdminUserProfilePhoto } from "../services/profilePhotoService.js";
+import { streamStoredObject } from "../utils/streamResponse.js";
 
 /**
  * Transmite la foto de perfil de un usuario administrado sin cargar el contenido completo en memoria.
@@ -31,8 +32,8 @@ export async function streamAdminUserProfilePhoto(req, res, next) {
     if (photo.contentLength !== undefined) {
       res.setHeader("Content-Length", String(photo.contentLength));
     }
-    photo.body.on?.("error", next);
-    photo.body.pipe(res.status(200));
+    res.status(200);
+    await streamStoredObject(photo.body, res, "profile_photo");
   } catch (error) {
     next(error);
   }

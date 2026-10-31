@@ -1,3 +1,5 @@
+import { EXTERNAL_REQUEST_TIMEOUTS, fetchWithTimeout, isTimeoutError } from "../utils/externalRequest.js";
+
 const GEOAPIFY_AUTOCOMPLETE_URL =
   "https://api.geoapify.com/v1/geocode/autocomplete";
 const GEOAPIFY_REVERSE_URL = "https://api.geoapify.com/v1/geocode/reverse";
@@ -94,7 +96,7 @@ async function searchByCoordinates({ apiKey, latitude, longitude }) {
     limit: "1",
   });
 
-  const response = await fetch(`${GEOAPIFY_REVERSE_URL}?${params}`);
+  const response = await fetchWithTimeout(`${GEOAPIFY_REVERSE_URL}?${params}`, {}, EXTERNAL_REQUEST_TIMEOUTS.geocodingMs);
 
   if (!response.ok) {
     return null;
@@ -157,7 +159,7 @@ export async function getAddressSuggestions(req, res, next) {
       text,
     });
 
-    const response = await fetch(`${GEOAPIFY_AUTOCOMPLETE_URL}?${params}`);
+    const response = await fetchWithTimeout(`${GEOAPIFY_AUTOCOMPLETE_URL}?${params}`, {}, EXTERNAL_REQUEST_TIMEOUTS.geocodingMs);
 
     if (!response.ok) {
       const isConfigurationError = response.status === 401 || response.status === 403;
@@ -193,6 +195,24 @@ export async function getAddressSuggestions(req, res, next) {
       suggestions,
     });
   } catch (error) {
+    // Plazo agotado (también al leer el cuerpo) o proveedor inalcanzable: respuesta controlada
+    // con el mismo formato que los demás fallos de Geoapify, sin la URL, que incluye la clave.
+    if (isTimeoutError(error)) {
+      res.status(504).json({
+        code: "GEOAPIFY_TIMEOUT",
+        message: "El buscador de ubicaciones no respondió a tiempo.",
+      });
+      return;
+    }
+
+    if (error?.code === "EXTERNAL_UNAVAILABLE") {
+      res.status(502).json({
+        code: "GEOAPIFY_REQUEST_FAILED",
+        message: "No se pudieron obtener sugerencias de ubicación.",
+      });
+      return;
+    }
+
     next(error);
   }
 }

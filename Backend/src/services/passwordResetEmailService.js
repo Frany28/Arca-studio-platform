@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { authConfig } from "../config/auth.js";
+import { EXTERNAL_REQUEST_TIMEOUTS, fetchWithTimeout, isTimeoutError } from "../utils/externalRequest.js";
 import { createAuthToken } from "../utils/tokens.js";
 
 const RESET_TOKEN_EXPIRES_IN_SECONDS = Number(
@@ -50,6 +51,27 @@ function createEmailServiceError(message, code, status = 502) {
   error.publicMessage = "No pudimos enviar el correo de recuperación.";
   error.status = status;
   return error;
+}
+
+/**
+ * Envía la petición a Resend con el plazo de correo y traduce los fallos de red o de plazo.
+ * No se reintenta: un reintento tras un plazo agotado podría duplicar el correo.
+ *
+ * @param {RequestInit} options - Opciones de la petición.
+ * @returns {Promise<Response>} Respuesta de Resend.
+ * @throws {Error} EMAIL_SERVICE_TIMEOUT (504) o EMAIL_SERVICE_UNAVAILABLE (502), con mensaje público genérico.
+ */
+async function sendEmailRequest(options) {
+  try {
+    return await fetchWithTimeout("https://api.resend.com/emails", options, EXTERNAL_REQUEST_TIMEOUTS.emailMs);
+  } catch (error) {
+    const timedOut = isTimeoutError(error);
+    throw createEmailServiceError(
+      timedOut ? "Password reset email request timed out" : "Password reset email provider unreachable",
+      timedOut ? "EMAIL_SERVICE_TIMEOUT" : "EMAIL_SERVICE_UNAVAILABLE",
+      timedOut ? 504 : 502,
+    );
+  }
 }
 
 /**
@@ -141,7 +163,7 @@ export async function sendPasswordResetEmail({
   const safeResetUrl = escapeHtml(resetUrl);
   const safeEmail = escapeHtml(email);
 
-  const response = await fetch("https://api.resend.com/emails", {
+  const response = await sendEmailRequest({
     body: JSON.stringify({
       from,
       to: [email],
