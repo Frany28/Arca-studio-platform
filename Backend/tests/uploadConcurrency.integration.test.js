@@ -52,7 +52,11 @@ before(async () => {
     create trigger test_fail_file_version before insert on public.file_versions
       for each row execute function public.test_fail_file_version();
   `);
+  const architectRoleId = (await client.query("insert into public.roles (code, name) values ('architect', 'Arquitecto prueba') returning id")).rows[0].id;
+  const architectId = (await client.query(`insert into public.users (role_id, email, first_name, last_name, password_hash, phone)
+    values ($1, 'arquitecto@example.test', 'Prueba', 'Arquitecto', '!login-disabled!', '+584120000003') returning id`, [architectRoleId])).rows[0].id;
   seed = {
+    architect: { clientId: null, id: Number(architectId), role: { code: "architect" } },
     clientId: Number(clientId),
     userId: Number(userId),
     user: { clientId: Number(clientId), id: Number(userId), role: { code: "admin" } },
@@ -88,11 +92,12 @@ async function createProject(name) {
  * @returns {{ stored: Map<string, number>, deleted: Array<string>, borrowedDuringTransfer: Array<number> }} Estado.
  */
 function memoryStorage(context, gate) {
-  const state = { borrowedDuringTransfer: [], deleted: [], stored: new Map() };
+  const state = { borrowedDuringTransfer: [], deleted: [], inTransfer: 0, stored: new Map() };
   const { objectStorage, pool } = modules;
   context.mock.method(objectStorage, "put", async ({ body, key }) => {
     let bytes = 0;
     for await (const chunk of body) bytes += chunk.length;
+    state.inTransfer += 1;
     if (gate) await gate;
     state.borrowedDuringTransfer.push(pool.totalCount - pool.idleCount);
     state.stored.set(key, bytes);
@@ -115,6 +120,21 @@ function deferred() {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
   return { promise, resolve };
+}
+
+/**
+ * Espera hasta que se cumpla la condición o se agote el plazo.
+ *
+ * @param {() => boolean} condition - Condición a esperar.
+ * @param {number} [timeoutMs] - Plazo máximo.
+ * @returns {Promise<void>}
+ */
+async function waitFor(condition, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    assert.ok(Date.now() < deadline, "la condición no se cumplió a tiempo");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 /**
@@ -159,7 +179,9 @@ test("cinco cargas simultáneas al mismo proyecto con un pool de 2 conexiones", 
   const gate = deferred();
   const storage = memoryStorage(context, gate.promise);
   const uploads = Array.from({ length: 5 }, (_, index) => modules.uploadProjectFile(projectUpload(projectId, `plano-${index}.pdf`)));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  // Las consultas previas (duplicado y reserva del id) toman una conexión unos milisegundos; la
+  // comprobación se hace con las cinco transferencias ya en curso.
+  await waitFor(() => storage.inTransfer === 5);
   assertPoolIdle();
   gate.resolve();
   const results = await Promise.all(uploads);
@@ -174,7 +196,7 @@ test("un comentario en el mismo proyecto no espera a una carga lenta", { skip },
   const gate = deferred();
   const storage = memoryStorage(context, gate.promise);
   const uploads = Array.from({ length: 3 }, (_, index) => modules.uploadProjectFile(projectUpload(projectId, `lento-${index}.pdf`)));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => storage.inTransfer === 3);
 
   const startedAt = Date.now();
   const comment = await modules.createProjectCommentRecord({ content: "Observación durante la carga", projectId, user: seed.user });
@@ -193,7 +215,7 @@ test("cargas simultáneas con el mismo nombre: exactamente una se registra", { s
   const gate = deferred();
   const storage = memoryStorage(context, gate.promise);
   const uploads = ["Plano.pdf", "plano.pdf", "PLANO.PDF", "plano.pdf"].map((name) => modules.uploadProjectFile(projectUpload(projectId, name)));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => storage.inTransfer === 4);
   gate.resolve();
   const results = await Promise.allSettled(uploads);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
@@ -208,7 +230,7 @@ test("el proyecto se archiva durante la carga: el archivo no se registra y su ob
   const gate = deferred();
   const storage = memoryStorage(context, gate.promise);
   const upload = modules.uploadProjectFile(projectUpload(projectId, "tardio.pdf"));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => storage.inTransfer === 1);
   // Sin bloqueo retenido por la carga, el archivado no espera a que termine la transferencia.
   const startedAt = Date.now();
   await database.client.query("update public.projects set status = 'archived', archived_from_status = 'in_process' where id = $1", [projectId]);
@@ -216,6 +238,32 @@ test("el proyecto se archiva durante la carga: el archivo no se registra y su ob
   gate.resolve();
   await assert.rejects(upload, { code: "PROJECT_ARCHIVED", status: 409 });
   await assertNoOrphans(storage.stored, projectId);
+  assertPoolIdle();
+});
+
+test("un arquitecto retirado del proyecto durante la carga no registra el archivo", { skip }, async (context) => {
+  const projectId = await createProject("arquitecto-retirado");
+  const { client } = database;
+  await client.query("insert into public.project_assignees (project_id, user_id, assigned_by) values ($1, $2, $3)", [projectId, seed.architect.id, seed.userId]);
+  const upload = (name) => ({ ...projectUpload(projectId, name), user: seed.architect });
+  const storage = memoryStorage(context);
+
+  // Control: con la asignación vigente, la carga se registra con normalidad.
+  const allowed = await modules.uploadProjectFile(upload("vigente.pdf"));
+  assert.ok(allowed.id);
+  context.mock.restoreAll();
+
+  const gate = deferred();
+  const revokedStorage = memoryStorage(context, gate.promise);
+  const pending = modules.uploadProjectFile(upload("tras-retirada.pdf"));
+  await waitFor(() => revokedStorage.inTransfer === 1);
+  await client.query("delete from public.project_assignees where project_id = $1 and user_id = $2", [projectId, seed.architect.id]);
+  gate.resolve();
+  await assert.rejects(pending, { code: "PROJECT_NOT_FOUND", status: 404 });
+  const titles = await client.query("select title from public.files where project_id = $1 order by id", [projectId]);
+  assert.deepEqual(titles.rows.map((row) => row.title), ["vigente.pdf"]);
+  assert.equal(revokedStorage.stored.size, 0, "el objeto de la carga rechazada se elimina");
+  assert.equal(storage.stored.size, 1);
   assertPoolIdle();
 });
 
@@ -246,7 +294,7 @@ test("solicitud: cargas simultáneas respetan el límite de 10 y un envío duran
   const gate = deferred();
   const concurrent = memoryStorage(context, gate.promise);
   const uploads = ["a.pdf", "b.pdf", "c.pdf"].map(upload);
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => concurrent.inTransfer === 3);
   gate.resolve();
   const results = await Promise.allSettled(uploads);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 2);
@@ -264,7 +312,7 @@ test("solicitud: cargas simultáneas respetan el límite de 10 y un envío duran
   const submitGate = deferred();
   const lateStorage = memoryStorage(context, submitGate.promise);
   const late = upload("tardio.pdf");
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await waitFor(() => lateStorage.inTransfer === 1);
   await client.query("update public.project_requests set status = 'pending_review' where id = $1", [requestId]);
   submitGate.resolve();
   await assert.rejects(late, { code: "PROJECT_REQUEST_NOT_FOUND", status: 404 });

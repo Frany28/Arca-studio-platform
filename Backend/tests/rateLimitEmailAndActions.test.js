@@ -271,6 +271,8 @@ function mockUploadBackend(context, { failRateLimit = false } = {}) {
       if (sql.includes("insert into public.files")) return { rows: [{ current_version: 1, file_category: "document", file_type: "application/pdf", id: String(nextFileId++), project_id: "15", uploaded_by: "70" }] };
       if (sql.includes("insert into public.file_versions")) return { rows: [{ created_at: new Date(), file_name: "k", file_size: 4, file_url: "u", id: "1", original_name: "a.pdf", version_number: 1 }] };
       if (sql.includes("for update")) return { rows: [{ status: "in_process" }] };
+      // Acceso vigente comprobado al registrar la carga (findProjectForFileUpload con el cliente).
+      if (sql.includes("is_assignee")) return { rows: [{ assigned_architect_id: null, client_id: "7", id: "15", is_assignee: false, is_public: false, status: "in_process" }] };
       return { rows: [] };
     },
     release() {},

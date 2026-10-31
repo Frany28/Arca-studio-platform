@@ -527,10 +527,11 @@ export async function deleteProjectRequestFile({
  *
  * @param {string} projectId - Valor de `projectId` requerido por esta operación.
  * @param {unknown} user - Usuario autenticado que ejecuta la operación.
+ * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
  * @returns {Promise<object>} Resultado producido por la operación.
  */
-export async function findProjectForFileUpload(projectId, user) {
-  const result = await query(
+export async function findProjectForFileUpload(projectId, user, executor = poolExecutor) {
+  const result = await executor.query(
     `
       select
         project.id,
@@ -706,6 +707,13 @@ export async function uploadProjectFile({
       // El estado se comprueba de nuevo con el proyecto bloqueado: si se archivó, finalizó o eliminó
       // durante la transferencia, la carga se rechaza y su objeto se compensa.
       if (!project) {
+        throw new NotFoundError("PROJECT_NOT_FOUND", "No se encontro el proyecto.");
+      }
+
+      // El acceso se vuelve a comprobar con el proyecto bloqueado, con la misma regla del controlador:
+      // quien dejó de estar asignado durante la transferencia no registra el archivo. La sustitución
+      // de responsables bloquea la misma fila, así que ambas operaciones quedan serializadas.
+      if (!(await findProjectForFileUpload(projectId, user, client))) {
         throw new NotFoundError("PROJECT_NOT_FOUND", "No se encontro el proyecto.");
       }
 

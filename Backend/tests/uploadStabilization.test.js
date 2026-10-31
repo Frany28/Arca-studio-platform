@@ -56,6 +56,7 @@ function mockUploadBackend(context, {
     deleted: [],
     files: new Map(),
     nextId: 100,
+    projectClientId: "7",
     projectStatus,
     releases: 0,
     requestStatus,
@@ -132,6 +133,10 @@ function mockUploadBackend(context, {
         if (/from public\.project_requests/.test(text) && /for update/.test(text)) {
           heldLocks.push(await lockRow(`request:${params[0]}`));
           return { rows: ["draft", "changes_requested"].includes(state.requestStatus) ? [{ id: 31 }] : [] };
+        }
+        // Acceso vigente al proyecto (findProjectForFileUpload dentro de la transacción).
+        if (/as is_assignee/.test(text)) {
+          return { rows: [{ assigned_architect_id: null, client_id: state.projectClientId, id: String(params[0]), is_assignee: false, is_public: false, status: state.projectStatus }] };
         }
         if (/lower\(title\)/.test(text)) return { rows: findDuplicate(text, params, new Map([...state.files, ...staged])) };
         if (/count\(\*\)::integer as file_count/.test(text)) return { rows: [usage(new Map([...state.files, ...staged]))] };
@@ -286,6 +291,20 @@ test("el proyecto se archiva, finaliza o elimina durante la carga: se rechaza y 
     assert.equal(state.activeConnections, 0, status);
     context.mock.restoreAll();
   }
+});
+
+test("el usuario pierde el acceso al proyecto durante la carga: no registra el archivo y se compensa", async (context) => {
+  const gate = deferred();
+  const state = mockUploadBackend(context, { putGate: gate.promise });
+  const upload = uploadProjectFile(projectUpload());
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  // El proyecto pasa a otro cliente (para un arquitecto, equivale a dejar de estar asignado).
+  state.projectClientId = "99";
+  gate.resolve();
+  await assert.rejects(upload, { code: "PROJECT_NOT_FOUND", status: 404 });
+  assert.equal(state.files.size, 0);
+  assert.equal(state.stored.size, 0);
+  assert.equal(state.activeConnections, 0);
 });
 
 test("dos cargas simultáneas con el mismo nombre: una se registra y la otra se rechaza sin huérfanos", async (context) => {
