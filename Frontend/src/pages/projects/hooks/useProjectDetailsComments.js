@@ -1,19 +1,16 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../../../api/http.js";
+import { projectCommentFeed } from "../../../api/projectCommentFeed.js";
 import {
   getProjectReadOnlyMessage,
   isProjectOperationallyReadOnly,
 } from "../../../utils/projectReadOnly.js";
-import {
-  mergeCommentsById,
-  upsertCommentById,
-} from "../utils/projectDetailsPresentation.js";
 
 /**
- * Carga observaciones del proyecto y combina actualizaciones por id con los helpers compartidos.
- * Suscribe eventos SSE y refresca cada 5 s con drawer abierto o 15 s cerrado;
- * al limpiar el efecto ignora respuestas pendientes, retira el intervalo y cierra la suscripci?n.
+ * Sigue las observaciones del proyecto mediante la fuente compartida (carga, SSE y sondeo incremental).
+ * Pide respaldo cada 5 s con drawer abierto o 15 s cerrado; la fuente lo espacia con SSE conectado,
+ * lo pausa con la pestaña oculta y al limpiar el efecto se cancela la suscripción.
  *
  * @param {Object} params - Proyecto y estado del drawer.
  * @param {boolean} params.isNotificationsDrawerOpen - Determina la frecuencia de refresco.
@@ -44,70 +41,21 @@ export default function useProjectDetailsComments({
       return () => { isMounted = false; };
     }
 
-    /**
-     * Inicia la carga de todas las p?ginas de observaciones y combina la respuesta con el estado actual.
-     * Solo modifica el estado mientras el efecto siga vigente; los refrescos no activan loading.
-     *
-     * @param {Object} [options={}] - Presentaci?n de la carga.
-     * @param {boolean} [options.showLoading=false] - Si debe activar y luego desactivar loading.
-     * @returns {void} Inicia la petici?n sin devolver su promesa; registra los fallos en error.
-     */
-    function loadProjectComments({ showLoading = false } = {}) {
-      if (showLoading) {
-        setLoading(true);
-      }
-
-      setReadError("");
-
-      api.projects
-        .listAllComments({ projectId: resolvedProjectId })
-        .then((data) => {
-          if (isMounted) {
-            setComments((current) =>
-              mergeCommentsById(
-                current,
-                Array.isArray(data.comments) ? data.comments : [],
-              ),
-            );
-          }
-        })
-        .catch((requestError) => {
-          if (isMounted) {
-            setReadError(
-              requestError.message || "No se pudieron cargar las observaciones.",
-            );
-          }
-        })
-        .finally(() => {
-          if (isMounted && showLoading) {
-            setLoading(false);
-          }
-        });
-    }
-
-    // La microtarea evita actualizaciones durante el efecto; su guarda descarta
-    // cargas cuyo proyecto o montaje ya cambió antes de iniciarse.
-    queueMicrotask(() => {
-      if (isMounted) loadProjectComments({ showLoading: true });
-    });
-
-    const unsubscribe = api.projects.subscribeToEvents({
-      projectId: resolvedProjectId,
-      onCommentCreated: (comment) => {
-        if (isMounted) {
-          setComments((current) => upsertCommentById(current, comment));
-        }
+    // Fuente compartida (P1-1): la página de detalle y sus notificaciones siguen el mismo proyecto
+    // con una sola carga, una conexión SSE y un sondeo incremental (5 s con el drawer abierto, 15 s
+    // cerrado, más espaciado mientras SSE está conectado y en pausa con la pestaña oculta).
+    const unsubscribe = projectCommentFeed.subscribe(resolvedProjectId, {
+      intervalMs: isNotificationsDrawerOpen ? 5000 : 15000,
+      onChange: (snapshot) => {
+        if (!isMounted) return;
+        setComments(snapshot.comments);
+        setLoading(snapshot.loading);
+        setReadError(snapshot.error);
       },
     });
 
-    const refreshIntervalId = window.setInterval(
-      () => loadProjectComments(),
-      isNotificationsDrawerOpen ? 5000 : 15000,
-    );
-
     return () => {
       isMounted = false;
-      window.clearInterval(refreshIntervalId);
       unsubscribe();
     };
   }, [isNotificationsDrawerOpen, resolvedProjectId]);
@@ -146,7 +94,8 @@ export default function useProjectDetailsComments({
       });
 
       if (data.comment) {
-        setComments((current) => upsertCommentById(current, data.comment));
+        // La fuente compartida la muestra aquí y en las notificaciones del mismo proyecto.
+        projectCommentFeed.add(resolvedProjectId, data.comment);
       }
     } catch (requestError) {
       setSubmissionError(requestError.message || "No se pudo guardar la observación.");

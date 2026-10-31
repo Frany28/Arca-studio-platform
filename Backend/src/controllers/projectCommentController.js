@@ -130,7 +130,8 @@ export async function getProjectComments(req, res, next) {
     if (query?.cursor && !cursor) return res.status(400).json({ code: "INVALID_CURSOR", message: "Cursor inválido." });
     const page = await listProjectComments(projectId, req.user, { cursor, limit: parsePageLimit(query?.limit) });
 
-    res.status(200).json({ comments: page.items, nextCursor: page.nextCursor });
+    // syncCursor (aditivo, P1-1): permite al cliente pedir solo los comentarios nuevos con la paginación existente.
+    res.status(200).json({ comments: page.items, nextCursor: page.nextCursor, syncCursor: page.syncCursor });
   } catch (error) {
     next(error);
   }

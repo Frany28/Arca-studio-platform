@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/http.js";
+import { projectCommentFeed, subscribeToProjects } from "../api/projectCommentFeed.js";
 import { canAccessObservations } from "../utils/observationAccess.js";
 import { decorateCommentForDisplay } from "../utils/commentDisplay.js";
 
@@ -191,11 +192,10 @@ function mergeCommentsById(currentComments, nextComments) {
 
 /**
  * Coordina observaciones de un proyecto, creación, eventos SSE y polling opcional.
- * Con enabled y projectId carga y suscribe eventos mediante la API; el polling
- * usa window.setInterval y combina por ID. Un fallo SSE solicita otra lectura
- * solo con intervalo positivo; los errores de lecturas de fondo se ignoran.
- * El cleanup elimina intervalo y suscripción y descarta respuestas del efecto,
- * sin abortar requests. Deshabilitar o quitar el proyecto limpia el estado.
+ * Con enabled y projectId se suscribe a la fuente compartida (projectCommentFeed): una carga,
+ * una conexión SSE y un sondeo incremental por proyecto, en pausa con la pestaña oculta; los
+ * errores de lecturas de fondo se ignoran. El cleanup cancela la suscripción, sin abortar
+ * requests. Deshabilitar o quitar el proyecto limpia el estado.
  * submitComment acepta texto o { message, parentCommentId, projectId, commentType,
  * image, selection, targetId }; permite otro proyecto y propaga errores de creación.
  * refresh reemplaza filas y captura errores. Las acciones manuales no dependen
@@ -229,77 +229,16 @@ export function useProjectComments({
       return undefined;
     }
 
-    let isMounted = true;
-
-    setLoading(true);
-    setReadError("");
-
-    api.projects
-      .listAllComments({ projectId })
-      .then((data) => {
-        if (isMounted) {
-          setComments(Array.isArray(data.comments) ? data.comments : []);
-        }
-      })
-      .catch((requestError) => {
-        if (isMounted) {
-          setReadError(
-            requestError.message || "No se pudieron cargar las observaciones.",
-          );
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
-      });
-
-    const unsubscribe = api.projects.subscribeToEvents({
-      projectId,
-      onCommentCreated: (comment) => {
-        if (isMounted) {
-          setComments((current) => upsertCommentById(current, comment));
-        }
-      },
-      onError: () => {
-        if (refreshIntervalMs > 0 && isMounted) {
-          api.projects
-            .listAllComments({ projectId })
-            .then((data) => {
-              if (isMounted) {
-                setComments(Array.isArray(data.comments) ? data.comments : []);
-              }
-            })
-            .catch(() => {});
-        }
+    // Fuente compartida (P1-1): una carga, una conexión SSE y un sondeo incremental por proyecto
+    // para todos los hooks montados; el sondeo se detiene con la pestaña oculta.
+    return projectCommentFeed.subscribe(projectId, {
+      intervalMs: refreshIntervalMs,
+      onChange: (snapshot) => {
+        setComments(snapshot.comments);
+        setLoading(snapshot.loading);
+        setReadError(snapshot.error);
       },
     });
-    const refreshIntervalId =
-      refreshIntervalMs > 0
-        ? window.setInterval(() => {
-            api.projects
-              .listAllComments({ projectId })
-              .then((data) => {
-                if (isMounted) {
-                  setComments((current) =>
-                    mergeCommentsById(
-                      current,
-                      Array.isArray(data.comments) ? data.comments : [],
-                    ),
-                  );
-                }
-              })
-              .catch(() => {});
-          }, refreshIntervalMs)
-        : null;
-
-    return () => {
-      isMounted = false;
-      if (refreshIntervalId) {
-        window.clearInterval(refreshIntervalId);
-      }
-      unsubscribe();
-    };
   }, [enabled, projectId, refreshIntervalMs]);
 
   /**
@@ -351,7 +290,13 @@ export function useProjectComments({
         });
 
         if (data && data.comment) {
-          setComments((current) => upsertCommentById(current, data.comment));
+          // La fuente compartida la muestra en todos los hooks del proyecto; si el destino es otro
+          // proyecto no suscrito aquí, se conserva como antes en la lista local.
+          if (String(targetProjectId) === String(projectId)) {
+            projectCommentFeed.add(targetProjectId, data.comment);
+          } else {
+            setComments((current) => upsertCommentById(current, data.comment));
+          }
         }
       } catch (requestError) {
         setSubmissionError(requestError.message || "No se pudo guardar la observación.");
@@ -370,9 +315,7 @@ export function useProjectComments({
     setReadError("");
 
     try {
-      const data = await api.projects.listAllComments({ projectId });
-
-      setComments(Array.isArray(data.comments) ? data.comments : []);
+      setComments((await projectCommentFeed.refresh(projectId)).comments);
     } catch (requestError) {
       setReadError(
         requestError.message || "No se pudieron cargar las observaciones.",
@@ -401,11 +344,10 @@ export function useProjectComments({
 
 /**
  * Agrega observaciones de proyectos cuando la política del usuario permite acceso.
- * Carga IDs normalizados en paralelo con Promise.all y suscribe eventos SSE por
- * proyecto; un fallo inicial expone error. El polling combina por ID y silencia
- * errores; refresh reemplaza la lista y captura fallos sin rechazar su promesa.
- * El cleanup elimina suscripciones e intervalo e ignora respuestas del efecto,
- * sin abortar requests. Sin acceso o IDs programa un reset con window.setTimeout(0)
+ * Suscribe cada ID normalizado a la fuente compartida, que reutiliza cargas, conexiones SSE
+ * (con un máximo global) y sondeo incremental; un fallo inicial expone error y los de fondo se
+ * silencian. refresh recarga completo y captura fallos sin rechazar su promesa.
+ * El cleanup cancela las suscripciones, sin abortar requests. Sin acceso o IDs programa un reset con window.setTimeout(0)
  * que también se limpia; drawerComments queda vacío inmediatamente sin acceso.
  * La guarda de montaje del efecto no cubre el refresco manual.
  *
@@ -450,79 +392,13 @@ export function useRecentProjectComments({
       return () => window.clearTimeout(resetId);
     }
 
-    let isMounted = true;
-
-    setLoading(true);
-    setError("");
-
-    Promise.all(
-      normalizedProjectIds.map((projectId) =>
-        api.projects.listAllComments({ projectId }),
-      ),
-    )
-      .then((responses) => {
-        if (isMounted) {
-          setComments(
-            responses.flatMap((data) =>
-              Array.isArray(data.comments) ? data.comments : [],
-            ),
-          );
-        }
-      })
-      .catch((requestError) => {
-        if (isMounted) {
-          setError(
-            requestError.message || "No se pudieron cargar las observaciones.",
-          );
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
-      });
-
-    const unsubscribers = normalizedProjectIds.map((projectId) =>
-      api.projects.subscribeToEvents({
-        projectId,
-        onCommentCreated: (comment) => {
-          if (isMounted) {
-            setComments((current) => upsertCommentById(current, comment));
-          }
-        },
-      }),
-    );
-    const refreshIntervalId =
-      refreshIntervalMs > 0
-        ? window.setInterval(() => {
-            Promise.all(
-              normalizedProjectIds.map((projectId) =>
-                api.projects.listAllComments({ projectId }),
-              ),
-            )
-              .then((responses) => {
-                if (isMounted) {
-                  setComments((current) =>
-                    mergeCommentsById(
-                      current,
-                      responses.flatMap((data) =>
-                        Array.isArray(data.comments) ? data.comments : [],
-                      ),
-                    ),
-                  );
-                }
-              })
-              .catch(() => {});
-          }, refreshIntervalMs)
-        : null;
-
-    return () => {
-      isMounted = false;
-      if (refreshIntervalId) {
-        window.clearInterval(refreshIntervalId);
-      }
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
-    };
+    // Fuente compartida (P1-1): cada proyecto se carga una vez y se mantiene con lecturas
+    // incrementales; los proyectos que ya sigue otro hook no generan peticiones adicionales.
+    return subscribeToProjects(normalizedProjectIds, refreshIntervalMs, ({ comments: nextComments, error: nextError, loading: nextLoading }) => {
+      setComments(nextComments);
+      setError(nextError);
+      setLoading(nextLoading);
+    });
   }, [normalizedProjectIds, observationsAllowed, refreshIntervalMs]);
 
   const refresh = useCallback(async () => {
@@ -534,17 +410,11 @@ export function useRecentProjectComments({
     setError("");
 
     try {
-      const responses = await Promise.all(
-        normalizedProjectIds.map((projectId) =>
-          api.projects.listAllComments({ projectId }),
-        ),
+      const snapshots = await Promise.all(
+        normalizedProjectIds.map((projectId) => projectCommentFeed.refresh(projectId)),
       );
 
-      setComments(
-        responses.flatMap((data) =>
-          Array.isArray(data.comments) ? data.comments : [],
-        ),
-      );
+      setComments(snapshots.flatMap((snapshot) => snapshot.comments));
     } catch (requestError) {
       setError(
         requestError.message || "No se pudieron cargar las observaciones.",
@@ -631,24 +501,30 @@ export function useEnvironmentComments({
         if (isMounted) setLoading(false);
       });
 
+    // Sondeo solo con la pestaña visible (P1-1); al volver a ella se lee una vez para ponerse al día.
+    const refreshWhileVisible = () => {
+      if (document.visibilityState === "hidden") return;
+      fetchComments()
+        .then((nextComments) => {
+          if (isMounted) {
+            setComments((current) =>
+              mergeCommentsById(current, nextComments),
+            );
+          }
+        })
+        .catch(() => {});
+    };
     const refreshIntervalId =
       refreshIntervalMs > 0
-        ? window.setInterval(() => {
-            fetchComments()
-              .then((nextComments) => {
-                if (isMounted) {
-                  setComments((current) =>
-                    mergeCommentsById(current, nextComments),
-                  );
-                }
-              })
-              .catch(() => {});
-          }, refreshIntervalMs)
+        ? window.setInterval(refreshWhileVisible, refreshIntervalMs)
         : null;
+    const handleVisibilityChange = refreshIntervalMs > 0 ? refreshWhileVisible : null;
+    if (handleVisibilityChange) document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
       if (refreshIntervalId) window.clearInterval(refreshIntervalId);
+      if (handleVisibilityChange) document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [enabled, fetchComments, refreshIntervalMs]);
 

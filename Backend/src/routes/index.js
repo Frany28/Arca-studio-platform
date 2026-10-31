@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { query } from "../config/db.js";
+import { normalizeError } from "../errors/appError.js";
 import { isShuttingDown } from "../services/lifecycle.js";
 
 const router = Router();
@@ -31,7 +32,10 @@ router.get("/health/database", async (_req, res) => {
       name: error.name,
     });
 
-    res.status(500).json({
+    // Saturación o corte de la base: 503 con Retry-After (P1-2); otros fallos siguen siendo 500.
+    const normalized = normalizeError(error);
+    if (normalized.retryAfter) res.setHeader("Retry-After", String(normalized.retryAfter));
+    res.status(normalized.status === 503 ? 503 : 500).json({
       status: "error",
       code: "DATABASE_UNAVAILABLE",
       message: "Database health check failed",

@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 
+import { sessionCookieFrom, sessionHeaders } from "./session.js";
+
 const baseUrl = String(process.env.BASE_URL || "").replace(/\/$/, "");
 const usersFile = process.env.LOAD_USERS_FILE || new URL("./fixtures/users.example.json", import.meta.url);
 const connections = Number(process.env.SSE_CONNECTIONS || 10);
@@ -16,15 +18,18 @@ async function login(account) {
     body: JSON.stringify({ email: account.email, password: account.password }),
   });
   if (!response.ok) throw new Error(`Login ${account.email}: HTTP ${response.status}`);
-  return (await response.json()).token;
+  // La sesión llega solo en la cookie HttpOnly (P0-4); el cuerpo no contiene token.
+  const cookie = sessionCookieFrom(response.headers.getSetCookie());
+  if (!cookie) throw new Error(`Login ${account.email}: sin cookie de sesión`);
+  return cookie;
 }
 
 async function connect(index, signal) {
   const account = accounts[index % accounts.length];
   try {
-    const token = await login(account);
+    const cookie = await login(account);
     const response = await fetch(`${baseUrl}/api/projects/${account.projectId}/events`, {
-      headers: { Accept: "text/event-stream", Authorization: `Bearer ${token}`, Origin: origin }, signal,
+      headers: sessionHeaders(cookie, origin, { Accept: "text/event-stream" }), signal,
     });
     if (!response.ok || !response.body) throw new Error(`SSE HTTP ${response.status}`);
     metrics.connected += 1;

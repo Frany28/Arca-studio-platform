@@ -53,11 +53,18 @@ export const projectsApi = {
     return apiRequest(`/projects/${projectId}/comments${query ? `?${query}` : ""}`);
   },
 
-  listAllComments({ projectId }) {
-    return collectCursorPages((page) => projectsApi.listComments({ ...page, projectId }), "comments");
+  listAllComments({ projectId, since = null }) {
+    // `since` es el syncCursor de una lectura anterior: solo trae los comentarios nuevos (más la
+    // ventana de solapamiento que el backend vuelve a enviar).
+    return collectCursorPages(
+      (page) => projectsApi.listComments({ ...page, projectId }),
+      "comments",
+      100,
+      { startCursor: since },
+    );
   },
 
-  subscribeToEvents({ projectId, onCommentCreated, onError }) {
+  subscribeToEvents({ projectId, onCommentCreated, onError, onOpen }) {
     const eventSource = new EventSource(
       getApiUrl(`/projects/${projectId}/events`),
       { withCredentials: true },
@@ -74,8 +81,13 @@ export const projectsApi = {
       }
     });
 
+    eventSource.onopen = () => {
+      onOpen?.();
+    };
+
+    // `closed` indica que el navegador no volverá a conectar (por ejemplo, 401 o 429 del servidor).
     eventSource.onerror = (event) => {
-      onError?.(event);
+      onError?.(event, { closed: eventSource.readyState === EventSource.CLOSED });
     };
 
     return () => {

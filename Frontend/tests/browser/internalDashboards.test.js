@@ -191,12 +191,16 @@ for (const role of ["admin", "architect"]) {
 for (const role of ["admin", "architect"]) {
   test(`${role}: drawer conserva política, suscripciones y polling sin nuevas cargas`, async (context) => {
     const { page, calls } = await openPage(context, role);
+    // P1-1: los hooks del dashboard comparten la fuente de observaciones (projectCommentFeed): una
+    // conexión SSE y una carga por proyecto, sin intervalos duplicados (el respaldo es un único
+    // setTimeout por proyecto, probado en tests/projectCommentFeed.test.js). Antes: 2 SSE, 2
+    // intervalos de 15 s y 2 descargas completas del mismo proyecto.
     const resources = await page.evaluate(() => ({
       streams: window.__dashboardStreams.filter((stream) => !stream.closed).length,
       intervals: [...window.__dashboardIntervals.values()].filter((value) => value === 15000).length,
     }));
-    assert.deepEqual(resources, role === "admin" ? { streams: 0, intervals: 0 } : { streams: 2, intervals: 2 });
-    assert.equal(count(calls, "/api/projects/21/comments"), role === "admin" ? 0 : 2);
+    assert.deepEqual(resources, role === "admin" ? { streams: 0, intervals: 0 } : { streams: 1, intervals: 0 });
+    assert.equal(count(calls, "/api/projects/21/comments"), role === "admin" ? 0 : 1);
     const commentsBefore = count(calls, "/api/projects/21/comments");
     const overviewBefore = count(calls, "/api/admin/dashboard-overview");
     await page.getByRole("button", { name: "Notificaciones", exact: true }).click();
@@ -204,7 +208,8 @@ for (const role of ["admin", "architect"]) {
     await page.waitForLoadState("networkidle");
     assert.equal(count(calls, "/api/admin/dashboard-overview"), overviewBefore + (role === "admin" ? 1 : 0));
     assert.equal(count(calls, "/api/environment-comments"), role === "admin" ? 0 : 1);
-    assert.equal(count(calls, "/api/projects/21/comments"), commentsBefore + (role === "admin" ? 0 : 4));
+    // Abrir el drawer pide más frescura: una lectura inmediata del proyecto (antes, 4 descargas completas).
+    assert.equal(count(calls, "/api/projects/21/comments"), commentsBefore + (role === "admin" ? 0 : 1));
     const opened = await page.evaluate(() => ({
       streams: window.__dashboardStreams.filter((stream) => !stream.closed).length,
       fastPolling: [...window.__dashboardIntervals.values()].filter((value) => value === 5000).length,
@@ -212,6 +217,6 @@ for (const role of ["admin", "architect"]) {
     }));
     assert.deepEqual(opened, role === "admin"
       ? { streams: 0, fastPolling: 0, environmentPolling: 0 }
-      : { streams: 2, fastPolling: 2, environmentPolling: 1 });
+      : { streams: 1, fastPolling: 0, environmentPolling: 1 });
   });
 }

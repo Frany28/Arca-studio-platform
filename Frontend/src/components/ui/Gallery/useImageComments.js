@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../../api/http.js";
+import { projectCommentFeed, subscribeToProjects } from "../../../api/projectCommentFeed.js";
 import { useAuth } from "../../../auth/AuthContext.jsx";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";
 import { decorateCommentForDisplay } from "../../../utils/commentDisplay.js";
@@ -205,44 +206,6 @@ function isMatchingTarget(comment, { commentType, targetId }) {
   );
 }
 
-function upsertCommentById(comments, comment) {
-  if (!comment?.id) {
-    return comments;
-  }
-
-  const exists = comments.some((current) => current.id === comment.id);
-
-  return exists
-    ? comments.map((current) => (current.id === comment.id ? comment : current))
-    : [...comments, comment];
-}
-
-function sortCommentsByCreatedAt(comments) {
-  return [...comments].sort(
-    (left, right) =>
-      new Date(left.createdAt || 0).getTime() -
-      new Date(right.createdAt || 0).getTime(),
-  );
-}
-
-function mergeCommentsById(currentComments, nextComments) {
-  const commentsById = new Map();
-
-  currentComments.forEach((comment) => {
-    if (comment?.id) {
-      commentsById.set(String(comment.id), comment);
-    }
-  });
-
-  nextComments.forEach((comment) => {
-    if (comment?.id) {
-      commentsById.set(String(comment.id), comment);
-    }
-  });
-
-  return sortCommentsByCreatedAt(Array.from(commentsById.values()));
-}
-
 function useProjectCommentRows(projectIds, { refreshIntervalMs = 0 } = {}) {
   const [comments, setComments] = useState([]);
 
@@ -254,67 +217,11 @@ function useProjectCommentRows(projectIds, { refreshIntervalMs = 0 } = {}) {
       return undefined;
     }
 
-    let isMounted = true;
-
-    Promise.all(
-      projectIds.map((projectId) => api.projects.listAllComments({ projectId })),
-    )
-      .then((responses) => {
-        if (isMounted) {
-          setComments(
-            responses.flatMap((data) =>
-              Array.isArray(data.comments) ? data.comments : [],
-            ),
-          );
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setComments([]);
-        }
-      });
-
-    const unsubscribers = projectIds.map((projectId) =>
-      api.projects.subscribeToEvents({
-        projectId,
-        onCommentCreated: (comment) => {
-          if (isMounted) {
-            setComments((current) => upsertCommentById(current, comment));
-          }
-        },
-      }),
-    );
-    const refreshIntervalId =
-      refreshIntervalMs > 0
-        ? window.setInterval(() => {
-            Promise.all(
-              projectIds.map((projectId) =>
-                api.projects.listAllComments({ projectId }),
-              ),
-            )
-              .then((responses) => {
-                if (isMounted) {
-                  setComments((current) =>
-                    mergeCommentsById(
-                      current,
-                      responses.flatMap((data) =>
-                        Array.isArray(data.comments) ? data.comments : [],
-                      ),
-                    ),
-                  );
-                }
-              })
-              .catch(() => {});
-          }, refreshIntervalMs)
-        : null;
-
-    return () => {
-      isMounted = false;
-      if (refreshIntervalId) {
-        window.clearInterval(refreshIntervalId);
-      }
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
-    };
+    // Fuente compartida (P1-1): los visores y las notificaciones reutilizan la carga, la conexión SSE
+    // y el sondeo incremental del proyecto en lugar de descargar todo el historial cada uno.
+    return subscribeToProjects(projectIds, refreshIntervalMs, ({ comments: nextComments }) => {
+      setComments(nextComments);
+    });
   }, [projectIds, refreshIntervalMs]);
 
   return [comments, setComments];
@@ -338,7 +245,7 @@ export function useImageComments(item, { commentType = "image", projectId } = {}
     () => (resolvedProjectId ? [resolvedProjectId] : []),
     [resolvedProjectId],
   );
-  const [projectComments, setProjectComments] = useProjectCommentRows(projectIds);
+  const [projectComments] = useProjectCommentRows(projectIds);
 
   const comments = useMemo(
     () =>
@@ -374,7 +281,8 @@ export function useImageComments(item, { commentType = "image", projectId } = {}
       const comment = data?.comment || null;
 
       if (comment) {
-        setProjectComments((current) => upsertCommentById(current, comment));
+        // La fuente compartida la muestra en este visor y en los demás hooks del proyecto.
+        projectCommentFeed.add(resolvedProjectId, comment);
       }
 
       return comment;
@@ -386,7 +294,6 @@ export function useImageComments(item, { commentType = "image", projectId } = {}
       item?.title,
       resolvedProjectId,
       readOnly,
-      setProjectComments,
     ],
   );
 

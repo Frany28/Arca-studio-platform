@@ -130,6 +130,8 @@ throw new ConflictError("EXAMPLE_CONFLICT", "El recurso ya existe.");
 
 El middleware global es el único responsable de convertir errores en HTTP. Los fallos desconocidos responden con un mensaje genérico y se registran sin datos sensibles.
 
+Los errores de disponibilidad de PostgreSQL (pool agotado, cola de espera llena, `53300`, `57014`/`statement_timeout`, conexión perdida) se clasifican en `src/config/databaseErrors.js` y se responden como `503 {code:"DATABASE_UNAVAILABLE", message, retryAfter}` con `Retry-After` (5 s, `DATABASE_RETRY_AFTER_SECONDS`), el mismo formato que el 503 del rate limiter. `appError.js` y `databaseErrors.js` también los importa el frontend a través de los dominios compartidos: no deben usar `process` directamente.
+
 ## Archivos
 
 - `fileUploadService` valida nombre, MIME, extensión, tamaño y streaming.
@@ -139,6 +141,8 @@ El middleware global es el único responsable de convertir errores en HTTP. Los 
 - Si falla PostgreSQL después de subir, eliminar el objeto.
 - Si falla el almacenamiento, no confirmar la transacción.
 - Las cancelaciones deben liberar streams y conexiones.
+- Ninguna transferencia retiene una conexión ni un bloqueo: se reserva el id, se transfiere y se registra en una transacción corta que repite estado, acceso, duplicados y límites (`services/storedUpload.js`). La compensación solo elimina el objeto si su fila no existe.
+- Las descargas usan `utils/streamResponse.js` (`pipeline`); S3, Resend y Geoapify tienen plazos explícitos (`STORAGE_*`, `EMAIL_REQUEST_TIMEOUT_MS`, `GEOAPIFY_REQUEST_TIMEOUT_MS`).
 
 ## Paginación
 
@@ -172,6 +176,25 @@ GET /api/examples?limit=25&cursor=...
 - Detalles adicionales: `PRISMA_MIGRATIONS.md`.
 
 Prisma no representa completamente RLS, restricciones `CHECK`, claves diferibles e índices por expresiones. Revisar y completar manualmente el SQL generado cuando una migración afecte esas características.
+
+Saturación (`src/config/db.js`):
+
+- Solo las lecturas que pierden la conexión se reintentan, una vez y tras 100–300 ms aleatorios. La saturación y las escrituras nunca se repiten.
+- Con `DATABASE_MAX_WAITING` (200) peticiones esperando conexión, las siguientes reciben 503 al instante en lugar de esperar `DATABASE_CONNECTION_TIMEOUT_MS`. `0` desactiva el límite.
+- El pool escucha `error`: una conexión inactiva cortada por la base no termina el proceso.
+
+## Rendimiento y estabilidad
+
+- **Métricas**: con `REQUEST_METRICS_ENABLED=true`, `middlewares/requestMetrics.js` registra `http_request` por petición (se omite con `REQUEST_METRICS_LOG_REQUESTS=false`) y `runtime_metrics` cada `RUNTIME_METRICS_INTERVAL_MS` (10 s): CPU, RSS y heap, retraso del event loop, pool (activas, libres, en espera), duración p50/p95/p99, clases de estado, 429, 503 y cancelaciones. No registra cabeceras, cookies, cuerpos ni la URL con ids.
+- **Sincronización de comentarios**: la lista de comentarios de proyecto devuelve `syncCursor`; el frontend lo usa en `api/projectCommentFeed.js` (una carga, una conexión SSE y un sondeo incremental por proyecto, compartidos por todos los hooks).
+- **Pruebas de carga**: `load-tests/` (k6) usa la cookie de sesión real (`load-tests/session.js`); `auth-smoke.mjs` valida el entorno antes de medir. Solo contra entornos aislados.
+
+Problemas pendientes (no resueltos, documentados para fases posteriores):
+
+1. **Precisión del cursor de paginación.** El cursor guarda la fecha con milisegundos y `created_at` tiene microsegundos: el último elemento de una página puede repetirse al inicio de la siguiente. Los clientes deduplican por id (`collectCursorPages`, `projectCommentFeed`). Corregirlo afecta a todas las paginaciones por fecha.
+2. **SSE entre instancias.** El bus de eventos está en memoria del proceso: en Vercel, un comentario creado en otra instancia no llega por SSE. El sondeo incremental se mantiene como respaldo (30 s con SSE conectado, el intervalo pedido sin él), así que un comentario puede tardar ese tiempo en aparecer.
+3. **Calibración de `DATABASE_MAX_WAITING`.** El valor 200 es razonado, no medido: ajustarlo con las pruebas de carga junto con el tamaño del pool y `DATABASE_CONNECTION_TIMEOUT_MS`.
+4. **Recuperación de archivos huérfanos.** Si el proceso cae entre la transferencia y el registro, o falla el borrado de compensación, el objeto queda en el almacenamiento y se registra como `storage_orphan_candidate`. También quedan objetos si falla el borrado posterior a eliminar un archivo. No existe todavía un proceso de limpieza.
 
 ## Estructura de un módulo nuevo
 

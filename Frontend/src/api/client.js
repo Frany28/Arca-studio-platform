@@ -134,10 +134,11 @@ export function toQueryString(values) {
  * @param {number} [limit=100] - Tama?o solicitado por p?gina.
  * @returns {Promise<Object>} Colecci?n acumulada y nextCursor null.
  */
-export async function collectCursorPages(fetchPage, collectionKey, limit = 100) {
+export async function collectCursorPages(fetchPage, collectionKey, limit = 100, { startCursor = null } = {}) {
   const items = [];
   const ids = new Set();
-  let cursor = null;
+  let cursor = startCursor;
+  let syncCursor = null;
 
   do {
     const page = await fetchPage({ cursor, limit });
@@ -151,10 +152,12 @@ export async function collectCursorPages(fetchPage, collectionKey, limit = 100) 
       }
     }
 
+    // El último syncCursor recibido permite pedir después solo los elementos nuevos.
+    syncCursor = page?.syncCursor || syncCursor;
     cursor = page?.nextCursor || null;
   } while (cursor);
 
-  return { [collectionKey]: items, nextCursor: null };
+  return { [collectionKey]: items, nextCursor: null, syncCursor };
 }
 
 /**

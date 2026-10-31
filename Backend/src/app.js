@@ -51,7 +51,13 @@ app.use("/api", (req, res) => {
   });
 });
 
-app.use((error, _req, res, _next) => {
+app.use((error, _req, res, next) => {
+  // Con la respuesta ya empezada no se puede enviar otro estado: Express cierra la conexión.
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
   const normalized = normalizeError(error);
   console.error("Unhandled request error", {
     code: error.code,
@@ -59,10 +65,13 @@ app.use((error, _req, res, _next) => {
     name: error.name,
   });
 
+  // Saturación de la base (P1-2): 503 con Retry-After, igual que el 503 del rate limiter.
+  if (normalized.retryAfter) res.setHeader("Retry-After", String(normalized.retryAfter));
   res.status(normalized.status).json({
     code: normalized.code,
     message: normalized.message,
     ...(normalized.fields ? { fields: normalized.fields } : {}),
+    ...(normalized.retryAfter ? { retryAfter: normalized.retryAfter } : {}),
   });
 });
 

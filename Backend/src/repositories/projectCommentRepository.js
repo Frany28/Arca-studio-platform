@@ -1,7 +1,11 @@
 import { pool, query } from "../config/db.js";
 import { PROJECT_STATUS } from "../domain/projectStatus.js";
 import { sanitizeCommentMetadata } from "../utils/commentMetadata.js";
-import { pageResult } from "../utils/pagination.js";
+import { encodeCursor, pageResult } from "../utils/pagination.js";
+
+// Ventana que el cursor de sincronización vuelve a leer (P1-1). Supera statement_timeout (10 s), que
+// acota cuánto puede esperar el bloqueo un comentario antes de confirmarse.
+const COMMENT_SYNC_OVERLAP_MS = 60 * 1000;
 
 const GENERAL_COMMENT_TYPE = "general";
 const ACTIVE_COMMENT_STATUS = "active";
@@ -253,12 +257,27 @@ export async function listProjectComments(projectId, user, { cursor = null, limi
     [...access.params, projectId, ACTIVE_COMMENT_STATUS, cursor?.[0] || null, cursor?.[1] || null, limit + 1],
   );
 
-  return pageResult(
+  const page = pageResult(
     result.rows,
     limit,
     (row) => row.comment_type === "document" ? toDocumentComment(row) : toProjectComment(row),
     (row) => [row.created_at, String(row.id)],
   );
+  return { ...page, syncCursor: buildCommentSyncCursor(result.rows.slice(0, limit).at(-1)) };
+}
+
+/**
+ * Construye el cursor de sincronización incremental desde el comentario más reciente de la página,
+ * retrocediendo COMMENT_SYNC_OVERLAP_MS: un comentario que esperó el bloqueo del proyecto puede
+ * confirmarse después de otro más reciente; el cliente relee esa ventana y deduplica por id (P1-1).
+ *
+ * @param {object|undefined} row - Último comentario visible de la página.
+ * @returns {string|null} Cursor opaco o null si la página está vacía.
+ */
+function buildCommentSyncCursor(row) {
+  if (!row?.created_at) return null;
+  const since = new Date(new Date(row.created_at).getTime() - COMMENT_SYNC_OVERLAP_MS).toISOString();
+  return encodeCursor([since, "0"]);
 }
 
 /**
