@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSupabaseS3Client, getSupabaseStorageConfig } from "../config/storage.js";
 import { AppError } from "../errors/appError.js";
 
@@ -47,14 +47,15 @@ function storageTimeoutError(cause) {
  *
  * @param {object} command - Comando del SDK.
  * @param {number} timeoutMs - Plazo en milisegundos.
+ * @param {AbortSignal} [signal] - Cancelación externa de una lectura.
  * @returns {Promise<object>} Respuesta del SDK.
  * @throws {AppError} STORAGE_TIMEOUT si se agota el plazo; en otro caso, el error original.
  */
-async function sendWithDeadline(command, timeoutMs) {
+async function sendWithDeadline(command, timeoutMs, signal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await getSupabaseS3Client().send(command, { abortSignal: controller.signal });
+    return await getSupabaseS3Client().send(command, { abortSignal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal });
   } catch (error) {
     if (controller.signal.aborted) throw storageTimeoutError(error);
     throw error;
@@ -95,15 +96,35 @@ delete(key) {
    *
    * @param {string} key - Valor de `key` requerido por esta operación.
    * @param {object} [options] - Opciones agrupadas necesarias para ejecutar la operación.
-   * @param {string} options.range - Valor de `options.range` requerido por esta operación.
+   * @param {string} [options.range] - Rango opcional.
+   * @param {string} [options.bucket] - Bucket explícito para documentos privados.
+   * @param {number} [options.timeoutMs] - Plazo para documentos pequeños.
+   * @param {AbortSignal} [options.signal] - Cancelación de la lectura.
    * @returns {unknown} Resultado producido por la operación.
    */
-get(key, { range } = {}) {
-    const { bucket } = this.config();
+get(key, { bucket = this.config().bucket, range, timeoutMs = STORAGE_TIMEOUTS.requestMs, signal } = {}) {
     return sendWithDeadline(
       new GetObjectCommand({ Bucket: bucket, Key: key, Range: range || undefined }),
-      STORAGE_TIMEOUTS.requestMs,
+      timeoutMs,
+      signal,
     );
+  }
+
+  /**
+   * Consulta metadatos de un objeto privado sin transferir su contenido.
+   * Solo una respuesta 404 significa ausencia; permisos y fallos transitorios se propagan.
+   *
+   * @param {string} key - Clave generada por el backend.
+   * @param {{bucket: string, timeoutMs?: number}} options - Bucket y plazo para los metadatos.
+   * @returns {Promise<object|null>} Metadatos o null si no existe.
+   */
+  async head(key, { bucket, timeoutMs = STORAGE_TIMEOUTS.requestMs }) {
+    try {
+      return await sendWithDeadline(new HeadObjectCommand({ Bucket: bucket, Key: key }), timeoutMs);
+    } catch (error) {
+      if (error?.$metadata?.httpStatusCode === 404 || error?.name === "NotFound" || error?.name === "NoSuchKey") return null;
+      throw error;
+    }
   }
 
     /**
@@ -116,13 +137,15 @@ get(key, { range } = {}) {
    * @param {string} options.contentType - Valor de `options.contentType` requerido por esta operación.
    * @param {string} options.key - Valor de `options.key` requerido por esta operación.
    * @param {unknown} options.metadata - Valor de `options.metadata` requerido por esta operación.
+   * @param {string} [options.bucket] - Bucket explícito; los archivos generales mantienen el actual.
+   * @param {string} [options.ifNoneMatch] - Precondición adicional, su soporte depende del proveedor.
+   * @param {number} [options.timeoutMs] - Plazo acotado para documentos pequeños.
    * @returns {unknown} Resultado producido por la operación.
    */
-put({ body, contentLength, contentType, key, metadata }) {
-    const { bucket } = this.config();
+put({ body, bucket = this.config().bucket, contentLength, contentType, ifNoneMatch, key, metadata, timeoutMs = STORAGE_TIMEOUTS.uploadMs }) {
     return sendWithDeadline(new PutObjectCommand({
-      Body: body, Bucket: bucket, ContentLength: contentLength, ContentType: contentType, Key: key, Metadata: metadata,
-    }), STORAGE_TIMEOUTS.uploadMs);
+      Body: body, Bucket: bucket, ContentLength: contentLength, ContentType: contentType, IfNoneMatch: ifNoneMatch, Key: key, Metadata: metadata,
+    }), timeoutMs);
   }
 }
 

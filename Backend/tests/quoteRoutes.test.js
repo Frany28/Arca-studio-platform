@@ -4,10 +4,14 @@ import test from "node:test";
 
 import { startAdminRouterServer } from "./helpers/adminRouterServer.js";
 import { createQuoteDatabaseMock } from "./helpers/quoteDatabaseMock.js";
+import { mockQuotePdfStorage } from "./helpers/quotePdfMock.js";
+import { objectStorage } from "../src/services/objectStorage.js";
 
 // El transporte simulado nunca consulta la base configurada ni requiere dotenv.
 process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/arca_unit_test";
 process.env.ROUTE_AUTH_DISABLED_FOR_TESTS = "false";
+process.env.SUPABASE_QUOTE_PDF_BUCKET = "quotes-private-test";
+process.env.SUPABASE_STORAGE_BUCKET = "general-test";
 const { pool } = await import("../src/config/db.js");
 const { default: quoteRouter } = await import("../src/routes/quotes.js");
 
@@ -31,12 +35,14 @@ const VALID_CREATE = {
  * @returns {Promise<object>} Cliente HTTP, base simulada y sentencias registradas.
  */
 async function startServer(context, { authenticated = true } = {}) {
+  const storage = mockQuotePdfStorage(context, objectStorage);
   const database = createQuoteDatabaseMock();
   const server = await startAdminRouterServer(context, { pool, respond: database.respond, routes: [["/api/admin/quotes", quoteRouter]] });
   if (authenticated) server.setUser(ADMIN);
   return {
     ...server,
     database,
+    storage,
     raw: (method, path, headers) => server.raw(method, `/api/admin/quotes${path}`, headers),
     send: (method, path, body) => server.send(method, `/api/admin/quotes${path}`, body),
   };
@@ -57,7 +63,7 @@ test("sin sesión responde 401 y sin rol administrador 403, sin consultar Postgr
   const server = await startServer(context, { authenticated: false });
   const requests = [
     ["GET", ""], ["GET", "/summary"], ["GET", "/clients"], ["GET", "/clients/3/projects"], ["GET", "/1"],
-    ["GET", "/1/pdf"], ["POST", "", VALID_CREATE], ["PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1 }],
+    ["GET", "/1/pdf"], ["POST", "/1/pdf/retry"], ["POST", "", VALID_CREATE], ["PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1 }],
   ];
   for (const [method, path, body] of requests) {
     assert.equal((await server.send(method, path, body)).status, 401, `${method} ${path}`);
@@ -92,7 +98,7 @@ test("alta: calcula importes en el servidor, genera COT-001 y bloquea cliente, p
 
   const statements = server.database.statements;
   assert.equal(statements[0], "begin");
-  assert.equal(statements.at(-1), "commit");
+  assert.ok(statements.indexOf("commit") < statements.findIndex((sql) => sql.includes("attempts = attempts + 1")), "El COMMIT precede a la generación y subida");
   assert.ok(statements.some((sql) => sql.includes("from public.clients where id = $1 for share")), "Cliente FOR SHARE");
   assert.ok(statements.some((sql) => sql.includes("from public.projects where id = $1 for share")), "Proyecto FOR SHARE");
   assert.ok(statements.some((sql) => sql.includes("order by id for share")), "Servicios FOR SHARE en orden de id");
@@ -249,18 +255,18 @@ test("PDF: se transmite como descarga protegida con ETag por versión y responde
   const response = await server.raw("GET", `/${quote.id}/pdf?timeZone=America%2FCaracas`);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "application/pdf");
-  assert.equal(response.headers.get("content-disposition"), 'attachment; filename="COT-001.pdf"');
+  assert.equal(response.headers.get("content-disposition"), 'attachment; filename="COT-001-v1.pdf"');
   assert.match(response.headers.get("content-security-policy"), /sandbox/);
   assert.equal(response.headers.get("cache-control"), "private, no-cache");
   const etag = response.headers.get("etag");
-  assert.equal(etag, '"quote-1-v1-America%2FCaracas-r1"');
+  assert.match(etag, /^"[a-f0-9]{64}"$/);
   const bytes = Buffer.from(await response.arrayBuffer());
   assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
 
   const cached = await server.raw("GET", `/${quote.id}/pdf?timeZone=America%2FCaracas`, { "If-None-Match": etag });
   assert.equal(cached.status, 304);
-  // Otra zona horaria cambia la fecha impresa y, por tanto, el documento.
-  assert.equal((await server.raw("GET", `/${quote.id}/pdf?timeZone=UTC`, { "If-None-Match": etag })).status, 200);
+  // La zona del navegador no altera los bytes persistentes ni el ETag.
+  assert.equal((await server.raw("GET", `/${quote.id}/pdf?timeZone=UTC`, { "If-None-Match": etag })).status, 304);
   assert.equal((await server.raw("GET", "/99/pdf")).status, 404);
 });
 
@@ -301,7 +307,7 @@ test("proyecto nuevo: el alta crea el draft del cliente en la misma transacción
   const quoteInsert = statements.findIndex((sql) => sql.startsWith("insert into public.quotes"));
   const versionInsert = statements.findIndex((sql) => sql.startsWith("insert into public.quote_versions"));
   assert.ok(projectInsert >= 0 && projectInsert < quoteInsert && quoteInsert < versionInsert, "Draft, cotización y versión en la misma transacción");
-  assert.equal(statements.at(-1), "commit");
+  assert.ok(statements.indexOf("commit") < statements.findIndex((sql) => sql.includes("attempts = attempts + 1")));
   assert.ok(!statements.some((sql) => sql.includes("from public.projects where id = $1 for share")), "No se bloquea un proyecto existente");
 });
 
@@ -438,4 +444,146 @@ test("proyecto nuevo sin submissionId: 400 antes de consultar PostgreSQL y sin c
   assert.equal(server.database.state.projects.size, 3);
   // Con el identificador, la misma alta es válida e idempotente.
   assert.equal((await createDraftQuote(server, { newProjectName: "Casa del Lago" })).status, 201);
+});
+
+test("PDF automático: creación, edición, historial y cambios no efectivos", async (context) => {
+  const server = await startServer(context);
+  const created = await createQuote(server);
+  assert.equal(created.body.quote.pdf.status, "available");
+  assert.equal(server.storage.calls.put, 1, "Se almacena sin abrir el visor");
+  const oldKey = "quotes/1/versions/v1/COT-001-v1.pdf";
+  const oldBytes = server.storage.objects.get(oldKey).bytes;
+  await server.send("PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1 });
+  assert.equal(server.storage.calls.put, 1, "changed:false no genera ni sube");
+  const changed = await server.send("PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1, notes: "Versión dos" });
+  assert.equal(changed.body.quote.pdf.status, "available");
+  assert.equal(server.storage.calls.put, 2);
+  assert.equal(server.storage.objects.size, 2);
+  assert.equal(server.storage.objects.get(oldKey).bytes, oldBytes);
+  const historical = await server.raw("GET", "/1/pdf?version=1");
+  assert.equal(historical.status, 200);
+  assert.ok(Buffer.from(await historical.arrayBuffer()).equals(oldBytes));
+  assert.equal((await server.raw("GET", "/1/pdf?version=99")).status, 404);
+  assert.equal((await server.raw("GET", "/1/pdf?version=2147483648")).status, 400);
+});
+
+test("PDF: fallo de S3 conserva el Draft y replay recupera sin duplicar", async (context) => {
+  const server = await startServer(context);
+  server.storage.setFailPut(true);
+  const body = { newProjectName: "Draft con PDF pendiente", submissionId: randomUUID() };
+  const created = await createDraftQuote(server, body);
+  assert.equal(created.status, 201);
+  assert.equal(created.body.quote.pdf.status, "error");
+  assert.equal(server.database.state.projects.size, 4);
+  assert.equal((await server.raw("GET", "/1/pdf")).status, 409);
+  assert.equal(server.storage.calls.get, 0, "El visor no genera ni lee un PDF no confirmado");
+  server.storage.setFailPut(false);
+  const replayed = await createDraftQuote(server, body);
+  assert.equal(replayed.status, 200);
+  assert.equal(replayed.body.replayed, true);
+  assert.equal(replayed.body.quote.pdf.status, "available");
+  assert.equal(server.database.pdf.rows.size, 1);
+  assert.equal(server.database.state.quotes.length, 1);
+  assert.equal(server.database.state.projects.size, 4);
+  assert.equal(server.storage.objects.size, 1);
+});
+
+test("PDF: subida completada y confirmación fallida se adopta sin otro PUT", async (context) => {
+  const server = await startServer(context);
+  server.database.pdf.setFailComplete(true);
+  const created = await createQuote(server);
+  assert.equal(created.body.quote.pdf.status, "error");
+  assert.equal(server.storage.objects.size, 1, "El objeto incierto conserva su reserva durable");
+  server.database.pdf.setFailComplete(false);
+  const retried = await server.send("POST", "/1/pdf/retry?version=1");
+  assert.equal(retried.status, 200, JSON.stringify(retried.body));
+  assert.equal(retried.body.pdf.status, "available");
+  assert.equal(server.storage.calls.put, 1);
+  assert.equal(server.database.state.versions.length, 1);
+});
+
+test("PDF: reserva interrumpida, solicitudes simultáneas y trabajador obsoleto", async (context) => {
+  const server = await startServer(context);
+  server.storage.setFailPut(true);
+  await createQuote(server);
+  server.storage.setFailPut(false);
+  const row = server.database.pdf.rows.get(1);
+  row.lease_token = randomUUID();
+  row.lease_until = Date.now() + 600000;
+  row.status = "pending";
+  assert.equal((await server.send("POST", "/1/pdf/retry?version=1")).status, 202);
+  assert.equal(server.storage.objects.size, 0);
+  row.lease_until = Date.now() - 1;
+  const before = server.storage.calls.put;
+  const results = await Promise.all(Array.from({ length: 5 }, () => server.send("POST", "/1/pdf/retry?version=1")));
+  assert.ok(results.some((response) => response.body.pdf.status === "available"));
+  assert.equal(server.storage.calls.put, before + 1);
+  assert.equal(server.database.pdf.rows.size, 1);
+  const { completeQuotePdf, failQuotePdf } = await import("../src/repositories/quotePdfRepository.js");
+  assert.equal(await completeQuotePdf(1, randomUUID()), null);
+  await failQuotePdf(1, randomUUID(), "STALE");
+  assert.equal(row.status, "available");
+});
+
+test("PDF: objeto perdido invalida el ETag y se reproduce exactamente desde su instantánea", async (context) => {
+  const server = await startServer(context);
+  await createQuote(server);
+  const key = [...server.storage.objects.keys()][0];
+  const original = server.storage.objects.get(key);
+  const first = await server.raw("GET", "/1/pdf");
+  await first.arrayBuffer();
+  server.storage.objects.delete(key);
+  const missing = await server.raw("GET", "/1/pdf", { "If-None-Match": first.headers.get("etag") });
+  assert.equal(missing.status, 503);
+  assert.equal((await missing.json()).code, "QUOTE_PDF_MISSING");
+  server.database.state.clients.get(3).name = "Nombre cambiado";
+  server.database.state.projects.get(9).name = "Proyecto cambiado";
+  server.database.state.services.get(1).isActive = false;
+  const retried = await server.send("POST", "/1/pdf/retry?version=1");
+  assert.equal(retried.status, 200, JSON.stringify(retried.body));
+  assert.ok(server.storage.objects.get(key).bytes.equals(original.bytes), "Regeneración binaria reproducible");
+});
+
+test("PDF: contenido corrupto se rechaza sin borrar ni sobrescribir", async (context) => {
+  const server = await startServer(context);
+  await createQuote(server);
+  const stored = [...server.storage.objects.values()][0];
+  stored.bytes = Buffer.from(stored.bytes);
+  stored.bytes[100] ^= 1;
+  const response = await server.raw("GET", "/1/pdf");
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "QUOTE_PDF_INTEGRITY_ERROR");
+  assert.equal((await server.send("POST", "/1/pdf/retry?version=1")).status, 503);
+  assert.equal(server.storage.calls.put, 1);
+  assert.equal(server.storage.objects.size, 1);
+});
+
+test("PDF: un bucket público impide leer y subir e informa el fallo explícitamente", async (context) => {
+  const server = await startServer(context);
+  server.database.pdf.setPrivate(false);
+  const created = await createQuote(server);
+  assert.equal(created.status, 201);
+  assert.equal(created.body.quote.pdf.errorCode, "QUOTE_PDF_STORAGE_PRIVATE_REQUIRED");
+  assert.equal(server.storage.calls.put, 0);
+  server.database.pdf.setPrivate(true);
+  assert.equal((await server.send("POST", "/1/pdf/retry")).status, 200);
+  server.database.pdf.setPrivate(false);
+  assert.equal((await server.raw("GET", "/1/pdf")).status, 503);
+  assert.equal(server.storage.calls.get, 0);
+});
+
+test("PDF: fallo de generación es recuperable sin nueva versión comercial", async (context) => {
+  const server = await startServer(context);
+  server.storage.setFailPut(true);
+  await createQuote(server);
+  server.storage.setFailPut(false);
+  const row = server.database.pdf.rows.get(1);
+  const model = row.document_model;
+  row.document_model = { ...model, items: null };
+  assert.equal((await server.send("POST", "/1/pdf/retry")).status, 503);
+  assert.equal(row.status, "error");
+  assert.equal(server.storage.objects.size, 0);
+  row.document_model = model;
+  assert.equal((await server.send("POST", "/1/pdf/retry")).status, 200);
+  assert.equal(server.database.state.versions.length, 1);
 });

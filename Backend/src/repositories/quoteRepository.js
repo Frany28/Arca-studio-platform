@@ -187,20 +187,23 @@ async function listQuoteItems(quoteVersionId, executor) {
  *
  * @param {number} quoteId - Identificador de la cotización.
  * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto el pool.
+ * @param {number} [versionNumber] - Versión histórica; por defecto la vigente.
  * @returns {Promise<object|null>} Cotización completa o null si no existe.
  */
-export async function findQuoteById(quoteId, executor = { query }) {
+export async function findQuoteById(quoteId, executor = { query }, versionNumber) {
   const result = await executor.query(
     `select ${QUOTE_SUMMARY_COLUMNS},
        v.id as version_id, v.notes, v.created_at as version_created_at,
        author.id as author_id, author.first_name as author_first_name, author.last_name as author_last_name,
        editor.id as editor_id, editor.first_name as editor_first_name, editor.last_name as editor_last_name,
        (editor.profile_photo_url is not null and btrim(editor.profile_photo_url) <> '') as editor_has_profile_photo
-     ${QUOTE_FROM}
+     from public.quotes q
+     inner join public.quote_versions v on v.quote_id = q.id
+       and (($2::integer is null and v.is_current) or v.version_number = $2)
      inner join public.users author on author.id = q.created_by
      inner join public.users editor on editor.id = v.created_by
      where q.id = $1`,
-    [quoteId],
+    [quoteId, versionNumber ?? null],
   );
   const row = result.rows[0];
   if (!row) return null;

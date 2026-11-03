@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../../../../api/http.js";
 import { openPdfDocument } from "../../../../components/document-viewer/pdfDocumentLoader.js";
@@ -6,22 +6,9 @@ import { openPdfDocument } from "../../../../components/document-viewer/pdfDocum
 const IDLE = Object.freeze({ blob: null, documentProxy: null, error: "", key: "", pageCount: 1, size: 0, status: "idle" });
 
 /**
- * Zona horaria del navegador para que la fecha impresa coincida con la del listado.
- *
- * @returns {string|undefined} Zona IANA o undefined si el navegador no la expone.
- */
-export function getBrowserTimeZone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Descarga y abre con PDF.js el documento de la versión vigente de una cotización mientras el
  * visor está abierto. La clave incluye la versión: una edición posterior descarga el documento
- * nuevo y la caché HTTP (ETag) evita repetir la generación si no cambió. Cerrar el visor o
+ * almacenado. La recuperación solo se solicita al pulsar Reintentar. Cerrar el visor o
  * cambiar de cotización aborta la descarga y destruye el documento anterior, de modo que una
  * respuesta lenta nunca sustituye a la cotización mostrada. Conserva el Blob mientras está
  * abierto para guardar exactamente el PDF mostrado sin repetir HTTP; al cerrar lo libera.
@@ -32,22 +19,32 @@ export function getBrowserTimeZone() {
  */
 export function useQuotePdfDocument(quote) {
   const [state, setState] = useState(IDLE);
-  const [attempt, setAttempt] = useState(0);
+  const [retryState, setRetryState] = useState({ documentKey: "", attempt: 0 });
+  const retryRequested = useRef(null);
   const quoteId = quote?.id ?? null;
-  const key = quote ? `${quote.id}:${quote.currentVersion}:${attempt}` : "";
+  const version = quote?.currentVersion;
+  const documentKey = quote ? `${quote.id}:${quote.currentVersion}` : "";
+  const attempt = retryState.documentKey === documentKey ? retryState.attempt : 0;
+  const key = documentKey ? `${documentKey}:${attempt}` : "";
 
   useEffect(() => {
     // Abortar cancela la descarga y destruye el documento de PDF.js (openPdfDocument).
     const controller = new AbortController();
     const { signal } = controller;
+    const recover = retryRequested.current === `${quoteId}:${version}`;
+    retryRequested.current = null;
 
     queueMicrotask(() => {
       if (!signal.aborted) setState({ ...IDLE, key, status: quoteId === null ? "idle" : "loading" });
     });
     if (quoteId === null) return () => controller.abort();
-    api.quotes.getQuotePdf({ quoteId, signal, timeZone: getBrowserTimeZone() })
+    const request = recover
+      ? api.quotes.retryQuotePdf({ quoteId, signal, version }).then(() => api.quotes.getQuotePdf({ quoteId, signal, version }))
+      : api.quotes.getQuotePdf({ quoteId, signal, version });
+    request
       .then(async (blob) => {
         const documentProxy = await openPdfDocument(await blob.arrayBuffer(), signal);
+        if (signal.aborted) return;
         setState({ blob, documentProxy, error: "", key, pageCount: documentProxy.numPages || 1, size: blob.size, status: "ready" });
       })
       .catch((error) => {
@@ -57,9 +54,12 @@ export function useQuotePdfDocument(quote) {
 
     return () => controller.abort();
     // `key` resume la cotización, su versión y el reintento; el objeto `quote` puede cambiar de identidad.
-  }, [key, quoteId]);
+  }, [attempt, key, quoteId, version]);
 
   // Un estado de otra cotización o versión nunca se muestra: hasta que llegue el nuevo, se carga.
   const current = state.key === key ? state : { ...IDLE, status: quote ? "loading" : "idle" };
-  return { ...current, retry: () => setAttempt((value) => value + 1) };
+  return { ...current, retry: () => {
+    retryRequested.current = documentKey;
+    setRetryState({ documentKey, attempt: attempt + 1 });
+  } };
 }

@@ -9,6 +9,7 @@ import {
   getQuotesSummary,
   patchQuote,
   postQuote,
+  postQuotePdfRetry,
 } from "../controllers/quoteController.js";
 import { adminRateLimits } from "../middlewares/actionRateLimits.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
@@ -37,5 +38,6 @@ router.get("/clients/:clientId/projects", validate(quoteProjectOptionsSchema), g
 router.get("/:quoteId", validate(quoteDetailSchema), getQuoteById);
 router.patch("/:quoteId", adminRateLimits.quoteWrite, validate(quoteUpdateSchema), patchQuote);
 router.get("/:quoteId/pdf", adminRateLimits.quotePdf, validate(quotePdfSchema), getQuotePdfDocument);
+router.post("/:quoteId/pdf/retry", adminRateLimits.quotePdf, validate(quotePdfSchema), postQuotePdfRetry);
 
 export default router;

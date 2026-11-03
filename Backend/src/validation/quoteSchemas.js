@@ -123,10 +123,10 @@ const quoteIdParams = z.object({ quoteId: positiveId });
 
 export const quoteDetailSchema = z.object({ params: quoteIdParams });
 
-// La zona horaria solo decide la fecha impresa; una zona desconocida se sustituye por UTC.
+// timeZone se acepta por compatibilidad; los PDF persistentes usan la zona canónica guardada.
 export const quotePdfSchema = z.object({
   params: quoteIdParams,
-  query: z.object({ timeZone: z.string().trim().max(64).optional() }).passthrough(),
+  query: z.object({ timeZone: z.string().trim().max(64).optional(), version: positiveId.max(2147483647).optional() }).passthrough(),
 });
 
 // El alta admite un proyecto nuevo por nombre y un identificador de envío opcional: con él es

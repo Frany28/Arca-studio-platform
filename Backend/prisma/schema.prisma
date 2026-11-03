@@ -879,6 +879,7 @@ model quote_versions {
   projects       projects      @relation(fields: [project_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_versions_project")
   users          users         @relation("quote_versions_created_by", fields: [created_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_versions_created_by")
   quote_items    quote_items[]
+  quote_pdf_document quote_pdf_documents?
 
   @@unique([quote_id, version_number], map: "uq_quote_versions_quote_version")
   @@index([services_total, quote_id], map: "quote_versions_current_total_idx", where: raw("is_current"))
@@ -913,6 +914,31 @@ model quote_items {
   @@index([service_id], map: "idx_quote_items_service_id")
   @@index([service_version_id], map: "idx_quote_items_service_version_id")
   @@index([service_version_unit_option_id], map: "idx_quote_items_service_version_unit_option_id")
+}
+
+/// Referencia privada recuperable del PDF; identidad e instantánea inmutables por trigger.
+/// RLS sin políticas: acceso únicamente mediante el backend administrativo.
+model quote_pdf_documents {
+  quote_version_id BigInt @id
+  object_key String @unique
+  file_name String @db.VarChar(100)
+  mime_type String @default("application/pdf") @db.VarChar(50)
+  document_model Json
+  source_hash String @db.Char(64)
+  time_zone String @db.VarChar(64)
+  layout_revision Int
+  bucket String?
+  content_hash String? @db.Char(64)
+  size_bytes Int?
+  status String @default("pending") @db.VarChar(16)
+  generated_at DateTime? @db.Timestamptz(6)
+  stored_at DateTime? @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  attempts Int @default(0)
+  lease_token String? @db.Uuid
+  lease_until DateTime? @db.Timestamptz(6)
+  error_code String? @db.VarChar(64)
+  quote_versions quote_versions @relation(fields: [quote_version_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
 }
 
 /// Unidad vigente de cada servicio: una sola fila (posición 1, chk_service_unit_options_single)

@@ -95,6 +95,7 @@ function buildQuote(id, payload, version, createdAt, services = SERVICES, refere
       };
     }),
     notes: payload.notes ?? null,
+    pdf: { status: "available", fileName: `COT-${String(id).padStart(3, "0")}-v${version}.pdf` },
     project: { id: project.id, name: project.name },
     estimatedTotalWithVat: totals.estimatedTotalWithVat,
     referenceVat: { ...totals.referenceVat, rate: referenceVat.enabled ? totals.referenceVat.rate : null },
@@ -159,15 +160,17 @@ function createBackend({ failures = {}, services = SERVICES } = {}) {
       state.quotes.push(quote);
       return json(route, 201, { message: "Cotización creada correctamente.", quote });
     }
+    const retryMatch = /^\/api\/admin\/quotes\/(\d+)\/pdf\/retry$/.exec(path);
+    if (retryMatch) return json(route, 200, { pdf: { status: "available" } });
     const pdfMatch = /^\/api\/admin\/quotes\/(\d+)\/pdf$/.exec(path);
     if (pdfMatch) {
       const quote = state.quotes.find((candidate) => candidate.id === Number(pdfMatch[1]));
       pdfAssets ??= await loadQuotePdfAssets();
       const chunks = [];
-      for await (const chunk of renderQuotePdf(buildQuoteDocument(quote, { timeZone: url.searchParams.get("timeZone") }), pdfAssets)) chunks.push(chunk);
+      for await (const chunk of renderQuotePdf(buildQuoteDocument(quote, { timeZone: "America/Caracas" }), pdfAssets)) chunks.push(chunk);
       const pdf = Buffer.concat(chunks);
       state.pdfFiles.set(quote.id, pdf);
-      return route.fulfill({ body: pdf, contentType: "application/pdf", headers: { "Content-Disposition": `attachment; filename="${quote.code}.pdf"` }, status: 200 });
+      return route.fulfill({ body: pdf, contentType: "application/pdf", headers: { "Content-Disposition": `attachment; filename="${quote.pdf.fileName}"` }, status: 200 });
     }
     const quoteMatch = /^\/api\/admin\/quotes\/(\d+)$/.exec(path);
     if (quoteMatch) {
@@ -257,18 +260,19 @@ test("visor: descarga el PDF mostrado junto al zoom, sin repetir HTTP, y conserv
   const trigger = page.getByRole("button", { name: "Ver COT-001" });
   await trigger.click();
   const viewer = page.locator("[data-quote-pdf-viewer]");
-  await viewer.getByText("COT-001.pdf", { exact: true }).waitFor();
+  await viewer.getByText("COT-001-v1.pdf", { exact: true }).waitFor();
   await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
   assert.match(await viewer.innerText(), /\d+KB • 23 Mar 2026/);
   const pdfRequest = backend.requests.find((request) => request.path === "/api/admin/quotes/1/pdf");
-  assert.equal(pdfRequest.search.timeZone, "America/Caracas");
+  assert.equal(pdfRequest.search.version, "1");
+  assert.equal(pdfRequest.search.timeZone, undefined);
   const shownBytes = backend.pdfFiles.get(1);
-  const downloadButton = viewer.getByRole("button", { name: "Descargar PDF", exact: true });
+  const downloadButton = viewer.getByRole("button", { name: "Descargar", exact: true });
   await downloadButton.focus();
   const downloadPromise = page.waitForEvent("download");
   await page.keyboard.press("Enter");
   const download = await downloadPromise;
-  assert.equal(download.suggestedFilename(), "COT-001.pdf");
+  assert.equal(download.suggestedFilename(), "COT-001-v1.pdf");
   const chunks = [];
   for await (const chunk of await download.createReadStream()) chunks.push(chunk);
   const downloadedBytes = Buffer.concat(chunks);
@@ -276,19 +280,22 @@ test("visor: descarga el PDF mostrado junto al zoom, sin repetir HTTP, y conserv
   assert.ok(downloadedBytes.equals(shownBytes), `Se guarda exactamente el PDF mostrado (${downloadedBytes.length}/${shownBytes.length} bytes)`);
   await download.delete();
 
-  // El control permanece junto al zoom y dentro del visor en móvil, claro y oscuro.
-  await page.setViewportSize({ height: 844, width: 375 });
-  for (const theme of ["light", "dark"]) {
+  // Cerrar | Descargar | Editar permanecen accesibles en todos los tamaños y temas.
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ height: 1000, width });
+    for (const theme of ["light", "dark"]) {
     await page.evaluate((value) => {
       document.documentElement.classList.toggle("dark", value === "dark");
       document.documentElement.dataset.theme = value;
     }, theme);
-    const zoomBox = await viewer.getByRole("button", { name: "Acercar", exact: true }).boundingBox();
+    const closeBox = await viewer.getByRole("button", { name: "Cerrar", exact: true }).boundingBox();
+    const editBox = await viewer.getByRole("button", { name: "Editar", exact: true }).boundingBox();
     const downloadBox = await downloadButton.boundingBox();
     const viewerBox = await viewer.boundingBox();
-    assert.ok(downloadBox.x > zoomBox.x && Math.abs(downloadBox.y - zoomBox.y) < 1);
+    assert.ok(closeBox.x < downloadBox.x && downloadBox.x < editBox.x && Math.abs(downloadBox.y - closeBox.y) < 1);
     assert.ok(downloadBox.x >= viewerBox.x && downloadBox.x + downloadBox.width <= viewerBox.x + viewerBox.width);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    }
   }
 
   await viewer.getByRole("button", { name: "Cerrar" }).click();
@@ -314,9 +321,11 @@ test("visor: no ofrece descargar mientras carga el PDF ni cuando la carga falla"
   const viewer = page.locator("[data-quote-pdf-viewer]");
   await viewer.getByRole("status").filter({ hasText: "Cargando cotización" }).waitFor();
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 0);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isDisabled(), true);
   releaseResponse();
   await viewer.getByText("No se pudo cargar la cotización", { exact: true }).waitFor();
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 0);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isDisabled(), true);
 });
 
 const PROJECT_UNIT = { allowsDecimals: false, code: "project", id: 38, isActive: true, name: "Proyecto", symbol: "proy." };
@@ -1081,4 +1090,97 @@ test("edición: el proyecto solo se elige entre los existentes; el texto escrito
   await project.fill("Apto");
   await page.getByRole("option", { name: /Apto\. 910/ }).click();
   await page.getByRole("button", { name: "Quitar Apto. 910" }).waitFor();
+});
+
+test("visor: recupera un PDF pendiente mediante POST sin crear una versión comercial", async (context) => {
+  const failures = { "GET /api/admin/quotes/:id/pdf": { body: { code: "QUOTE_PDF_PENDING", message: "El PDF está pendiente. Reintenta su recuperación en unos momentos." }, status: 409 } };
+  const backend = createBackend({ failures });
+  const page = await openQuotes(context, backend);
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.getByText(/El PDF está pendiente/).waitFor();
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isDisabled(), true);
+  delete failures["GET /api/admin/quotes/:id/pdf"];
+  await viewer.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isEnabled(), true);
+  assert.equal(backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes/1/pdf/retry").length, 1);
+  assert.equal(backend.quotes[0].currentVersion, 1);
+  assert.equal(backend.quotes.length, 2);
+  await viewer.getByRole("button", { name: "Cerrar" }).click();
+  await viewer.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Ver COT-002" }).click();
+  await viewer.locator("canvas[aria-label='Cotización COT-002, página 1']").waitFor();
+  assert.equal(backend.requests.filter((request) => request.path.endsWith("/pdf/retry")).length, 1, "Cambiar de cotización no repite la recuperación anterior");
+});
+
+test("visor: lee la versión vigente antes del PDF, conserva paginación y zoom y bloquea doble descarga", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  await page.getByRole("rowheader", { name: "COT-001" }).waitFor();
+  backend.quotes[0].currentVersion = 2;
+  backend.quotes[0].pdf.fileName = "COT-001-v2.pdf";
+  backend.quotes[0].notes = "Observación.\n".repeat(100);
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
+  await viewer.getByText("COT-001-v2.pdf", { exact: true }).waitFor();
+  assert.equal(backend.requests.find((request) => request.path.endsWith("/1/pdf")).search.version, "2");
+  const currentPage = viewer.getByRole("spinbutton", { name: "Página actual" });
+  assert.ok(Number(await currentPage.getAttribute("max")) > 1);
+  await currentPage.fill("2");
+  await viewer.locator("canvas[aria-label='Cotización COT-001, página 2']").waitFor();
+  await viewer.getByRole("button", { name: "Acercar", exact: true }).click();
+  await viewer.getByText("125%", { exact: true }).waitFor();
+  const downloads = [];
+  page.on("download", (download) => downloads.push(download));
+  const ready = page.waitForEvent("download");
+  await viewer.getByRole("button", { name: "Descargar", exact: true }).evaluate((button) => { button.click(); button.click(); });
+  const download = await ready;
+  assert.equal(download.suggestedFilename(), "COT-001-v2.pdf");
+  assert.equal(downloads.length, 1);
+  assert.equal(backend.requests.filter((request) => request.path.endsWith("/1/pdf")).length, 1);
+  await download.delete();
+});
+
+test("visor: un error al iniciar descarga se informa sin perder el documento", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
+  await page.evaluate(() => { URL.createObjectURL = () => { throw new Error("La descarga no pudo iniciarse."); }; });
+  await viewer.getByRole("button", { name: "Descargar", exact: true }).click();
+  await viewer.getByRole("alert").filter({ hasText: "La descarga no pudo iniciarse." }).waitFor();
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isEnabled(), true);
+  assert.equal(await viewer.locator("canvas").count(), 1);
+});
+
+test("visor: una respuesta tardía de otra cotización no sustituye el documento actual", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  context.after(() => release());
+  let received;
+  const requestStarted = new Promise((resolve) => { received = resolve; });
+  let finished;
+  const responseFinished = new Promise((resolve) => { finished = resolve; });
+  await page.route("**/api/admin/quotes/1/pdf?*", async (route) => {
+    received();
+    await gate;
+    try { await backend.handle(route); } finally { finished(); }
+  });
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  await requestStarted;
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.getByRole("button", { name: "Cerrar" }).click();
+  await viewer.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Ver COT-002" }).click();
+  await viewer.locator("canvas[aria-label='Cotización COT-002, página 1']").waitFor();
+  release();
+  await responseFinished;
+  await viewer.getByText("COT-002-v1.pdf", { exact: true }).waitFor();
+  assert.equal(await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").count(), 0);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isEnabled(), true);
 });

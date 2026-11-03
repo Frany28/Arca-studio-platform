@@ -1,6 +1,6 @@
 import { pipeline } from "node:stream/promises";
 
-import { getQuotePdf } from "../services/quotePdfService.js";
+import { getQuotePdf, retryQuotePdf } from "../services/quotePdfService.js";
 import {
   createQuote,
   getClientProjectOptions,
@@ -152,23 +152,35 @@ export async function getQuoteClientProjects(req, res, next) {
  * estricta de los PDF de la API (el visor integrado lo lee con fetch) y con un ETag por versión:
  * `private, no-cache` obliga a revalidar con la sesión antes de reutilizar la copia (304).
  *
- * @param {import("express").Request} req - Solicitud con `params.quoteId` y `timeZone` validados.
+ * @param {import("express").Request} req - Solicitud con cotización y versión opcional validadas.
  * @param {import("express").Response} res - Respuesta HTTP.
  * @param {Function} next - Continúa con el middleware de errores.
  * @returns {Promise<void>}
  */
 export async function getQuotePdfDocument(req, res, next) {
   let stream = null;
+  const download = new AbortController();
+  /**
+   * Cancela la lectura del documento cuando se cierra la conexión del administrador.
+   * La señal permite liberar el cuerpo S3 antes de terminar una descarga abandonada.
+   *
+   * @returns {void} Lectura cancelada.
+   */
+  const cancelDownload = () => download.abort();
+  res.once("close", cancelDownload);
+  res.setHeader("Cache-Control", "no-store");
   try {
     const pdf = await getQuotePdf({
       ifNoneMatch: req.headers["if-none-match"],
       quoteId: req.params.quoteId,
-      timeZone: req.validatedQuery.timeZone,
+      versionNumber: req.validatedQuery.version,
+      signal: download.signal,
     });
     stream = pdf.stream;
     res.setHeader("Cache-Control", "private, no-cache");
     res.setHeader("ETag", pdf.etag);
     res.vary("Cookie");
+    res.vary("Authorization");
     if (pdf.notModified) {
       res.status(304).end();
       return;
@@ -177,16 +189,41 @@ export async function getQuotePdfDocument(req, res, next) {
     res.status(200);
     res.setHeader("Content-Security-Policy", security.contentSecurityPolicy);
     res.setHeader("Content-Type", security.contentType);
+    res.setHeader("Content-Length", pdf.size);
     res.setHeader("Content-Disposition", `${security.disposition}; filename="${encodeURIComponent(pdf.fileName)}"`);
     await pipeline(stream, res);
   } catch (error) {
     // Un cliente que cancela la descarga no es un error de la API; con cabeceras enviadas no se responde JSON.
-    if (error?.code === "ERR_STREAM_PREMATURE_CLOSE") return;
+    if (error?.code === "ERR_STREAM_PREMATURE_CLOSE" || download.signal.aborted) return;
     if (res.headersSent) {
       stream?.destroy();
       res.destroy(error);
       return;
     }
+    next(error);
+  } finally {
+    res.off("close", cancelDownload);
+  }
+}
+
+/**
+ * Recupera el PDF de una versión existente sin modificar su contenido comercial.
+ * Responde disponibilidad explícita sin caché y conserva la protección administrativa de la ruta.
+ *
+ * @param {import("express").Request} req - Cotización y versión validadas.
+ * @param {import("express").Response} res - Respuesta HTTP.
+ * @param {Function} next - Middleware central de errores.
+ * @returns {Promise<void>} Estado público del intento de recuperación.
+ */
+export async function postQuotePdfRetry(req, res, next) {
+  try {
+    const pdf = await retryQuotePdf({ quoteId: req.params.quoteId, versionNumber: req.validatedQuery.version });
+    res.set("Cache-Control", NO_STORE).status(pdf.status === "available" ? 200 : pdf.status === "pending" ? 202 : 503).json({
+      code: pdf.status === "error" ? pdf.errorCode : undefined,
+      message: pdf.status === "available" ? "PDF disponible." : pdf.status === "pending" ? "El PDF se está preparando. Reintenta en unos momentos." : "No se pudo recuperar el PDF. Reintenta en unos momentos.",
+      pdf,
+    });
+  } catch (error) {
     next(error);
   }
 }

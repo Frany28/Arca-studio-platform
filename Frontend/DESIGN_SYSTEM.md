@@ -809,12 +809,18 @@ Validación, capturas y diferencias respecto a Figma:
     Unidades). La geometría vive en `src/config/quotesTable.js`; como el tabulador, el mínimo es
     1102 px y con el sidebar expandido la tabla se desplaza dentro de `HorizontalScrollViewport`.
     Estados: skeleton `Loader` `quotesTable`, vacío, sin resultados, error con reintento.
-  - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». El PDF lo genera el
-    backend; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
+  - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». El PDF lo genera y almacena
+    automáticamente el backend al guardar; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
     `DocumentViewerControls`, `DocumentFileCard`), movidos desde Proyectos.
     La barra del visor añade «Descargar PDF» junto al zoom, solo para administración y cuando el
-    PDF está listo. Guarda el mismo archivo mostrado como `COT-001.pdf`, sin otra petición; la
-    descarga reutiliza `saveBlobAsFile` y libera el archivo al cerrar o cambiar de cotización.
+    PDF está listo. El pie añade «Cerrar | Descargar | Editar» con el `Button` compartido e icono
+    `DocumentDownload`; Descargar permanece deshabilitado durante carga, error y entrega al navegador.
+    Ambos controles guardan los mismos bytes almacenados recibidos por la ruta autenticada como
+    `COT-001-v1.pdf`, sin otra transferencia; `useQuotePdfDownload` bloquea clics repetidos, informa
+    errores y reutiliza `saveBlobAsFile`. El visor lee primero el detalle vigente, aborta respuestas
+    obsoletas y libera el archivo al cerrar o cambiar de cotización. Los documentos pendientes o con
+    error ofrecen Reintentar, que solicita recuperación sin crear versión comercial. Un guardado sin
+    PDF disponible muestra un aviso Warning y conserva la cotización confirmada.
   - «Nombre del proyecto» conserva exactamente el campo de Figma (icono, tipografía, bordes,
     dimensiones y responsive): solo cambia su comportamiento. Sugiere los proyectos del cliente
     elegido (`useQuoteProjectField`; cambiar de cliente retira el proyecto, el texto y la búsqueda

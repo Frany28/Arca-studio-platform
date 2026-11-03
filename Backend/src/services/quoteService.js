@@ -13,6 +13,9 @@ import {
   hasQuoteContentChanged,
 } from "../domain/quote.js";
 import { resolveQuoteReferenceVat } from "../domain/quoteReferenceVat.js";
+import { buildQuotePdfReservation, toQuotePdfStatus } from "../domain/quotePdfDocument.js";
+import { findQuotePdf, reserveQuotePdf } from "../repositories/quotePdfRepository.js";
+import { ensureQuotePdf } from "./quotePdfService.js";
 import { calculateQuoteTotals } from "../domain/quoteTotals.js";
 import {
   findQuoteClient,
@@ -77,8 +80,8 @@ export async function getQuoteSummary() {
 }
 
 /**
- * Obtiene una cotización con su versión vigente y sus conceptos.
- * Responde 404 si el identificador no corresponde a ninguna cotización.
+ * Obtiene una cotización con su versión vigente, conceptos y disponibilidad del PDF persistente.
+ * Responde 404 si no existe y no consulta Storage ni genera documentos durante esta lectura.
  *
  * @param {number} quoteId - Identificador validado.
  * @returns {Promise<object>} Cotización.
@@ -87,7 +90,7 @@ export async function getQuoteSummary() {
 export async function getQuote(quoteId) {
   const quote = await findQuoteById(quoteId);
   if (!quote) throw new NotFoundError("QUOTE_NOT_FOUND", QUOTE_NOT_FOUND_MESSAGE);
-  return quote;
+  return { ...quote, pdf: toQuotePdfStatus(await findQuotePdf(quote.version.id)) };
 }
 
 /**
@@ -262,8 +265,8 @@ async function resolveQuoteLines(client, { current, items, referenceVat }) {
 }
 
 /**
- * Registra una versión vigente con sus conceptos para la cotización indicada.
- * La versión y sus conceptos se escriben en la transacción recibida.
+ * Registra la versión vigente, sus conceptos y la reserva del PDF con su instantánea completa.
+ * Todas las escrituras comparten la transacción comercial, sin transferencias S3 dentro de ella.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} version - Datos resueltos de la versión.
@@ -272,6 +275,8 @@ async function resolveQuoteLines(client, { current, items, referenceVat }) {
 async function writeQuoteVersion(client, version) {
   const versionId = await insertQuoteVersion(client, { ...version, currency: QUOTE_CURRENCY });
   await insertQuoteItems(client, versionId, version.lines);
+  const quote = await findQuoteById(version.quoteId, client);
+  await reserveQuotePdf(buildQuotePdfReservation(quote), client);
 }
 
 /**
@@ -329,9 +334,9 @@ async function createQuoteDraftProject(client, options) {
 }
 
 /**
- * Crea una cotización y su versión 1 en una única transacción: proyecto draft (si se pidió uno
- * nuevo), cotización, versión y conceptos se confirman o se revierten juntos. El código `COT-001`
- * lo genera el sistema a partir del id reservado (uq_quotes_code garantiza su unicidad).
+ * Crea cotización, versión, conceptos, reserva PDF y proyecto draft opcional atómicamente.
+ * Tras liberar la transacción intenta almacenar el documento; su disponibilidad se devuelve en pdf.
+ * El código COT-001 deriva del id reservado y el envío mantiene su idempotencia existente.
  *
  * Idempotencia: lo primero es el bloqueo consultivo del `submissionId`, antes de cualquier
  * comprobación. Un reintento simultáneo espera al primero y, tras su COMMIT, encuentra la
@@ -357,7 +362,7 @@ export async function createQuote({ payload, user }) {
     ? { fingerprint: fingerprintQuoteSubmission(payload), submissionId: payload.submissionId, userId: user.id }
     : null;
   try {
-    return await withTransaction(async (client) => {
+    const result = await withTransaction(async (client) => {
       if (submission) {
         await lockQuoteSubmission(client, user.id, submission.submissionId);
         const replayed = await findReplayedQuote(client, submission);
@@ -391,6 +396,8 @@ export async function createQuote({ payload, user }) {
       });
       return { quote: await findQuoteById(quoteId, client), replayed: false };
     });
+    // La cotización ya está confirmada y el cliente de la transacción está liberado.
+    return { ...result, quote: { ...result.quote, pdf: await ensureQuotePdf(result.quote) } };
   } catch (error) {
     throw translateQuoteError(error);
   }
@@ -420,9 +427,9 @@ function toStoredContent(quote) {
 }
 
 /**
- * Guarda una versión nueva de la cotización solo si cambia su contenido. Bloquea la cotización,
- * exige que `expectedVersion` sea la vigente (control optimista entre administradores), retira
- * la versión anterior e inserta la nueva con sus conceptos en la misma transacción.
+ * Bloquea la cotización, exige expectedVersion vigente y versiona solo cambios efectivos.
+ * La versión, conceptos y reserva PDF se escriben atómicamente; después del COMMIT se almacena.
+ * Sin cambios efectivos no crea versión ni genera o sube otro documento.
  *
  * @param {object} options - Datos de la operación.
  * @param {number} options.quoteId - Cotización a editar.
@@ -436,7 +443,7 @@ function toStoredContent(quote) {
  */
 export async function updateQuote({ payload, quoteId, user }) {
   try {
-    return await withTransaction(async (client) => {
+    const result = await withTransaction(async (client) => {
       const current = await lockQuoteForUpdate(client, quoteId);
       if (!current) throw new NotFoundError("QUOTE_NOT_FOUND", QUOTE_NOT_FOUND_MESSAGE);
       if (current.currentVersion !== payload.expectedVersion) {
@@ -464,6 +471,8 @@ export async function updateQuote({ payload, quoteId, user }) {
       await touchQuoteRecord(client, quoteId, user.id);
       return { changed: true, quote: await findQuoteById(quoteId, client) };
     });
+    const pdf = result.changed ? await ensureQuotePdf(result.quote) : toQuotePdfStatus(await findQuotePdf(result.quote.version.id));
+    return { ...result, quote: { ...result.quote, pdf } };
   } catch (error) {
     throw translateQuoteError(error);
   }

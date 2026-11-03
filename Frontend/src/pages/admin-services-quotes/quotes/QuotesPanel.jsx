@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../../../api/http.js";
@@ -14,7 +14,6 @@ import QuotePdfViewerModal from "./components/QuotePdfViewerModal.jsx";
 import QuotesFooter from "./components/QuotesFooter.jsx";
 import QuotesTable from "./components/QuotesTable.jsx";
 import QuotesToolbar from "./components/QuotesToolbar.jsx";
-import { getBrowserTimeZone } from "./hooks/useQuotePdfDocument.js";
 import { useQuotesList } from "./hooks/useQuotesList.js";
 
 /**
@@ -36,26 +35,33 @@ function QuotesPanel({ notice = null, onNoticeDismiss }) {
   const feedback = useAlertFeedback();
   const [viewer, setViewer] = useState({ quote: null, trigger: null });
   const [downloadingId, setDownloadingId] = useState(null);
+  const downloadRequest = useRef(null);
+  useEffect(() => () => downloadRequest.current?.abort(), []);
   // Un aviso propio del listado (p. ej. una descarga fallida) prevalece sobre el del guardado.
   const alert = feedback.value ?? notice;
 
   /**
-   * Descarga el PDF de una cotización con el nombre `COT-001.pdf`. Una descarga en curso
-   * bloquea las demás acciones de la tabla para no generar el documento dos veces.
+   * Descarga el PDF persistido de la versión vigente, consultada antes de transferirlo.
+   * Una reserva inmediata impide clics duplicados y el desmontaje cancela la petición.
    *
    * @param {Object} quote - Fila del listado.
    * @returns {Promise<void>}
    */
   async function downloadQuote(quote) {
-    if (downloadingId) return;
+    if (downloadRequest.current) return;
+    const controller = new AbortController();
+    downloadRequest.current = controller;
     setDownloadingId(quote.id);
     try {
-      const blob = await api.quotes.getQuotePdf({ quoteId: quote.id, timeZone: getBrowserTimeZone() });
-      saveBlobAsFile(blob, `${quote.code}.pdf`);
+      const { quote: current } = await api.quotes.getQuote({ quoteId: quote.id, signal: controller.signal });
+      const blob = await api.quotes.getQuotePdf({ quoteId: quote.id, version: current.currentVersion, signal: controller.signal });
+      if (!controller.signal.aborted) saveBlobAsFile(blob, current.pdf?.fileName || `${current.code}-v${current.currentVersion}.pdf`);
     } catch (downloadError) {
+      if (controller.signal.aborted) return;
       feedback.notify("danger", "No se pudo descargar la cotización", downloadError?.message || "Inténtalo de nuevo.", quote.code);
     } finally {
-      setDownloadingId(null);
+      downloadRequest.current = null;
+      if (!controller.signal.aborted) setDownloadingId(null);
     }
   }
 
@@ -153,7 +159,7 @@ function QuotesPanel({ notice = null, onNoticeDismiss }) {
         title={alert?.title || "Cotizaciones"}
         content={alert?.content}
         description={alert?.message || ""}
-        theme={alert?.tone === "danger" ? "Danger" : "Success"}
+        theme={alert?.tone === "danger" ? "Danger" : alert?.tone === "warning" ? "Warning" : "Success"}
         aria-label={alert?.tone === "danger" ? "Error en cotizaciones" : "Cotizaciones actualizadas"}
         onDismiss={feedback.value ? feedback.dismiss : onNoticeDismiss}
       />

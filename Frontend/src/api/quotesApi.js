@@ -130,16 +130,27 @@ export const quotesApi = {
   },
 
   /**
-   * Descarga el PDF de la versión vigente. La zona horaria del navegador fija la fecha impresa,
-   * la misma que muestra el listado; el navegador reutiliza su copia con ETag si no cambió.
+   * Recupera el PDF privado almacenado de una versión, con cookies de la sesión administrativa.
+   * Su fecha canónica y su contenido no dependen de la zona horaria del navegador.
    *
    * @param {Object} params - Cotización y cancelación.
    * @param {number} params.quoteId - Cotización.
-   * @param {string} [params.timeZone] - Zona horaria IANA.
+   * @param {number} [params.version] - Versión leída por el visor.
    * @param {AbortSignal} [params.signal] - Cancela la descarga.
    * @returns {Promise<Blob>} Documento PDF.
    */
-  getQuotePdf({ quoteId, signal, timeZone }) {
-    return apiRequestBlob(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf${toQueryString({ timeZone })}`, { signal });
+  getQuotePdf({ quoteId, signal, version }) {
+    return apiRequestBlob(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf${toQueryString({ version })}`, { signal });
+  },
+
+  /**
+   * Recupera el almacenamiento pendiente por acción administrativa sin versionar la cotización.
+   * La cancelación evita usar respuestas de un visor cerrado o de otra cotización.
+   *
+   * @param {{quoteId: number, version: number, signal?: AbortSignal}} params - Documento y cancelación.
+   * @returns {Promise<{pdf: Object}>} Disponibilidad tras el intento.
+   */
+  retryQuotePdf({ quoteId, signal, version }) {
+    return apiRequest(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf/retry${toQueryString({ version })}`, { method: "POST", signal });
   },
 };

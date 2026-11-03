@@ -1,3 +1,5 @@
+import { createQuotePdfDatabaseMock } from "./quotePdfMock.js";
+
 // PostgreSQL simulado para las pruebas de cotizaciones sin base de datos. Reconoce únicamente las
 // sentencias de quoteRepository, quoteParticipantRepository y las lecturas de servicios que usa
 // el módulo, y mantiene un estado en memoria con la misma forma de filas que devuelve `pg`
@@ -87,8 +89,9 @@ function createInitialState() {
  * @param {object} quote - Cotización.
  * @returns {object} Fila con columnas de quotes y quote_versions.
  */
-function quoteRow(state, quote) {
-  const version = state.versions.find((candidate) => candidate.quoteId === quote.id && candidate.isCurrent);
+function quoteRow(state, quote, versionNumber) {
+  const version = state.versions.find((candidate) => candidate.quoteId === quote.id && (versionNumber ? candidate.versionNumber === versionNumber : candidate.isCurrent));
+  if (!version) return null;
   const author = state.users.get(quote.createdBy);
   const editor = state.users.get(version.createdBy);
   return {
@@ -129,6 +132,7 @@ function quoteRow(state, quote) {
 export function createQuoteDatabaseMock() {
   const state = createInitialState();
   const statements = [];
+  const pdf = createQuotePdfDatabaseMock();
 
   /**
    * Responde una sentencia reconocida con filas en el formato de `pg` y actualiza el estado.
@@ -141,6 +145,8 @@ export function createQuoteDatabaseMock() {
   function respond(sql, params = []) {
     const text = sql.replace(/\s+/g, " ").trim();
     statements.push(text);
+    const documentResult = pdf.respond(sql, params);
+    if (documentResult) return documentResult;
     const result = (rows, rowCount = rows.length) => ({ rowCount, rows });
 
     if (/^(begin|commit|rollback)$/i.test(text)) return result([]);
@@ -227,7 +233,8 @@ export function createQuoteDatabaseMock() {
     }
     if (text.includes("inner join public.users author on author.id = q.created_by")) {
       const quote = state.quotes.find((candidate) => candidate.id === Number(params[0]));
-      return result(quote ? [quoteRow(state, quote)] : []);
+      const row = quote ? quoteRow(state, quote, params[1]) : null;
+      return result(row ? [row] : []);
     }
     if (text.includes("from public.quote_items i inner join public.service_versions sv")) {
       return result(state.items.filter((item) => item.versionId === Number(params[0])).sort((left, right) => left.lineNumber - right.lineNumber).map((item) => {
@@ -264,5 +271,5 @@ export function createQuoteDatabaseMock() {
     throw new Error(`Sentencia no simulada: ${text.slice(0, 160)}`);
   }
 
-  return { respond, state, statements };
+  return { pdf, respond, state, statements };
 }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
 import { applyMigration, createIsolatedMigrationDatabase } from "./helpers/isolatedMigrationDatabase.js";
+import { listMigrations } from "./helpers/migrationSchema.js";
 
 // Proyectos draft desde cotizaciones contra PostgreSQL real. Opcional y aislada, como las demás
 // pruebas de cotizaciones: ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL
@@ -83,6 +84,11 @@ before(async () => {
   legacyProjectBefore = (await rows("select * from public.projects where id = $1", [legacy.id]))[0];
 
   for (const migration of DRAFT_MIGRATIONS) await applyMigration(database.client, migration);
+  // Los servicios actuales requieren también el esquema posterior (p. ej., reservas PDF).
+  // Se conserva la preparación de datos previa a Draft para comprobar su compatibilidad.
+  for (const migration of (await listMigrations()).filter((name) => name > DRAFT_MIGRATIONS.at(-1))) {
+    await applyMigration(database.client, migration);
+  }
 
   const [unit] = await rows("select id::int from public.measurement_units where code = 'square_meter'");
   Object.assign(process.env, { DATABASE_POOL_MAX: "6", DATABASE_URL: database.databaseUrl, NODE_ENV: "test" });

@@ -42,6 +42,11 @@ function QuoteEditorPage({ catalog, mode, onSaved }) {
   function handleSaved(response) {
     const saved = response.quote;
     const content = `${saved.code} · ${saved.client.name}`;
+    if (saved.pdf && saved.pdf.status !== "available") {
+      onSaved({ content, message: "La cotización está guardada, pero su PDF aún no está disponible. Puedes reintentar desde el visor.", title: "PDF pendiente", tone: "warning" });
+      navigate(QUOTES_LIST_PATH);
+      return;
+    }
     if (!editing) onSaved({ content, message: "Ya está disponible en el listado.", title: "Cotización creada", tone: "success" });
     else if (response.changed === false) onSaved({ content, message: "No había cambios para guardar.", title: "Sin cambios", tone: "success" });
     else onSaved({ content, message: `Se guardó la versión ${saved.currentVersion}.`, title: "Cotización actualizada", tone: "success" });

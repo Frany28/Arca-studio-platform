@@ -448,7 +448,9 @@ function drawPageFooter(doc, vectors, pageNumber) {
 export function renderQuotePdf(model, { fonts, vectors }) {
   const doc = new PDFDocument({
     autoFirstPage: false,
-    info: { Author: "ARCA Studio", Title: `Cotización ${model.code}` },
+    // Las fechas fijas hacen reproducible el binario al recuperar un objeto perdido.
+    info: { Author: "ARCA Studio", Title: `Cotización ${model.code}`,
+      ...(model.generatedAt ? { CreationDate: new Date(model.generatedAt), ModDate: new Date(model.generatedAt) } : {}) },
     margin: 0,
     size: "LETTER",
   });
