@@ -267,7 +267,8 @@ test("visor: descarga el PDF mostrado junto al zoom, sin repetir HTTP, y conserv
   assert.equal(pdfRequest.search.version, "1");
   assert.equal(pdfRequest.search.timeZone, undefined);
   const shownBytes = backend.pdfFiles.get(1);
-  const downloadButton = viewer.getByRole("button", { name: "Descargar", exact: true });
+  const downloadButton = viewer.getByRole("button", { name: "Descargar PDF", exact: true });
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).count(), 0, "El pie conserva solo Cerrar y Editar");
   await downloadButton.focus();
   const downloadPromise = page.waitForEvent("download");
   await page.keyboard.press("Enter");
@@ -280,7 +281,7 @@ test("visor: descarga el PDF mostrado junto al zoom, sin repetir HTTP, y conserv
   assert.ok(downloadedBytes.equals(shownBytes), `Se guarda exactamente el PDF mostrado (${downloadedBytes.length}/${shownBytes.length} bytes)`);
   await download.delete();
 
-  // Cerrar | Descargar | Editar permanecen accesibles en todos los tamaños y temas.
+  // La descarga permanece junto al zoom en todos los tamaños y temas, dentro del visor.
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ height: 1000, width });
     for (const theme of ["light", "dark"]) {
@@ -288,11 +289,10 @@ test("visor: descarga el PDF mostrado junto al zoom, sin repetir HTTP, y conserv
       document.documentElement.classList.toggle("dark", value === "dark");
       document.documentElement.dataset.theme = value;
     }, theme);
-    const closeBox = await viewer.getByRole("button", { name: "Cerrar", exact: true }).boundingBox();
-    const editBox = await viewer.getByRole("button", { name: "Editar", exact: true }).boundingBox();
+    const zoomBox = await viewer.getByRole("button", { name: "Acercar", exact: true }).boundingBox();
     const downloadBox = await downloadButton.boundingBox();
     const viewerBox = await viewer.boundingBox();
-    assert.ok(closeBox.x < downloadBox.x && downloadBox.x < editBox.x && Math.abs(downloadBox.y - closeBox.y) < 1);
+    assert.ok(downloadBox.x > zoomBox.x && Math.abs(downloadBox.y - zoomBox.y) < 1);
     assert.ok(downloadBox.x >= viewerBox.x && downloadBox.x + downloadBox.width <= viewerBox.x + viewerBox.width);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     }
@@ -321,11 +321,11 @@ test("visor: no ofrece descargar mientras carga el PDF ni cuando la carga falla"
   const viewer = page.locator("[data-quote-pdf-viewer]");
   await viewer.getByRole("status").filter({ hasText: "Cargando cotización" }).waitFor();
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 0);
-  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isDisabled(), true);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).count(), 0);
   releaseResponse();
   await viewer.getByText("No se pudo cargar la cotización", { exact: true }).waitFor();
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 0);
-  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isDisabled(), true);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).count(), 0);
 });
 
 const PROJECT_UNIT = { allowsDecimals: false, code: "project", id: 38, isActive: true, name: "Proyecto", symbol: "proy." };
@@ -1099,11 +1099,11 @@ test("visor: recupera un PDF pendiente mediante POST sin crear una versión come
   await page.getByRole("button", { name: "Ver COT-001" }).click();
   const viewer = page.locator("[data-quote-pdf-viewer]");
   await viewer.getByText(/El PDF está pendiente/).waitFor();
-  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isDisabled(), true);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 0);
   delete failures["GET /api/admin/quotes/:id/pdf"];
   await viewer.getByRole("button", { name: "Reintentar", exact: true }).click();
   await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
-  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isEnabled(), true);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).isEnabled(), true);
   assert.equal(backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes/1/pdf/retry").length, 1);
   assert.equal(backend.quotes[0].currentVersion, 1);
   assert.equal(backend.quotes.length, 2);
@@ -1135,10 +1135,11 @@ test("visor: lee la versión vigente antes del PDF, conserva paginación y zoom 
   const downloads = [];
   page.on("download", (download) => downloads.push(download));
   const ready = page.waitForEvent("download");
-  await viewer.getByRole("button", { name: "Descargar", exact: true }).evaluate((button) => { button.click(); button.click(); });
+  await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).evaluate((button) => { button.click(); button.click(); });
   const download = await ready;
   assert.equal(download.suggestedFilename(), "COT-001-v2.pdf");
   assert.equal(downloads.length, 1);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 1, "El botón permanece en la barra durante la descarga");
   assert.equal(backend.requests.filter((request) => request.path.endsWith("/1/pdf")).length, 1);
   await download.delete();
 });
@@ -1150,9 +1151,9 @@ test("visor: un error al iniciar descarga se informa sin perder el documento", a
   const viewer = page.locator("[data-quote-pdf-viewer]");
   await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
   await page.evaluate(() => { URL.createObjectURL = () => { throw new Error("La descarga no pudo iniciarse."); }; });
-  await viewer.getByRole("button", { name: "Descargar", exact: true }).click();
+  await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).click();
   await viewer.getByRole("alert").filter({ hasText: "La descarga no pudo iniciarse." }).waitFor();
-  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isEnabled(), true);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).isEnabled(), true);
   assert.equal(await viewer.locator("canvas").count(), 1);
 });
 
@@ -1182,5 +1183,5 @@ test("visor: una respuesta tardía de otra cotización no sustituye el documento
   await responseFinished;
   await viewer.getByText("COT-002-v1.pdf", { exact: true }).waitFor();
   assert.equal(await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").count(), 0);
-  assert.equal(await viewer.getByRole("button", { name: "Descargar", exact: true }).isEnabled(), true);
+  assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).isEnabled(), true);
 });

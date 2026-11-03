@@ -45,6 +45,9 @@ test("adaptador S3: bucket privado, precondición y metadatos; archivos generale
   assert.equal(calls[1].input.Bucket, "general-test");
   await objectStorage.head("private.pdf", { bucket: "quotes-private-test" });
   assert.equal(calls[2].input.Bucket, "quotes-private-test");
+  await objectStorage.createBucket("quotes-private-test");
+  assert.equal(calls[3].input.Bucket, "quotes-private-test");
+  assert.equal(calls[3].constructor.name, "CreateBucketCommand");
 });
 
 test("adaptador S3: solo un 404 representa ausencia; no oculta permisos ni fallos de conexión", async (context) => {

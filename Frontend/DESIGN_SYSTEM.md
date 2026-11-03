@@ -813,9 +813,9 @@ Validación, capturas y diferencias respecto a Figma:
     automáticamente el backend al guardar; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
     `DocumentViewerControls`, `DocumentFileCard`), movidos desde Proyectos.
     La barra del visor añade «Descargar PDF» junto al zoom, solo para administración y cuando el
-    PDF está listo. El pie añade «Cerrar | Descargar | Editar» con el `Button` compartido e icono
-    `DocumentDownload`; Descargar permanece deshabilitado durante carga, error y entrega al navegador.
-    Ambos controles guardan los mismos bytes almacenados recibidos por la ruta autenticada como
+    PDF está listo. El pie conserva únicamente «Cerrar | Editar». La descarga usa el icono
+    `DocumentDownload` en la barra del propio PDF, junto al zoom, y se bloquea durante la entrega
+    al navegador sin retirar el botón. La acción guarda los bytes almacenados de la ruta autenticada como
     `COT-001-v1.pdf`, sin otra transferencia; `useQuotePdfDownload` bloquea clics repetidos, informa
     errores y reutiliza `saveBlobAsFile`. El visor lee primero el detalle vigente, aborta respuestas
     obsoletas y libera el archivo al cerrar o cambiar de cotización. Los documentos pendientes o con

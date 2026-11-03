@@ -82,10 +82,12 @@ function CloseIcon() {
  *
  * @param {Object} props - Estado del visor y acciones disponibles.
  * @param {() => void} [props.onDownload] - Guarda el PDF cuando el consumidor permite descargarlo.
+ * @param {boolean} [props.downloadDisabled=false] - Impide entregas simultáneas del archivo.
  * @returns {import("react").ReactElement} Barra de controles.
  */
 function PdfToolbar({
   expandButtonRef,
+  downloadDisabled = false,
   // Los visores sin modo de pantalla completa (p. ej. el PDF de una cotización) lo ocultan.
   expandable = true,
   fullscreen = false,
@@ -119,7 +121,7 @@ function PdfToolbar({
         {onDownload ? (
           <>
             <span className="mx-[4px] text-[var(--color-neutral-300)]">|</span>
-            <ViewerButton label="Descargar PDF" onClick={onDownload}>
+            <ViewerButton label="Descargar PDF" onClick={onDownload} disabled={downloadDisabled}>
               <DocumentDownload size="14" color="currentColor" aria-hidden="true" />
             </ViewerButton>
           </>

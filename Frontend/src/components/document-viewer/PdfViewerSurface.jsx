@@ -139,12 +139,14 @@ const PdfPages = forwardRef(function PdfPages(
  *
  * @param {Object} props - Documento, navegación, anotaciones y acciones.
  * @param {() => void} [props.onDownload] - Descarga opcional del documento mostrado.
+ * @param {boolean} [props.downloadDisabled=false] - Bloquea una descarga mientras se entrega al navegador.
  * @returns {import("react").ReactElement} Superficie del visor.
  */
 function PdfViewerSurface({
   annotations = [],
   className,
   documentProxy,
+  downloadDisabled = false,
   expandButtonRef,
   expandable = true,
   fullscreen = false,
@@ -191,6 +193,7 @@ function PdfViewerSurface({
         fullscreen={fullscreen}
         onClose={onClose}
         onDownload={onDownload}
+        downloadDisabled={downloadDisabled}
         onExpand={onExpand}
         page={page}
         pageCount={pageCount}

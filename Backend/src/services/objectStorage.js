@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSupabaseS3Client, getSupabaseStorageConfig } from "../config/storage.js";
 import { AppError } from "../errors/appError.js";
 
@@ -65,6 +65,17 @@ async function sendWithDeadline(command, timeoutMs, signal) {
 }
 
 class S3ObjectStorage {
+  /**
+   * Crea un bucket durante una preparación de almacenamiento expresamente autorizada.
+   * No cambia buckets existentes; el llamador debe comprobar su privacidad antes de guardar archivos.
+   *
+   * @param {string} bucket - Nombre del bucket exclusivo elegido por administración.
+   * @returns {Promise<object>} Confirmación del proveedor S3 compatible.
+   */
+  createBucket(bucket) {
+    return sendWithDeadline(new CreateBucketCommand({ Bucket: bucket }), STORAGE_TIMEOUTS.requestMs);
+  }
+
     /**
    * Obtiene la configuración activa del adaptador de almacenamiento de objetos.
    * Mantiene los detalles del proveedor fuera de los servicios consumidores.

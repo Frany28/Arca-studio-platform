@@ -1,5 +1,4 @@
 import { useId, useState } from "react";
-import { DocumentDownload } from "iconsax-react";
 
 import { useAuth } from "../../../../auth/AuthContext.jsx";
 import DocumentFileCard from "../../../../components/document-viewer/DocumentFileCard.jsx";
@@ -39,7 +38,7 @@ function toViewerDocument(quote, detail, size) {
 /**
  * Visor del PDF de una cotización (Figma 5812:280752; tablet 5925:476589 y móvil 5925:478671):
  * encabezado con el archivo y su autor, el PDF persistente en el visor PDF.js de la aplicación,
- * y «Cerrar», «Descargar» y «Editar». El documento se recibe solo mientras el visor está
+ * y «Cerrar» y «Editar». La descarga está junto al zoom, dentro del visor. El PDF se recibe
  * abierto y se libera al cerrarlo. Escape y el overlay cierran; el foco vuelve a la fila.
  * Solo administración dispone de «Descargar PDF» en la barra, usando el archivo ya recibido.
  *
@@ -98,7 +97,8 @@ function QuotePdfViewerModal({ onClose, onEdit, quote, returnFocusTo }) {
         className="size-full rounded-[var(--radius-3)]"
         documentProxy={pdf.documentProxy}
         expandable={false}
-        onDownload={user?.role === "admin" && !download.downloading ? download.download : undefined}
+        onDownload={user?.role === "admin" ? download.download : undefined}
+        downloadDisabled={download.downloading}
         page={page}
         pageCount={pdf.pageCount}
         title={`Cotización ${displayed?.code ?? ""}`}
@@ -134,13 +134,6 @@ function QuotePdfViewerModal({ onClose, onEdit, quote, returnFocusTo }) {
             <Button theme="Primary" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} className="h-[41px] min-w-0 flex-1" onClick={onClose}>
               Cerrar
             </Button>
-            {user?.role === "admin" ? (
-              <Button theme="Primary" type="Outline" size="S" iconLeft={<DocumentDownload size="16" color="currentColor" />} showRightIcon={false}
-                className="h-[41px] min-w-0 flex-1" onClick={download.download}
-                disabled={pdf.status !== "ready" || download.downloading} aria-busy={download.downloading || undefined}>
-                Descargar
-              </Button>
-            ) : null}
             <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} className="h-[41px] min-w-0 flex-1" onClick={() => onEdit(displayed)}>
               Editar
             </Button>
