@@ -4,9 +4,11 @@ import test from "node:test";
 import { calculateQuotePreview } from "../src/pages/admin-services-quotes/quote-editor/utils/quoteAmounts.js";
 import {
   EMPTY_QUOTE_DRAFT,
+  PROJECT_KIND,
   addServicesToLines,
   createLineFromService,
   draftFromQuote,
+  findExactProjectMatch,
   isQuoteDraftDirty,
   normalizeServerFields,
   toEditableDecimal,
@@ -114,4 +116,33 @@ test("edición: borrador desde la cotización guardada y detección de cambios s
   assert.equal(isQuoteDraftDirty(draft, { ...draft }), false);
   assert.equal(isQuoteDraftDirty(draft, { ...draft, lines: [{ ...draft.lines[0], quantity: "200.0" }] }), false, "200 y 200.0 son el mismo valor");
   assert.equal(isQuoteDraftDirty(draft, { ...draft, notes: "Nota" }), true);
+});
+
+test("proyecto nuevo: el payload lleva el nombre normalizado en lugar de projectId y solo el alta lo admite", () => {
+  const lines = [createLineFromService(SERVICE)];
+  const draft = { client: { id: 3, name: "Leonel" }, lines, notes: "", project: { kind: PROJECT_KIND.NEW, name: "  Casa   del Lago " } };
+  assert.deepEqual(toQuotePayload(draft), { clientId: 3, items: [{ quantity: "1", serviceId: 1, unitRate: "14" }], newProjectName: "Casa del Lago", notes: null });
+  const existing = { ...draft, project: { id: 9, kind: PROJECT_KIND.EXISTING, name: "Apto. 910" } };
+  assert.deepEqual(Object.keys(toQuotePayload(existing)).sort(), ["clientId", "items", "notes", "projectId"]);
+  assert.equal(draftFromQuote({ client: { id: 3, name: "L" }, items: [], notes: null, project: { id: 9, name: "Apto. 910" } }).project.kind, PROJECT_KIND.EXISTING);
+});
+
+test("proyecto nuevo: longitud de las solicitudes y coincidencia exacta con un proyecto del cliente", () => {
+  const lines = [createLineFromService(SERVICE)];
+  const preview = calculateQuotePreview(lines);
+  const withName = (name) => ({ client: { id: 3 }, lines, notes: "", project: { kind: PROJECT_KIND.NEW, name } });
+  assert.deepEqual(validateQuoteDraft(withName("Casa del Lago"), preview), {});
+  assert.match(validateQuoteDraft(withName(" ab "), preview).newProjectName, /al menos 3/);
+  assert.match(validateQuoteDraft(withName("x".repeat(151)), preview).newProjectName, /como máximo 150/);
+
+  const options = [{ id: 9, name: "Apto. 910" }, { id: 10, name: "Apartamento JC" }];
+  // Misma clave que la unicidad de PostgreSQL: sin distinguir mayúsculas, con espacios normalizados y tildes.
+  assert.deepEqual(findExactProjectMatch(options, "  APTO.   910 "), options[0]);
+  assert.equal(findExactProjectMatch(options, "Apto"), null, "Una coincidencia parcial no es exacta");
+  assert.equal(findExactProjectMatch([{ id: 11, name: "Casa Ñandú" }], "casa nandu"), null, "Las tildes distinguen");
+  assert.equal(
+    validateQuoteDraft(withName("apto. 910"), preview, { existingProjectMatch: options[0] }).newProjectName,
+    "Ya existe el proyecto «Apto. 910» para este cliente. Selecciónalo en las sugerencias.",
+  );
+  assert.deepEqual(normalizeServerFields({ newProjectName: "Ocupado" }), { newProjectName: "Ocupado" });
 });

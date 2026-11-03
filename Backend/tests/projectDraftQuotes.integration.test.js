@@ -215,3 +215,75 @@ test("visibilidad: el cliente no recibe sus drafts; administración sí", { skip
   const draft = adminList.items.find((project) => project.id === quote.project.id);
   assert.deepEqual([draft.status, draft.hasPlans, draft.startDate, draft.projectType], ["draft", null, null, null]);
 });
+
+test("API directa: clientes y arquitectos (incluso asignados a la fuerza) reciben 404 en todas las rutas de un draft", { skip }, async () => {
+  const { quote } = await quotes.createQuote({ payload: draftQuoteBody("Casa por API"), user: { id: ids.admin } });
+  const draftId = quote.project.id;
+  const [{ public_slug: draftSlug }] = await rows("select public_slug from public.projects where id = $1", [draftId]);
+
+  // Permisos mínimos de las rutas de proyectos y un arquitecto asignado al draft saltándose la API.
+  const [architectRole] = await rows("insert into public.roles (code, name) values ('architect', 'Arquitecto') returning id");
+  const [architect] = await rows(`insert into public.users (role_id, email, first_name, last_name, password_hash)
+    values ($1, 'arq@arca.test', 'Ana', 'Arq', '!integration-login-disabled!') returning id::int`, [architectRole.id]);
+  await rows(`insert into public.permissions (code, name, module) values
+    ('projects.read', 'Ver proyectos', 'projects'), ('projects.files.upload', 'Subir archivos', 'projects')`);
+  await rows(`insert into public.role_permissions (role_id, permission_id)
+    select r.id, p.id from public.roles r cross join public.permissions p where r.code in ('admin', 'client', 'architect')`);
+  await rows("insert into public.project_assignees (project_id, user_id, assigned_by) values ($1, $2, $3)", [draftId, architect.id, ids.admin]);
+
+  // Configuración ficticia de almacenamiento: con un draft oculto ninguna ruta llega a contactarlo, pero
+  // la foto del arquitecto lee la configuración antes de comprobar si hay foto (sin ella respondería 500).
+  Object.assign(process.env, {
+    AUTH_TOKEN_SECRET: "integration-only-secret-not-used-elsewhere-0123456789",
+    SUPABASE_STORAGE_S3_ACCESS_KEY_ID: process.env.SUPABASE_STORAGE_S3_ACCESS_KEY_ID || "integration-unused",
+    SUPABASE_STORAGE_S3_ENDPOINT: process.env.SUPABASE_STORAGE_S3_ENDPOINT || "http://127.0.0.1:9/unused",
+    SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY: process.env.SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY || "integration-unused",
+  });
+  const { default: app } = await import("../src/app.js");
+  const { issueUserSession } = await import("../src/services/sessionService.js");
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${server.address().port}/api`;
+  const headersOf = async (userId) => ({ Authorization: `Bearer ${(await issueUserSession(userId)).token}` });
+  try {
+    for (const userId of [ids.clientUser, architect.id]) {
+      const headers = await headersOf(userId);
+      const list = await (await fetch(`${base}/projects?limit=100`, { headers })).json();
+      assert.ok(!list.projects.some((project) => project.id === draftId), "El listado no incluye el draft");
+      for (const path of [`/projects/${draftId}`, `/projects/${draftSlug}`, `/projects/${draftId}/comments`,
+        `/projects/${draftId}/events`, `/projects/${draftId}/files/1/content`, `/projects/${draftId}/assigned-architect/profile-photo`]) {
+        const response = await fetch(`${base}${path}`, { headers });
+        assert.equal(response.status, 404, `${userId} GET ${path}`);
+        await response.body?.cancel();
+      }
+      const comment = await fetch(`${base}/projects/${draftId}/comments`, {
+        body: JSON.stringify({ content: "Hola" }), headers: { ...headers, "Content-Type": "application/json" }, method: "POST",
+      });
+      assert.equal(comment.status, 404, `${userId} POST comentario`);
+      const upload = await fetch(`${base}/projects/${draftId}/files`, {
+        body: Buffer.from("%PDF-1.4"), headers: { ...headers, "Content-Type": "application/pdf", "X-File-Name": "plano.pdf" }, method: "POST",
+      });
+      assert.equal(upload.status, 404, `${userId} POST archivo`);
+    }
+
+    // El administrador sí lo ve, como draft de solo lectura operativa.
+    const adminHeaders = await headersOf(ids.admin);
+    const detail = await fetch(`${base}/projects/${draftId}`, { headers: adminHeaders });
+    assert.equal(detail.status, 200);
+    const { project } = await detail.json();
+    assert.deepEqual([project.status, project.hasPlans, project.startDate], ["draft", null, null]);
+    const adminComment = await fetch(`${base}/projects/${draftId}/comments`, {
+      body: JSON.stringify({ content: "Hola" }), headers: { ...adminHeaders, "Content-Type": "application/json" }, method: "POST",
+    });
+    assert.equal(adminComment.status, 409);
+    assert.equal((await adminComment.json()).code, "PROJECT_DRAFT");
+    const assignees = await fetch(`${base}/admin/projects/${draftId}/assignees`, {
+      body: JSON.stringify({ assigneeIds: [] }), headers: { ...adminHeaders, "Content-Type": "application/json" }, method: "PUT",
+    });
+    assert.equal(assignees.status, 409);
+    assert.equal((await assignees.json()).code, "PROJECT_DRAFT");
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

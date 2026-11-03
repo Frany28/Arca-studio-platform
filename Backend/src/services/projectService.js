@@ -10,6 +10,7 @@ import { insertDraftProject, reserveProjectId } from "../repositories/projectDra
 import { findExistingProjectNameForClient } from "../repositories/projectRequestRepository.js";
 import { insertAuditLog } from "../repositories/auditLogRepository.js";
 import { ConflictError } from "../errors/appError.js";
+import { PROJECT_STATUS } from "../domain/projectStatus.js";
 import { slugifyProjectName } from "../utils/projectSlug.js";
 import {
   assertMutableProjectState,
@@ -153,7 +154,7 @@ export async function createDraftProject(client, { clientId, name, quoteId, user
     description: "Proyecto draft creado al guardar una cotización",
     entityId: project.id,
     entityType: "project",
-    newValues: { clientId, name: project.name, quoteId, status: "draft" },
+    newValues: { clientId, name: project.name, quoteId, status: PROJECT_STATUS.DRAFT },
     userId,
   }, client);
   return project;

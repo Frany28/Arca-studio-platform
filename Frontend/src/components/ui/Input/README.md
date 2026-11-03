@@ -114,6 +114,13 @@ borde separador, sin su lógica de país.
   conserva espacios interiores, ignora acentos y convierte a minúsculas.
 - `onTagOptionSelect` intercepta exclusivamente el clic en sugerencias:
   no cambia selección ni limpia consulta. Enter/coma mantienen su flujo propio.
+- `tagOptionSelection="explicit"` (por defecto `"auto"`) desactiva la elección por Enter/coma
+  de la primera coincidencia parcial y la creación de un tag con el texto: la selección es solo por
+  clic o por la opción activa que gestiona el consumidor en su `onKeyDown` (patrón combobox con
+  `role`, `aria-expanded`, `aria-controls` y `aria-activedescendant` pasados al campo).
+  `activeTagOptionIndex` marca esa sugerencia con el estado `selected` existente del `Tag`; el grupo
+  pasa a `listbox` y cada sugerencia a `option` con el id de `getTagOptionId(tagGroupId, índice)`.
+  No cambia estilos ni geometría. Lo usa «Nombre del proyecto» de las cotizaciones.
 - La eliminación notifica antes de restaurar el foco mediante requestAnimationFrame.
   Solo conserva el último frame pendiente y lo cancela al desmontar o salir de Tags.
   El scroll horizontal vuelve al inicio al cambiar la identidad de la selección.

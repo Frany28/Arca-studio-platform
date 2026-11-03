@@ -57,3 +57,9 @@ test("finalized and archived projects share operational read-only behavior", () 
   assert.equal(isProjectOperationallyReadOnly("in_process"), false);
   assert.equal(getProjectReadOnlyMessage("completed"), "El proyecto finalizado es de solo lectura.");
 });
+
+test("draft projects are operationally read-only with their own reason", () => {
+  assert.equal(isProjectOperationallyReadOnly("draft"), true);
+  assert.equal(isProjectOperationallyReadOnly({ status: "draft" }), true);
+  assert.match(getProjectReadOnlyMessage({ status: "draft" }), /borrador \(Draft\)/);
+});

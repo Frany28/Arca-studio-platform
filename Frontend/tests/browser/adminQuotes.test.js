@@ -968,6 +968,7 @@ test("proyecto nuevo: el nombre escrito se guarda como Draft; Enter y las coinci
   });
   await page.locator("#quote-client").fill("Leo");
   await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  const emptyProjectBox = await controlBox(project);
   const picker = page.getByRole("region", { name: "Seleccionar servicios" });
   await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).click();
   await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
@@ -999,7 +1000,9 @@ test("proyecto nuevo: el nombre escrito se guarda como Draft; Enter y las coinci
   await project.fill("Casa del Lago");
   await page.getByText("Se creará como proyecto Draft al guardar la cotización.").waitFor();
   await page.locator("#quote-notes").click();
-  assert.deepEqual(await controlBox(project), await controlBox(page.locator("#quote-client")), "Mismo control que «Nombre del cliente»");
+  // El control de Figma no cambia con el texto nuevo ni con el aviso, y mide lo mismo que el del cliente.
+  assert.deepEqual(await controlBox(project), emptyProjectBox, "Mismo control que vacío");
+  assert.equal(emptyProjectBox[1], (await controlBox(page.locator("#quote-client")))[1], "Mismo ancho que «Nombre del cliente»");
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByText("Has creado la cotización exitosamente").waitFor();
   const posts = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");

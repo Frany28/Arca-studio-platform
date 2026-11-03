@@ -125,11 +125,9 @@ export async function getClientProjectOptions({ clientId, filters }) {
 }
 
 /**
- * Valida y bloquea con FOR SHARE el cliente y el proyecto, que debe pertenecer al cliente. Uno
- * nuevo debe estar activo y no eliminado; si no cambian respecto a la versión vigente conservan
- * sus nombres copiados, para que editar otros datos no falle ni reescriba el documento. Con
- * `newProjectName` (solo en el alta) el cliente debe estar disponible y el proyecto se crea
- * después (createQuoteDraftProject): se devuelve `project: null`.
+ * Valida y bloquea con FOR SHARE el cliente y el proyecto del cliente; si no cambian respecto a la
+ * versión vigente conservan sus nombres copiados. Uno nuevo debe estar activo y no eliminado.
+ * Con `newProjectName` (solo en el alta) el proyecto se crea después: `project` es null.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la operación.

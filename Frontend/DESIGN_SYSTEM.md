@@ -513,9 +513,13 @@ a una intervención independiente de la validación del contrato del riel.
   bloqueados con su valor efectivo y un HintText; requieren contrato y migración autorizados.
 - `useDialogKeyboard` centraliza foco inicial, Tab cíclico, Escape y devolución del foco
   de los diálogos; `ActionMenu` devuelve el foco al disparador al elegir una acción.
-- Las etiquetas En espera y Drafts son presentación local de los estados existentes
-  pending y draft. Los aliases de finalización y solicitud se conservan; no se cambian
-  estados HTTP ni reglas de negocio. Archivado mantiene el tema Archived del sistema.
+- La etiqueta En espera presenta el estado pending. Drafts (`Badge` `Brand 1`, filtro propio)
+  presenta el estado real `draft` de PostgreSQL: proyectos preliminares creados al guardar una
+  cotización con un proyecto nuevo, visibles solo para administración. Cuentan en el total de
+  proyectos registrados, no en progreso ni en los activos del dashboard, que también los muestra
+  como Drafts. Son de solo lectura operativa (responsables, archivos y observaciones
+  deshabilitados, `isProjectOperationallyReadOnly`); se pueden archivar y desarchivar. Los aliases de
+  finalización y solicitud se conservan. Archivado mantiene el tema Archived del sistema.
 
 Validación, capturas y diferencias respecto a Figma:
 [`docs/ADMIN_PROJECTS_PHASE1_VALIDATION.md`](../docs/ADMIN_PROJECTS_PHASE1_VALIDATION.md).
@@ -808,9 +812,22 @@ Validación, capturas y diferencias respecto a Figma:
   - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». El PDF lo genera el
     backend; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
     `DocumentViewerControls`, `DocumentFileCard`), movidos desde Proyectos.
+  - «Nombre del proyecto» conserva exactamente el campo de Figma (icono, tipografía, bordes,
+    dimensiones y responsive): solo cambia su comportamiento. Sugiere los proyectos del cliente
+    elegido (`useQuoteProjectField`; cambiar de cliente retira el proyecto, el texto y la búsqueda
+    en curso). La selección es explícita (`tagOptionSelection="explicit"` del `Input`, patrón
+    combobox con `aria-activedescendant`): clic, o flechas y Enter sobre la opción activa; Enter sin
+    opción activa no elige por coincidencia parcial ni envía el formulario; Escape cierra las
+    sugerencias. La opción activa usa el estado `selected` existente del `Tag`. En el alta, un nombre
+    que no corresponde a ningún proyecto se guarda tal cual: el `HintText` del campo indica
+    discretamente «Se creará como proyecto Draft al guardar la cotización» y el backend lo crea al
+    confirmar el guardado; sin botones, modales ni pasos adicionales. Si el nombre coincide
+    exactamente con un proyecto del cliente (sin distinguir mayúsculas), el campo pide seleccionarlo
+    y no se envía. En la edición solo se eligen proyectos existentes, incluidos Drafts. El alta envía
+    un `submissionId` por formulario, conservado en los reintentos (idempotencia).
   - Editor (`/servicios-cotizaciones/cotizaciones/nueva` y `/:quoteId/editar`) con `Breadcrumb`:
-    cliente y proyecto con `Input` `Tags` y búsqueda en la API (solo opciones existentes; el
-    proyecto depende del cliente), selector de servicios activos, tabla de incluidos con cantidad y
+    cliente y proyecto con `Input` `Tags` y búsqueda en la API (el proyecto depende del cliente y,
+    en el alta, admite un nombre nuevo), selector de servicios activos, tabla de incluidos con cantidad y
     tarifa editables y resumen de importes calculado con el motor del backend, importado sin
     duplicar fórmulas (`quoteAmounts.js`, prueba de paridad). El resumen (`QuoteAmountsSummary`,
     igual en crear y editar) tiene tres filas alineadas a los extremos, en este orden: «IVA
