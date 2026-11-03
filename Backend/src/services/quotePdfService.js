@@ -2,7 +2,7 @@
 import { Readable } from "node:stream";
 
 import { AppError, NotFoundError } from "../errors/appError.js";
-import { buildQuotePdfReservation, QUOTE_PDF_LAYOUT_REVISION, QUOTE_PDF_MAX_BYTES, toQuotePdfStatus } from "../domain/quotePdfDocument.js";
+import { buildQuotePdfReservation, QUOTE_PDF_LAYOUTS, QUOTE_PDF_MAX_BYTES, toQuotePdfStatus } from "../domain/quotePdfDocument.js";
 import { findQuoteById } from "../repositories/quoteRepository.js";
 import * as documents from "../repositories/quotePdfRepository.js";
 import { objectStorage } from "./objectStorage.js";
@@ -63,15 +63,16 @@ async function readPdfBytes(stream, signal) {
 }
 
 /**
- * Genera los bytes del documento con los recursos compartidos sin cambiar su maquetación.
+ * Genera los bytes usando los recursos compartidos y la revisión de maquetación persistida.
  * Traduce los fallos del generador para distinguirlos de las transferencias S3 fallidas.
  *
  * @param {object} model - Instantánea de presentación persistida con la reserva.
+ * @param {number} layoutRevision - Revisión con que se reservó el PDF, incluida la histórica.
  * @returns {Promise<Buffer>} PDF acotado y reproducible.
  */
-async function generateQuotePdfBytes(model) {
+async function generateQuotePdfBytes(model, layoutRevision) {
   try {
-    return await readPdfBytes(renderQuotePdf(model, await loadQuotePdfAssets()));
+    return await readPdfBytes(renderQuotePdf(model, await loadQuotePdfAssets(), { layoutRevision }));
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw pdfError("QUOTE_PDF_GENERATION_ERROR", "No se pudo generar el documento de la cotización.", error);
@@ -163,8 +164,8 @@ async function storeClaimedPdf(row, token) {
     assertStoredIdentity(row, existing);
     await readStoredPdf(row, bucket);
   } else {
-    if (row.layout_revision !== QUOTE_PDF_LAYOUT_REVISION) throw pdfError("QUOTE_PDF_LAYOUT_UNSUPPORTED", "La revisión del generador del documento requiere recuperación administrativa.");
-    const bytes = await generateQuotePdfBytes(row.document_model);
+    if (!QUOTE_PDF_LAYOUTS[row.layout_revision]) throw pdfError("QUOTE_PDF_LAYOUT_UNSUPPORTED", "La revisión del generador del documento requiere recuperación administrativa.");
+    const bytes = await generateQuotePdfBytes(row.document_model, row.layout_revision);
     const hash = createHash("sha256").update(bytes).digest("hex");
     if (row.content_hash && hash !== row.content_hash) {
       throw pdfError("QUOTE_PDF_INTEGRITY_ERROR", "El generador no reproduce el documento original. Requiere revisión administrativa.");

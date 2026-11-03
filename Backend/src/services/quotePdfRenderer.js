@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { QUOTE_PDF_LAYOUT_REVISION, QUOTE_PDF_LAYOUTS } from "../domain/quotePdfDocument.js";
 
 /*
  * Maquetación del PDF de una cotización según Figma 5831:356993 (variantes de una y dos
@@ -438,14 +439,19 @@ function drawPageFooter(doc, vectors, pageNumber) {
 }
 
 /**
- * Crea el PDF de una cotización a partir de su modelo de presentación y lo finaliza. El
- * documento es un stream legible: el contenido queda en memoria hasta que se consume.
+ * Crea el PDF con un máximo de diez servicios por página, repitiendo los encabezados al continuar.
+ * Conserva la revisión histórica al recuperar archivos y finaliza un stream listo para consumir.
  *
  * @param {object} model - Resultado de buildQuoteDocument.
  * @param {{ fonts: Record<string, Buffer>, vectors: Record<string, object> }} assets - Recursos cargados.
+ * @param {object} [options] - Revisión de las reglas de paginación guardadas con el documento.
+ * @param {number} [options.layoutRevision] - Revisión persistida; por defecto la vigente.
  * @returns {PDFKit.PDFDocument} Documento terminado, listo para enviarse por streaming.
+ * @throws {RangeError} Si no se dispone de la revisión solicitada.
  */
-export function renderQuotePdf(model, { fonts, vectors }) {
+export function renderQuotePdf(model, { fonts, vectors }, { layoutRevision = QUOTE_PDF_LAYOUT_REVISION } = {}) {
+  const layout = QUOTE_PDF_LAYOUTS[layoutRevision];
+  if (!layout) throw new RangeError("Revisión de maquetación PDF no soportada.");
   const doc = new PDFDocument({
     autoFirstPage: false,
     // Las fechas fijas hacen reproducible el binario al recuperar un objeto perdido.
@@ -457,6 +463,7 @@ export function renderQuotePdf(model, { fonts, vectors }) {
   for (const [name, font] of Object.entries(fonts)) doc.registerFont(name, font);
 
   let pageNumber = 0;
+  let servicesOnPage = 0;
   /**
    * Cierra la página actual (si existe) y abre otra con su cabecera.
    * Devuelve la posición donde empieza el contenido de la nueva página.
@@ -467,6 +474,7 @@ export function renderQuotePdf(model, { fonts, vectors }) {
     if (pageNumber > 0) drawPageFooter(doc, vectors, pageNumber);
     doc.addPage({ margin: 0, size: "LETTER" });
     pageNumber += 1;
+    servicesOnPage = 0;
     return drawHeading(doc, model, vectors);
   };
 
@@ -477,8 +485,11 @@ export function renderQuotePdf(model, { fonts, vectors }) {
   if (y + tableStart + (rows[0]?.height ?? 0) > CONTENT_BOTTOM) y = startPage();
   y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", y, false));
   rows.forEach((row, index) => {
-    if (y + row.height > CONTENT_BOTTOM) y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", startPage(), false));
+    if (servicesOnPage >= layout.servicesPerPage || y + row.height > CONTENT_BOTTOM) {
+      y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", startPage(), false));
+    }
     y = drawItemRow(doc, row, y, index < rows.length - 1);
+    servicesOnPage += 1;
   });
 
   const totalHeight = PAGE.blockGap + TEXT.totalValue.lineHeight;

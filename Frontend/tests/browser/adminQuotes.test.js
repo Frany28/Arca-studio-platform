@@ -1185,3 +1185,53 @@ test("visor: una respuesta tardía de otra cotización no sustituye el documento
   assert.equal(await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").count(), 0);
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).isEnabled(), true);
 });
+
+test("PDF: distribuye 21 servicios como 10, 10 y 1, repite encabezados y termina con el total", async (context) => {
+  const backend = createBackend();
+  const quote = backend.quotes[0];
+  const template = quote.items[0];
+  quote.items = Array.from({ length: 21 }, (_, index) => ({
+    ...template,
+    lineNumber: index + 1,
+    quantity: "1.000",
+    service: { ...template.service, id: index + 100, name: `Servicio-${String(index + 1).padStart(2, "0")}` },
+    subtotal: "10.00",
+    unitRate: "10.00",
+  }));
+  quote.servicesTotal = "210.00";
+  quote.notes = null;
+  const page = await openQuotes(context, backend);
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
+  assert.equal(await viewer.getByRole("spinbutton", { name: "Página actual" }).getAttribute("max"), "3");
+  const texts = await page.evaluate(async (data) => {
+    const { openPdfDocument } = await import("/src/components/document-viewer/pdfDocumentLoader.js");
+    const controller = new AbortController();
+    try {
+      const document = await openPdfDocument(new Uint8Array(data), controller.signal);
+      const pages = [];
+      for (let number = 1; number <= document.numPages; number++) {
+        const pdfPage = await document.getPage(number);
+        const content = await pdfPage.getTextContent();
+        pages.push(content.items.map((part) => part.str).join(" "));
+      }
+      return pages;
+    } finally {
+      controller.abort();
+    }
+  }, Array.from(backend.pdfFiles.get(1)));
+  assert.deepEqual(texts.map((text) => text.match(/Servicio-\d{2}/g)), [
+    Array.from({ length: 10 }, (_, index) => `Servicio-${String(index + 1).padStart(2, "0")}`),
+    Array.from({ length: 10 }, (_, index) => `Servicio-${index + 11}`),
+    ["Servicio-21"],
+  ]);
+  for (const text of texts) {
+    assert.match(text, /Detalle de servicios/);
+    assert.match(text, /Tarifa base/);
+    assert.match(text, /COT-001/);
+  }
+  assert.ok(texts.slice(0, -1).every((text) => !text.includes("TOTAL USD")));
+  assert.match(texts.at(-1), /TOTAL USD/);
+  assert.match(texts.at(-1), /\$210\.00/);
+});

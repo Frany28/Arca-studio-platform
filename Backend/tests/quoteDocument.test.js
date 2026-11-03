@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -122,4 +123,30 @@ test("el PDF se genera con Inter y pagina conceptos y observaciones largas", asy
   const many = Array.from({ length: 30 }, (_, index) => item(`Servicio ${index + 1}`, "1.000", "10.00", "10.00"));
   const long = await readAll(renderQuotePdf(buildQuoteDocument(quoteWith(many, { notes: "Observación ".repeat(900) })), assets));
   assert.ok((long.toString("latin1").match(/\/Type \/Page\b/g) || []).length >= 3, "La tabla y las observaciones continúan en otras páginas");
+});
+
+for (const [count, expectedPages] of [[9, 1], [10, 1], [11, 2], [20, 2], [21, 3]]) {
+  test(`PDF: ${count} servicios ocupan ${expectedPages} páginas sin una página vacía adicional`, async () => {
+    const items = Array.from({ length: count }, (_, index) => item(`Servicio ${index + 1}`, "1.000", "10.00", "10.00"));
+    const model = buildQuoteDocument(quoteWith(items, { notes: null }));
+    const bytes = await readAll(renderQuotePdf(model, await loadQuotePdfAssets()));
+    assert.equal((bytes.toString("latin1").match(/\/Type \/Page\b/g) || []).length, expectedPages);
+  });
+}
+
+test("PDF: recuperar la revisión 1 conserva el binario original al introducir el límite de diez", async () => {
+  const items = Array.from({ length: 21 }, (_, index) => ({
+    ...item(`Servicio ${index + 1}`, "1.000", "10.00", "10.00"), unit: { label: "proy." },
+  }));
+  const model = {
+    ...buildQuoteDocument(quoteWith(items, { client: { id: 1, name: "Leonel Perez" }, notes: null, servicesTotal: "210.00" }), { timeZone: "America/Caracas" }),
+    generatedAt: "2026-03-24T02:30:00.000Z",
+  };
+  const assets = await loadQuotePdfAssets();
+  const legacy = await readAll(renderQuotePdf(model, assets, { layoutRevision: 1 }));
+  // Huella tomada antes de cambiar el renderer: protege documentos ya persistidos en S3.
+  assert.equal(createHash("sha256").update(legacy).digest("hex"), "839d5581361f27dd1bf794d194a741bf20295067a2218dbead1e0ee32eb5d8a6");
+  assert.equal((legacy.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 2);
+  const current = await readAll(renderQuotePdf(model, assets));
+  assert.equal((current.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 3);
 });

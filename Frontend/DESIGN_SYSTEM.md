@@ -821,6 +821,9 @@ Validación, capturas y diferencias respecto a Figma:
     obsoletas y libera el archivo al cerrar o cambiar de cotización. Los documentos pendientes o con
     error ofrecen Reintentar, que solicita recuperación sin crear versión comercial. Un guardado sin
     PDF disponible muestra un aviso Warning y conserva la cotización confirmada.
+    Los PDF nuevos muestran como máximo diez servicios por página: el servicio once comienza en
+    la siguiente con la cabecera y el encabezado de tabla repetidos. Si una fila larga agota el
+    espacio antes, continúa antes de alcanzar diez; total y observaciones siguen al último servicio.
   - «Nombre del proyecto» conserva exactamente el campo de Figma (icono, tipografía, bordes,
     dimensiones y responsive): solo cambia su comportamiento. Sugiere los proyectos del cliente
     elegido (`useQuoteProjectField`; cambiar de cliente retira el proyecto, el texto y la búsqueda

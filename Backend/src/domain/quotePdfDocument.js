@@ -5,7 +5,12 @@ import { formatGeneratedQuoteCode } from "./quote.js";
 
 export const QUOTE_PDF_TIME_ZONE = "America/Caracas";
 export const QUOTE_PDF_MAX_BYTES = 8 * 1024 * 1024;
-export const QUOTE_PDF_LAYOUT_REVISION = 1;
+export const QUOTE_PDF_LAYOUT_REVISION = 2;
+// La revisión 1 se conserva para reproducir exactamente los documentos históricos recuperables.
+export const QUOTE_PDF_LAYOUTS = Object.freeze({
+  1: Object.freeze({ servicesPerPage: Infinity }),
+  2: Object.freeze({ servicesPerPage: 10 }),
+});
 
 /**
  * Fija la identidad y la presentación del PDF desde una versión confirmada del negocio.
