@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import clsx from "clsx";
+import { DocumentDownload } from "iconsax-react";
 import Tooltip from "../ui/Tooltip/Tooltip.jsx";
 
 const MIN_ZOOM = 75;
@@ -75,12 +76,21 @@ function CloseIcon() {
   );
 }
 
+/**
+ * Controles compartidos de página, zoom y pantalla completa del visor PDF.
+ * La descarga es opcional: el consumidor decide si está autorizada y aporta la acción.
+ *
+ * @param {Object} props - Estado del visor y acciones disponibles.
+ * @param {() => void} [props.onDownload] - Guarda el PDF cuando el consumidor permite descargarlo.
+ * @returns {import("react").ReactElement} Barra de controles.
+ */
 function PdfToolbar({
   expandButtonRef,
   // Los visores sin modo de pantalla completa (p. ej. el PDF de una cotización) lo ocultan.
   expandable = true,
   fullscreen = false,
   onClose,
+  onDownload,
   onExpand,
   page,
   pageCount,
@@ -106,6 +116,14 @@ function PdfToolbar({
         <ViewerButton label="Alejar" disabled={zoom <= MIN_ZOOM} onClick={() => updateZoom(zoom - ZOOM_STEP)}>−</ViewerButton>
         <span className="min-w-[42px] rounded-[2px] bg-[#111] px-[4px] py-[2px] text-center">{zoom}%</span>
         <ViewerButton label="Acercar" disabled={zoom >= MAX_ZOOM} onClick={() => updateZoom(zoom + ZOOM_STEP)}>+</ViewerButton>
+        {onDownload ? (
+          <>
+            <span className="mx-[4px] text-[var(--color-neutral-300)]">|</span>
+            <ViewerButton label="Descargar PDF" onClick={onDownload}>
+              <DocumentDownload size="14" color="currentColor" aria-hidden="true" />
+            </ViewerButton>
+          </>
+        ) : null}
         {expandable ? <span className="mx-[4px] text-[var(--color-neutral-300)]">|</span> : null}
 
         {!expandable ? null : fullscreen ? (

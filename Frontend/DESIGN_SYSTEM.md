@@ -812,6 +812,9 @@ Validación, capturas y diferencias respecto a Figma:
   - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». El PDF lo genera el
     backend; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
     `DocumentViewerControls`, `DocumentFileCard`), movidos desde Proyectos.
+    La barra del visor añade «Descargar PDF» junto al zoom, solo para administración y cuando el
+    PDF está listo. Guarda el mismo archivo mostrado como `COT-001.pdf`, sin otra petición; la
+    descarga reutiliza `saveBlobAsFile` y libera el archivo al cerrar o cambiar de cotización.
   - «Nombre del proyecto» conserva exactamente el campo de Figma (icono, tipografía, bordes,
     dimensiones y responsive): solo cambia su comportamiento. Sugiere los proyectos del cliente
     elegido (`useQuoteProjectField`; cambiar de cliente retira el proyecto, el texto y la búsqueda

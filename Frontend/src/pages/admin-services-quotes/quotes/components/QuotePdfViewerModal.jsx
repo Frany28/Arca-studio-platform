@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 
+import { useAuth } from "../../../../auth/AuthContext.jsx";
 import DocumentFileCard from "../../../../components/document-viewer/DocumentFileCard.jsx";
 import PdfViewerSurface from "../../../../components/document-viewer/PdfViewerSurface.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
@@ -9,6 +10,7 @@ import Modal from "../../../../components/ui/Modal/Modal.jsx";
 import { formatShortDay, toDayKey } from "../../../../components/ui/DateRangePicker/dateRangeCalendar.js";
 import { useDialogKeyboard } from "../../../../hooks/useDialogKeyboard.js";
 import { formatFileSize } from "../../../../utils/fileSize.js";
+import { saveBlobAsFile } from "../../../../utils/saveBlobAsFile.js";
 import { useQuoteDetail } from "../../hooks/useQuoteDetail.js";
 import { useQuotePdfDocument } from "../hooks/useQuotePdfDocument.js";
 
@@ -38,6 +40,7 @@ function toViewerDocument(quote, detail, size) {
  * encabezado con el archivo y su autor, el documento generado por el backend en el visor PDF.js
  * de la aplicación, y «Cerrar» y «Editar». El documento se descarga solo mientras el visor está
  * abierto y se libera al cerrarlo. Escape y el overlay cierran; el foco vuelve a la fila.
+ * Solo administración dispone de «Descargar PDF» en la barra, usando el archivo ya recibido.
  *
  * @param {Object} props - Cotización abierta y callbacks.
  * @param {Object|null} props.quote - Fila del listado; null cierra el visor.
@@ -47,6 +50,7 @@ function toViewerDocument(quote, detail, size) {
  * @returns {import("react").ReactElement} Modal en portal.
  */
 function QuotePdfViewerModal({ onClose, onEdit, quote, returnFocusTo }) {
+  const { user } = useAuth();
   const titleId = useId();
   // La salida animada de Modal conserva la última cotización mostrada sin repintar otra.
   const [shown, setShown] = useState(quote);
@@ -88,6 +92,7 @@ function QuotePdfViewerModal({ onClose, onEdit, quote, returnFocusTo }) {
         className="size-full rounded-[var(--radius-3)]"
         documentProxy={pdf.documentProxy}
         expandable={false}
+        onDownload={user?.role === "admin" ? () => saveBlobAsFile(pdf.blob, `${displayed.code}.pdf`) : undefined}
         page={page}
         pageCount={pdf.pageCount}
         title={`Cotización ${displayed?.code ?? ""}`}

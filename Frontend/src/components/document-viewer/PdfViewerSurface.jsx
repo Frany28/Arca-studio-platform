@@ -133,6 +133,14 @@ const PdfPages = forwardRef(function PdfPages(
   );
 });
 
+/**
+ * Compone la barra y las páginas del PDF con los controles y anotaciones existentes.
+ * Solo habilita la descarga si su consumidor proporciona una acción autorizada.
+ *
+ * @param {Object} props - Documento, navegación, anotaciones y acciones.
+ * @param {() => void} [props.onDownload] - Descarga opcional del documento mostrado.
+ * @returns {import("react").ReactElement} Superficie del visor.
+ */
 function PdfViewerSurface({
   annotations = [],
   className,
@@ -141,6 +149,7 @@ function PdfViewerSurface({
   expandable = true,
   fullscreen = false,
   onClose,
+  onDownload,
   onExpand,
   onPointCreate,
   onPointSelect,
@@ -181,6 +190,7 @@ function PdfViewerSurface({
         expandable={expandable}
         fullscreen={fullscreen}
         onClose={onClose}
+        onDownload={onDownload}
         onExpand={onExpand}
         page={page}
         pageCount={pageCount}
