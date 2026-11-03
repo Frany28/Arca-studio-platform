@@ -11,22 +11,34 @@ import { pool, query, withTransaction } from "../config/db.js";
 import { getShowcaseFileName } from "../domain/projectPublicView.js";
 import { NotFoundError } from "../errors/appError.js";
 import { storeThenRecord } from "../services/storedUpload.js";
-import { isProjectFinalized, isProjectOperationallyReadOnly } from "../domain/projectStatus.js";
+import {
+  PROJECT_DRAFT_READ_ONLY_MESSAGE,
+  PROJECT_STATUS,
+  isProjectDraft,
+  isProjectFinalized,
+  isProjectOperationallyReadOnly,
+} from "../domain/projectStatus.js";
+import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
 
 const DEFAULT_FILE_STATUS = "active";
 
 /**
- * Distingue los conflictos operativos de proyectos archivados y finalizados con finished.
+ * Distingue los conflictos operativos de proyectos draft, archivados y finalizados con finished.
  * Conserva el código público de error para las escrituras protegidas por bloqueo PostgreSQL.
  *
- * @param {unknown} status - Valor de `status` requerido por esta operación.
- * @returns {unknown} Resultado producido por la operación.
+ * @param {string} status - Estado del proyecto bloqueado.
+ * @returns {Error & { code: string, status: number, publicMessage: string }} Error 409.
  */
 function createProjectReadOnlyError(status) {
-  const finalized = isProjectFinalized(status);
   const error = new Error("Read-only project");
-  error.code = finalized ? "PROJECT_FINALIZED" : "PROJECT_ARCHIVED";
   error.status = 409;
+  if (status === PROJECT_STATUS.DRAFT) {
+    error.code = "PROJECT_DRAFT";
+    error.publicMessage = PROJECT_DRAFT_READ_ONLY_MESSAGE;
+    return error;
+  }
+  const finalized = isProjectFinalized(status);
+  error.code = finalized ? "PROJECT_FINALIZED" : "PROJECT_ARCHIVED";
   error.publicMessage = finalized
     ? "El proyecto finalizado es de solo lectura."
     : "Desarchiva el proyecto antes de realizar cambios.";
@@ -539,6 +551,7 @@ export async function findProjectForFileUpload(projectId, user, executor = poolE
         project.assigned_architect_id,
         project.is_public,
         project.status,
+        project.archived_from_status,
         exists (
           select 1 from public.project_assignees assignment
           where assignment.project_id = project.id
@@ -558,6 +571,10 @@ export async function findProjectForFileUpload(projectId, user, executor = poolE
   }
 
   const roleCode = user?.role?.code;
+  // Un draft solo existe para administración: para los demás roles es un proyecto inaccesible.
+  if (roleCode !== "admin" && isProjectDraft(project.status, project.archived_from_status)) {
+    return null;
+  }
   const hasAccess =
     roleCode === "admin" ||
     (roleCode === "architect" &&
@@ -828,6 +845,7 @@ export async function deleteProjectFile({ fileId, projectId, user }) {
           p.assigned_architect_id,
           p.is_public,
           p.status as project_status,
+          p.archived_from_status as project_archived_from_status,
           exists (
             select 1 from public.project_assignees assignment
             where assignment.project_id = p.id
@@ -853,11 +871,17 @@ export async function deleteProjectFile({ fileId, projectId, user }) {
       return null;
     }
 
+    const roleCode = user?.role?.code;
+    // El draft se oculta antes de revelar su estado: para otros roles responde como inexistente.
+    if (roleCode !== "admin" && isProjectDraft(file.project_status, file.project_archived_from_status)) {
+      await client.query("rollback");
+      return null;
+    }
+
     if (isProjectOperationallyReadOnly(file.project_status)) {
       throw createProjectReadOnlyError(file.project_status);
     }
 
-    const roleCode = user?.role?.code;
     const hasProjectAccess =
       roleCode === "admin" ||
       (roleCode === "architect" &&
@@ -960,11 +984,11 @@ export async function findProjectFileForDownload({ fileId, projectId, user }) {
       where assignment.project_id = project.id
         and assignment.user_id = $3
     ))`;
-    accessCondition = `(${directCondition} or ${publicShowcaseCondition})`;
+    accessCondition = `((${directCondition} or ${publicShowcaseCondition}) and ${nonDraftProjectCondition("project")})`;
   } else if (roleCode === "client" && user.clientId) {
     params.push(user.clientId);
     directCondition = "(project.client_id = $3)";
-    accessCondition = `(${directCondition} or ${publicShowcaseCondition})`;
+    accessCondition = `((${directCondition} or ${publicShowcaseCondition}) and ${nonDraftProjectCondition("project")})`;
   }
 
   const result = await query(

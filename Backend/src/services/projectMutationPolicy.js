@@ -1,5 +1,5 @@
 import { ConflictError, NotFoundError } from "../errors/appError.js";
-import { isProjectFinalized } from "../domain/projectStatus.js";
+import { PROJECT_DRAFT_READ_ONLY_MESSAGE, PROJECT_STATUS, isProjectFinalized } from "../domain/projectStatus.js";
 
 /**
  * Comprueba el valor de mutable proyecto state y rechaza la operación cuando no se cumple.
@@ -25,8 +25,9 @@ export function assertMutableProjectState(project) {
 }
 
 /**
- * Impide cambios operativos en proyectos archivados o finalizados con finished.
- * Reconoce el alias histórico de finalización y conserva los códigos de conflicto existentes.
+ * Impide cambios operativos (archivos, comentarios, responsables) en proyectos draft, archivados
+ * o finalizados con finished. Reconoce el alias histórico de finalización y conserva los códigos
+ * de conflicto existentes; un draft responde 409 PROJECT_DRAFT.
  *
  * @param {unknown} project - Valor de `project` requerido por esta operación.
  * @returns {unknown} Resultado producido por la operación.
@@ -34,6 +35,10 @@ export function assertMutableProjectState(project) {
  */
 export function assertOperationallyMutableProjectState(project) {
   const mutableProject = assertMutableProjectState(project);
+
+  if (mutableProject.status === PROJECT_STATUS.DRAFT) {
+    throw new ConflictError("PROJECT_DRAFT", PROJECT_DRAFT_READ_ONLY_MESSAGE);
+  }
 
   if (isProjectFinalized(mutableProject.status)) {
     throw new ConflictError(

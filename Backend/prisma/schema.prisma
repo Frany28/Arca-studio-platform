@@ -542,19 +542,21 @@ model projects {
   description                                 String?
   status                                      project_status                     @default(pending)
   archived_from_status                        project_status?
-  start_date                                  DateTime                           @db.Date
+  /// NULL solo en draft (chk_projects_draft_requirements); obligatoria en cualquier otro estado.
+  start_date                                  DateTime?                          @db.Date
   end_date                                    DateTime?                          @db.Date
   budget                                      Decimal?                           @db.Decimal(10, 2)
   progress                                    BigInt                             @default(0)
   created_at                                  DateTime                           @default(now()) @db.Timestamptz(6)
   updated_at                                  DateTime                           @default(now()) @db.Timestamptz(6)
   deleted_at                                  DateTime?                          @db.Timestamptz(6)
-  project_type                                project_type
-  location                                    String                             @db.VarChar(255)
+  /// project_type, location y has_plans: NULL solo en draft («todavía desconocido»).
+  project_type                                project_type?
+  location                                    String?                            @db.VarChar(255)
   city                                        String?                            @db.VarChar(100)
   state                                       String?                            @db.VarChar(100)
   country                                     String?                            @db.VarChar(100)
-  has_plans                                   Boolean                            @default(false)
+  has_plans                                   Boolean?                           @default(false)
   general_area                                Decimal?                           @db.Decimal(10, 2)
   construction_area                           Decimal?                           @db.Decimal(10, 2)
   area_unit                                   String                             @default("mts") @db.VarChar(20)
@@ -838,6 +840,11 @@ model quotes {
   updated_by     BigInt
   created_at     DateTime         @default(now()) @db.Timestamptz(6)
   updated_at     DateTime         @default(now()) @db.Timestamptz(6)
+  /// Idempotencia del alta: UUID del formulario y SHA-256 del contenido normalizado (ambos NULL o
+  /// ambos informados, chk_quotes_submission). Único por autor con el índice parcial
+  /// uq_quotes_created_by_submission (WHERE submission_id IS NOT NULL), definido en la migración.
+  submission_id          String?  @db.Uuid
+  submission_fingerprint String?  @db.Char(64)
   users_created  users            @relation("quotes_created_by", fields: [created_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quotes_created_by")
   users_updated  users            @relation("quotes_updated_by", fields: [updated_by], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quotes_updated_by")
   quote_versions quote_versions[]
@@ -1096,7 +1103,10 @@ enum project_compatibility_level {
   poorly_defined
 }
 
+/// draft: proyecto preliminar creado desde una cotización, solo visible para administración. Es
+/// exclusivo de projects (chk_project_stages_status_not_draft, chk_project_milestones_status_not_draft).
 enum project_status {
+  draft
   pending
   in_process
   finished

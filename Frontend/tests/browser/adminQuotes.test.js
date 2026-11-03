@@ -69,7 +69,10 @@ after(async () => {
 function buildQuote(id, payload, version, createdAt, services = SERVICES, referenceVat = QUOTE_REFERENCE_VAT) {
   const totals = calculateQuoteTotals({ items: payload.items, referenceVat });
   const client = CLIENTS.find((candidate) => candidate.id === payload.clientId);
-  const project = PROJECTS[payload.clientId].find((candidate) => candidate.id === payload.projectId);
+  // Un alta con newProjectName crea el proyecto Draft (como el backend): id ficticio de la prueba.
+  const project = payload.newProjectName
+    ? { id: 900, name: payload.newProjectName }
+    : PROJECTS[payload.clientId].find((candidate) => candidate.id === payload.projectId);
   return {
     client: { id: client.id, name: client.name },
     code: `COT-${String(id).padStart(3, "0")}`,
@@ -378,7 +381,7 @@ test("una unidad por servicio: cada forma de cobro es un concepto con su unidad 
   await page.locator("#quote-client").fill("Leo");
   await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
   await page.locator("#quote-project").click();
-  await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
+  await page.getByRole("option", { name: /Apto\. 910/ }).first().click();
 
   // El selector muestra una sola unidad por servicio, sin estados de tarifa pendiente.
   const picker = page.getByRole("region", { name: "Seleccionar servicios" });
@@ -425,7 +428,7 @@ test("alta: validación local, cliente y proyecto reales, servicios del tabulado
   await page.locator("#quote-client").fill("Leo");
   await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
   await page.locator("#quote-project").click();
-  await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
+  await page.getByRole("option", { name: /Apto\. 910/ }).first().click();
 
   // El servicio inactivo no se ofrece en cotizaciones nuevas.
   const picker = page.getByRole("region", { name: "Seleccionar servicios" });
@@ -448,7 +451,9 @@ test("alta: validación local, cliente y proyecto reales, servicios del tabulado
   await page.getByText("Has creado la cotización exitosamente").waitFor();
   const posts = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
   assert.equal(posts.length, 1, "Una sola alta");
-  assert.deepEqual(posts[0].body, {
+  const { submissionId, ...postBody } = posts[0].body;
+  assert.match(submissionId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, "Identificador de envío idempotente");
+  assert.deepEqual(postBody, {
     clientId: 3,
     // Con una sola unidad cotizable, el concepto envía su posición (1, la principal).
     items: [{ quantity: "200", serviceId: 1, unitRate: "14" }, { quantity: "35", serviceId: 2, unitRate: "47" }],
@@ -743,11 +748,11 @@ test("IVA referencial: IVA y total estimado informativos encima del total de la 
   await page.locator("#quote-client").fill("Leo");
   await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
   await page.locator("#quote-project").click();
-  await page.getByRole("button", { name: /Apto\. 910/ }).first().click();
+  await page.getByRole("option", { name: /Apto\. 910/ }).first().click();
   await page.getByRole("button", { name: "Guardar" }).click();
   await page.getByText("Has creado la cotización exitosamente").waitFor();
   const [post] = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
-  assert.deepEqual(Object.keys(post.body).sort(), ["clientId", "items", "notes", "projectId"], "La tasa la decide el servidor");
+  assert.deepEqual(Object.keys(post.body).sort(), ["clientId", "items", "notes", "projectId", "submissionId"], "La tasa la decide el servidor");
   assert.deepEqual(backend.quotes.at(-1).referenceVat, { amount: "712.80", enabled: true, isReferenceOnly: true, rate: "16.00" });
 });
 
@@ -943,4 +948,84 @@ test("observaciones: caja de Figma a todo el ancho del formulario y 130 px de al
     });
     assert.deepEqual(box, { height: 130, width: 0 }, `${viewport.width} px`);
   }
+});
+
+test("proyecto nuevo: el nombre escrito se guarda como Draft; Enter y las coincidencias nunca eligen solos", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  const project = page.locator("#quote-project");
+  /**
+   * Mide la caja con borde (el control visible de Figma) de un campo.
+   *
+   * @param {import("playwright").Locator} field - Campo nativo.
+   * @returns {Promise<Array<number>>} Alto y ancho redondeados.
+   */
+  const controlBox = (field) => field.evaluate((node) => {
+    let element = node;
+    while (element && getComputedStyle(element).borderTopWidth === "0px") element = element.parentElement;
+    const { height, width } = element.getBoundingClientRect();
+    return [Math.round(height), Math.round(width)];
+  });
+  await page.locator("#quote-client").fill("Leo");
+  await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).click();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+
+  // Coincidencia parcial y Enter sin opción activa: no se elige «Apto. 910» ni se envía el formulario.
+  await project.fill("Apto");
+  await page.getByRole("option", { name: /Apto\. 910/ }).waitFor();
+  assert.equal(await project.getAttribute("role"), "combobox");
+  await project.press("Enter");
+  assert.equal(await project.inputValue(), "Apto");
+  assert.equal(await page.getByRole("button", { name: "Quitar Apto. 910" }).count(), 0);
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false);
+
+  // Teclado: la flecha activa la sugerencia y Escape cierra la lista sin elegir.
+  await project.press("ArrowDown");
+  assert.equal(await project.getAttribute("aria-activedescendant"), "quote-project-tags-option-0");
+  assert.equal(await page.getByRole("option", { name: /Apto\. 910/ }).getAttribute("aria-selected"), "true");
+  await project.press("Escape");
+  assert.equal(await page.getByRole("option").count(), 0);
+  assert.equal(await project.inputValue(), "Apto");
+
+  // El nombre exacto de un proyecto existente pide seleccionarlo y no se guarda como proyecto nuevo.
+  await project.fill("apto.  910");
+  await page.getByText("Ya existe el proyecto «Apto. 910» para este cliente. Selecciónalo en las sugerencias.").waitFor();
+  await page.getByRole("button", { name: "Guardar" }).click();
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false, "Una coincidencia exacta no se envía");
+
+  // Un nombre nuevo se guarda directamente: el backend crea el proyecto Draft al guardar.
+  await project.fill("Casa del Lago");
+  await page.getByText("Se creará como proyecto Draft al guardar la cotización.").waitFor();
+  await page.locator("#quote-notes").click();
+  assert.deepEqual(await controlBox(project), await controlBox(page.locator("#quote-client")), "Mismo control que «Nombre del cliente»");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await page.getByText("Has creado la cotización exitosamente").waitFor();
+  const posts = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes");
+  assert.equal(posts.length, 1);
+  const { submissionId, ...body } = posts[0].body;
+  assert.match(submissionId, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(body, {
+    clientId: 3,
+    items: [{ quantity: "1", serviceId: 1, unitRate: "14" }],
+    newProjectName: "Casa del Lago",
+    notes: null,
+  });
+  assert.equal(backend.quotes.at(-1).project.name, "Casa del Lago");
+});
+
+test("edición: el proyecto solo se elige entre los existentes; el texto escrito no crea proyectos", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/1/editar" });
+  await page.getByRole("button", { name: "Quitar Apto. 910" }).click();
+  const project = page.locator("#quote-project");
+  await project.fill("Casa nueva");
+  assert.equal(await page.getByText("Se creará como proyecto Draft al guardar la cotización.").count(), 0);
+  await page.getByRole("button", { name: "Actualizar" }).click();
+  await page.getByText("Selecciona o escribe el proyecto del cliente.").waitFor();
+  assert.equal(backend.requests.some((request) => request.method === "PATCH"), false);
+  await project.fill("Apto");
+  await page.getByRole("option", { name: /Apto\. 910/ }).click();
+  await page.getByRole("button", { name: "Quitar Apto. 910" }).waitFor();
 });

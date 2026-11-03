@@ -1,3 +1,4 @@
+import { describeProjectNameError, normalizeProjectName, projectNameKey } from "../../../../../../Backend/src/domain/projectName.js";
 import { QUOTE_INPUT_FORMATS, parseDecimalInput } from "./quoteAmounts.js";
 
 // Borrador del formulario de cotización (Figma 5771:452483) y su traducción al contrato de la
@@ -5,6 +6,34 @@ import { QUOTE_INPUT_FORMATS, parseDecimalInput } from "./quoteAmounts.js";
 
 export const QUOTE_NOTES_MAX_LENGTH = 2000;
 export const EMPTY_QUOTE_DRAFT = Object.freeze({ client: null, lines: [], notes: "", project: null });
+
+// Proyecto del borrador: uno existente elegido en las sugerencias o, solo en el alta, el nombre de
+// uno nuevo que el backend crea como Draft al guardar la cotización.
+export const PROJECT_KIND = Object.freeze({ EXISTING: "existing", NEW: "new" });
+
+/**
+ * Busca entre las sugerencias del cliente un proyecto con exactamente el nombre escrito, con la
+ * misma clave que la unicidad de PostgreSQL (sin distinguir mayúsculas, con tildes y espacios
+ * normalizados). Una coincidencia se pide seleccionar: nunca se crea otro ni se vincula en silencio.
+ *
+ * @param {Array<{id: number, name: string}>} options - Proyectos sugeridos del cliente.
+ * @param {string} name - Nombre escrito.
+ * @returns {{id: number, name: string}|null} Proyecto coincidente o null.
+ */
+export function findExactProjectMatch(options, name) {
+  const key = projectNameKey(name);
+  return key ? options.find((option) => projectNameKey(option.name) === key) ?? null : null;
+}
+
+/**
+ * Explica que el nombre escrito ya pertenece a un proyecto del cliente y debe seleccionarse.
+ *
+ * @param {{name: string}} project - Proyecto existente coincidente.
+ * @returns {string} Mensaje para el campo.
+ */
+export function describeExistingProjectMatch(project) {
+  return `Ya existe el proyecto «${project.name}» para este cliente. Selecciónalo en las sugerencias.`;
+}
 
 /**
  * Quita los ceros decimales sobrantes de un decimal de la API para editarlo (`200.000` → `200`,
@@ -93,7 +122,7 @@ export function draftFromQuote(quote) {
       unitRate: toEditableDecimal(item.unitRate),
     })),
     notes: quote.notes ?? "",
-    project: { id: quote.project.id, name: quote.project.name },
+    project: { id: quote.project.id, kind: PROJECT_KIND.EXISTING, name: quote.project.name },
   };
 }
 
@@ -111,13 +140,18 @@ function toPayloadDecimal(value, format) {
 }
 
 /**
- * Traduce el borrador al cuerpo de `POST/PATCH /admin/quotes`: ids del cliente y del proyecto,
+ * Traduce el borrador al cuerpo de `POST/PATCH /admin/quotes`: id del cliente, id del proyecto
+ * existente o nombre normalizado del proyecto nuevo (`newProjectName`, solo en el alta),
  * observaciones (vacías → null) y conceptos con cantidad y tarifa como texto decimal.
  *
  * @param {Object} draft - Borrador.
- * @returns {{clientId: number|null, projectId: number|null, notes: string|null, items: Array<Object>}} Cuerpo.
+ * @returns {{clientId: number|null, projectId?: number|null, newProjectName?: string, notes: string|null,
+ *   items: Array<Object>}} Cuerpo.
  */
 export function toQuotePayload(draft) {
+  const project = draft.project?.kind === PROJECT_KIND.NEW
+    ? { newProjectName: normalizeProjectName(draft.project.name) }
+    : { projectId: draft.project?.id ?? null };
   return {
     clientId: draft.client?.id ?? null,
     items: draft.lines.map((line) => ({
@@ -126,22 +160,31 @@ export function toQuotePayload(draft) {
       unitRate: toPayloadDecimal(line.unitRate, QUOTE_INPUT_FORMATS.unitRate),
     })),
     notes: draft.notes.trim() || null,
-    projectId: draft.project?.id ?? null,
+    ...project,
   };
 }
 
 /**
  * Valida el borrador antes de enviarlo con las mismas reglas que el backend, para señalar los
- * campos sin una petición. Devuelve los errores por ruta (`clientId`, `items.0.quantity`...).
+ * campos sin una petición. Devuelve los errores por ruta (`clientId`, `newProjectName`,
+ * `items.0.quantity`...). Un proyecto nuevo con el nombre exacto de uno existente se rechaza para
+ * que se seleccione el existente.
  *
  * @param {Object} draft - Borrador.
  * @param {{lines: Array<{errors: Object}>}} preview - Resultado de calculateQuotePreview.
+ * @param {{existingProjectMatch?: {name: string}|null}} [context] - Coincidencia exacta del nombre nuevo.
  * @returns {Record<string, string>} Errores; vacío si es válido.
  */
-export function validateQuoteDraft(draft, preview) {
+export function validateQuoteDraft(draft, preview, { existingProjectMatch = null } = {}) {
   const fields = {};
   if (!draft.client) fields.clientId = "Selecciona el cliente de la cotización.";
-  if (!draft.project) fields.projectId = draft.client ? "Selecciona el proyecto del cliente." : "Selecciona primero el cliente.";
+  if (!draft.project) {
+    fields.projectId = draft.client ? "Selecciona o escribe el proyecto del cliente." : "Selecciona primero el cliente.";
+  } else if (draft.project.kind === PROJECT_KIND.NEW) {
+    const nameError = describeProjectNameError(draft.project.name)
+      || (existingProjectMatch ? describeExistingProjectMatch(existingProjectMatch) : null);
+    if (nameError) fields.newProjectName = nameError;
+  }
   if (draft.lines.length === 0) fields.items = "Añade al menos un servicio a la cotización.";
   if (draft.notes.trim().length > QUOTE_NOTES_MAX_LENGTH) fields.notes = `Admite como máximo ${QUOTE_NOTES_MAX_LENGTH} caracteres.`;
   preview.lines.forEach((line, index) => {

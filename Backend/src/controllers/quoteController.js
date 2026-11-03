@@ -67,8 +67,9 @@ export async function getQuoteById(req, res, next) {
 }
 
 /**
- * Crea una cotización con el administrador autenticado como autor.
- * Responde 201 con la cotización creada y su código generado.
+ * Crea una cotización (y su proyecto draft si se pidió uno nuevo) con el administrador autenticado
+ * como autor. Responde 201 con la cotización creada, o 200 con `replayed: true` si el envío repetía
+ * un alta ya registrada.
  *
  * @param {import("express").Request} req - Solicitud con el cuerpo validado.
  * @param {import("express").Response} res - Respuesta HTTP.
@@ -77,7 +78,12 @@ export async function getQuoteById(req, res, next) {
  */
 export async function postQuote(req, res, next) {
   try {
-    const quote = await createQuote({ payload: req.body, user: req.user });
+    const { quote, replayed } = await createQuote({ payload: req.body, user: req.user });
+    // Un reintento del mismo envío no crea registros: devuelve la cotización ya guardada con 200.
+    if (replayed) {
+      res.status(200).json({ message: "La cotización ya estaba guardada.", quote, replayed: true });
+      return;
+    }
     res.status(201).json({ message: "Cotización creada correctamente.", quote });
   } catch (error) {
     next(error);

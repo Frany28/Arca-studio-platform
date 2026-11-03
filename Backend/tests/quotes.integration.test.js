@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
 import { createIsolatedMigrationDatabase } from "./helpers/isolatedMigrationDatabase.js";
@@ -49,7 +50,7 @@ async function createService(overrides) {
  * @returns {object} Cuerpo como lo deja quoteCreateSchema.
  */
 function quoteBody(items, overrides = {}) {
-  return { clientId: ids.client, items, notes: null, projectId: ids.project, ...overrides };
+  return { clientId: ids.client, items, notes: null, projectId: ids.project, submissionId: randomUUID(), ...overrides };
 }
 
 before(async () => {
@@ -79,7 +80,7 @@ after(async () => {
 test("alta y edición: COT- con el id, importes del motor y versiones inmutables", { skip }, async () => {
   const anteproyecto = await createService({ name: "Anteproyecto arquitectónico" });
   const puntos = await createService({ measurementUnitId: ids.point, name: "Puntos eléctricos", referenceRate: "47.00" });
-  const created = await quotes.createQuote({
+  const { quote: created } = await quotes.createQuote({
     payload: quoteBody([{ quantity: "200.000", serviceId: anteproyecto, unitRate: "14.00" }, { quantity: "35.000", serviceId: puntos, unitRate: "47.00" }]),
     user: { id: ids.admin },
   });
@@ -151,7 +152,7 @@ test("listado: orden por total con cursor estable y filtro por intervalo de fech
 test("IVA referencial: 16 % guardado con el redondeo del motor, la edición conserva la tasa y los CHECK rechazan incoherencias", { skip }, async () => {
   const service = await createService({ name: "Servicio con IVA" });
   // 33.33 × 16 % = 5.3328 → 5.33 (mitad hacia arriba, igual que round() de PostgreSQL).
-  const created = await quotes.createQuote({ payload: quoteBody([{ quantity: "1.000", serviceId: service, unitRate: "33.33" }]), user: { id: ids.admin } });
+  const { quote: created } = await quotes.createQuote({ payload: quoteBody([{ quantity: "1.000", serviceId: service, unitRate: "33.33" }]), user: { id: ids.admin } });
   assert.deepEqual(created.referenceVat, { amount: "5.33", enabled: true, isReferenceOnly: true, rate: "16.00" });
   assert.equal(created.estimatedTotalWithVat, "38.66");
 

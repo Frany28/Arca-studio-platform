@@ -72,10 +72,14 @@ export const quotesApi = {
   },
 
   /**
-   * Crea una cotización. El sistema genera el código (`COT-001`) y calcula los importes.
+   * Crea una cotización. El sistema genera el código (`COT-001`) y calcula los importes. Con
+   * `newProjectName` en lugar de `projectId`, el backend crea el proyecto Draft del cliente en la
+   * misma transacción. `submissionId` hace idempotente el alta: repetirlo con el mismo contenido
+   * devuelve la cotización ya guardada (`replayed: true`).
    *
-   * @param {{clientId: number, projectId: number, notes: string|null, items: Array<Object>}} payload - Contenido.
-   * @returns {Promise<{message: string, quote: Object}>} Cotización creada.
+   * @param {{clientId: number, projectId?: number, newProjectName?: string, submissionId: string,
+   *   notes: string|null, items: Array<Object>}} payload - Contenido.
+   * @returns {Promise<{message: string, quote: Object, replayed?: boolean}>} Cotización creada o ya registrada.
    */
   createQuote(payload) {
     return apiRequest("/admin/quotes", { body: JSON.stringify(payload), method: "POST" });

@@ -1,7 +1,9 @@
 import { getAvatarPresentation } from "../../../../../utils/avatarPresentation.js";
-import { FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "../../../../../utils/projectStatus.js";
+import { DRAFT_PROJECT_STATUS, FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "../../../../../utils/projectStatus.js";
 
 const STATUS_DETAILS = {
+  // Proyecto preliminar (estado real de PostgreSQL) creado desde una cotización.
+  [DRAFT_PROJECT_STATUS]: { label: "Drafts", theme: "Brand 1" },
   [FINISHED_PROJECT_STATUS]: { label: "Finalizado", theme: "Success" },
   archived: { label: "Archivado", theme: "Archived" },
   in_process: { label: "En progreso", theme: "Info" },
@@ -18,11 +20,11 @@ export const STATUS_FILTER_ITEMS = [
   { id: "archived", label: "Archivado", type: "Checkbox" },
 ];
 
-// Etiquetas de presentación propias de Gestión; no alteran estados ni contratos HTTP.
+// Filtros propios de Gestión: «En espera» (pending) y «Drafts» (draft, proyectos preliminares).
 export const MANAGEMENT_STATUS_FILTER_ITEMS = [
   ...STATUS_FILTER_ITEMS,
   { id: "pending", label: "En espera", type: "Checkbox" },
-  { id: "draft", label: "Drafts", type: "Checkbox" },
+  { id: DRAFT_PROJECT_STATUS, label: "Drafts", type: "Checkbox" },
 ];
 
 /**
@@ -44,7 +46,6 @@ export function getStatusFilterId(status) {
 export function getStatus(project, variant = "dashboard") {
   if (variant === "management") {
     if (project.status === "pending") return { label: "En espera", theme: "Neutral" };
-    if (project.status === "draft") return { label: "Drafts", theme: "Brand 1" };
     if (["pending_approval", "request"].includes(project.status)) return { label: "Solicitud", theme: "Brand 1" };
   }
   return STATUS_DETAILS[normalizeProjectStatus(project.status)] || { label: "Solicitud", theme: "Neutral" };

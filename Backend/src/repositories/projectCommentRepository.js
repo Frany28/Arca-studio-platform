@@ -2,6 +2,7 @@ import { pool, query } from "../config/db.js";
 import { PROJECT_STATUS } from "../domain/projectStatus.js";
 import { sanitizeCommentMetadata } from "../utils/commentMetadata.js";
 import { encodeCursor, pageResult } from "../utils/pagination.js";
+import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
 
 // Ventana que el cursor de sincronización vuelve a leer (P1-1). Supera statement_timeout (10 s), que
 // acota cuánto puede esperar el bloqueo un comentario antes de confirmarse.
@@ -102,18 +103,18 @@ function getProjectAccessCondition(user, projectAlias = "p") {
   if (roleCode === "architect") {
     return {
       params: [user.id],
-      sql: `(${projectAlias}.assigned_architect_id = $1 or exists (
+      sql: `((${projectAlias}.assigned_architect_id = $1 or exists (
         select 1 from public.project_assignees assignment
         where assignment.project_id = ${projectAlias}.id
           and assignment.user_id = $1
-      ))`,
+      )) and ${nonDraftProjectCondition(projectAlias)})`,
     };
   }
 
   if (roleCode === "client" && user.clientId) {
     return {
       params: [user.clientId],
-      sql: `${projectAlias}.client_id = $1`,
+      sql: `(${projectAlias}.client_id = $1 and ${nonDraftProjectCondition(projectAlias)})`,
     };
   }
 
@@ -332,6 +333,7 @@ export async function createProjectCommentRecord({
         where p.id = $${projectIdParam}
           and p.deleted_at is null
           and p.status not in (
+            '${PROJECT_STATUS.DRAFT}'::public.project_status,
             'archived'::public.project_status,
             '${PROJECT_STATUS.FINISHED}'::public.project_status
           )
@@ -553,6 +555,7 @@ export async function createDocumentCommentRecord({
         where p.id = $${offset + 1}
           and p.deleted_at is null
           and p.status not in (
+            '${PROJECT_STATUS.DRAFT}'::public.project_status,
             'archived'::public.project_status,
             '${PROJECT_STATUS.FINISHED}'::public.project_status
           )

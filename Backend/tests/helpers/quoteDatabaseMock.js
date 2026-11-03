@@ -41,7 +41,9 @@ function createInitialState() {
       [3, { id: 3, isAvailable: true, name: "Leonel Pérez" }],
       [4, { id: 4, isAvailable: false, name: "Cliente inactivo" }],
     ]),
+    auditLogs: [],
     items: [],
+    nextProjectId: 50,
     nextQuoteId: 1,
     nextVersionId: 1,
     projects: new Map([
@@ -49,6 +51,8 @@ function createInitialState() {
       [10, { clientId: 4, id: 10, isAvailable: true, name: "Casa de otro cliente" }],
       [11, { clientId: 3, id: 11, isAvailable: false, name: "Proyecto eliminado" }],
     ]),
+    // Solicitudes activas (pending_verification, pending_review, approved) por cliente.
+    projectRequests: [{ clientId: 3, id: 70, name: "Casa en revisión", status: "pending_review" }],
     quotes: [],
     serviceVersions: new Map([
       [10, { code: "SERV-001", id: 10, kind: "turnkey", name: "Anteproyecto arquitectónico", referenceRate: "14.00", serviceId: 1, unitAllowsDecimals: true, unitDenomination: "de construcción", unitSymbol: "m²" }],
@@ -140,6 +144,32 @@ export function createQuoteDatabaseMock() {
     const result = (rows, rowCount = rows.length) => ({ rowCount, rows });
 
     if (/^(begin|commit|rollback)$/i.test(text)) return result([]);
+    if (text.startsWith("select pg_advisory_xact_lock(hashtextextended($1, 0))")) return result([{}]);
+    if (text.startsWith("select id, submission_fingerprint from public.quotes where created_by = $1 and submission_id = $2")) {
+      const quote = state.quotes.find((candidate) => candidate.createdBy === params[0] && candidate.submissionId === params[1]);
+      return result(quote ? [{ id: String(quote.id), submission_fingerprint: quote.submissionFingerprint }] : []);
+    }
+    if (text.startsWith("select source, id, name, status from ( select 'project' as source")) {
+      const key = String(params[1]).toLowerCase();
+      const project = [...state.projects.values()].find((candidate) => candidate.clientId === Number(params[0])
+        && candidate.isAvailable && candidate.status !== "cancelled" && candidate.name.toLowerCase() === key);
+      const request = state.projectRequests.find((candidate) => candidate.clientId === Number(params[0]) && candidate.name.toLowerCase() === key);
+      if (project) return result([{ id: String(project.id), name: project.name, source: "project", status: project.status ?? "pending" }]);
+      return result(request ? [{ id: String(request.id), name: request.name, source: "project_request", status: request.status }] : []);
+    }
+    if (text.includes("pg_get_serial_sequence('public.projects', 'id')")) return result([{ id: String(state.nextProjectId++) }]);
+    if (text.startsWith("insert into public.projects")) {
+      const [id, clientId, createdBy, name, status, publicSlug] = params;
+      const taken = [...state.projects.values()].some((candidate) => candidate.clientId === clientId && candidate.isAvailable
+        && candidate.name.toLowerCase() === name.toLowerCase());
+      if (taken) throw Object.assign(new Error("duplicate key"), { code: "23505", constraint: "uq_projects_client_active_name" });
+      state.projects.set(Number(id), { clientId, createdBy, id: Number(id), isAvailable: true, name, publicSlug, status });
+      return result([{ id: String(id), name }]);
+    }
+    if (text.startsWith("insert into public.audit_logs")) {
+      state.auditLogs.push({ action: params[1], entityId: params[3], entityType: params[2], newValues: JSON.parse(params[5]), userId: params[0] });
+      return result([{ id: String(state.auditLogs.length) }]);
+    }
     if (text.startsWith("select id, name, (deleted_at is null and status = 'active') as is_available from public.clients")) {
       const client = state.clients.get(Number(params[0]));
       return result(client ? [{ id: String(client.id), is_available: client.isAvailable, name: client.name }] : []);
@@ -170,7 +200,10 @@ export function createQuoteDatabaseMock() {
     if (text.includes("pg_get_serial_sequence('public.quotes', 'id')")) return result([{ id: String(state.nextQuoteId++) }]);
     if (text.startsWith("insert into public.quotes")) {
       const now = new Date().toISOString();
-      state.quotes.push({ code: params[1], createdAt: now, createdBy: params[2], id: Number(params[0]), updatedAt: now, updatedBy: params[2] });
+      state.quotes.push({
+        code: params[1], createdAt: now, createdBy: params[2], id: Number(params[0]), submissionFingerprint: params[4],
+        submissionId: params[3], updatedAt: now, updatedBy: params[2],
+      });
       return result([], 1);
     }
     if (text.startsWith("insert into public.quote_versions")) {

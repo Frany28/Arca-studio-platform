@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { api } from "../../../../api/http.js";
 import { useRemoteOptions } from "../hooks/useRemoteOptions.js";
+import { PROJECT_KIND, describeExistingProjectMatch } from "../utils/quoteDraft.js";
 import QuoteEntityTagField from "./QuoteEntityTagField.jsx";
 
 /**
@@ -36,29 +37,38 @@ function toProjectTag(project) {
 }
 
 /**
+ * Aviso del campo de proyecto mientras se escribe un nombre nuevo (solo en el alta): pide elegir
+ * la coincidencia exacta con un proyecto existente o confirma que se creará como Draft al guardar.
+ *
+ * @param {{newProjectName: string, exactMatch: Object|null}} projectField - Estado del campo.
+ * @returns {{error: string, status: string}} Error o aviso informativo (vacíos si no aplica).
+ */
+function describeNewProjectName({ exactMatch, newProjectName }) {
+  if (!newProjectName.trim()) return { error: "", status: "" };
+  if (exactMatch) return { error: describeExistingProjectMatch(exactMatch), status: "" };
+  return { error: "", status: "Se creará como proyecto Draft al guardar la cotización." };
+}
+
+/**
  * «Datos generales» del formulario (Figma 5771:449998): cliente registrado y proyecto de ese
  * cliente, ambos con búsqueda en la API. Los proyectos solo se consultan tras elegir el cliente y
- * cambiar de cliente retira el proyecto elegido (lo hace el borrador).
+ * cambiar de cliente retira el proyecto elegido o escrito (lo hace el borrador) y la búsqueda. En el
+ * alta, un nombre que no corresponde a ningún proyecto se guarda como proyecto nuevo (Draft); la
+ * selección de un proyecto existente es siempre explícita.
  *
  * @param {Object} props - Selección, errores y callbacks.
  * @param {Object|null} props.client - Cliente elegido.
- * @param {Object|null} props.project - Proyecto elegido.
  * @param {(client: Object|null) => void} props.onClientChange - Elige o retira el cliente.
+ * @param {ReturnType<typeof import("../hooks/useQuoteProjectField.js").useQuoteProjectField>} props.projectField - Campo de proyecto.
  * @param {(project: Object|null) => void} props.onProjectChange - Elige o retira el proyecto.
- * @param {{clientId?: string, projectId?: string}} props.errors - Errores de validación.
+ * @param {{clientId?: string, projectId?: string, newProjectName?: string}} props.errors - Errores de validación.
  * @param {boolean} props.disabled - Bloquea los campos durante el guardado.
  * @returns {import("react").ReactElement} Sección.
  */
-function QuoteGeneralDataSection({ client, disabled, errors, onClientChange, onProjectChange, project }) {
+function QuoteGeneralDataSection({ client, disabled, errors, onClientChange, onProjectChange, projectField }) {
   const [clientQuery, setClientQuery] = useState("");
-  const [projectQuery, setProjectQuery] = useState("");
   const clients = useRemoteOptions({ enabled: !client, load: loadClients, query: clientQuery });
-  const projects = useRemoteOptions({
-    enabled: Boolean(client) && !project,
-    load: (query) => api.quotes.listClientProjects({ ...query, clientId: client.id }).then((payload) => payload.projects),
-    query: projectQuery,
-    scope: String(client?.id ?? ""),
-  });
+  const newProject = describeNewProjectName(projectField);
 
   return (
     <section className="flex flex-col gap-[16px]" aria-labelledby="quote-general-data-title">
@@ -76,7 +86,10 @@ function QuoteGeneralDataSection({ client, disabled, errors, onClientChange, onP
           remote={clients}
           query={clientQuery}
           onQueryChange={setClientQuery}
-          onChange={onClientChange}
+          onChange={(nextClient) => {
+            projectField.resetSearch();
+            onClientChange(nextClient);
+          }}
           error={errors.clientId}
           disabled={disabled}
         />
@@ -86,14 +99,16 @@ function QuoteGeneralDataSection({ client, disabled, errors, onClientChange, onP
           icon={<Edit2 size="20" color="currentColor" />}
           placeholder={client ? "Ej. “Apto. 910”" : "Selecciona primero el cliente"}
           emptyMessage="Este cliente no tiene proyectos que coincidan."
-          selected={project}
+          selected={projectField.selectedProject}
           toTag={toProjectTag}
           withAvatar={false}
-          remote={projects}
-          query={projectQuery}
-          onQueryChange={setProjectQuery}
-          onChange={onProjectChange}
-          error={errors.projectId}
+          remote={projectField.remote}
+          query={projectField.query}
+          onQueryChange={projectField.changeQuery}
+          onChange={(project) => onProjectChange(project ? { id: project.id, kind: PROJECT_KIND.EXISTING, name: project.name } : null)}
+          error={errors.projectId || errors.newProjectName || newProject.error}
+          statusHint={newProject.status}
+          explicitSelection
           disabled={disabled || !client}
         />
       </div>

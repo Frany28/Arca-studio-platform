@@ -1,4 +1,6 @@
 export const FINISHED_PROJECT_STATUS = "finished";
+// Proyecto preliminar creado desde una cotización; solo lo recibe administración.
+export const DRAFT_PROJECT_STATUS = "draft";
 
 /**
  * Normaliza únicamente el alias histórico de finalización de proyectos.

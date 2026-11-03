@@ -11,6 +11,12 @@ export const QUOTE_VERSION_CONFLICT_MESSAGE =
   "Otro administrador modificó esta cotización. Recarga los datos antes de guardar.";
 
 const VERSION_UNIQUE_CONSTRAINTS = new Set(["uq_quote_versions_current", "uq_quote_versions_quote_version"]);
+// Dos altas simultáneas con el mismo nombre de proyecto nuevo: la segunda espera al COMMIT de la
+// primera y choca con la unicidad del nombre por cliente.
+const PROJECT_NAME_UNIQUE_CONSTRAINT = "uq_projects_client_active_name";
+const PROJECT_NAME_TAKEN_MESSAGE = "Ya existe un proyecto con este nombre para el cliente. Selecciónalo en las sugerencias.";
+// Respaldo del bloqueo consultivo del envío (lockQuoteSubmission).
+const SUBMISSION_UNIQUE_CONSTRAINT = "uq_quotes_created_by_submission";
 const FOREIGN_KEY_FIELDS = Object.freeze({
   fk_quote_items_service: "items",
   fk_quote_items_service_version: "items",
@@ -37,6 +43,12 @@ export function translateQuoteError(error) {
       if (error.constraint === "uq_quote_items_version_service") {
         return new ValidationError(undefined, { items: "Cada servicio solo puede incluirse una vez." });
       }
+      if (error.constraint === PROJECT_NAME_UNIQUE_CONSTRAINT) {
+        return new ValidationError(undefined, { newProjectName: PROJECT_NAME_TAKEN_MESSAGE });
+      }
+      if (error.constraint === SUBMISSION_UNIQUE_CONSTRAINT) {
+        return new ConflictError("QUOTE_CONCURRENT_UPDATE", "La cotización se está guardando en este momento. Inténtalo de nuevo.", error);
+      }
       return new ConflictError("QUOTE_CONFLICT", "La cotización entra en conflicto con un registro existente.", error);
     case "23503":
       if (FOREIGN_KEY_FIELDS[error.constraint]) {
@@ -44,6 +56,9 @@ export function translateQuoteError(error) {
       }
       return new ConflictError("QUOTE_REFERENCE_CONFLICT", "Una referencia de la cotización ya no está disponible.", error);
     case "23514":
+      if (error.constraint?.startsWith("chk_projects_")) {
+        return new ValidationError(undefined, { newProjectName: "El proyecto nuevo no cumple las reglas de un proyecto Draft." });
+      }
       return new ValidationError("Los datos de la cotización no cumplen las reglas de cálculo.");
     case "55000":
       return new ConflictError("QUOTE_HISTORY_IMMUTABLE", "Las versiones registradas de una cotización no se pueden modificar.", error);

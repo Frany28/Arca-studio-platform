@@ -1,0 +1,11 @@
+-- Estado draft de los proyectos: proyecto preliminar creado desde una cotización, todavía sin los
+-- datos técnicos de un proyecto operativo. No es un proyecto contratado ni en ejecución.
+--
+-- Solo añade el valor al enum. PostgreSQL no permite usar un valor nuevo en la misma transacción
+-- que lo crea, así que las restricciones que lo mencionan van en la migración siguiente
+-- (20261102121000_project_draft_requirements), igual que se hizo con 'archived'.
+--
+-- El enum también lo usan projects.archived_from_status, project_stages.status y
+-- project_milestones.status; la migración siguiente impide 'draft' en etapas e hitos. No modifica
+-- filas, triggers ni secuencias.
+ALTER TYPE public.project_status ADD VALUE IF NOT EXISTS 'draft' BEFORE 'pending';

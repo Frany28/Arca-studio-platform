@@ -25,7 +25,9 @@ export function describeQuoteSubmitError(error) {
  * Guarda el borrador como cotización nueva (POST) o como versión nueva (PATCH con
  * `expectedVersion`). Una petición en curso bloquea otra equivalente aunque se pulse dos veces
  * antes de re-renderizar, para no crear registros duplicados. Nada se da por guardado hasta
- * recibir la respuesta del servidor.
+ * recibir la respuesta del servidor. El alta envía un `submissionId` único por formulario que se
+ * conserva en los reintentos: si una respuesta se perdió tras guardar, el reintento devuelve la
+ * misma cotización (`replayed`) sin crear otra cotización ni otro proyecto.
  *
  * @param {Object} params - Modo del formulario.
  * @param {"create"|"edit"} params.mode - Alta o edición.
@@ -38,6 +40,8 @@ export function useQuoteSubmit({ expectedVersion, mode, quoteId }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState({ conflict: false, fieldErrors: {}, formError: "", notFound: false });
   const inFlightRef = useRef(false);
+  // Identificador del alta: se genera en el primer envío y se reutiliza en cada reintento.
+  const submissionIdRef = useRef(null);
 
   /**
    * Envía el borrador. Devuelve la respuesta de la API o null si falló o ya había un envío.
@@ -52,9 +56,9 @@ export function useQuoteSubmit({ expectedVersion, mode, quoteId }) {
     setResult({ conflict: false, fieldErrors: {}, formError: "", notFound: false });
     try {
       const payload = toQuotePayload(draft);
-      return mode === "edit"
-        ? await api.quotes.updateQuote({ payload: { ...payload, expectedVersion }, quoteId })
-        : await api.quotes.createQuote(payload);
+      if (mode === "edit") return await api.quotes.updateQuote({ payload: { ...payload, expectedVersion }, quoteId });
+      submissionIdRef.current ??= crypto.randomUUID();
+      return await api.quotes.createQuote({ ...payload, submissionId: submissionIdRef.current });
     } catch (error) {
       setResult(describeQuoteSubmitError(error));
       return null;

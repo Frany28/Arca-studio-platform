@@ -1,4 +1,4 @@
-import { FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "./projectStatus.js";
+import { DRAFT_PROJECT_STATUS, FINISHED_PROJECT_STATUS, normalizeProjectStatus } from "./projectStatus.js";
 
 /**
  * Reconoce finished como estado canónico de proyecto finalizado.
@@ -16,8 +16,8 @@ export function isProjectFinalized(projectOrStatus) {
 }
 
 /**
- * Marca archivados y finalizados como no modificables en la interfaz.
- * Evalúa estado operativo, sin comprobar el rol ni los permisos del usuario.
+ * Marca drafts, archivados y finalizados como no modificables en la interfaz (archivos, comentarios
+ * y responsables). Evalúa estado operativo, sin comprobar el rol ni los permisos del usuario.
  *
  * @param {Object|string|null} projectOrStatus - Proyecto o código de estado.
  * @returns {boolean} Si debe tratarse como solo lectura.
@@ -27,18 +27,20 @@ export function isProjectOperationallyReadOnly(projectOrStatus) {
     ? projectOrStatus
     : projectOrStatus?.status;
 
-  return status === "archived" || isProjectFinalized(status);
+  return status === "archived" || status === DRAFT_PROJECT_STATUS || isProjectFinalized(status);
 }
 
 /**
- * Devuelve el motivo de solo lectura para finalizados o el mensaje de desarchivo.
- * El consumidor debe comprobar antes el modo de solo lectura: cualquier estado
- * no finalizado recibe el mensaje de desarchivo, aunque no sea archived.
+ * Devuelve el motivo de solo lectura de un draft o un finalizado, o el mensaje de desarchivo.
+ * El consumidor debe comprobar antes el modo de solo lectura: cualquier otro estado
+ * recibe el mensaje de desarchivo, aunque no sea archived.
  *
  * @param {Object|string|null} projectOrStatus - Proyecto o código de estado.
  * @returns {string} Mensaje para impedir modificaciones.
  */
 export function getProjectReadOnlyMessage(projectOrStatus) {
+  const status = typeof projectOrStatus === "string" ? projectOrStatus : projectOrStatus?.status;
+  if (status === DRAFT_PROJECT_STATUS) return "El proyecto es un borrador (Draft): completa sus datos y actívalo antes de realizar cambios.";
   return isProjectFinalized(projectOrStatus)
     ? "El proyecto finalizado es de solo lectura."
     : "Desarchiva el proyecto para realizar cambios.";

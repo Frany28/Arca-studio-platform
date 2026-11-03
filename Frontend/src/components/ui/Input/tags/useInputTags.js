@@ -4,14 +4,16 @@ import { createTagFromText, normalizeTagItem, normalizeTagSearchText } from "./t
 /**
  * Coordina selección, sugerencias, teclado y foco de los tags.
  * La presencia de onTagsChange controla la selección; el valor común se controla aparte.
- * Sin ese callback, tags solo inicializa el estado interno.
+ * Sin ese callback, tags solo inicializa el estado interno. Con tagOptionSelection «explicit»,
+ * Enter y la coma nunca eligen ni crean un tag por coincidencia parcial: la selección es explícita
+ * (clic o la opción activa que gestiona el consumidor con su onKeyDown).
  * @param {object} options Tags, consulta, estado del valor común, refs y callbacks.
  * @returns {object} Selección visible, sugerencias, ref de scroll y acciones.
  */
 export default function useInputTags({
   resolvedType, tags, tagOptions, currentValue, hasInputText, maxVisibleTagOptions,
   isControlled, setInternalValue, disabled, onTagsChange, onTagOptionSelect,
-  onKeyDown, resolvedInputRef,
+  onKeyDown, resolvedInputRef, tagOptionSelection = "auto",
 }) {
   const [selectedTags, setSelectedTags] = useState(() =>
     Array.isArray(tags)
@@ -189,6 +191,7 @@ export default function useInputTags({
     if (disabled) return;
     if (resolvedType === "Tags") {
       if (
+        tagOptionSelection !== "explicit" &&
         (event.key === "Enter" || event.key === ",") &&
         hasInputText
       ) {

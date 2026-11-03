@@ -81,6 +81,28 @@ export async function submitProjectRequestReview({ payload, projectRequestId, us
   return result.review;
 }
 
+// Unicidad del nombre de proyecto por cliente (proyectos no cancelados ni eliminados, drafts incluidos).
+const PROJECT_NAME_UNIQUE_CONSTRAINT = "uq_projects_client_active_name";
+
+/**
+ * Traduce únicamente el conflicto de nombre al convertir una solicitud aprobada en proyecto: el
+ * cliente ya tiene un proyecto con ese nombre (por ejemplo, un draft creado desde una cotización
+ * mientras la solicitud estaba en revisión). Cualquier otro error, incluido otro 23505, se propaga.
+ *
+ * @param {Error & { code?: string, constraint?: string }} error - Error de la decisión.
+ * @returns {Error} ConflictError PROJECT_NAME_ALREADY_EXISTS o el error original.
+ */
+function translateProjectNameConflict(error) {
+  if (error?.code === "23505" && error.constraint === PROJECT_NAME_UNIQUE_CONSTRAINT) {
+    return new ConflictError(
+      "PROJECT_NAME_ALREADY_EXISTS",
+      "El cliente ya tiene un proyecto con el nombre de esta solicitud. Solicita correcciones para que el cliente cambie el nombre.",
+      error,
+    );
+  }
+  return error;
+}
+
 /**
  * Procesa el valor de apply proyecto solicitud decisión para completar la responsabilidad asignada al módulo.
  * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
@@ -97,13 +119,18 @@ export async function applyProjectRequestDecision({
   projectRequestId,
   user,
 }) {
-  const result = await decideProjectRequestRecord({
-    action: payload.action,
-    internalNotes: payload.internalNotes || null,
-    projectRequestId,
-    reason: payload.reason || null,
-    reviewedBy: user.id,
-  });
+  let result;
+  try {
+    result = await decideProjectRequestRecord({
+      action: payload.action,
+      internalNotes: payload.internalNotes || null,
+      projectRequestId,
+      reason: payload.reason || null,
+      reviewedBy: user.id,
+    });
+  } catch (error) {
+    throw translateProjectNameConflict(error);
+  }
 
   if (result.outcome === "not_found") {
     throw new NotFoundError(

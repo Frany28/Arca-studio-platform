@@ -10,15 +10,21 @@ test("Gestión: indicadores incluyen toda la colección y aliases históricos si
   assert.deepEqual(getAdminProjectMetrics(projects), { total: 5, inProgress: 1, finished: 2 });
   assert.deepEqual(projects, snapshot);
   assert.deepEqual(getAdminProjectMetrics([]), { total: 0, inProgress: 0, finished: 0 });
+  // Los drafts cuentan como proyectos registrados, pero no en progreso.
+  assert.deepEqual(getAdminProjectMetrics([...projects, { status: "draft" }]), { total: 6, inProgress: 1, finished: 2 });
 });
 
 test("Gestión: etiquetas específicas conservan los estados y la presentación del dashboard", () => {
-  for (const [status, label] of [["pending", "En espera"], ["draft", "Drafts"], ["request", "Solicitud"], ["pending_approval", "Solicitud"]]) {
+  for (const [status, label] of [["pending", "En espera"], ["request", "Solicitud"], ["pending_approval", "Solicitud"]]) {
     const project = Object.freeze({ status });
     assert.equal(getStatus(project, "management").label, label);
     assert.deepEqual(getStatus(project), { label: "Solicitud", theme: "Neutral" });
   }
   assert.deepEqual(getStatus({ status: "finished" }, "management"), getStatus({ status: "finished" }));
+  // draft es un estado real de PostgreSQL: «Drafts» en Gestión y en el dashboard.
+  for (const variant of ["management", "dashboard"]) {
+    assert.deepEqual(getStatus(Object.freeze({ status: "draft" }), variant), { label: "Drafts", theme: "Brand 1" });
+  }
 });
 
 test("Gestión: administrador accede al módulo y otros roles conservan su galería", () => {

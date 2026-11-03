@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
 import { applyMigration, createIsolatedMigrationDatabase } from "./helpers/isolatedMigrationDatabase.js";
@@ -13,6 +14,7 @@ const createApiRoles = process.env.ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES === "1
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
 const MIGRATION = "20261027120000_service_unit_options";
 const QUOTE_REFERENCE_VAT_MIGRATION = "20261031120000_quote_reference_vat";
+const QUOTE_SUBMISSION_MIGRATION = "20261102122000_quote_submission_id";
 const SINGLE_UNIT_MIGRATION = "20261030120000_service_single_unit_option";
 
 let database;
@@ -114,7 +116,7 @@ async function insertServiceWithAlternative({ alternative, code, name, rate, uni
  * @returns {object} Cuerpo como lo deja quoteCreateSchema.
  */
 function quoteBody(items) {
-  return { clientId: ids.client, items, notes: null, projectId: ids.project };
+  return { clientId: ids.client, items, notes: null, projectId: ids.project, submissionId: randomUUID() };
 }
 
 before(async () => {
@@ -155,6 +157,8 @@ before(async () => {
   await applyMigration(database.client, MIGRATION);
   // Independiente de las unidades: deja quote_versions como en producción para cotizar.
   await applyMigration(database.client, QUOTE_REFERENCE_VAT_MIGRATION);
+  // Idempotencia del alta (independiente de las unidades), necesaria para crear cotizaciones.
+  await applyMigration(database.client, QUOTE_SUBMISSION_MIGRATION);
   ids = { admin: admin.id, client: client.id, denomination: denomination.id, legacy: legacy.id, legacyVersion: legacyVersion.id, project: project.id, unit };
 
   // Servicios con unidades alternativas y una cotización que usó una alternativa, como antes de la unidad única.
@@ -293,7 +297,7 @@ test("cotización: la unidad del servicio con tarifa editable; lo cotizado conse
   assert.deepEqual([original.unit_rate, original.subtotal], ["250.00", "250.00"], "La versión 1 de la cotización no cambia");
 
   // Una cotización nueva usa la unidad única de la versión vigente y la tarifa aplicada elegida.
-  const created = await quotes.createQuote({
+  const { quote: created } = await quotes.createQuote({
     payload: quoteBody([
       { quantity: "3", serviceId: services.tour.id, unitRate: "260.00" },
       { quantity: "1", serviceId: services.space.id, unitRate: "320.00" },
@@ -309,7 +313,7 @@ test("cotización: la unidad del servicio con tarifa editable; lo cotizado conse
   const inspection = await createService({
     measurementUnitId: ids.unit.month, name: "Inspección Técnica Obra", presentationLabel: "Honorario Mensual", referenceRate: "510.00",
   });
-  const inspectionQuote = await quotes.createQuote({ payload: quoteBody([{ quantity: "2", serviceId: inspection.id, unitRate: "510.00" }]), user: { id: ids.admin } });
+  const { quote: inspectionQuote } = await quotes.createQuote({ payload: quoteBody([{ quantity: "2", serviceId: inspection.id, unitRate: "510.00" }]), user: { id: ids.admin } });
   assert.deepEqual(buildQuoteDocument(inspectionQuote).items.map((item) => [item.unitLabel, item.subtotal]), [["Honorario Mensual", "$1,020.00"]]);
   // La unidad cotizada debe pertenecer a la misma versión del servicio (FK compuesta).
   const [foreign] = await rows("select id::int from public.service_version_unit_options where service_version_id <> $1 limit 1", [ids.legacyVersion]);

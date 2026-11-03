@@ -125,6 +125,8 @@ function Input({
   tagGroupPlacement = "inline",
   showTagOptionsOnFocus = false,
   maxVisibleTagOptions = 3,
+  tagOptionSelection = "auto",
+  activeTagOptionIndex = -1,
   showPasswordStrength = false,
   passwordRequirements,
   passwordHintTitle,
@@ -179,7 +181,7 @@ function Input({
   const inputTags = useInputTags({
     resolvedType, tags, tagOptions, currentValue, hasInputText, maxVisibleTagOptions,
     isControlled, setInternalValue, disabled: isDisabled, onTagsChange, onTagOptionSelect,
-    onKeyDown, resolvedInputRef,
+    onKeyDown, resolvedInputRef, tagOptionSelection,
   });
   const {
     normalizedVisibleTags, hasSelectedTags, visibleSelectableTags, tagFieldScrollRef,
@@ -616,6 +618,8 @@ function Input({
           showSelectedTagsBelow={showSelectedTagsBelow}
           showTagOptionsOnFocus={showTagOptionsOnFocus}
           showTagGroupAsOverlay={showTagGroupAsOverlay}
+          explicitSelection={tagOptionSelection === "explicit"}
+          activeTagOptionIndex={activeTagOptionIndex}
         />
       ) : null}
     </div>

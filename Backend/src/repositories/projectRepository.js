@@ -2,6 +2,7 @@ import { query } from "../config/db.js";
 import { toPublicProjectView } from "../domain/projectPublicView.js";
 import { normalizeProjectStatus, PROJECT_STATUS } from "../domain/projectStatus.js";
 import { pageResult } from "../utils/pagination.js";
+import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
 
 /**
  * Transforma el valor de number a la representación pública esperada.
@@ -57,7 +58,8 @@ function toProject(row) {
     description: row.description || null,
     endDate: row.end_date,
     generalArea: toNumber(row.general_area),
-    hasPlans: Boolean(row.has_plans),
+    // NULL solo en un draft: «todavía desconocido», no «sin planos».
+    hasPlans: row.has_plans === null ? null : Boolean(row.has_plans),
     id: Number(row.id),
     imageFileId: row.image_file_id ? Number(row.image_file_id) : null,
     imageFileVersionId: row.image_file_version_id
@@ -154,14 +156,15 @@ function getProjectAccess(user, projectAlias = "p") {
     condition = "true";
   } else if (roleCode === "architect") {
     params.push(user.id);
-    condition = `(${projectAlias}.assigned_architect_id = $${params.length} or exists (
+    condition = `((${projectAlias}.assigned_architect_id = $${params.length} or exists (
       select 1 from public.project_assignees assignment
       where assignment.project_id = ${projectAlias}.id
         and assignment.user_id = $${params.length}
-    ) or ${projectAlias}.is_public = true)`;
+    ) or ${projectAlias}.is_public = true) and ${nonDraftProjectCondition(projectAlias)})`;
   } else if (roleCode === "client" && user.clientId) {
     params.push(user.clientId);
-    condition = `(${projectAlias}.client_id = $${params.length} or ${projectAlias}.is_public = true)`;
+    condition = `((${projectAlias}.client_id = $${params.length} or ${projectAlias}.is_public = true)
+      and ${nonDraftProjectCondition(projectAlias)})`;
   }
 
   return { condition, params };
@@ -181,17 +184,17 @@ function getDirectProjectAccess(user, projectAlias = "p") {
   if (roleCode === "admin") return { condition: "true", params: [] };
   if (roleCode === "architect") {
     return {
-      condition: `(${projectAlias}.assigned_architect_id = $1 or exists (
+      condition: `((${projectAlias}.assigned_architect_id = $1 or exists (
         select 1 from public.project_assignees assignment
         where assignment.project_id = ${projectAlias}.id
           and assignment.user_id = $1
-      ))`,
+      )) and ${nonDraftProjectCondition(projectAlias)})`,
       params: [user.id],
     };
   }
   if (roleCode === "client" && user.clientId) {
     return {
-      condition: `${projectAlias}.client_id = $1`,
+      condition: `(${projectAlias}.client_id = $1 and ${nonDraftProjectCondition(projectAlias)})`,
       params: [user.clientId],
     };
   }

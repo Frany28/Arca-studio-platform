@@ -77,6 +77,7 @@ test("contrato: una unidad por servicio, sin unitOptions; texto comercial opcion
   assert.equal(serviceUpdateSchema.safeParse({ params: { serviceId: "2" }, body: { expectedVersion: 1, unitOptions: [] } }).success, false);
   // En la cotización ya no se elige unidad.
   const item = { quantity: "1", serviceId: 4, unitRate: "320" };
-  assert.equal(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [item], projectId: 9 } }).success, true);
-  assert.deepEqual(errorPaths(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 1 }], projectId: 9 } })), ["body.items.0"]);
+  const submissionId = "6f1d9a52-3c1b-4c55-9d0e-8a7b2f4e1c90";
+  assert.equal(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [item], projectId: 9, submissionId } }).success, true);
+  assert.deepEqual(errorPaths(quoteCreateSchema.safeParse({ body: { clientId: 3, items: [{ ...item, unitOptionPosition: 1 }], projectId: 9, submissionId } })), ["body.items.0"]);
 });

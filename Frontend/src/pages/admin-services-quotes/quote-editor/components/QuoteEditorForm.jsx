@@ -5,6 +5,7 @@ import Button from "../../../../components/ui/Button/Button.jsx";
 import TextArea from "../../../../components/ui/TextArea/TextArea.jsx";
 import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard.js";
 import { useQuoteDraft } from "../hooks/useQuoteDraft.js";
+import { useQuoteProjectField } from "../hooks/useQuoteProjectField.js";
 import { useQuoteSubmit } from "../hooks/useQuoteSubmit.js";
 import { resolveQuoteReferenceVat } from "../../../../../../Backend/src/domain/quoteReferenceVat.js";
 import { calculateQuotePreview } from "../utils/quoteAmounts.js";
@@ -57,7 +58,20 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   );
   const activeServices = useMemo(() => catalog.services.filter((service) => service.isActive), [catalog.services]);
   const includedIds = useMemo(() => new Set(draft.lines.map((line) => line.serviceId)), [draft.lines]);
-  const localErrors = validateQuoteDraft(draft, preview);
+  /**
+   * Cambia el proyecto del borrador (existente o nombre nuevo) y retira el error anterior del campo.
+   *
+   * @param {Object|null} project - Proyecto existente, nombre nuevo o null.
+   * @returns {void}
+   */
+  function changeProject(project) {
+    submission.clearFieldError("projectId");
+    submission.clearFieldError("newProjectName");
+    actions.setProject(project);
+  }
+  // Solo el alta crea proyectos nuevos (Draft); la edición elige proyectos existentes, incluidos Drafts.
+  const projectField = useQuoteProjectField({ allowNewProject: mode === "create", client: draft.client, onProjectChange: changeProject, project: draft.project });
+  const localErrors = validateQuoteDraft(draft, preview, { existingProjectMatch: projectField.exactMatch });
   // Los errores locales se muestran tras el primer intento de guardar; los del servidor, siempre.
   const errors = { ...(attempted ? localErrors : {}), ...submission.result.fieldErrors };
   const { submitting } = submission;
@@ -86,17 +100,14 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
       <SectionDivider />
       <QuoteGeneralDataSection
         client={draft.client}
-        project={draft.project}
+        projectField={projectField}
         errors={errors}
         disabled={submitting}
         onClientChange={(client) => {
           submission.clearFieldError("clientId");
           actions.setClient(client ? { id: client.id, name: client.name, profilePhotoUrl: client.profilePhotoUrl || "" } : null);
         }}
-        onProjectChange={(project) => {
-          submission.clearFieldError("projectId");
-          actions.setProject(project ? { id: project.id, name: project.name } : null);
-        }}
+        onProjectChange={changeProject}
       />
       <SectionDivider />
       <QuoteServicePicker

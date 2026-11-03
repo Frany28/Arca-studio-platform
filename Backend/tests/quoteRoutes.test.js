@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 
 import { startAdminRouterServer } from "./helpers/adminRouterServer.js";
@@ -42,14 +43,14 @@ async function startServer(context, { authenticated = true } = {}) {
 }
 
 /**
- * Crea una cotización válida y devuelve la respuesta de la API.
+ * Crea una cotización válida con un identificador de envío nuevo y devuelve la respuesta de la API.
  *
  * @param {object} server - Cliente de startServer.
  * @param {object} [overrides] - Campos del cuerpo que se sustituyen.
  * @returns {Promise<object>} Respuesta del alta.
  */
 function createQuote(server, overrides = {}) {
-  return server.send("POST", "", { ...VALID_CREATE, ...overrides });
+  return server.send("POST", "", { ...VALID_CREATE, submissionId: randomUUID(), ...overrides });
 }
 
 test("sin sesión responde 401 y sin rol administrador 403, sin consultar PostgreSQL", async (context) => {
@@ -261,4 +262,154 @@ test("PDF: se transmite como descarga protegida con ETag por versión y responde
   // Otra zona horaria cambia la fecha impresa y, por tanto, el documento.
   assert.equal((await server.raw("GET", `/${quote.id}/pdf?timeZone=UTC`, { "If-None-Match": etag })).status, 200);
   assert.equal((await server.raw("GET", "/99/pdf")).status, 404);
+});
+
+// Alta sin proyecto existente: el nombre escrito crea un proyecto draft al guardar la cotización.
+const { projectId: _existingProjectId, ...CREATE_WITHOUT_PROJECT } = VALID_CREATE;
+
+/**
+ * Crea una cotización sin proyecto existente (por defecto, con un proyecto nuevo) y un identificador
+ * de envío nuevo salvo que se indique otro.
+ *
+ * @param {object} server - Cliente de startServer.
+ * @param {object} [overrides] - Campos del cuerpo que se sustituyen.
+ * @returns {Promise<object>} Respuesta del alta.
+ */
+function createDraftQuote(server, overrides = {}) {
+  return server.send("POST", "", { ...CREATE_WITHOUT_PROJECT, submissionId: randomUUID(), ...overrides });
+}
+
+test("proyecto nuevo: el alta crea el draft del cliente en la misma transacción y lo vincula a la cotización", async (context) => {
+  const server = await startServer(context);
+  const response = await createDraftQuote(server, { newProjectName: "  Apartamento   Los Robles " });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const { quote } = response.body;
+  const project = server.database.state.projects.get(quote.project.id);
+  assert.deepEqual(quote.project, { id: 50, name: "Apartamento Los Robles" }, "Nombre normalizado en la versión");
+  assert.deepEqual(
+    [project.clientId, project.createdBy, project.status, project.publicSlug],
+    [3, 2, "draft", "apartamento-los-robles-50"],
+  );
+  assert.deepEqual(server.database.state.auditLogs.map((log) => [log.action, log.entityType, log.entityId, log.newValues.quoteId]), [
+    ["project.create_from_quote", "project", 50, quote.id],
+  ]);
+
+  const statements = server.database.statements;
+  assert.equal(statements[0], "begin");
+  assert.match(statements[1], /^select pg_advisory_xact_lock/, "El bloqueo del envío precede a cualquier comprobación");
+  const projectInsert = statements.findIndex((sql) => sql.startsWith("insert into public.projects"));
+  const quoteInsert = statements.findIndex((sql) => sql.startsWith("insert into public.quotes"));
+  const versionInsert = statements.findIndex((sql) => sql.startsWith("insert into public.quote_versions"));
+  assert.ok(projectInsert >= 0 && projectInsert < quoteInsert && quoteInsert < versionInsert, "Draft, cotización y versión en la misma transacción");
+  assert.equal(statements.at(-1), "commit");
+  assert.ok(!statements.some((sql) => sql.includes("from public.projects where id = $1 for share")), "No se bloquea un proyecto existente");
+});
+
+test("proyecto nuevo: coincidencia exacta, solicitud activa o cliente no disponible responden 400 sin crear nada", async (context) => {
+  const server = await startServer(context);
+  const cases = [
+    [{ newProjectName: "APTO.  910" }, "newProjectName", "Ya existe el proyecto «Apto. 910» para este cliente. Selecciónalo en las sugerencias."],
+    [{ newProjectName: "casa en revisión" }, "newProjectName", "Hay una solicitud de proyecto activa con este nombre para el cliente."],
+    [{ clientId: 4, newProjectName: "Casa nueva" }, "clientId", "El cliente seleccionado está inactivo o fue eliminado."],
+    [{ clientId: 99, newProjectName: "Casa nueva" }, "clientId", "El cliente seleccionado no existe."],
+  ];
+  for (const [overrides, field, message] of cases) {
+    const response = await createDraftQuote(server, { ...overrides });
+    assert.equal(response.status, 400, JSON.stringify(overrides));
+    assert.equal(response.body.fields[field], message, JSON.stringify(response.body.fields));
+  }
+  assert.equal(server.database.state.quotes.length, 0);
+  assert.equal(server.database.state.projects.size, 3, "Ningún draft creado");
+  assert.equal(server.database.statements.filter((sql) => sql === "rollback").length, cases.length);
+});
+
+test("proyecto nuevo: un concepto inválido se rechaza antes de crear el draft", async (context) => {
+  const server = await startServer(context);
+  const response = await createDraftQuote(server, {
+    items: [{ quantity: "1", serviceId: 3, unitRate: "8" }],
+    newProjectName: "Casa nueva",
+  });
+  assert.equal(response.status, 400);
+  assert.ok(response.body.fields["items.0.serviceId"]);
+  assert.ok(!server.database.statements.some((sql) => sql.startsWith("insert into public.projects")));
+  assert.equal(server.database.state.projects.size, 3);
+});
+
+test("proyecto: exactamente uno de projectId o newProjectName; la edición no crea proyectos", async (context) => {
+  const server = await startServer(context);
+  for (const [body, path] of [
+    [{ ...VALID_CREATE, newProjectName: "Casa nueva" }, "body.newProjectName"],
+    [CREATE_WITHOUT_PROJECT, "body.projectId"],
+    [{ ...CREATE_WITHOUT_PROJECT, newProjectName: "ab" }, "body.newProjectName"],
+    [{ ...CREATE_WITHOUT_PROJECT, newProjectName: "x".repeat(151) }, "body.newProjectName"],
+    [{ ...VALID_CREATE, submissionId: "no-es-uuid" }, "body.submissionId"],
+  ]) {
+    const response = await server.send("POST", "", { submissionId: randomUUID(), ...body });
+    assert.equal(response.status, 400, path);
+    assert.ok(response.body.fields[path], `${path}: ${JSON.stringify(response.body.fields)}`);
+  }
+  assert.deepEqual(server.database.statements, [], "Se rechaza antes de consultar PostgreSQL");
+
+  const { quote } = (await createQuote(server)).body;
+  const edited = await server.send("PATCH", `/${quote.id}`, { ...CREATE_WITHOUT_PROJECT, expectedVersion: 1, newProjectName: "Casa nueva" });
+  assert.equal(edited.status, 400);
+  const withSubmission = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, submissionId: randomUUID() });
+  assert.equal(withSubmission.status, 400);
+});
+
+test("edición: se puede elegir un proyecto draft existente del cliente", async (context) => {
+  const server = await startServer(context);
+  const draft = (await createDraftQuote(server, { newProjectName: "Casa del lago" })).body.quote.project;
+  const { quote } = (await createQuote(server)).body;
+  const edited = await server.send("PATCH", `/${quote.id}`, { ...VALID_CREATE, expectedVersion: 1, projectId: draft.id });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.deepEqual(edited.body.quote.project, draft);
+  assert.equal(server.database.state.projects.size, 4, "La edición no crea proyectos");
+});
+
+test("idempotencia: el mismo envío devuelve la cotización registrada; otro contenido con el mismo id responde 409", async (context) => {
+  const server = await startServer(context);
+  const submissionId = randomUUID();
+  const body = { newProjectName: "Casa del lago", submissionId };
+  const first = await createDraftQuote(server, body);
+  assert.equal(first.status, 201);
+
+  // Mismo contenido expresado de otra forma (decimales y espacios): es el mismo envío.
+  const retried = await createDraftQuote(server, {
+    ...body,
+    items: [{ quantity: "200.000", serviceId: 1, unitRate: "14.00" }, { quantity: "35", serviceId: 2, unitRate: "47" }],
+    newProjectName: "Casa  del lago ",
+  });
+  assert.equal(retried.status, 200, JSON.stringify(retried.body));
+  assert.equal(retried.body.replayed, true);
+  assert.equal(retried.body.quote.id, first.body.quote.id);
+  assert.deepEqual(retried.body.quote.project, first.body.quote.project);
+  assert.equal(server.database.state.quotes.length, 1, "Sin cotizaciones adicionales");
+  assert.equal(server.database.state.projects.size, 4, "Sin proyectos adicionales");
+  assert.equal(server.database.state.auditLogs.length, 1);
+
+  for (const changed of [{ notes: "Otra observación" }, { newProjectName: "Casa del Lago" }, { items: [VALID_CREATE.items[0]] }]) {
+    const reused = await createDraftQuote(server, { ...body, ...changed });
+    assert.equal(reused.status, 409, JSON.stringify(changed));
+    assert.equal(reused.body.code, "QUOTE_SUBMISSION_REUSED");
+  }
+  assert.equal(server.database.state.quotes.length, 1);
+
+  // El identificador es único por autor: otro administrador con el mismo id registra su alta.
+  server.database.state.users.set(5, { firstName: "Ana", hasProfilePhoto: false, id: 5, lastName: "Gil" });
+  server.setUser({ id: 5, role: { code: "admin" } });
+  const other = await createQuote(server, { ...VALID_CREATE, submissionId });
+  assert.equal(other.status, 201);
+  assert.equal(server.database.state.quotes.length, 2);
+});
+
+test("errores de PostgreSQL: el nombre ocupado por un alta simultánea es un error del campo, no un 500", async () => {
+  const { translateQuoteError } = await import("../src/services/quoteErrors.js");
+  const nameTaken = translateQuoteError(Object.assign(new Error("dup"), { code: "23505", constraint: "uq_projects_client_active_name" }));
+  assert.equal(nameTaken.code, "VALIDATION_ERROR");
+  assert.ok(nameTaken.fields.newProjectName);
+  const submission = translateQuoteError(Object.assign(new Error("dup"), { code: "23505", constraint: "uq_quotes_created_by_submission" }));
+  assert.equal(submission.code, "QUOTE_CONCURRENT_UPDATE");
+  const draftCheck = translateQuoteError(Object.assign(new Error("chk"), { code: "23514", constraint: "chk_projects_draft_requirements" }));
+  assert.ok(draftCheck.fields.newProjectName);
 });

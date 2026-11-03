@@ -14,6 +14,8 @@ const VALID_BODY = {
   items: [{ quantity: "200", serviceId: 1, unitRate: "12" }],
   projectId: 9,
 };
+// El alta añade el identificador de envío (idempotencia); la edición no lo admite.
+const VALID_CREATE_BODY = { ...VALID_BODY, submissionId: "6f1d9a52-3c1b-4c55-9d0e-8a7b2f4e1c90" };
 
 /**
  * Valida un esquema y devuelve las rutas de los campos con error.
@@ -28,24 +30,24 @@ function errorPaths(schema, input) {
 }
 
 test("alta: normaliza cantidades y tarifas a la escala de NUMERIC y vacía las observaciones en blanco", () => {
-  const { body } = quoteCreateSchema.parse({ body: { ...VALID_BODY, notes: "   " } });
+  const { body } = quoteCreateSchema.parse({ body: { ...VALID_CREATE_BODY, notes: "   " } });
   assert.deepEqual(body.items, [{ quantity: "200.000", serviceId: 1, unitRate: "12.00" }]);
   assert.equal(body.notes, null);
-  assert.equal(quoteCreateSchema.parse({ body: { ...VALID_BODY, notes: "  Visita incluida " } }).body.notes, "Visita incluida");
+  assert.equal(quoteCreateSchema.parse({ body: { ...VALID_CREATE_BODY, notes: "  Visita incluida " } }).body.notes, "Visita incluida");
 });
 
 test("alta: rechaza conceptos vacíos, decimales sobrantes, negativos, campos extra y notas largas", () => {
   const cases = [
-    [{ ...VALID_BODY, items: [] }, "body.items"],
-    [{ ...VALID_BODY, items: [{ ...VALID_BODY.items[0], quantity: "1.2345" }] }, "body.items.0.quantity"],
-    [{ ...VALID_BODY, items: [{ ...VALID_BODY.items[0], unitRate: "-1" }] }, "body.items.0.unitRate"],
-    [{ ...VALID_BODY, items: [{ ...VALID_BODY.items[0], unitRate: 0.1 + 0.2 }] }, "body.items.0.unitRate"],
-    [{ ...VALID_BODY, items: [{ ...VALID_BODY.items[0], subtotal: "2400" }] }, "body.items.0"],
-    [{ ...VALID_BODY, items: Array.from({ length: 101 }, (_, index) => ({ quantity: "1", serviceId: index + 1, unitRate: "1" })) }, "body.items"],
-    [{ ...VALID_BODY, notes: "x".repeat(2001) }, "body.notes"],
-    [{ ...VALID_BODY, code: "COT-001" }, "body"],
-    [{ ...VALID_BODY, clientId: "3" }, "body.clientId"],
-    [{ ...VALID_BODY, projectId: undefined }, "body.projectId"],
+    [{ ...VALID_CREATE_BODY, items: [] }, "body.items"],
+    [{ ...VALID_CREATE_BODY, items: [{ ...VALID_BODY.items[0], quantity: "1.2345" }] }, "body.items.0.quantity"],
+    [{ ...VALID_CREATE_BODY, items: [{ ...VALID_BODY.items[0], unitRate: "-1" }] }, "body.items.0.unitRate"],
+    [{ ...VALID_CREATE_BODY, items: [{ ...VALID_BODY.items[0], unitRate: 0.1 + 0.2 }] }, "body.items.0.unitRate"],
+    [{ ...VALID_CREATE_BODY, items: [{ ...VALID_BODY.items[0], subtotal: "2400" }] }, "body.items.0"],
+    [{ ...VALID_CREATE_BODY, items: Array.from({ length: 101 }, (_, index) => ({ quantity: "1", serviceId: index + 1, unitRate: "1" })) }, "body.items"],
+    [{ ...VALID_CREATE_BODY, notes: "x".repeat(2001) }, "body.notes"],
+    [{ ...VALID_CREATE_BODY, code: "COT-001" }, "body"],
+    [{ ...VALID_CREATE_BODY, clientId: "3" }, "body.clientId"],
+    [{ ...VALID_CREATE_BODY, projectId: undefined }, "body.projectId"],
   ];
   for (const [body, path] of cases) assert.ok(errorPaths(quoteCreateSchema, { body }).includes(path), `${path} en ${JSON.stringify(errorPaths(quoteCreateSchema, { body }))}`);
 });

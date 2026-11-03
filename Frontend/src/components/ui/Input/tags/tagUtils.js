@@ -1,4 +1,16 @@
 /**
+ * Identificador DOM de una sugerencia del grupo de tags, para el `aria-activedescendant` del campo
+ * en la selección explícita.
+ *
+ * @param {string} tagGroupId Id del grupo (`<id del input>-tags`).
+ * @param {number} index Posición de la sugerencia visible.
+ * @returns {string} Id de la opción.
+ */
+export function getTagOptionId(tagGroupId, index) {
+  return `${tagGroupId}-option-${index}`;
+}
+
+/**
  * Normaliza la búsqueda y comparación de etiquetas eliminando acentos y espacios exteriores.
  * Mantiene la conversión a minúsculas en español utilizada para búsqueda y deduplicación.
  *

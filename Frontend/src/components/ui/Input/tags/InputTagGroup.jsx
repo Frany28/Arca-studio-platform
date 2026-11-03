@@ -1,9 +1,12 @@
 import clsx from "clsx";
 import Tag from "../../Tag/Tag.jsx";
+import { getTagOptionId } from "./tagUtils.js";
 
 /**
  * Presenta tags seleccionados y sugerencias con sus avatares y acciones.
  * En el campo devuelve solo los tags; debajo conserva el grupo y su overlay opcional.
+ * Con explicitSelection el grupo es un listbox: cada sugerencia es una opción con id estable y la
+ * activa (teclado del consumidor) usa el estado visual «selected» existente del Tag.
  * @param {object} props Selección, sugerencias, estilos, accesibilidad y acciones del hook.
  * @returns {import("react").ReactNode} Tags inline o grupo externo.
  */
@@ -11,7 +14,7 @@ export default function InputTagGroup({
   inline = false, normalizedVisibleTags, sizing, disabled, handleRemoveTag,
   handleTagOptionSelection, tagGroupId, tagGroupAriaLabel, label,
   showSelectedTagsBelow, showTagOptionsOnFocus, visibleSelectableTags,
-  showTagGroupAsOverlay,
+  showTagGroupAsOverlay, explicitSelection = false, activeTagOptionIndex = -1,
 }) {
   const selectedTags = inline || showSelectedTagsBelow
     ? normalizedVisibleTags.map((tag, index) => (
@@ -44,7 +47,7 @@ export default function InputTagGroup({
         showTagGroupAsOverlay &&
           "absolute left-0 top-full z-[110] mt-[4px] rounded-[var(--radius-2)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e1)]",
       )}
-      role="group"
+      role={explicitSelection ? "listbox" : "group"}
       aria-label={
         tagGroupAriaLabel ?? `${label}: opciones y elementos seleccionados`
       }
@@ -65,6 +68,14 @@ export default function InputTagGroup({
               count={false}
               disabled={disabled}
               interactive
+              selected={explicitSelection && index === activeTagOptionIndex}
+              {...(explicitSelection ? {
+                "aria-pressed": undefined,
+                "aria-selected": index === activeTagOptionIndex,
+                id: getTagOptionId(tagGroupId, index),
+                role: "option",
+                tabIndex: -1,
+              } : {})}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => handleTagOptionSelection(tag)}
             />

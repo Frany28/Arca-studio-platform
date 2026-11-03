@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { after, before, test } from "node:test";
 
@@ -18,6 +19,7 @@ const createApiRoles = process.env.ARCA_SERVICE_CATALOG_TEST_CREATE_ROLES === "1
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TESTS=1 y ARCA_SERVICE_CATALOG_TEST_DATABASE_URL.";
 const MIGRATION = "20261027120000_service_unit_options";
 const QUOTE_REFERENCE_VAT_MIGRATION = "20261031120000_quote_reference_vat";
+const QUOTE_SUBMISSION_MIGRATION = "20261102122000_quote_submission_id";
 const PASSWORD = "Carga-Catalogo-2026!";
 
 let database;
@@ -162,6 +164,7 @@ test("migración: sin la estructura de unidades por servicio, o sin registrarla 
   await applyMigration(database.client, MIGRATION);
   // Independiente de las unidades: deja quote_versions como en producción para cotizar.
   await applyMigration(database.client, QUOTE_REFERENCE_VAT_MIGRATION);
+  await applyMigration(database.client, QUOTE_SUBMISSION_MIGRATION);
   const unregistered = await loader.planOfficialCatalogLoad(catalog, { runId: "pre" });
   assert.deepEqual(unregistered.blockers, ["La migración 20261027120000_service_unit_options no figura como terminada en _prisma_migrations."]);
   // Registro equivalente al de `prisma migrate deploy`.
@@ -289,9 +292,10 @@ test("cotizaciones del catálogo cargado: cada forma de cobro es un concepto con
   const serviceId = async (name) => (await rows("select id::int from public.services where name = $1", [name]))[0].id;
   const rateOf = (name) => catalog.services.find((service) => service.name === name).referenceRate;
   // VR por minuto y por proyecto pueden ir en la misma cotización: son servicios distintos.
-  const quote = await quotes.createQuote({
+  const { quote } = await quotes.createQuote({
     payload: {
       clientId: quoteIds.client,
+      submissionId: randomUUID(),
       items: [
         { quantity: "3", serviceId: await serviceId(NAMES.tour), unitRate: rateOf(NAMES.tour) },
         // La tarifa aplicada se modifica en la cotización sin alterar la referencia del tabulador.

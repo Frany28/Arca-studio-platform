@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
+
 import { withTransaction } from "../config/db.js";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
   QUOTE_CURRENCY,
   QUOTE_SORT_FIELDS,
+  buildQuoteSubmissionContent,
   chooseQuoteUnitOption,
   collectDuplicateServiceErrors,
   collectWholeQuantityErrors,
@@ -20,17 +23,20 @@ import {
 import {
   countQuotes,
   findQuoteById,
+  findQuoteSubmission,
   insertQuoteItems,
   insertQuoteRecord,
   insertQuoteVersion,
   listQuotes,
   lockQuoteForUpdate,
+  lockQuoteSubmission,
   reserveQuoteId,
   retireCurrentQuoteVersion,
   touchQuoteRecord,
 } from "../repositories/quoteRepository.js";
 import { findServiceVersionUnitOptions, lockQuotableServices } from "../repositories/serviceCatalogRepository.js";
 import { decodeCursor, pageResult, parsePageLimit } from "../utils/pagination.js";
+import { PROJECT_NAME_ALREADY_EXISTS, createDraftProject } from "./projectService.js";
 import { QUOTE_VERSION_CONFLICT_MESSAGE, translateQuoteError } from "./quoteErrors.js";
 
 const QUOTE_NOT_FOUND_MESSAGE = "La cotización solicitada no existe.";
@@ -121,17 +127,20 @@ export async function getClientProjectOptions({ clientId, filters }) {
 /**
  * Valida y bloquea con FOR SHARE el cliente y el proyecto, que debe pertenecer al cliente. Uno
  * nuevo debe estar activo y no eliminado; si no cambian respecto a la versión vigente conservan
- * sus nombres copiados, para que editar otros datos no falle ni reescriba el documento.
+ * sus nombres copiados, para que editar otros datos no falle ni reescriba el documento. Con
+ * `newProjectName` (solo en el alta) el cliente debe estar disponible y el proyecto se crea
+ * después (createQuoteDraftProject): se devuelve `project: null`.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
  * @param {object} options - Datos de la operación.
  * @param {number} options.clientId - Cliente elegido.
- * @param {number} options.projectId - Proyecto elegido.
+ * @param {number} [options.projectId] - Proyecto existente elegido.
+ * @param {string} [options.newProjectName] - Nombre del proyecto draft que se creará.
  * @param {object|null} options.current - Cotización vigente al editar; null al crear.
- * @returns {Promise<{ client: { id: number, name: string }, project: { id: number, name: string } }>} Participantes.
+ * @returns {Promise<{ client: { id: number, name: string }, project: { id: number, name: string }|null }>} Participantes.
  * @throws {ValidationError} Con `fields.clientId` o `fields.projectId` si no son válidos.
  */
-async function resolveQuoteParticipants(client, { clientId, current, projectId }) {
+async function resolveQuoteParticipants(client, { clientId, current, newProjectName, projectId }) {
   const fields = {};
   const keepsClient = current?.client.id === clientId;
   const keepsProject = keepsClient && current?.project.id === projectId;
@@ -139,6 +148,11 @@ async function resolveQuoteParticipants(client, { clientId, current, projectId }
   const clientRecord = await findQuoteClient(clientId, client, true);
   if (!clientRecord) fields.clientId = "El cliente seleccionado no existe.";
   else if (!keepsClient && !clientRecord.isAvailable) fields.clientId = "El cliente seleccionado está inactivo o fue eliminado.";
+
+  if (newProjectName !== undefined) {
+    if (Object.keys(fields).length) throw new ValidationError(undefined, fields);
+    return { client: { id: clientId, name: clientRecord.name }, project: null };
+  }
 
   const project = await lockQuoteProject(client, projectId);
   if (!project) fields.projectId = "El proyecto seleccionado no existe.";
@@ -263,36 +277,115 @@ async function writeQuoteVersion(client, version) {
 }
 
 /**
- * Crea una cotización y su versión 1 en una única transacción: si falla cualquier escritura no
- * queda ningún registro. El código `COT-001` lo genera siempre el sistema a partir del id
- * reservado y PostgreSQL garantiza además su unicidad (uq_quotes_code).
+ * Calcula la huella SHA-256 (hex) del contenido de un alta, guardada con la cotización para
+ * reconocer un reintento de la misma operación.
+ *
+ * @param {object} payload - Cuerpo validado por quoteCreateSchema.
+ * @returns {string} 64 caracteres hexadecimales.
+ */
+function fingerprintQuoteSubmission(payload) {
+  return createHash("sha256").update(buildQuoteSubmissionContent(payload)).digest("hex");
+}
+
+/**
+ * Resuelve un alta repetida: si el mismo autor ya registró una cotización con ese `submissionId`,
+ * la devuelve cuando el contenido coincide y rechaza el envío cuando difiere, en lugar de presentar
+ * una cotización anterior como si correspondiera al contenido nuevo.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción (con el bloqueo del envío).
+ * @param {object} options - Envío recibido.
+ * @param {string} options.submissionId - UUID del alta.
+ * @param {string} options.fingerprint - Huella del contenido recibido.
+ * @param {number} options.userId - Administrador autenticado.
+ * @returns {Promise<object|null>} Cotización ya registrada o null si el envío es nuevo.
+ * @throws {ConflictError} QUOTE_SUBMISSION_REUSED si el identificador ya guardó otro contenido.
+ */
+async function findReplayedQuote(client, { fingerprint, submissionId, userId }) {
+  const previous = await findQuoteSubmission(client, userId, submissionId);
+  if (!previous) return null;
+  if (previous.fingerprint !== fingerprint) {
+    throw new ConflictError(
+      "QUOTE_SUBMISSION_REUSED",
+      "Este envío ya guardó una cotización con otro contenido. Recarga el formulario antes de guardar de nuevo.",
+    );
+  }
+  return findQuoteById(previous.id, client);
+}
+
+/**
+ * Crea el proyecto draft del alta y expresa un nombre ya usado (proyecto o solicitud activa del
+ * cliente) como error del campo `newProjectName`, igual que las demás validaciones del formulario.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {object} options - Datos del proyecto (ver createDraftProject).
+ * @returns {Promise<{ id: number, name: string }>} Proyecto draft creado.
+ * @throws {ValidationError} Con `fields.newProjectName` si el nombre no está disponible.
+ */
+async function createQuoteDraftProject(client, options) {
+  try {
+    return await createDraftProject(client, options);
+  } catch (error) {
+    if (error?.code === PROJECT_NAME_ALREADY_EXISTS) throw new ValidationError(undefined, { newProjectName: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Crea una cotización y su versión 1 en una única transacción: proyecto draft (si se pidió uno
+ * nuevo), cotización, versión y conceptos se confirman o se revierten juntos. El código `COT-001`
+ * lo genera el sistema a partir del id reservado (uq_quotes_code garantiza su unicidad).
+ *
+ * Idempotencia: lo primero es el bloqueo consultivo del `submissionId`, antes de cualquier
+ * comprobación. Un reintento simultáneo espera al primero y, tras su COMMIT, encuentra la
+ * cotización registrada (nunca llega a comprobar el nombre del proyecto que el primero creó); uno
+ * con otro contenido recibe 409 QUOTE_SUBMISSION_REUSED. uq_quotes_created_by_submission es la
+ * última barrera. Dos altas distintas con el mismo nombre de proyecto nuevo se resuelven con
+ * uq_projects_client_active_name: la segunda espera al COMMIT de la primera y recibe el error del campo.
  *
  * @param {object} options - Datos de la operación.
  * @param {object} options.payload - Cuerpo validado por quoteCreateSchema.
  * @param {{ id: number }} options.user - Administrador autenticado.
- * @returns {Promise<object>} Cotización creada con currentVersion = 1.
- * @throws {ValidationError} Si el cliente, el proyecto o algún concepto no son válidos.
+ * @returns {Promise<{ quote: object, replayed: boolean }>} Cotización (currentVersion = 1 si es
+ *   nueva) y si el envío repetía un alta ya registrada.
+ * @throws {ValidationError} Si el cliente, el proyecto, su nombre o algún concepto no son válidos.
+ * @throws {ConflictError} QUOTE_SUBMISSION_REUSED si el identificador ya guardó otro contenido.
  */
 export async function createQuote({ payload, user }) {
   // Una cotización nueva se calcula con la tasa referencial fija (QUOTE_REFERENCE_VAT_RATE).
   const referenceVat = resolveQuoteReferenceVat({ stored: null });
+  const submission = { fingerprint: fingerprintQuoteSubmission(payload), submissionId: payload.submissionId, userId: user.id };
   try {
     return await withTransaction(async (client) => {
+      await lockQuoteSubmission(client, user.id, payload.submissionId);
+      const replayed = await findReplayedQuote(client, submission);
+      if (replayed) return { quote: replayed, replayed: true };
+
       const participants = await resolveQuoteParticipants(client, { ...payload, current: null });
       const { lines, referenceVat: vat, servicesTotal } = await resolveQuoteLines(client, { current: null, items: payload.items, referenceVat });
       const quoteId = await reserveQuoteId(client);
-      await insertQuoteRecord(client, { code: formatGeneratedQuoteCode(quoteId), id: quoteId, userId: user.id });
+      // El draft (con su comprobación de nombre) se crea antes de escribir la cotización: un nombre
+      // ocupado se rechaza sin escrituras previas, y el ROLLBACK revierte todo si algo falla después.
+      const project = participants.project
+        ?? await createQuoteDraftProject(client, { clientId: payload.clientId, name: payload.newProjectName, quoteId, userId: user.id });
+      await insertQuoteRecord(client, {
+        code: formatGeneratedQuoteCode(quoteId),
+        id: quoteId,
+        submissionFingerprint: submission.fingerprint,
+        submissionId: submission.submissionId,
+        userId: user.id,
+      });
       await writeQuoteVersion(client, {
-        ...participants,
+        client: participants.client,
         lines,
         notes: payload.notes,
+        project,
         quoteId,
         referenceVat: vat,
         servicesTotal,
         userId: user.id,
         versionNumber: 1,
       });
-      return findQuoteById(quoteId, client);
+      return { quote: await findQuoteById(quoteId, client), replayed: false };
     });
   } catch (error) {
     throw translateQuoteError(error);

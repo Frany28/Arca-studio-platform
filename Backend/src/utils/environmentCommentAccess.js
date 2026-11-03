@@ -1,3 +1,5 @@
+import { nonDraftProjectCondition } from "./projectDraftVisibility.js";
+
 /**
  * Obtiene los permisos sobre comentarios de entorno para que el flujo llamador pueda continuar.
  * Centraliza este comportamiento para que sus consumidores utilicen el mismo criterio.
@@ -47,6 +49,7 @@ export function getEnvironmentCommentAccess(
         from public.projects ${projectAlias}
         where ${projectAlias}.deleted_at is null
           and ${projectAlias}.status <> 'cancelled'::project_status
+          and ${nonDraftProjectCondition(projectAlias)}
           and (${viewerMembership})
           and (
             (${roleAlias}.code = 'architect' and (

@@ -157,3 +157,30 @@ function quoteContentFingerprint({ clientId, items, notes, projectId, referenceV
 export function hasQuoteContentChanged(current, next) {
   return quoteContentFingerprint(current) !== quoteContentFingerprint(next);
 }
+
+/**
+ * Representa el contenido enviado en un alta como texto estable, para comprobar que un reintento
+ * con el mismo `submissionId` es la misma operación: cliente, proyecto elegido o nombre del
+ * proyecto nuevo (normalizado), observaciones y, en orden, cada concepto con su cantidad y tarifa
+ * aplicada comparadas por valor. El servicio guarda su SHA-256 con la cotización.
+ *
+ * @param {object} payload - Cuerpo validado por quoteCreateSchema.
+ * @param {number} payload.clientId - Cliente.
+ * @param {number} [payload.projectId] - Proyecto existente.
+ * @param {string} [payload.newProjectName] - Nombre normalizado del proyecto nuevo.
+ * @param {string|null} payload.notes - Observaciones.
+ * @param {Array<{ serviceId: number, quantity: string, unitRate: string }>} payload.items - Conceptos.
+ * @returns {string} Contenido canónico del alta.
+ */
+export function buildQuoteSubmissionContent({ clientId, items, newProjectName, notes, projectId }) {
+  return JSON.stringify([
+    Number(clientId),
+    projectId ? ["project", Number(projectId)] : ["newProject", newProjectName],
+    notes ?? null,
+    items.map((item) => [
+      Number(item.serviceId),
+      comparableDecimal(item.quantity, QUANTITY_FORMAT),
+      comparableDecimal(item.unitRate, QUOTE_DECIMAL_FORMATS.unitRate),
+    ]),
+  ]);
+}

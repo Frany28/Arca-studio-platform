@@ -302,6 +302,7 @@ export async function replaceProjectAssignees({
         where id = $1
           and deleted_at is null
           and status not in (
+            '${PROJECT_STATUS.DRAFT}'::public.project_status,
             'archived'::public.project_status,
             '${PROJECT_STATUS.FINISHED}'::public.project_status
           )

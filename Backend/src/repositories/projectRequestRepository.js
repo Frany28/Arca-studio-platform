@@ -163,14 +163,17 @@ export async function listProjectRequestsForUser(user, { cursor, limit }) {
  * @param {string} projectName - Valor de `projectName` requerido por esta operación.
  * @param {object} [options] - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} [options.excludeProjectRequestId] - Valor de `options.excludeProjectRequestId` requerido por esta operación.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @param {{ query: Function }} [options.executor] - Cliente de una transacción (p. ej. el alta de un
+ *   proyecto draft desde una cotización); por defecto el pool.
+ * @returns {Promise<{ source: "project"|"project_request", id: string, name: string, status: string }|null>}
+ *   Proyecto no cancelado o solicitud activa del cliente con ese nombre (sin distinguir mayúsculas), o null.
  */
 export async function findExistingProjectNameForClient(
   clientId,
   projectName,
-  { excludeProjectRequestId = null } = {},
+  { excludeProjectRequestId = null, executor = { query } } = {},
 ) {
-  const result = await query(
+  const result = await executor.query(
     `
       select source, id, name, status
       from (

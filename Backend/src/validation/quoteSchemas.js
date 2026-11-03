@@ -6,6 +6,7 @@ import {
   QUOTE_SORT_DIRECTIONS,
   QUOTE_SORT_FIELDS,
 } from "../domain/quote.js";
+import { describeProjectNameError, normalizeProjectName } from "../domain/projectName.js";
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { scaledDecimalText } from "./decimalSchemas.js";
@@ -38,6 +39,32 @@ const quoteContent = {
   notes: quoteNotes,
   projectId: bodyId,
 };
+
+// Nombre de un proyecto nuevo: se normaliza (espacios) y se valida con las reglas del dominio.
+const newProjectName = z.string({ error: "Escribe el nombre del proyecto." })
+  .transform(normalizeProjectName)
+  .superRefine((value, context) => {
+    const message = describeProjectNameError(value);
+    if (message) context.addIssue({ code: "custom", message });
+  });
+
+/**
+ * Exige exactamente uno de `projectId` (proyecto existente) o `newProjectName` (proyecto draft
+ * que se crea al guardar). Solo aplica al alta: la edición sigue exigiendo `projectId`.
+ *
+ * @param {{ projectId?: number, newProjectName?: string }} body - Cuerpo del alta.
+ * @param {import("zod").RefinementCtx} context - Contexto de Zod para registrar el error.
+ * @returns {void}
+ */
+function assertSingleProjectSelection(body, context) {
+  const hasProject = body.projectId !== undefined;
+  const hasNewProject = body.newProjectName !== undefined;
+  if (hasProject && hasNewProject) {
+    context.addIssue({ code: "custom", message: "Elige un proyecto existente o escribe uno nuevo, no ambos.", path: ["newProjectName"] });
+  } else if (!hasProject && !hasNewProject) {
+    context.addIssue({ code: "custom", message: "Selecciona el proyecto o escribe el nombre de uno nuevo.", path: ["projectId"] });
+  }
+}
 
 /**
  * Comprueba que el cursor del listado corresponda al orden solicitado: por código lleva
@@ -99,8 +126,14 @@ export const quotePdfSchema = z.object({
   query: z.object({ timeZone: z.string().trim().max(64).optional() }).passthrough(),
 });
 
+// El alta lleva un identificador de envío (idempotencia) y admite un proyecto nuevo por nombre.
 export const quoteCreateSchema = z.object({
-  body: z.object(quoteContent).strict(),
+  body: z.object({
+    ...quoteContent,
+    newProjectName: newProjectName.optional(),
+    projectId: bodyId.optional(),
+    submissionId: z.uuid({ error: "Identificador de envío inválido." }),
+  }).strict().superRefine(assertSingleProjectSelection),
 });
 
 export const quoteUpdateSchema = z.object({

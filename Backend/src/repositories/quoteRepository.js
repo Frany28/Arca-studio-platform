@@ -249,16 +249,53 @@ export async function reserveQuoteId(client) {
 }
 
 /**
- * Inserta la identidad de una cotización nueva con el id reservado y su código generado.
+ * Serializa hasta el COMMIT las altas con el mismo identificador de envío del mismo autor, con un
+ * bloqueo consultivo de transacción tomado antes de cualquier comprobación. Así un reintento
+ * simultáneo espera al primero y después lo encuentra registrado, en lugar de chocar con las
+ * comprobaciones de nombre del proyecto que el primero acaba de crear.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
- * @param {{ id: number, code: string, userId: number }} quote - Datos de la cotización.
+ * @param {number} userId - Administrador que envía el alta.
+ * @param {string} submissionId - UUID del alta.
  * @returns {Promise<void>}
  */
-export async function insertQuoteRecord(client, { code, id, userId }) {
+export async function lockQuoteSubmission(client, userId, submissionId) {
+  await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`quote-submission:${userId}:${submissionId}`]);
+}
+
+/**
+ * Busca la cotización registrada por un alta anterior del mismo autor con ese identificador.
+ * Debe ejecutarse después de lockQuoteSubmission: en READ COMMITTED la sentencia ve lo que
+ * confirmó el alta que tenía el bloqueo.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {number} userId - Administrador que envía el alta.
+ * @param {string} submissionId - UUID del alta.
+ * @returns {Promise<{ id: number, fingerprint: string }|null>} Cotización y huella de su contenido.
+ */
+export async function findQuoteSubmission(client, userId, submissionId) {
+  const result = await client.query(
+    "select id, submission_fingerprint from public.quotes where created_by = $1 and submission_id = $2",
+    [userId, submissionId],
+  );
+  const row = result.rows[0];
+  return row ? { fingerprint: row.submission_fingerprint, id: Number(row.id) } : null;
+}
+
+/**
+ * Inserta la identidad de una cotización nueva con el id reservado, su código generado y, en un
+ * alta idempotente, el identificador de envío y la huella de su contenido.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {{ id: number, code: string, userId: number, submissionId?: string|null,
+ *   submissionFingerprint?: string|null }} quote - Datos de la cotización.
+ * @returns {Promise<void>}
+ */
+export async function insertQuoteRecord(client, { code, id, submissionFingerprint = null, submissionId = null, userId }) {
   await client.query(
-    "insert into public.quotes (id, code, created_by, updated_by) values ($1, $2, $3, $3)",
-    [id, code, userId],
+    `insert into public.quotes (id, code, created_by, updated_by, submission_id, submission_fingerprint)
+     values ($1, $2, $3, $3, $4, $5)`,
+    [id, code, userId, submissionId, submissionFingerprint],
   );
 }
 
