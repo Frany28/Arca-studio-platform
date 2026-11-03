@@ -1,0 +1,14 @@
+# Exclusiones de la imagen del entorno de carga (BuildKit lee <Dockerfile>.dockerignore).
+# Nunca copiar variables de entorno ni credenciales del desarrollo.
+.env
+.env.*
+**/.env
+**/.env.*
+node_modules
+.pnpm-store
+.vercel
+tests
+scripts
+load-tests/env/.out
+load-tests/results
+*.log

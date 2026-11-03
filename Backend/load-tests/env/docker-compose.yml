@@ -1,0 +1,145 @@
+# Entorno aislado de pruebas de carga de ARCA Studio (Fase 3). Ver README.md de esta carpeta.
+#
+# Aislamiento:
+# - Red `loadtest` interna (internal: true): ningún contenedor tiene salida a internet, así que no
+#   puede alcanzar Supabase, Resend, Geoapify ni dominios públicos aunque algo esté mal configurado.
+#   El backend lo comprueba al arrancar (LOADTEST_EXPECT_NO_EGRESS=1).
+# - PostgreSQL y MinIO desechables (tmpfs): los datos desaparecen al detener el entorno.
+# - Credenciales y datos ficticios; RESEND_API_KEY y GEOAPIFY_API_KEY vacías (esas rutas no forman
+#   parte de los escenarios y responden con su error de configuración si se llaman).
+# - Ningún puerto se publica en el host: k6 y las herramientas se ejecutan dentro de la red.
+#
+# Uso básico:
+#   docker compose -f load-tests/env/docker-compose.yml up -d postgres minio
+#   docker compose -f load-tests/env/docker-compose.yml run --rm seed
+#   docker compose -f load-tests/env/docker-compose.yml up -d backend
+#   load-tests/env/run-scenario.sh A
+name: arca-loadtest
+
+networks:
+  loadtest:
+    internal: true
+
+x-backend-env: &backend-env
+  ARCA_LOADTEST: "1"
+  NODE_ENV: test
+  DATABASE_URL: postgres://loadtest:loadtest-ficticio@postgres:5432/arca_loadtest
+  DATABASE_SSL: "false"
+  # Pool: por defecto el del código para una base remota (2). Las variantes se documentan en README.md.
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-}
+  DATABASE_MAX_WAITING: ${DATABASE_MAX_WAITING:-200}
+  DATABASE_CONNECTION_TIMEOUT_MS: ${DATABASE_CONNECTION_TIMEOUT_MS:-5000}
+  AUTH_TOKEN_SECRET: loadtest-secret-ficticio-0123456789abcdef
+  CSRF_ALLOW_NO_ORIGIN: "false"
+  CORS_ORIGINS: http://localhost:5173
+  SUPABASE_STORAGE_S3_ENDPOINT: http://minio:9000
+  SUPABASE_STORAGE_S3_REGION: us-east-1
+  SUPABASE_STORAGE_S3_ACCESS_KEY_ID: loadtest-access
+  SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY: loadtest-secret-ficticio
+  SUPABASE_STORAGE_BUCKET: arca-loadtest-files
+  RESEND_API_KEY: ""
+  GEOAPIFY_API_KEY: ""
+  # Límites de uso: por defecto los reales. Para capacidad, ver README.md (no distorsionar con 429).
+  COMMENT_RATE_LIMIT_MAX: ${COMMENT_RATE_LIMIT_MAX:-30}
+  PROJECT_REQUEST_RATE_LIMIT_MAX: ${PROJECT_REQUEST_RATE_LIMIT_MAX:-10}
+  UPLOAD_RATE_LIMIT_MAX: ${UPLOAD_RATE_LIMIT_MAX:-60}
+  LOADTEST_OUTPUT_DIR: /app/load-tests/env/.out
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: loadtest
+      POSTGRES_PASSWORD: loadtest-ficticio
+      POSTGRES_DB: postgres
+    command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=256MB"]
+    tmpfs: [/var/lib/postgresql]
+    networks: [loadtest]
+    cpus: 2
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loadtest -d postgres"]
+      interval: 2s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: loadtest-access
+      MINIO_ROOT_PASSWORD: loadtest-secret-ficticio
+    tmpfs: [/data]
+    networks: [loadtest]
+    cpus: 1
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      retries: 30
+
+  # Crea la base, aplica las migraciones y siembra los datos ficticios (y los objetos en MinIO).
+  seed:
+    build: { context: ../.., dockerfile: load-tests/env/Dockerfile }
+    command: ["node", "load-tests/env/seed.mjs", "--reset"]
+    environment: *backend-env
+    volumes: ["./.out:/app/load-tests/env/.out"]
+    networks: [loadtest]
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    profiles: [setup]
+
+  # Backend real (src/app.js) con métricas activadas y recursos fijos para resultados comparables.
+  backend:
+    build: { context: ../.., dockerfile: load-tests/env/Dockerfile }
+    command: ["node", "load-tests/env/server.mjs"]
+    environment:
+      <<: *backend-env
+      LOADTEST_EXPECT_NO_EGRESS: "1"
+      LOADTEST_METRICS_FILE: /results/backend-metrics.jsonl
+      REQUEST_METRICS_ENABLED: "true"
+      REQUEST_METRICS_LOG_REQUESTS: "false"
+      RUNTIME_METRICS_INTERVAL_MS: "5000"
+      PORT: "3000"
+    volumes: ["../results:/results"]
+    networks: [loadtest]
+    cpus: 2
+    mem_limit: 1g
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/database').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      retries: 30
+
+  # k6 dentro de la red interna: el destino solo puede ser el backend del entorno.
+  k6:
+    image: grafana/k6:0.54.0
+    working_dir: /scripts
+    environment:
+      BASE_URL: http://backend:3000
+      FRONTEND_ORIGIN: http://localhost:5173
+      LOAD_USERS_FILE: /accounts/accounts.json
+    volumes:
+      - "..:/scripts:ro"
+      - "./.out:/accounts:ro"
+      - "../results:/results"
+    networks: [loadtest]
+    cpus: 2
+    mem_limit: 1g
+    profiles: [tools]
+
+  # Herramientas Node (auth-smoke, sse-probe, integrity-check, collect-results) con la misma imagen.
+  tools:
+    build: { context: ../.., dockerfile: load-tests/env/Dockerfile }
+    environment:
+      <<: *backend-env
+      BASE_URL: http://backend:3000
+      FRONTEND_ORIGIN: http://localhost:5173
+      LOAD_USERS_FILE: /app/load-tests/env/.out/accounts.json
+    volumes:
+      - "./.out:/app/load-tests/env/.out"
+      - "../results:/results"
+    networks: [loadtest]
+    profiles: [tools]
