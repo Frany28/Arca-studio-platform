@@ -287,3 +287,13 @@ test("API directa: clientes y arquitectos (incluso asignados a la fuerza) recibe
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("compatibilidad: un alta sin submissionId (frontend anterior) se registra con identificador y huella NULL", { skip }, async () => {
+  const { submissionId: _omitted, ...legacy } = draftQuoteBody("No se usa");
+  const { newProjectName: _name, ...body } = legacy;
+  const { quote, replayed } = await quotes.createQuote({ payload: { ...body, projectId: ids.legacy }, user: { id: ids.admin } });
+  assert.equal(replayed, false);
+  assert.deepEqual(quote.project, { id: ids.legacy, name: "Apto. 910" });
+  const [row] = await rows("select submission_id, submission_fingerprint from public.quotes where id = $1", [quote.id]);
+  assert.deepEqual(row, { submission_fingerprint: null, submission_id: null });
+});

@@ -53,3 +53,12 @@ test("idempotencia: reenviar el mismo borrador produce la misma huella; cambiarl
   assert.notEqual(fingerprintOf(draft), fingerprintOf({ ...draft, notes: "Otra" }));
   assert.notEqual(fingerprintOf(draft), fingerprintOf({ ...draft, project: { id: 9, kind: PROJECT_KIND.EXISTING, name: "Apto. 910" } }));
 });
+
+test("compatibilidad: el cuerpo del frontend anterior (sin submissionId) sigue siendo válido en el alta", () => {
+  // Forma exacta que enviaba el editor antes de los proyectos Draft y la idempotencia.
+  const legacyBody = { clientId: 3, items: [{ quantity: "200.5", serviceId: 1, unitRate: "14" }], notes: "Visita", projectId: 9 };
+  const { body, issues } = parse(quoteCreateSchema, { body: legacyBody });
+  assert.equal(issues, undefined, JSON.stringify(issues));
+  assert.equal(body.submissionId, undefined);
+  assert.ok(parse(quoteCreateSchema, { body: { ...legacyBody, submissionId: "no-es-uuid" } }).issues.includes("body.submissionId"));
+});

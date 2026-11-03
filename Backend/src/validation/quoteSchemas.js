@@ -126,13 +126,14 @@ export const quotePdfSchema = z.object({
   query: z.object({ timeZone: z.string().trim().max(64).optional() }).passthrough(),
 });
 
-// El alta lleva un identificador de envío (idempotencia) y admite un proyecto nuevo por nombre.
+// El alta admite un proyecto nuevo por nombre y un identificador de envío opcional: con él es
+// idempotente; sin él (clientes anteriores a la idempotencia) se comporta como antes.
 export const quoteCreateSchema = z.object({
   body: z.object({
     ...quoteContent,
     newProjectName: newProjectName.optional(),
     projectId: bodyId.optional(),
-    submissionId: z.uuid({ error: "Identificador de envío inválido." }),
+    submissionId: z.uuid({ error: "Identificador de envío inválido." }).optional(),
   }).strict().superRefine(assertSingleProjectSelection),
 });
 

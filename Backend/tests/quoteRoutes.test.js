@@ -413,3 +413,18 @@ test("errores de PostgreSQL: el nombre ocupado por un alta simultánea es un err
   const draftCheck = translateQuoteError(Object.assign(new Error("chk"), { code: "23514", constraint: "chk_projects_draft_requirements" }));
   assert.ok(draftCheck.fields.newProjectName);
 });
+
+test("compatibilidad: un cliente anterior sin submissionId crea la cotización como antes, sin idempotencia", async (context) => {
+  const server = await startServer(context);
+  // Cuerpo exacto del frontend publicado antes de la idempotencia: sin submissionId ni newProjectName.
+  const first = await server.send("POST", "", VALID_CREATE);
+  assert.equal(first.status, 201, JSON.stringify(first.body));
+  assert.deepEqual(first.body.quote.project, { id: 9, name: "Apto. 910" });
+  assert.equal(first.body.replayed, undefined);
+  assert.ok(!server.database.statements.some((sql) => sql.startsWith("select pg_advisory_xact_lock")), "Sin bloqueo del envío");
+  assert.ok(!server.database.statements.some((sql) => sql.includes("submission_fingerprint from public.quotes")), "Sin búsqueda de repetición");
+  assert.deepEqual([server.database.state.quotes[0].submissionId, server.database.state.quotes[0].submissionFingerprint], [null, null]);
+  // Como antes de la idempotencia, cada envío registra una cotización.
+  assert.equal((await server.send("POST", "", VALID_CREATE)).status, 201);
+  assert.equal(server.database.state.quotes.length, 2);
+});

@@ -79,3 +79,9 @@ test("PDF: la zona horaria es opcional y acotada", () => {
   assert.deepEqual(errorPaths(quotePdfSchema, { params: { quoteId: "1" }, query: { timeZone: "America/Caracas" } }), []);
   assert.ok(errorPaths(quotePdfSchema, { params: { quoteId: "1" }, query: { timeZone: "x".repeat(65) } }).includes("query.timeZone"));
 });
+
+test("alta: submissionId es opcional (clientes anteriores) y, si llega, debe ser un UUID", () => {
+  assert.deepEqual(errorPaths(quoteCreateSchema, { body: VALID_BODY }), []);
+  assert.deepEqual(errorPaths(quoteCreateSchema, { body: VALID_CREATE_BODY }), []);
+  assert.deepEqual(errorPaths(quoteCreateSchema, { body: { ...VALID_BODY, submissionId: "123" } }), ["body.submissionId"]);
+});

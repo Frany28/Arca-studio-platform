@@ -339,6 +339,8 @@ async function createQuoteDraftProject(client, options) {
  * con otro contenido recibe 409 QUOTE_SUBMISSION_REUSED. uq_quotes_created_by_submission es la
  * última barrera. Dos altas distintas con el mismo nombre de proyecto nuevo se resuelven con
  * uq_projects_client_active_name: la segunda espera al COMMIT de la primera y recibe el error del campo.
+ * Sin `submissionId` (clientes anteriores a la idempotencia) el alta se registra como antes, sin
+ * bloqueo ni comprobación de repetición, con identificador y huella NULL.
  *
  * @param {object} options - Datos de la operación.
  * @param {object} options.payload - Cuerpo validado por quoteCreateSchema.
@@ -351,12 +353,16 @@ async function createQuoteDraftProject(client, options) {
 export async function createQuote({ payload, user }) {
   // Una cotización nueva se calcula con la tasa referencial fija (QUOTE_REFERENCE_VAT_RATE).
   const referenceVat = resolveQuoteReferenceVat({ stored: null });
-  const submission = { fingerprint: fingerprintQuoteSubmission(payload), submissionId: payload.submissionId, userId: user.id };
+  const submission = payload.submissionId
+    ? { fingerprint: fingerprintQuoteSubmission(payload), submissionId: payload.submissionId, userId: user.id }
+    : null;
   try {
     return await withTransaction(async (client) => {
-      await lockQuoteSubmission(client, user.id, payload.submissionId);
-      const replayed = await findReplayedQuote(client, submission);
-      if (replayed) return { quote: replayed, replayed: true };
+      if (submission) {
+        await lockQuoteSubmission(client, user.id, submission.submissionId);
+        const replayed = await findReplayedQuote(client, submission);
+        if (replayed) return { quote: replayed, replayed: true };
+      }
 
       const participants = await resolveQuoteParticipants(client, { ...payload, current: null });
       const { lines, referenceVat: vat, servicesTotal } = await resolveQuoteLines(client, { current: null, items: payload.items, referenceVat });
@@ -368,8 +374,8 @@ export async function createQuote({ payload, user }) {
       await insertQuoteRecord(client, {
         code: formatGeneratedQuoteCode(quoteId),
         id: quoteId,
-        submissionFingerprint: submission.fingerprint,
-        submissionId: submission.submissionId,
+        submissionFingerprint: submission?.fingerprint ?? null,
+        submissionId: submission?.submissionId ?? null,
         userId: user.id,
       });
       await writeQuoteVersion(client, {
