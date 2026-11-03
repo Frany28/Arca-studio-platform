@@ -50,9 +50,10 @@ const newProjectName = z.string({ error: "Escribe el nombre del proyecto." })
 
 /**
  * Exige exactamente uno de `projectId` (proyecto existente) o `newProjectName` (proyecto draft
- * que se crea al guardar). Solo aplica al alta: la edición sigue exigiendo `projectId`.
+ * que se crea al guardar), y `submissionId` cuando se crea un proyecto: así un reintento nunca
+ * crea otro alta. Con `projectId` sigue siendo opcional (frontend anterior). Solo aplica al alta.
  *
- * @param {{ projectId?: number, newProjectName?: string }} body - Cuerpo del alta.
+ * @param {{ projectId?: number, newProjectName?: string, submissionId?: string }} body - Cuerpo del alta.
  * @param {import("zod").RefinementCtx} context - Contexto de Zod para registrar el error.
  * @returns {void}
  */
@@ -63,6 +64,8 @@ function assertSingleProjectSelection(body, context) {
     context.addIssue({ code: "custom", message: "Elige un proyecto existente o escribe uno nuevo, no ambos.", path: ["newProjectName"] });
   } else if (!hasProject && !hasNewProject) {
     context.addIssue({ code: "custom", message: "Selecciona el proyecto o escribe el nombre de uno nuevo.", path: ["projectId"] });
+  } else if (hasNewProject && body.submissionId === undefined) {
+    context.addIssue({ code: "custom", message: "Un proyecto nuevo requiere el identificador de envío.", path: ["submissionId"] });
   }
 }
 

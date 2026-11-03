@@ -62,3 +62,10 @@ test("compatibilidad: el cuerpo del frontend anterior (sin submissionId) sigue s
   assert.equal(body.submissionId, undefined);
   assert.ok(parse(quoteCreateSchema, { body: { ...legacyBody, submissionId: "no-es-uuid" } }).issues.includes("body.submissionId"));
 });
+
+test("proyecto nuevo: el backend exige submissionId y el editor siempre lo envía", () => {
+  const draft = { ...BASE_DRAFT, project: { kind: PROJECT_KIND.NEW, name: "Casa del Lago" } };
+  assert.deepEqual(parse(quoteCreateSchema, { body: toQuotePayload(draft) }).issues, ["body.submissionId"]);
+  // useQuoteSubmit añade el identificador a toda alta.
+  assert.equal(parse(quoteCreateSchema, { body: { ...toQuotePayload(draft), submissionId: randomUUID() } }).issues, undefined);
+});

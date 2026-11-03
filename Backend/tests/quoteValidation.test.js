@@ -85,3 +85,11 @@ test("alta: submissionId es opcional (clientes anteriores) y, si llega, debe ser
   assert.deepEqual(errorPaths(quoteCreateSchema, { body: VALID_CREATE_BODY }), []);
   assert.deepEqual(errorPaths(quoteCreateSchema, { body: { ...VALID_BODY, submissionId: "123" } }), ["body.submissionId"]);
 });
+
+test("alta: un proyecto nuevo exige submissionId; un proyecto existente no", () => {
+  const { projectId: _projectId, ...withoutProject } = VALID_BODY;
+  const newProject = { ...withoutProject, newProjectName: "Casa del Lago" };
+  assert.deepEqual(errorPaths(quoteCreateSchema, { body: newProject }), ["body.submissionId"]);
+  assert.deepEqual(errorPaths(quoteCreateSchema, { body: { ...newProject, submissionId: VALID_CREATE_BODY.submissionId } }), []);
+  assert.deepEqual(errorPaths(quoteCreateSchema, { body: VALID_BODY }), [], "Con projectId sigue siendo opcional");
+});

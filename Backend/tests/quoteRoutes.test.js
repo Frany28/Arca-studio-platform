@@ -428,3 +428,14 @@ test("compatibilidad: un cliente anterior sin submissionId crea la cotización c
   assert.equal((await server.send("POST", "", VALID_CREATE)).status, 201);
   assert.equal(server.database.state.quotes.length, 2);
 });
+
+test("proyecto nuevo sin submissionId: 400 antes de consultar PostgreSQL y sin crear el draft", async (context) => {
+  const server = await startServer(context);
+  const response = await server.send("POST", "", { ...CREATE_WITHOUT_PROJECT, newProjectName: "Casa del Lago" });
+  assert.equal(response.status, 400);
+  assert.equal(response.body.fields["body.submissionId"], "Un proyecto nuevo requiere el identificador de envío.");
+  assert.deepEqual(server.database.statements, []);
+  assert.equal(server.database.state.projects.size, 3);
+  // Con el identificador, la misma alta es válida e idempotente.
+  assert.equal((await createDraftQuote(server, { newProjectName: "Casa del Lago" })).status, 201);
+});
