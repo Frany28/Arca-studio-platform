@@ -71,11 +71,20 @@ function QuoteEntityTagField({
   const listOpen = explicitSelection && focused && suggestions.length > 0;
   const active = listOpen && activeIndex < suggestions.length ? activeIndex : -1;
 
-  let hint = error || "";
-  if (!hint && !selected && remote.error) hint = remote.error;
-  else if (!hint && !selected && focused && remote.loading) hint = "Buscando…";
-  else if (!hint && !selected && statusHint) hint = statusHint;
-  else if (!hint && focused && !selected && !remote.options.length && emptyMessage) hint = emptyMessage;
+  // Ayuda en vivo de la búsqueda: fallo de lectura, carga, aviso del texto escrito o «sin opciones».
+  let liveHint = "";
+  if (!selected) {
+    if (remote.error) liveHint = remote.error;
+    else if (focused && remote.loading) liveHint = "Buscando…";
+    else if (statusHint) liveHint = statusHint;
+    else if (focused && !remote.options.length && emptyMessage) liveHint = emptyMessage;
+  }
+  // El error de un intento de guardado anterior cede ante la ayuda en vivo mientras el campo tiene el
+  // foco: sin ello, un cliente sin proyectos (o una búsqueda en curso o fallida) no explicaría por qué
+  // no aparecen sugerencias. Al salir del campo vuelve a mostrarse si sigue sin resolverse.
+  const showError = Boolean(error) && !(focused && liveHint);
+  const hint = showError ? error : liveHint;
+  const hintIsError = showError || (Boolean(remote.error) && hint === remote.error);
 
   /**
    * Elige una sugerencia por su id; ignora textos libres que no correspondan a una opción.
@@ -139,7 +148,8 @@ function QuoteEntityTagField({
         readOnly={Boolean(selected)}
         value={query}
         // Input solo muestra sugerencias en su estado Focused: con un error previo el campo vuelve a
-        // Default mientras se escribe, y el motivo sigue visible en el HintText inferior.
+        // Default mientras tiene el foco; el HintText inferior muestra el motivo o, si la búsqueda
+        // tiene algo que decir (cargando, sin opciones, fallo), esa ayuda en vivo.
         state={error && !focused ? "Error" : "Default"}
         showHint={false}
         aria-describedby={hint ? hintId : undefined}
@@ -187,8 +197,8 @@ function QuoteEntityTagField({
         <HintText
           id={hintId}
           hintText={hint}
-          state={error || remote.error ? "Error" : "Default"}
-          role={error ? "alert" : "status"}
+          state={hintIsError ? "Error" : "Default"}
+          role={showError ? "alert" : "status"}
           className="w-full"
         />
       ) : null}

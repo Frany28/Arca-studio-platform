@@ -1092,6 +1092,35 @@ test("edición: el proyecto solo se elige entre los existentes; el texto escrito
   await page.getByRole("button", { name: "Quitar Apto. 910" }).waitFor();
 });
 
+test("proyecto tras guardar vacío: la ayuda de la búsqueda sustituye al error mientras el campo tiene el foco", async (context) => {
+  const backend = createBackend();
+  const original = backend.handle;
+  // Leonel Pérez sin proyectos registrados: no hay sugerencias que mostrar.
+  backend.handle = (route) => (new URL(route.request().url()).pathname.endsWith("/clients/3/projects")
+    ? route.fulfill({ body: JSON.stringify({ nextCursor: null, projects: [] }), contentType: "application/json", status: 200 })
+    : original(route));
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  const project = page.locator("#quote-project");
+  const hint = page.locator("#quote-project-hint");
+  await page.locator("#quote-client").fill("Leo");
+  await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await hint.getByText("Selecciona o escribe el proyecto del cliente.").waitFor();
+  assert.equal(await hint.getAttribute("role"), "alert");
+
+  await project.click();
+  await hint.getByText("Este cliente no tiene proyectos que coincidan.").waitFor();
+  assert.equal(await hint.getAttribute("role"), "status");
+  assert.equal(await project.getAttribute("aria-invalid"), "true", "El campo sigue marcado como inválido");
+
+  // Al salir sin resolverlo, el motivo vuelve; al escribir, el nombre nuevo lo resuelve.
+  await page.locator("#quote-general-data-title").click();
+  await hint.getByText("Selecciona o escribe el proyecto del cliente.").waitFor();
+  await project.fill("Casa del Lago");
+  await hint.getByText("Se creará como proyecto Draft al guardar la cotización.").waitFor();
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false);
+});
+
 test("visor: recupera un PDF pendiente mediante POST sin crear una versión comercial", async (context) => {
   const failures = { "GET /api/admin/quotes/:id/pdf": { body: { code: "QUOTE_PDF_PENDING", message: "El PDF está pendiente. Reintenta su recuperación en unos momentos." }, status: 409 } };
   const backend = createBackend({ failures });
