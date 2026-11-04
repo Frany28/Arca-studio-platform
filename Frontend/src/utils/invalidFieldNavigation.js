@@ -4,9 +4,16 @@
 // atributo que leen los lectores de pantalla. Así la navegación no depende de cómo cada formulario
 // guarda sus errores (estado local, errores del backend o validación de un paso) ni del tipo de
 // control: input, textarea, combobox, DropdownMenu o grupo de botones.
+//
+// Errores de lista (p. ej. «Añade al menos un servicio»): el marcador es la sección que muestra el
+// error y no contiene un control que lo resuelva. Con `data-invalid-field-control` nombra, por id y
+// en orden de preferencia, dónde está ese control; se enfoca el primero disponible.
 
 /** Marca de invalidez compartida por todos los formularios. */
 export const INVALID_FIELD_SELECTOR = '[aria-invalid="true"]';
+
+/** Atributo del marcador con los ids (separados por espacios) de los controles que resuelven el error. */
+export const INVALID_FIELD_CONTROL_ATTRIBUTE = "data-invalid-field-control";
 
 // Controles que pueden recibir el foco cuando `aria-invalid` está en un contenedor (DropdownMenu,
 // grupo de opciones) en lugar de en el propio control.
@@ -54,16 +61,31 @@ export function isAvailableFocusTarget(element) {
 }
 
 /**
- * Resuelve el control interactivo real de un campo marcado como inválido: el propio elemento si es
- * enfocable o, si la marca está en un contenedor, su primer control disponible (el disparador de
- * un DropdownMenu, la primera opción de un grupo).
+ * Primer control disponible de un elemento: él mismo si es enfocable o su primer descendiente
+ * enfocable (el disparador de un DropdownMenu, la primera opción de un grupo).
+ *
+ * @param {Element} element - Elemento o contenedor.
+ * @returns {HTMLElement|null} Control o null.
+ */
+function firstAvailableControl(element) {
+  if (element.matches(FOCUSABLE_SELECTOR) && isAvailableFocusTarget(element)) return element;
+  return [...element.querySelectorAll(FOCUSABLE_SELECTOR)].find(isAvailableFocusTarget) ?? null;
+}
+
+/**
+ * Resuelve el control interactivo real de un campo marcado como inválido. Si el marcador nombra sus
+ * controles (`data-invalid-field-control`), se usa el primero disponible en ese orden; si no, el
+ * propio marcador o su primer control interno.
  *
  * @param {Element} invalidElement - Elemento con `aria-invalid="true"`.
  * @returns {HTMLElement|null} Control a enfocar o null si ninguno está disponible.
  */
 export function resolveInvalidFieldFocusTarget(invalidElement) {
-  if (invalidElement.matches(FOCUSABLE_SELECTOR) && isAvailableFocusTarget(invalidElement)) return invalidElement;
-  return [...invalidElement.querySelectorAll(FOCUSABLE_SELECTOR)].find(isAvailableFocusTarget) ?? null;
+  for (const reference of referencedElements(invalidElement, INVALID_FIELD_CONTROL_ATTRIBUTE)) {
+    const control = firstAvailableControl(reference);
+    if (control) return control;
+  }
+  return firstAvailableControl(invalidElement);
 }
 
 /**
@@ -122,33 +144,78 @@ function referencedElements(element, attribute) {
 }
 
 /**
- * Calcula la caja que debe quedar visible: el control, su marcador, sus etiquetas y sus mensajes
- * asociados (el error bajo el campo), siempre que estén renderizados y cerca del control.
+ * Copia una caja del DOM como objeto plano y mutable.
  *
- * @param {{element: Element, target: HTMLElement}} field - Campo inválido.
- * @returns {{top: number, bottom: number, left: number, right: number}} Caja en coordenadas del viewport.
+ * @param {DOMRect} rect - Caja medida.
+ * @returns {{top: number, bottom: number, left: number, right: number}} Caja.
  */
-export function getInvalidFieldRevealRect({ element, target }) {
-  const targetRect = target.getBoundingClientRect();
-  const associated = [
-    element,
-    ...(target.labels ?? []),
-    ...referencedElements(target, "aria-labelledby"),
-    ...referencedElements(target, "aria-describedby"),
-    ...referencedElements(element, "aria-describedby"),
-  ];
-  const rect = { bottom: targetRect.bottom, left: targetRect.left, right: targetRect.right, top: targetRect.top };
-  for (const part of associated) {
+function toBox(rect) {
+  return { bottom: rect.bottom, left: rect.left, right: rect.right, top: rect.top };
+}
+
+/**
+ * Amplía una caja con las partes asociadas que están renderizadas y forman parte del campo: las
+ * contenidas en el marcador (su error, aunque quede lejos del control) o las cercanas al control.
+ *
+ * @param {{top: number, bottom: number, left: number, right: number}} box - Caja inicial.
+ * @param {Element[]} parts - Partes candidatas.
+ * @param {{element: Element, targetRect: DOMRect}} field - Marcador y caja del control.
+ * @returns {{top: number, bottom: number, left: number, right: number}} Unión.
+ */
+function unionWithAssociated(box, parts, { element, targetRect }) {
+  const union = { ...box };
+  for (const part of parts) {
     if (part.getClientRects().length === 0) continue;
     const partRect = part.getBoundingClientRect();
     const gap = Math.max(partRect.top - targetRect.bottom, targetRect.top - partRect.bottom, 0);
-    if (gap > ASSOCIATED_CONTENT_MAX_GAP_PX) continue;
-    rect.top = Math.min(rect.top, partRect.top);
-    rect.bottom = Math.max(rect.bottom, partRect.bottom);
-    rect.left = Math.min(rect.left, partRect.left);
-    rect.right = Math.max(rect.right, partRect.right);
+    if (part !== element && !element.contains(part) && gap > ASSOCIATED_CONTENT_MAX_GAP_PX) continue;
+    union.top = Math.min(union.top, partRect.top);
+    union.bottom = Math.max(union.bottom, partRect.bottom);
+    union.left = Math.min(union.left, partRect.left);
+    union.right = Math.max(union.right, partRect.right);
   }
-  return rect;
+  return union;
+}
+
+/**
+ * Calcula las cajas a revelar, de la más completa a la mínima: `full` (control, marcador,
+ * etiquetas y mensajes), `essential` (control y sus mensajes de error) y `target` (solo el
+ * control). El desplazamiento usa la primera que cabe, para que un campo alto (muchos adjuntos) o
+ * un error de lista lejos de su control sigan mostrando el control y, si es posible, el motivo.
+ *
+ * @param {{element: Element, target: HTMLElement}} field - Campo inválido.
+ * @returns {{full: Object, essential: Object, target: Object}} Cajas en coordenadas del viewport.
+ */
+export function getInvalidFieldRevealBoxes({ element, target }) {
+  const targetRect = target.getBoundingClientRect();
+  const messages = [...referencedElements(target, "aria-describedby"), ...referencedElements(element, "aria-describedby")];
+  const essential = unionWithAssociated(toBox(targetRect), messages, { element, targetRect });
+  const full = unionWithAssociated(essential, [
+    element,
+    ...(target.labels ?? []),
+    ...referencedElements(target, "aria-labelledby"),
+    ...referencedElements(element, "aria-labelledby"),
+  ], { element, targetRect });
+  return { essential, full, target: toBox(targetRect) };
+}
+
+/**
+ * Elige la caja a mostrar en un área visible: la primera candidata que cabe en altura; si ninguna
+ * cabe, el inicio de la esencial con la altura del área cuando el control queda dentro, o el
+ * control solo. El control nunca queda fuera de la vista.
+ *
+ * @param {{full: Object, essential: Object, target: Object}} boxes - Cajas candidatas.
+ * @param {number} viewHeight - Alto del área visible.
+ * @returns {{top: number, bottom: number, left: number, right: number}} Caja elegida.
+ */
+export function pickRevealBox({ essential, full, target }, viewHeight) {
+  for (const box of [full, essential]) {
+    if (box.bottom - box.top <= viewHeight) return box;
+  }
+  if (target.top >= essential.top && target.bottom <= essential.top + viewHeight) {
+    return { ...essential, bottom: essential.top + viewHeight };
+  }
+  return target;
 }
 
 /**
@@ -237,19 +304,25 @@ function getVisibleArea(container) {
 
 /**
  * Desplaza solo los contenedores necesarios para mostrar una caja, del más interno al externo. El
- * desplazamiento de cada contenedor interno se descuenta de la caja antes de calcular el siguiente,
- * porque con `behavior: "smooth"` las posiciones aún no han cambiado al medir.
+ * desplazamiento de cada contenedor interno se descuenta de las cajas antes de calcular el
+ * siguiente, porque con `behavior: "smooth"` las posiciones aún no han cambiado al medir. Con
+ * varias cajas candidatas (getInvalidFieldRevealBoxes), cada contenedor muestra la mayor que cabe
+ * en su área (pickRevealBox).
  *
  * @param {Element} element - Elemento de referencia (define la cadena de contenedores).
- * @param {{top: number, bottom: number, left: number, right: number}} rect - Caja a mostrar.
+ * @param {{top: number, bottom: number, left: number, right: number}|{full: Object, essential: Object, target: Object}} reveal
+ * Caja a mostrar o cajas candidatas.
  * @param {ScrollBehavior} behavior - `smooth` o `auto`.
  * @returns {boolean} true si se desplazó algún contenedor.
  */
-export function scrollRectIntoView(element, rect, behavior) {
-  const box = { ...rect };
+export function scrollRectIntoView(element, reveal, behavior) {
+  const boxes = "full" in reveal
+    ? { essential: { ...reveal.essential }, full: { ...reveal.full }, target: { ...reveal.target } }
+    : { essential: { ...reveal }, full: { ...reveal }, target: { ...reveal } };
   let scrolled = false;
   for (const container of getScrollContainers(element)) {
     const area = getVisibleArea(container);
+    const box = pickRevealBox(boxes, area.bottom - area.top);
     const deltaY = computeScrollDelta({
       end: box.bottom, maxScroll: container.scrollHeight - container.clientHeight, scrollPosition: container.scrollTop,
       start: box.top, viewEnd: area.bottom, viewStart: area.top,
@@ -260,10 +333,12 @@ export function scrollRectIntoView(element, rect, behavior) {
     });
     if (deltaX === 0 && deltaY === 0) continue;
     container.scrollTo({ behavior, left: container.scrollLeft + deltaX, top: container.scrollTop + deltaY });
-    box.top -= deltaY;
-    box.bottom -= deltaY;
-    box.left -= deltaX;
-    box.right -= deltaX;
+    for (const candidate of Object.values(boxes)) {
+      candidate.top -= deltaY;
+      candidate.bottom -= deltaY;
+      candidate.left -= deltaX;
+      candidate.right -= deltaX;
+    }
     scrolled = true;
   }
   return scrolled;
@@ -309,7 +384,7 @@ export function focusFirstInvalidField(container, { behavior } = {}) {
   const field = findFirstInvalidField(container);
   if (!field) return null;
   const view = field.target.ownerDocument.defaultView ?? window;
-  scrollRectIntoView(field.target, getInvalidFieldRevealRect(field), behavior ?? resolveScrollBehavior(view));
+  scrollRectIntoView(field.target, getInvalidFieldRevealBoxes(field), behavior ?? resolveScrollBehavior(view));
   navigationFocusTarget = field.target;
   try {
     // `focusVisible` lo ignoran los navegadores que no lo admiten; los campos de texto ya muestran

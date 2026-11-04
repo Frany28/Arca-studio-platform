@@ -1324,3 +1324,56 @@ test("guardar con errores lleva al primer campo inválido aunque esté fuera de 
   await page.locator("#quote-project").click();
   await page.getByRole("option", { name: /Apto\. 910/ }).first().waitFor();
 });
+
+/**
+ * Espera a que termine el desplazamiento suave: la posición del documento no cambia en 5 frames.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<void>}
+ */
+function waitForScrollEnd(page) {
+  return page.evaluate(() => new Promise((resolve) => {
+    let last = window.scrollY;
+    let stable = 0;
+    const check = () => {
+      stable = window.scrollY === last ? stable + 1 : 0;
+      last = window.scrollY;
+      if (stable >= 5) resolve();
+      else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  }));
+}
+
+test("sin servicios: «Añade al menos un servicio» lleva al selector y enfoca la primera casilla; sin filas, el buscador", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", viewport: { height: 900, width: 1280 } });
+  await page.locator("#quote-client").fill("Leo");
+  await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  await page.locator("#quote-project").click();
+  await page.getByRole("option", { name: /Apto\. 910/ }).first().click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  const save = page.getByRole("button", { name: "Guardar" });
+  await save.click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Seleccionar Anteproyecto arquitectónico");
+  await page.waitForFunction(() => { const rect = document.activeElement.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; });
+  await waitForScrollEnd(page);
+  const items = page.getByRole("region", { name: "Servicios incluidos" });
+  assert.equal(await items.getAttribute("aria-invalid"), "true");
+  const message = page.locator(`[id="${await items.getAttribute("aria-describedby")}"]`);
+  assert.equal(await message.innerText(), "Añade al menos un servicio a la cotización.");
+  assert.equal(await message.evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; }), true, "El motivo también se ve");
+  assert.equal(await page.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).getAttribute("aria-checked"), "false", "Enfocar no selecciona");
+
+  // Sin coincidencias en el selector no hay casillas: el foco va al buscador.
+  await page.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).fill("zzz");
+  await page.getByText("No hay coincidencias").waitFor();
+  await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+  await save.click();
+  await page.waitForFunction(() => document.activeElement?.id === "quote-service-search");
+  await page.waitForFunction(() => { const rect = document.activeElement.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; });
+  await waitForScrollEnd(page);
+  assert.equal(await page.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).inputValue(), "zzz", "Conserva la búsqueda");
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false);
+});

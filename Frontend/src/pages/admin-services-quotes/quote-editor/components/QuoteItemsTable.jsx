@@ -13,6 +13,7 @@ import TableScrollViewport from "../../../../components/ui/ScrollBar/TableScroll
 import StatusConfirmationModal from "../../components/StatusConfirmationModal.jsx";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatDecimalMoney } from "../../utils/moneyFormat.js";
+import { QUOTE_ITEMS_ERROR_ID, QUOTE_SERVICE_PICKER_CONTROL_IDS } from "../utils/quoteEditorFieldIds.js";
 import QuoteAmountsSummary from "./QuoteAmountsSummary.jsx";
 
 // Figma 5771:367433: selección 48, Servicio 300, Unidad 200, Cantidad/Tarifa base/Subtotal
@@ -155,7 +156,15 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRe
   }
 
   return (
-    <section className="flex flex-col gap-[16px]" aria-labelledby="quote-items-title">
+    <section
+      className="flex flex-col gap-[16px]"
+      aria-labelledby="quote-items-title"
+      // «Añade al menos un servicio» es un error de la lista: la sección lo marca y la navegación a
+      // errores enfoca el control que lo resuelve en el selector (primera casilla o el buscador).
+      aria-invalid={errors.items ? true : undefined}
+      aria-describedby={errors.items ? QUOTE_ITEMS_ERROR_ID : undefined}
+      data-invalid-field-control={errors.items ? QUOTE_SERVICE_PICKER_CONTROL_IDS : undefined}
+    >
       <h2 id="quote-items-title" className="text-heading-5 text-[var(--color-text-300)]">Servicios incluidos</h2>
 
       <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
@@ -319,7 +328,7 @@ function QuoteItemsTable({ disabled, errors, lines, onLineChange, onRemove, onRe
           />
         ) : null}
       </div>
-      {errors.items ? <HintText hintText={errors.items} state="Error" role="alert" className="w-full" /> : null}
+      {errors.items ? <HintText id={QUOTE_ITEMS_ERROR_ID} hintText={errors.items} state="Error" role="alert" className="w-full" /> : null}
       {selected.length ? (
         // Contador a la izquierda y «Eliminar» centrado: la tercera columna equilibra la primera.
         // En pantallas estrechas ambos se apilan centrados para que el contador no se parta.

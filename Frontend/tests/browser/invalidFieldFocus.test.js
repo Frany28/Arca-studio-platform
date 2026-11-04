@@ -77,10 +77,10 @@ function recordScrollCalls() {
  * Abre el arnés en un contexto aislado y vigila errores de página.
  *
  * @param {import("node:test").TestContext} context - Prueba propietaria.
- * @param {Object} [options] - Variante, backend simulado, viewport y movimiento reducido.
+ * @param {Object} [options] - Variante, backend simulado, viewport, movimiento reducido y error de lista.
  * @returns {Promise<import("playwright").Page>} Página lista.
  */
-async function openHarness(context, { layout = "page", reducedMotion = "reduce", serverMode = "ok", viewport = DESKTOP } = {}) {
+async function openHarness(context, { layout = "page", list = false, reducedMotion = "reduce", serverMode = "ok", viewport = DESKTOP } = {}) {
   const session = await browser.newContext({ reducedMotion, viewport });
   const page = applyBrowserTimeouts(await session.newPage());
   const errors = [];
@@ -90,7 +90,7 @@ async function openHarness(context, { layout = "page", reducedMotion = "reduce",
     await session.close();
     assert.deepEqual(errors, []);
   });
-  await page.goto(`${origin}/tests/browser/fixtures/invalid-field-focus.html?layout=${layout}&server=${serverMode}`);
+  await page.goto(`${origin}/tests/browser/fixtures/invalid-field-focus.html?layout=${layout}&server=${serverMode}&list=${list ? 1 : 0}`);
   await page.locator("#harness-name").waitFor();
   return page;
 }
@@ -394,4 +394,76 @@ test("móvil, tablet y escritorio: el primer error en orden visual queda visible
     assert.equal(field.visible && field.messagesVisible, true, `${viewport.label}: campo y error visibles`);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${viewport.label}: sin scroll horizontal`);
   }
+});
+
+/**
+ * Estado del error de lista: foco, visibilidad del control y del mensaje en el área del formulario
+ * del modal, y desplazamiento de la página de fondo.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<Object>} Estado.
+ */
+function listErrorState(page) {
+  return page.evaluate(() => {
+    const area = document.getElementById("harness-modal-form").getBoundingClientRect();
+    const options = document.getElementById("harness-ref-options");
+    const inside = (node, box) => { const rect = node.getBoundingClientRect(); return rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1; };
+    const element = document.activeElement;
+    return {
+      focused: element.id || element.textContent.trim(),
+      messageVisible: inside(document.getElementById("harness-refs-error"), area),
+      optionsScrollTop: options.scrollTop,
+      pageScrollTop: document.scrollingElement.scrollTop,
+      targetVisible: inside(element, area) && (!options.contains(element) || inside(element, options.getBoundingClientRect())),
+    };
+  });
+}
+
+test("error de lista en modal: enfoca su control en otro bloque con scroll propio, muestra el motivo y no mueve la página", async (context) => {
+  const page = await openHarness(context, { layout: "modal", list: true });
+  await page.getByRole("dialog", { name: "Formulario en modal" }).waitFor();
+  await fillValid(page);
+  await page.locator("#harness-ref-options").evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await page.locator("#harness-modal-form").evaluate((form) => { form.scrollTop = form.scrollHeight; });
+  await resetScrollCalls(page);
+
+  await page.getByRole("button", { exact: true, name: "Crear" }).click();
+  await waitForNavigation(page);
+  let state = await listErrorState(page);
+  assert.equal(state.focused, "Añadir Plano", "La primera opción del selector");
+  assert.equal(state.optionsScrollTop, 0, "El área de opciones se desplaza hasta ella");
+  assert.equal(state.targetVisible && state.messageVisible, true, "Control y motivo visibles a la vez");
+  assert.equal(state.pageScrollTop, 0, "La página bajo el modal no se mueve");
+  assert.equal((await scrollCalls(page)).some((call) => call.target === "document"), false);
+  const section = page.getByRole("region", { name: "Referencias añadidas" });
+  assert.equal(await section.getAttribute("aria-invalid"), "true");
+  assert.equal(await section.getAttribute("aria-describedby"), "harness-refs-error");
+
+  // Sin opciones visibles, el siguiente control preferido es el buscador.
+  await page.locator("#harness-ref-search").fill("zzz");
+  await page.locator("#harness-modal-form").evaluate((form) => { form.scrollTop = form.scrollHeight; });
+  await page.getByRole("button", { exact: true, name: "Crear" }).click();
+  await waitForNavigation(page, "harness-ref-search");
+  state = await listErrorState(page);
+  assert.equal(state.targetVisible, true);
+  assert.equal(await page.locator("#harness-ref-search").inputValue(), "zzz");
+
+  // Añadir una referencia resuelve el error y el formulario se guarda.
+  await page.locator("#harness-ref-search").fill("");
+  await page.getByRole("button", { exact: true, name: "Añadir Fachada" }).click();
+  await page.getByRole("button", { exact: true, name: "Crear" }).click();
+  await page.getByRole("status").getByText("Guardado").waitFor();
+});
+
+test("error de lista con movimiento suave: el desplazamiento usa smooth y termina con control y motivo visibles", async (context) => {
+  const page = await openHarness(context, { layout: "modal", list: true, reducedMotion: "no-preference" });
+  await page.getByRole("dialog", { name: "Formulario en modal" }).waitFor();
+  await fillValid(page);
+  await page.locator("#harness-modal-form").evaluate((form) => { form.scrollTop = form.scrollHeight; });
+  await resetScrollCalls(page);
+  await page.getByRole("button", { exact: true, name: "Crear" }).click();
+  await waitForNavigation(page);
+  assert.deepEqual((await scrollCalls(page)).map((call) => call.behavior), ["smooth"]);
+  const state = await listErrorState(page);
+  assert.equal(state.targetVisible && state.messageVisible, true);
 });

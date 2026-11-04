@@ -11,6 +11,7 @@ import TableScrollViewport from "../../../../components/ui/ScrollBar/TableScroll
 import { normalizeTagSearchText } from "../../../../components/ui/Input/tags/tagUtils.js";
 import ServiceDescriptionHint from "../../service-catalog/components/ServiceDescriptionHint.jsx";
 import { formatReferenceRate, getServiceDescription } from "../../service-catalog/utils/serviceCatalogPresentation.js";
+import { QUOTE_SERVICE_PICKER_ROWS_ID, QUOTE_SERVICE_SEARCH_ID } from "../utils/quoteEditorFieldIds.js";
 import { formatServicePickerCount } from "../utils/servicePickerCount.js";
 
 // Figma 5771:463261: selección 48, Servicio 350 y Unidad/Tarifa flexibles (mínimo 150).
@@ -140,7 +141,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
             </tr>
           </thead>
           {/* isolate: el z-index interno del Checkbox no sale del cuerpo ni tapa la cabecera fija. */}
-          <tbody className="isolate">
+          <tbody id={QUOTE_SERVICE_PICKER_ROWS_ID} className="isolate">
             {visible.map((service) => {
               const included = includedIds.has(service.id);
               const checked = included || selectedIds.has(service.id);
@@ -191,6 +192,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
         <h2 id="quote-service-picker-title" className="text-heading-5 text-[var(--color-text-300)]">Seleccionar servicios</h2>
         <div className="w-[320px] max-[767px]:w-full">
           <Input
+            id={QUOTE_SERVICE_SEARCH_ID}
             type="Default input"
             size="M"
             value={query}

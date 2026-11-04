@@ -63,3 +63,16 @@ test("los formularios integrados navegan solo tras intentar enviar, no al escrib
     assert.doesNotMatch(source, /scrollIntoView\(\{ behavior: "smooth"/, `${path} no duplica la navegación`);
   }
 });
+
+test("revelado por prioridad: campo completo, control con su motivo o el inicio sin perder el control", async () => {
+  const { pickRevealBox } = await import("../src/utils/invalidFieldNavigation.js");
+  const target = box(500, 40);
+  const essential = box(500, 300);
+  const full = box(420, 380);
+  assert.deepEqual(pickRevealBox({ essential, full, target }, 800), full, "Cabe entero");
+  assert.deepEqual(pickRevealBox({ essential, full, target }, 320), essential, "Solo control y motivo");
+  assert.deepEqual(pickRevealBox({ essential, full, target }, 200), { ...essential, bottom: 700 }, "Inicio con el control dentro");
+  // Motivo encima del control y muy alejado: se muestra al menos el control.
+  const below = box(900, 40);
+  assert.deepEqual(pickRevealBox({ essential: box(100, 840), full: box(100, 840), target: below }, 200), below);
+});

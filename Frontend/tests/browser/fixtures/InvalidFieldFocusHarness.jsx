@@ -13,16 +13,19 @@ import "../../../src/index.css";
 
 // Arnés de useInvalidFieldFocus con los componentes compartidos reales. `layout` elige el
 // contenedor (página, modal con scroll interno, panel desplazable dentro de la página o un
-// formulario en dos pasos) y `server` simula la respuesta del backend al enviar.
+// formulario en dos pasos) y `server` simula la respuesta del backend al enviar. Con `list=1` se
+// añade un error de lista («Añade al menos una referencia») cuyo control está en otro bloque.
 const params = new URLSearchParams(window.location.search);
 const layout = params.get("layout") || "page";
 const serverMode = params.get("server") || "ok";
+const listEnabled = params.get("list") === "1";
+const REFERENCES = ["Plano", "Fachada", "Corte", "Detalle", "Render", "Maqueta"];
 const TYPE_ITEMS = [
   { id: "residential", label: "Residencial", type: "Text" },
   { id: "commercial", label: "Comercial", type: "Text" },
 ];
 const CITIES = ["Maracaibo", "Caracas"];
-const EMPTY_VALUES = { city: "", email: "", meeting: "", name: "", notes: "", type: "" };
+const EMPTY_VALUES = { city: "", email: "", meeting: "", name: "", notes: "", refs: [], refsQuery: "", type: "" };
 const harness = { serverCalls: 0, submissions: 0 };
 window.invalidFieldHarness = harness;
 
@@ -39,6 +42,7 @@ function validate(values) {
   if (!CITIES.includes(values.city.trim())) errors.city = "Elige una ciudad de la lista.";
   if (values.notes.trim().length < 10) errors.notes = "Escribe al menos 10 caracteres.";
   if (!values.meeting) errors.meeting = "Elige una opción de reunión.";
+  if (listEnabled && values.refs.length === 0) errors.refs = "Añade al menos una referencia.";
   return errors;
 }
 
@@ -76,6 +80,41 @@ function MeetingGroup({ error, onChange, value }) {
       </div>
       {error ? <HintText id={errorId} state="Error" hintText={error} role="alert" /> : null}
     </div>
+  );
+}
+
+/**
+ * Error de lista como «Añade al menos un servicio»: el selector (buscador y opciones en un área
+ * con scroll propio) va antes y la sección que marca el error, después, separada por contenido.
+ *
+ * @param {Object} props - Valores, errores y cambios.
+ * @returns {import("react").ReactElement} Selector y lista.
+ */
+function ReferenceList({ errors, onChange, values }) {
+  const visible = REFERENCES.filter((reference) => reference.toLowerCase().includes(values.refsQuery.toLowerCase()) && !values.refs.includes(reference));
+  return (
+    <>
+      <div className="flex flex-col gap-[8px]">
+        <Input id="harness-ref-search" label="Buscar referencias" showLabelInfo={false} showLeftIcon={false} showRightIcon={false} showHint={false} value={values.refsQuery} className="max-w-none" onChange={(event) => onChange("refsQuery", event.target.value)} />
+        <ul id="harness-ref-options" className="m-0 flex max-h-[96px] list-none flex-col gap-[4px] overflow-y-auto p-0" data-ref-options>
+          {visible.map((reference) => (
+            <li key={reference}><Button theme="Primary" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} onClick={() => onChange("refs", [...values.refs, reference])}>{`Añadir ${reference}`}</Button></li>
+          ))}
+        </ul>
+      </div>
+      <div aria-hidden="true" className="h-[240px] shrink-0" />
+      <section
+        aria-labelledby="harness-refs-title"
+        aria-invalid={errors.refs ? true : undefined}
+        aria-describedby={errors.refs ? "harness-refs-error" : undefined}
+        data-invalid-field-control={errors.refs ? "harness-ref-options harness-ref-search" : undefined}
+        className="flex flex-col gap-[8px]"
+      >
+        <h2 id="harness-refs-title" className="text-heading-8">Referencias añadidas</h2>
+        <p>{values.refs.length ? values.refs.join(", ") : "Sin referencias."}</p>
+        {errors.refs ? <HintText id="harness-refs-error" state="Error" hintText={errors.refs} role="alert" /> : null}
+      </section>
+    </>
   );
 }
 
@@ -153,6 +192,7 @@ function Fields({ errors, onChange, spacer, values }) {
         onChange={(event) => onChange("notes", event.target.value)}
       />
       <MeetingGroup error={errors.meeting} value={values.meeting} onChange={(value) => onChange("meeting", value)} />
+      {listEnabled ? <ReferenceList errors={errors} onChange={onChange} values={values} /> : null}
       {spacer ? <div aria-hidden="true" className={`${spacer} shrink-0`} data-spacer /> : null}
       <Input
         id="harness-email"

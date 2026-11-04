@@ -449,3 +449,86 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 768, height: 100
     }
   });
 }
+
+/**
+ * Espera a que termine el desplazamiento suave: la posición del documento no cambia en 5 frames.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<void>}
+ */
+function waitForScrollEnd(page) {
+  return page.evaluate(() => new Promise((resolve) => {
+    let last = window.scrollY;
+    let stable = 0;
+    const check = () => {
+      stable = window.scrollY === last ? stable + 1 : 0;
+      last = window.scrollY;
+      if (stable >= 5) resolve();
+      else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  }));
+}
+
+/**
+ * Estado del foco y de los mensajes del grupo de adjuntos respecto al viewport.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<Object>} Foco, invalidez y visibilidad.
+ */
+function attachmentsFocusState(page) {
+  return page.evaluate(() => {
+    const inView = (node) => { const rect = node.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; };
+    const group = document.activeElement.closest("[role='group'][aria-invalid='true']");
+    const messages = (group?.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id));
+    return {
+      focused: document.activeElement.textContent.trim(),
+      groupLabel: group ? document.getElementById(group.getAttribute("aria-labelledby"))?.textContent.trim() : null,
+      messages: messages.map((node) => node.textContent.trim()),
+      messagesVisible: messages.every(inView),
+      targetVisible: inView(document.activeElement),
+    };
+  });
+}
+
+test("Adjuntos: un archivo no permitido lleva a la sección de archivos, enfoca «Elige un archivo» y muestra el motivo", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await page.locator('input[type="file"]').setInputFiles([pngFile("fachada.png"), { buffer: Buffer.from("texto"), mimeType: "text/plain", name: "notas.txt" }]);
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.waitForFunction(() => document.activeElement?.closest("[role='group'][aria-invalid='true']") !== null);
+  await page.waitForFunction(() => { const rect = document.activeElement.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; });
+  await waitForScrollEnd(page);
+  const state = await attachmentsFocusState(page);
+  assert.equal(state.groupLabel, "Subir imágenes / archivos (opcional)");
+  assert.equal(state.focused, "Elige un archivo");
+  assert.deepEqual(state.messages, ["notas.txt: formato no permitido."]);
+  assert.equal(state.targetVisible && state.messagesVisible, true, "Control y motivo visibles");
+  assert.equal(await page.getByRole("dialog").count(), 0, "No abre la verificación");
+  assert.equal(calls.filter((call) => call.method !== "GET").length, 0);
+
+  // Quitar el archivo resuelve el error y el grupo deja de marcarse.
+  await page.getByRole("button", { name: "Eliminar archivo" }).last().click();
+  assert.equal(await page.locator("[role='group'][aria-invalid='true']").count(), 0);
+});
+
+test("Adjuntos en móvil con muchos archivos: el control enfocado queda visible aunque el grupo no quepa", async (context) => {
+  const { page } = await openRequestPage(context, { viewport: { height: 667, width: 375 } });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await page.locator('input[type="file"]').setInputFiles(Array.from({ length: 11 }, (_, index) => pngFile(`vista-${index + 1}.png`)));
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.waitForFunction(() => document.activeElement?.closest("[role='group'][aria-invalid='true']") !== null);
+  await page.waitForFunction(() => { const rect = document.activeElement.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; });
+  await waitForScrollEnd(page);
+  const state = await attachmentsFocusState(page);
+  assert.deepEqual(state.messages, ["Puedes adjuntar un máximo de 10 archivos."]);
+  assert.equal(state.targetVisible, true);
+  // El motivo, bajo las 11 tarjetas, queda fuera en 667 px: se anuncia (role="alert") y describe el grupo.
+  assert.equal(state.focused, "Elige un archivo");
+});
