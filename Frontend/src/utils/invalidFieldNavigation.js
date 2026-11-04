@@ -179,37 +179,39 @@ function unionWithAssociated(box, parts, { element, targetRect }) {
 
 /**
  * Calcula las cajas a revelar, de la más completa a la mínima: `full` (control, marcador,
- * etiquetas y mensajes), `essential` (control y sus mensajes de error) y `target` (solo el
- * control). El desplazamiento usa la primera que cabe, para que un campo alto (muchos adjuntos) o
- * un error de lista lejos de su control sigan mostrando el control y, si es posible, el motivo.
+ * etiquetas y mensajes), `essential` (control y todos los mensajes del campo), `own` (control y
+ * su propio motivo, p. ej. el error bajo la tarjeta de un adjunto) y `target` (solo el control).
+ * El desplazamiento usa la primera que cabe, para que un campo alto (muchos adjuntos) o un error
+ * de lista lejos de su control sigan mostrando el control y, si es posible, el motivo.
  *
  * @param {{element: Element, target: HTMLElement}} field - Campo inválido.
- * @returns {{full: Object, essential: Object, target: Object}} Cajas en coordenadas del viewport.
+ * @returns {{full: Object, essential: Object, own: Object, target: Object}} Cajas en coordenadas del viewport.
  */
 export function getInvalidFieldRevealBoxes({ element, target }) {
   const targetRect = target.getBoundingClientRect();
-  const messages = [...referencedElements(target, "aria-describedby"), ...referencedElements(element, "aria-describedby")];
-  const essential = unionWithAssociated(toBox(targetRect), messages, { element, targetRect });
+  const ownMessages = referencedElements(target, "aria-describedby");
+  const own = unionWithAssociated(toBox(targetRect), ownMessages, { element, targetRect });
+  const essential = unionWithAssociated(own, referencedElements(element, "aria-describedby"), { element, targetRect });
   const full = unionWithAssociated(essential, [
     element,
     ...(target.labels ?? []),
     ...referencedElements(target, "aria-labelledby"),
     ...referencedElements(element, "aria-labelledby"),
   ], { element, targetRect });
-  return { essential, full, target: toBox(targetRect) };
+  return { essential, full, own, target: toBox(targetRect) };
 }
 
 /**
- * Elige la caja a mostrar en un área visible: la primera candidata que cabe en altura; si ninguna
- * cabe, el inicio de la esencial con la altura del área cuando el control queda dentro, o el
- * control solo. El control nunca queda fuera de la vista.
+ * Elige la caja a mostrar en un área visible: la primera candidata que cabe en altura (completa,
+ * esencial, propia); si ninguna cabe, el inicio de la esencial con la altura del área cuando el
+ * control queda dentro, o el control solo. El control nunca queda fuera de la vista.
  *
- * @param {{full: Object, essential: Object, target: Object}} boxes - Cajas candidatas.
+ * @param {{full: Object, essential: Object, own?: Object, target: Object}} boxes - Cajas candidatas.
  * @param {number} viewHeight - Alto del área visible.
  * @returns {{top: number, bottom: number, left: number, right: number}} Caja elegida.
  */
-export function pickRevealBox({ essential, full, target }, viewHeight) {
-  for (const box of [full, essential]) {
+export function pickRevealBox({ essential, full, own, target }, viewHeight) {
+  for (const box of [full, essential, own].filter(Boolean)) {
     if (box.bottom - box.top <= viewHeight) return box;
   }
   if (target.top >= essential.top && target.bottom <= essential.top + viewHeight) {
@@ -316,8 +318,9 @@ function getVisibleArea(container) {
  * @returns {boolean} true si se desplazó algún contenedor.
  */
 export function scrollRectIntoView(element, reveal, behavior) {
+  // Copias mutables: cada contenedor desplazado descuenta su delta de todas las candidatas.
   const boxes = "full" in reveal
-    ? { essential: { ...reveal.essential }, full: { ...reveal.full }, target: { ...reveal.target } }
+    ? Object.fromEntries(Object.entries(reveal).map(([name, box]) => [name, { ...box }]))
     : { essential: { ...reveal }, full: { ...reveal }, target: { ...reveal } };
   let scrolled = false;
   for (const container of getScrollContainers(element)) {

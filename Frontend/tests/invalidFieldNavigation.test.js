@@ -76,3 +76,13 @@ test("revelado por prioridad: campo completo, control con su motivo o el inicio 
   const below = box(900, 40);
   assert.deepEqual(pickRevealBox({ essential: box(100, 840), full: box(100, 840), target: below }, 200), below);
 });
+
+test("revelado con motivo propio: si no caben todos los mensajes, el control con el suyo", async () => {
+  const { pickRevealBox } = await import("../src/utils/invalidFieldNavigation.js");
+  // Error general arriba (zona de carga) y el archivo afectado muy abajo con su motivo.
+  const target = box(1500, 36);
+  const own = box(1500, 90);
+  const essential = box(300, 1290);
+  const full = box(250, 1340);
+  assert.deepEqual(pickRevealBox({ essential, full, own, target }, 667), own);
+});

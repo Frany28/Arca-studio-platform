@@ -480,9 +480,12 @@ function attachmentsFocusState(page) {
   return page.evaluate(() => {
     const inView = (node) => { const rect = node.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; };
     const group = document.activeElement.closest("[role='group'][aria-invalid='true']");
-    const messages = (group?.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean).map((id) => document.getElementById(id));
+    const described = (node) => (node?.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean)
+      .map((id) => document.getElementById(id)).filter((message) => message && !message.closest("[role='tooltip']"));
+    // Motivos del control enfocado (error de un archivo) y del grupo (error de la sección).
+    const messages = [...described(document.activeElement), ...described(group)];
     return {
-      focused: document.activeElement.textContent.trim(),
+      focused: document.activeElement.getAttribute("aria-label") || document.activeElement.textContent.trim(),
       groupLabel: group ? document.getElementById(group.getAttribute("aria-labelledby"))?.textContent.trim() : null,
       messages: messages.map((node) => node.textContent.trim()),
       messagesVisible: messages.every(inView),
@@ -491,7 +494,7 @@ function attachmentsFocusState(page) {
   });
 }
 
-test("Adjuntos: un archivo no permitido lleva a la sección de archivos, enfoca «Elige un archivo» y muestra el motivo", async (context) => {
+test("Adjuntos: un archivo no permitido lleva a su tarjeta, enfoca su «Eliminar archivo» y muestra el motivo junto a ella", async (context) => {
   const { calls, page } = await openRequestPage(context);
   await fillCommonFields(page);
   await chooseLand(page, "No todavía");
@@ -504,18 +507,19 @@ test("Adjuntos: un archivo no permitido lleva a la sección de archivos, enfoca 
   await waitForScrollEnd(page);
   const state = await attachmentsFocusState(page);
   assert.equal(state.groupLabel, "Subir imágenes / archivos (opcional)");
-  assert.equal(state.focused, "Elige un archivo");
+  assert.equal(state.focused, "Eliminar archivo notas.txt", "El control que corrige ese archivo");
   assert.deepEqual(state.messages, ["notas.txt: formato no permitido."]);
   assert.equal(state.targetVisible && state.messagesVisible, true, "Control y motivo visibles");
   assert.equal(await page.getByRole("dialog").count(), 0, "No abre la verificación");
   assert.equal(calls.filter((call) => call.method !== "GET").length, 0);
 
-  // Quitar el archivo resuelve el error y el grupo deja de marcarse.
-  await page.getByRole("button", { name: "Eliminar archivo" }).last().click();
-  assert.equal(await page.locator("[role='group'][aria-invalid='true']").count(), 0);
+  // Quitarlo con el teclado resuelve el error, conserva el válido y el grupo deja de marcarse.
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelector("[role='group'][aria-invalid='true']") === null);
+  assert.equal(await page.getByText("fachada", { exact: true }).count(), 1, "El archivo válido se conserva");
 });
 
-test("Adjuntos en móvil con muchos archivos: el control enfocado queda visible aunque el grupo no quepa", async (context) => {
+test("Adjuntos en móvil (375 × 667) con 11 archivos: el motivo general y «Elige un archivo» se ven a la vez", async (context) => {
   const { page } = await openRequestPage(context, { viewport: { height: 667, width: 375 } });
   await fillCommonFields(page);
   await chooseLand(page, "No todavía");
@@ -528,7 +532,6 @@ test("Adjuntos en móvil con muchos archivos: el control enfocado queda visible 
   await waitForScrollEnd(page);
   const state = await attachmentsFocusState(page);
   assert.deepEqual(state.messages, ["Puedes adjuntar un máximo de 10 archivos."]);
-  assert.equal(state.targetVisible, true);
-  // El motivo, bajo las 11 tarjetas, queda fuera en 667 px: se anuncia (role="alert") y describe el grupo.
-  assert.equal(state.focused, "Elige un archivo");
+  assert.equal(state.focused, "Elige un archivo", "Error de la sección: no se enfoca un «Eliminar» arbitrario");
+  assert.equal(state.targetVisible && state.messagesVisible, true, "Control y motivo visibles simultáneamente");
 });

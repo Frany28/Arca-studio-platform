@@ -184,34 +184,48 @@ export function getProjectRequestRequiredFieldErrors(values = {}, context = {}) 
 }
 
 /**
- * Valida adjuntos locales como archivos directos o elementos con propiedad file.
- * Admite JPEG/JPG, PNG, MP4 y PDF con MIME coincidente; comprueba nombres de hasta
- * 150 caracteres, duplicados sin distinguir mayúsculas, máximo diez archivos,
- * 50 MiB por archivo y 200 MiB totales. Devuelve mensajes únicos, no lanza por validación.
+ * Valida adjuntos locales como archivos directos o elementos con propiedad file y devuelve cada
+ * problema con el adjunto al que pertenece. Admite JPEG/JPG, PNG, MP4 y PDF con MIME coincidente;
+ * comprueba nombres de hasta 150 caracteres, duplicados sin distinguir mayúsculas (se señala la
+ * repetición, no el primero), máximo diez archivos, 50 MiB por archivo y 200 MiB totales. Los
+ * límites de cantidad y de tamaño total son de la sección (`index: null`). No lanza por validación.
  *
  * @param {Array} [files=[]] - Archivos o wrappers del formulario.
- * @returns {Array} Mensajes de error sin duplicados.
+ * @returns {Array<{message: string, index: number|null}>} Problemas en el orden de los mensajes;
+ * `index` es la posición del adjunto en `files` o null si el problema es de la sección.
  */
-export function getProjectRequestFileErrors(files = []) {
-  const errors = [];
-  if (files.length > PROJECT_REQUEST_FILE_LIMITS.maxCount) errors.push("Puedes adjuntar un máximo de 10 archivos.");
+export function getProjectRequestFileIssues(files = []) {
+  const issues = [];
+  const add = (message, index = null) => issues.push({ index, message });
+  if (files.length > PROJECT_REQUEST_FILE_LIMITS.maxCount) add("Puedes adjuntar un máximo de 10 archivos.");
   const names = new Set();
   let totalBytes = 0;
-  for (const item of files) {
+  files.forEach((item, index) => {
     const file = item?.file || item;
     const name = String(file?.name || "").trim();
     const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
     const expectedMime = FILE_MIME_BY_EXTENSION.get(extension);
     totalBytes += Number(file?.size || 0);
-    if (!name || name.length > PROJECT_REQUEST_FILE_LIMITS.maxNameLength) errors.push(`${name || "Un archivo"}: nombre inválido.`);
-    else if (names.has(name.toLowerCase())) errors.push(`${name}: está repetido.`);
+    if (!name || name.length > PROJECT_REQUEST_FILE_LIMITS.maxNameLength) add(`${name || "Un archivo"}: nombre inválido.`, index);
+    else if (names.has(name.toLowerCase())) add(`${name}: está repetido.`, index);
     names.add(name.toLowerCase());
-    if (!expectedMime || expectedMime !== String(file?.type || "").toLowerCase()) errors.push(`${name || "Un archivo"}: formato no permitido.`);
-    if (!Number.isFinite(file?.size) || file.size <= 0) errors.push(`${name || "Un archivo"}: está vacío.`);
-    else if (file.size > PROJECT_REQUEST_FILE_LIMITS.maxFileBytes) errors.push(`${name}: supera 50 MB.`);
-  }
-  if (totalBytes > PROJECT_REQUEST_FILE_LIMITS.maxTotalBytes) errors.push("Los archivos no pueden superar 200 MB en total.");
-  return [...new Set(errors)];
+    if (!expectedMime || expectedMime !== String(file?.type || "").toLowerCase()) add(`${name || "Un archivo"}: formato no permitido.`, index);
+    if (!Number.isFinite(file?.size) || file.size <= 0) add(`${name || "Un archivo"}: está vacío.`, index);
+    else if (file.size > PROJECT_REQUEST_FILE_LIMITS.maxFileBytes) add(`${name}: supera 50 MB.`, index);
+  });
+  if (totalBytes > PROJECT_REQUEST_FILE_LIMITS.maxTotalBytes) add("Los archivos no pueden superar 200 MB en total.");
+  return issues;
+}
+
+/**
+ * Mensajes de validación de los adjuntos (getProjectRequestFileIssues) sin duplicados, en el mismo
+ * orden. Es el contrato que usan el formulario y el aviso de envío.
+ *
+ * @param {Array} [files=[]] - Archivos o wrappers del formulario.
+ * @returns {Array<string>} Mensajes de error sin duplicados.
+ */
+export function getProjectRequestFileErrors(files = []) {
+  return [...new Set(getProjectRequestFileIssues(files).map((issue) => issue.message))];
 }
 
 function nullableText(value) {

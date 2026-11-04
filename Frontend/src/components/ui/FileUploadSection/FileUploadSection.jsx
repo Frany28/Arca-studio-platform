@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import clsx from "clsx";
 import { getFileDisplayName } from "../../../utils/fileDisplayName.js";
 import * as IconsaxIcons from "iconsax-react";
 import Button from "../Button/Button.jsx";
 import FileAttachmentIcons from "../FileAttachmentIcons.jsx";
+import HintText from "../HintText/HintText.jsx";
 import ScrollBar from "../ScrollBar.jsx";
 import {
   FILE_UPLOAD_SECTION_DEFAULT_FILES,
   FILE_UPLOAD_SECTION_DEFAULT_PROPS,
+  getFileUploadCardIds,
 } from "./fileUploadSectionConfig.js";
 
 const FILE_LIST_VIEWPORT_HEIGHT = 456;
@@ -94,17 +96,38 @@ function getFileAttachmentType(file) {
   return extension || file?.type;
 }
 
-function FileUploadCard({ disabled = false, file, onAddFile, onRetryUpload }) {
+/**
+ * Tarjeta de un archivo. Con `file.validationMessage` (opcional) muestra el motivo bajo la tarjeta
+ * con el HintText de error y el borde de error de la variante fallida, y lo asocia a su botón de
+ * quitar; sin él, la tarjeta no cambia. Los ids salen de getFileUploadCardIds (estables por `id`).
+ *
+ * @param {Object} props - Archivo, ids y acciones.
+ * @param {boolean} [props.disabled=false] - Bloquea las acciones.
+ * @param {Object} props.file - Datos de la tarjeta.
+ * @param {{card: string, remove: string, message: string}} props.ids - Ids de la tarjeta.
+ * @param {() => void} props.onAddFile - Abre el selector de archivos.
+ * @param {() => void} [props.onRetryUpload] - Reintento global de la sección.
+ * @returns {import("react").ReactElement} Tarjeta.
+ */
+function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload }) {
   const isCompleted = file.status === "completed";
   const isUploading = file.status === "uploading";
   const isFailed = file.status === "failed";
   const isPending = file.status === "pending";
+  const validationMessage = file.validationMessage || "";
+  const messageId = validationMessage ? ids.message : undefined;
+  // El nombre del archivo identifica qué se quita cuando hay varias tarjetas.
+  const removeLabel = file.name ? `Eliminar archivo ${file.name}` : "Eliminar archivo";
+  // En la tarjeta fallida, el botón de texto ejecuta `file.onRemove` cuando el archivo no tiene
+  // reintento propio (mismo orden que su onClick).
+  const failedButtonRemoves = !file.onRetryUpload && Boolean(file.onRemove);
 
-  return (
+  const card = (
     <div
+      id={ids.card}
       className={clsx(
         "flex w-full items-start gap-[12px] rounded-[12px] border bg-[var(--color-neutral-100)] p-[16px] transition-colors duration-200",
-        isFailed
+        isFailed || validationMessage
           ? "border-[var(--color-danger-200)]"
           : "border-[var(--color-neutral-200)] dark:border-[var(--color-neutral-300)]",
       )}
@@ -158,6 +181,8 @@ function FileUploadCard({ disabled = false, file, onAddFile, onRetryUpload }) {
             showLeftIcon={false}
             showRightIcon={false}
             disabled={disabled}
+            id={failedButtonRemoves ? ids.remove : undefined}
+            aria-describedby={failedButtonRemoves ? messageId : undefined}
             onClick={file.onRetryUpload || file.onRemove || onRetryUpload}
           >
             {file.onRetryUpload || onRetryUpload ? "Intenta de nuevo" : "Eliminar"}
@@ -194,11 +219,25 @@ function FileUploadCard({ disabled = false, file, onAddFile, onRetryUpload }) {
           showRightIcon={false}
           iconLeft={<TrashIcon />}
           className="shrink-0"
-          aria-label="Eliminar archivo"
+          id={ids.remove}
+          // El tooltip visible conserva el texto de Figma; el nombre accesible añade el archivo.
+          tooltip="Eliminar archivo"
+          aria-label={removeLabel}
+          aria-describedby={messageId}
           disabled={disabled}
           onClick={file.onRemove}
         />
       ) : null}
+    </div>
+  );
+
+  if (!validationMessage) return card;
+  // El motivo va pegado a su tarjeta (no al final de la lista) para leerse junto al archivo y a su
+  // botón de quitar, también con muchas tarjetas.
+  return (
+    <div className="flex w-full flex-col gap-[8px]" data-file-upload-card-invalid>
+      {card}
+      <HintText id={ids.message} state="Error" hintText={validationMessage} role="alert" className="w-full" />
     </div>
   );
 }
@@ -218,9 +257,16 @@ function FileUploadSection({
   fileInputAccept,
   onRetryUpload,
   onFilesSelected,
+  // Opcionales: prefijo de los ids de las tarjetas (getFileUploadCardIds) para que el consumidor
+  // pueda referenciarlas, y contenido bajo la zona de carga (p. ej. errores generales junto a
+  // «Elige un archivo»). Sin ellos la sección no cambia.
+  idPrefix,
+  dropzoneSupportingContent = null,
   "aria-label": ariaLabel = FILE_UPLOAD_SECTION_DEFAULT_PROPS["aria-label"],
   ...props
 }) {
+  const generatedIdPrefix = useId();
+  const resolvedIdPrefix = idPrefix ?? `file-upload-${generatedIdPrefix.replace(/[^\w-]/g, "")}`;
   const filesViewportRef = useRef(null);
   const fileInputRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -402,6 +448,8 @@ function FileUploadSection({
           </div>
         </div>
 
+        {dropzoneSupportingContent}
+
         {showUploadedFiles && resolvedFiles.length > 0 ? (
           <div
             ref={shouldConstrainFileList ? filesViewportRef : null}
@@ -422,6 +470,7 @@ function FileUploadSection({
                 key={file.id}
                 disabled={disabled}
                 file={file}
+                ids={getFileUploadCardIds(resolvedIdPrefix, file.id)}
                 onAddFile={handleChooseFiles}
                 onRetryUpload={onRetryUpload}
               />
