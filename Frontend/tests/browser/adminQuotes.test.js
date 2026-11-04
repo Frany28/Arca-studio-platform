@@ -1264,3 +1264,63 @@ test("PDF: distribuye 21 servicios como 10, 10 y 1, repite encabezados y termina
   assert.match(texts.at(-1), /TOTAL USD/);
   assert.match(texts.at(-1), /\$210\.00/);
 });
+
+/**
+ * Estado del elemento enfocado y de su mensaje (aria-describedby) respecto al viewport.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<{id: string, visible: boolean, messages: string[], messagesVisible: boolean}>} Estado.
+ */
+function focusedFieldInView(page) {
+  return page.evaluate(() => {
+    const element = document.activeElement;
+    const inView = (node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= window.innerHeight;
+    };
+    const messages = (element.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean)
+      .map((id) => document.getElementById(id)).filter(Boolean);
+    return {
+      id: element.id,
+      messages: messages.map((node) => node.textContent.trim()),
+      messagesVisible: messages.every(inView),
+      visible: inView(element),
+    };
+  });
+}
+
+test("guardar con errores lleva al primer campo inválido aunque esté fuera de la pantalla y conserva su motivo", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", viewport: { height: 640, width: 1280 } });
+  const save = page.getByRole("button", { name: "Guardar" });
+  await save.scrollIntoViewIfNeeded();
+  assert.equal(await page.locator("#quote-client").evaluate((node) => node.getBoundingClientRect().bottom < 0), true, "El cliente empieza fuera de la pantalla");
+
+  await save.click();
+  await page.waitForFunction(() => document.activeElement?.id === "quote-client");
+  // Desplazamiento suave: se mide cuando la animación deja el campo dentro del viewport.
+  await page.waitForFunction(() => { const rect = document.activeElement.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; });
+  let field = await focusedFieldInView(page);
+  assert.equal(field.visible, true);
+  assert.deepEqual(field.messages, ["Selecciona el cliente de la cotización."]);
+  assert.equal(field.messagesVisible, true, "El motivo bajo el campo se ve");
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false);
+
+  // Con el cliente elegido, el siguiente intento lleva al proyecto. El foco puesto por la navegación
+  // no sustituye el error por la ayuda en vivo ni despliega sugerencias hasta que el usuario interactúa.
+  await page.locator("#quote-client").fill("Leo");
+  await page.getByRole("button", { name: /Leonel Pérez/ }).first().click();
+  await save.scrollIntoViewIfNeeded();
+  await save.click();
+  await page.waitForFunction(() => document.activeElement?.id === "quote-project");
+  // Desplazamiento suave: se mide cuando la animación deja el campo dentro del viewport.
+  await page.waitForFunction(() => { const rect = document.activeElement.getBoundingClientRect(); return rect.top >= 0 && rect.bottom <= window.innerHeight; });
+  field = await focusedFieldInView(page);
+  assert.equal(field.visible, true);
+  assert.deepEqual(field.messages, ["Selecciona o escribe el proyecto del cliente."]);
+  assert.equal(await page.getByRole("option", { name: /Apto\. 910/ }).count(), 0, "Sin sugerencias hasta interactuar");
+  assert.equal(await page.locator("#quote-project").getAttribute("aria-invalid"), "true");
+
+  await page.locator("#quote-project").click();
+  await page.getByRole("option", { name: /Apto\. 910/ }).first().waitFor();
+});

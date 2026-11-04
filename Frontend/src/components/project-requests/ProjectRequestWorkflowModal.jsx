@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import Button from "../ui/Button/Button.jsx";
 import { api } from "../../api/http.js";
+import { useInvalidFieldFocus } from "../../hooks/useInvalidFieldFocus.js";
 import Modal from "../ui/Modal/Modal.jsx";
 import TextArea from "../ui/TextArea/TextArea.jsx";
 import { ProjectDocumentViewerModal } from "../../pages/projects/components/ProjectDocumentPreview.jsx";
@@ -53,6 +54,9 @@ function ProjectRequestWorkflowModal({
   // El documento se conserva al cerrar para que el visor complete su animación de salida.
   const [pdfViewer, setPdfViewer] = useState({ document: null, open: false });
   const pdfTriggerRef = useRef(null);
+  // El contenido del Modal es el área desplazable (contentClassName); el diálogo es el contenedor.
+  const dialogRef = useRef(null);
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => dialogRef.current });
 
   if (!projectRequest) return null;
 
@@ -68,17 +72,22 @@ function ProjectRequestWorkflowModal({
     if (submitting) return;
     if (mode === "review" && !meetingRecommendation) {
       setMeetingError("Selecciona una recomendación de reunión.");
+      focusInvalidField();
       return;
     }
     const normalizedNote = note.trim();
     if (requiresReason && normalizedNote.length < 10) {
       setLocalError("Explica la recomendación o decisión con al menos 10 caracteres.");
+      focusInvalidField();
       return;
     }
     setLocalError("");
     await onSubmit?.({ action, note: normalizedNote,
       ...(mode === "review" ? { meetingRecommendation } : {}),
     });
+    // El error del guardado se muestra en el campo «Motivo» (prop `error`): se navega a él. Tras un
+    // guardado correcto el modal se cierra y no queda contenedor, así que no ocurre nada.
+    focusInvalidField();
   };
 
   return (
@@ -89,6 +98,7 @@ function ProjectRequestWorkflowModal({
       contentClassName="max-h-dvh overflow-y-auto"
     >
       <section
+        ref={dialogRef}
         className="relative flex w-full max-w-[620px] flex-col gap-[20px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[24px] shadow-[var(--shadow-e2)]"
         role="dialog"
         aria-modal="true"

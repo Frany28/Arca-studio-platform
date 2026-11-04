@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import Alert from "../../../../components/ui/Alert/Alert.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import TextArea from "../../../../components/ui/TextArea/TextArea.jsx";
+import { useInvalidFieldFocus } from "../../../../hooks/useInvalidFieldFocus.js";
 import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard.js";
 import { useQuoteDraft } from "../hooks/useQuoteDraft.js";
 import { useQuoteProjectField } from "../hooks/useQuoteProjectField.js";
@@ -76,6 +77,8 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   const errors = { ...(attempted ? localErrors : {}), ...submission.result.fieldErrors };
   const { submitting } = submission;
   const guard = useUnsavedChangesGuard({ when: isQuoteDraftDirty(initialDraft, draft) });
+  const formRef = useRef(null);
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => formRef.current });
 
   /**
    * Valida y guarda el borrador. Con errores locales no se envía nada y se señalan los campos.
@@ -86,9 +89,18 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   async function handleSubmit(event) {
     event.preventDefault();
     setAttempted(true);
-    if (Object.keys(localErrors).length || submitting) return;
+    if (submitting) return;
+    if (Object.keys(localErrors).length) {
+      focusInvalidField();
+      return;
+    }
     const response = await submission.submit(draft);
-    if (!response) return;
+    if (!response) {
+      // Los errores del servidor por campo se señalan igual que los locales; uno general (Alert)
+      // no marca campos y la navegación no hace nada.
+      focusInvalidField();
+      return;
+    }
     // Guardado confirmado: el borrador ya no tiene cambios que perder al volver al listado.
     guard.allowNavigation();
     if (mode === "create") setCreatedResponse(response);
@@ -96,7 +108,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   }
 
   return (
-    <form className="flex flex-col gap-[48px]" noValidate onSubmit={handleSubmit} aria-busy={submitting || undefined}>
+    <form ref={formRef} className="flex flex-col gap-[48px]" noValidate onSubmit={handleSubmit} aria-busy={submitting || undefined}>
       <SectionDivider />
       <QuoteGeneralDataSection
         client={draft.client}

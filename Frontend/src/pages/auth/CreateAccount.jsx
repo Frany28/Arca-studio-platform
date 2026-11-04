@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Buildings, Sms, User } from "iconsax-react";
 
@@ -9,6 +9,7 @@ import AuthToast, { AuthToastMailIcon } from "../../components/ui/AuthToast/Auth
 import Button from "../../components/ui/Button/Button.jsx";
 import HorizontalTabMenu from "../../components/ui/HorizontalTabMenu/HorizontalTabMenu.jsx";
 import Input from "../../components/ui/Input/Input.jsx";
+import { useInvalidFieldFocus } from "../../hooks/useInvalidFieldFocus.js";
 
 const referralItems = ["Instagram", "Referido", "WhatsApp", "Otro"];
 const referralValues = ["instagram", "referred", "whatsapp", "other"];
@@ -70,6 +71,8 @@ function CreateAccount() {
   const [isResending, setIsResending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [toast, setToast] = useState(null);
+  const formRef = useRef(null);
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => formRef.current });
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -86,6 +89,7 @@ function CreateAccount() {
         title: "Revisa tus datos",
         description: "Completa correctamente los campos obligatorios.",
       });
+      focusInvalidField();
       return;
     }
     setIsSubmitting(true);
@@ -105,6 +109,7 @@ function CreateAccount() {
       if (error.code === "PHONE_ALREADY_EXISTS") errors.phone = error.message;
       setFieldErrors(errors);
       setToast({ id: Date.now(), title: "No pudimos continuar", description: error.message });
+      focusInvalidField();
     } finally {
       setIsSubmitting(false);
     }
@@ -194,7 +199,7 @@ function CreateAccount() {
       <AuthToast trigger={toast?.id} title={toast?.title || ""} description={toast?.description || ""} />
       <section className="box-border flex w-full max-w-[579px] shrink-0 items-center rounded-[var(--radius-4)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[16px] shadow-[var(--shadow-e2)]">
         <div className="flex w-full flex-col items-start justify-center gap-[16px] p-[24px] sm:p-[40px] lg:p-[56px]">
-          <form noValidate onSubmit={handleSubmit} className="flex w-full flex-col gap-[16px]">
+          <form ref={formRef} noValidate onSubmit={handleSubmit} className="flex w-full flex-col gap-[16px]">
             <div className="flex w-full flex-col items-start gap-[8px] border-b border-[var(--color-neutral-200)] pb-[16px]">
               <img
                 src={group1Logo}

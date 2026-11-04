@@ -45,6 +45,8 @@ function ServiceModalityField({ disabled, error, id, locked = false, onChange, v
         className={clsx("w-full", error && "border-[var(--color-danger-100)]")}
         aria-label="Modalidad de contratación"
         aria-describedby={hint ? hintId : undefined}
+        // En el contenedor del menú: la navegación a errores enfoca su disparador.
+        aria-invalid={error ? true : undefined}
         onItemSelect={(item) => {
           if (item.id !== value) onChange(item.id);
         }}

@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Buildings, Sms, User } from "iconsax-react";
+
+import { useInvalidFieldFocus } from "../../hooks/useInvalidFieldFocus.js";
 
 import Modal, { ModalCloseButton } from "../../components/ui/Modal/Modal.jsx";
 import Input from "../../components/ui/Input/Input.jsx";
@@ -99,6 +101,7 @@ function apiFieldsToErrors(fields) {
 }
 
 function SelectField({ error, items, label, onSelect, selectedItemId }) {
+  const errorId = `${useId()}-error`;
   return (
     <div className="flex min-w-0 flex-col gap-[8px]">
       <Label label={label} required information={false} />
@@ -110,8 +113,12 @@ function SelectField({ error, items, label, onSelect, selectedItemId }) {
         onItemSelect={onSelect}
         className="w-full"
         aria-label={label}
+        // aria-invalid en el contenedor del menú (la navegación a errores enfoca su disparador) y
+        // el mensaje asociado al disparador.
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
       />
-      {error ? <HintText state="Error" hintText={error} role="alert" /> : null}
+      {error ? <HintText id={errorId} state="Error" hintText={error} role="alert" /> : null}
     </div>
   );
 }
@@ -131,6 +138,9 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
     () => roles.map((role) => ({ id: role.code, label: role.name, type: "Text" })),
     [roles],
   );
+  // El diálogo contiene el paso visible (datos o contraseña); cada formulario desplaza su contenido.
+  const dialogRef = useRef(null);
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => dialogRef.current });
 
   const updateValue = (field, value) => {
     setValues((current) => ({ ...current, [field]: value }));
@@ -169,6 +179,9 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
       }
       const nextPasswordError = error?.fields?.["body.password"];
       if (nextPasswordError) setPasswordError(nextPasswordError);
+      // Misma actualización que el cambio de paso: la navegación corre cuando «details» ya está
+      // montado. Sin errores por campo no hay nada que enfocar y el mensaje general se mantiene.
+      focusInvalidField();
       setSubmitError(error?.message || (editing ? "No se pudo actualizar el usuario." : "No se pudo crear el usuario."));
     } finally {
       setSubmitting(false);
@@ -180,6 +193,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
     const nextErrors = validate(values);
     if (Object.keys(nextErrors).length) {
       setErrors(nextErrors);
+      focusInvalidField();
       return;
     }
 
@@ -211,7 +225,10 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
     setPasswordTouched({ password: true, confirmPassword: true });
     setPasswordError("");
 
-    if (!passwordIsEmpty && (!passwordIsValid || !passwordsMatch)) return;
+    if (!passwordIsEmpty && (!passwordIsValid || !passwordsMatch)) {
+      focusInvalidField();
+      return;
+    }
 
     await submitPayload({
       ...buildPayload(),
@@ -232,6 +249,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
   return (
     <Modal mount="viewport" visible={open} onClose={submitting ? undefined : onClose} className="z-[100]">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${mode}-admin-user-title`}

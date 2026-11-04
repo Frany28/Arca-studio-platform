@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 
+import { useInvalidFieldFocus } from "../../../../hooks/useInvalidFieldFocus.js";
 import { toEditBaseUnitOptions } from "../../measurement-units/utils/measurementUnitPresentation.js";
 import { useActiveDenominations } from "../hooks/useActiveDenominations.js";
 import { useInlineDenominationCreator } from "../hooks/useInlineDenominationCreator.js";
@@ -60,6 +61,8 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
   // Foco tras desplegar, cancelar o completar el alta de unidad (cada petición es un objeto nuevo).
   const [focusRequest, setFocusRequest] = useState(null);
   const form = useServiceFormSubmit({ mode, service });
+  // El formulario es el área desplazable del modal (ServiceFormModal, en portal).
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => document.getElementById("service-form") });
 
   // Catálogo de bases: fuente del símbolo de la unidad elegida. En la edición incluye la base
   // actual aunque esté inactiva.
@@ -158,6 +161,7 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
     });
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
+      focusInvalidField();
       return;
     }
     const result = await form.submit(draft);
@@ -173,6 +177,9 @@ function ServiceFormDialog({ baseUnits, mode, onClose, onNotFound, onSaved, onSt
     if (result.shouldReload) onStale();
     setFieldErrors(result.fieldErrors);
     setSubmitError(result.message);
+    // Errores del backend asociados a campos: misma navegación. Un error general no marca campos
+    // y conserva su presentación.
+    focusInvalidField();
   }
 
   return (

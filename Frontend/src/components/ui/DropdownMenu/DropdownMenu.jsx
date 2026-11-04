@@ -470,6 +470,9 @@ function DropdownMenu({
   onItemsChange,
   onClick,
   "aria-label": ariaLabel = DROPDOWN_MENU_DEFAULT_PROPS["aria-label"],
+  // Describe el disparador (p. ej. el error bajo el campo): en el contenedor no lo anunciaría el
+  // lector de pantalla. `aria-invalid` sigue en el contenedor, donde lo buscan los formularios.
+  "aria-describedby": ariaDescribedBy,
   ...props
 }) {
   const menuId = useId();
@@ -765,6 +768,7 @@ function DropdownMenu({
             triggerClassName,
           )}
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedBy}
           aria-expanded={resolvedOpen}
           aria-haspopup="menu"
           aria-controls={resolvedOpen ? `${menuId}-content` : undefined}

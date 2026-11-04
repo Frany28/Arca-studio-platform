@@ -4,6 +4,7 @@ import Button from "../../../../components/ui/Button/Button.jsx";
 import HintText from "../../../../components/ui/HintText/HintText.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
 import { getTagOptionId, normalizeTagSearchText } from "../../../../components/ui/Input/tags/tagUtils.js";
+import { isInvalidFieldNavigationFocus } from "../../../../utils/invalidFieldNavigation.js";
 
 // Sugerencias visibles bajo el campo; escribir filtra en la API.
 const VISIBLE_SUGGESTIONS = 6;
@@ -43,6 +44,10 @@ function QuoteEntityTagField({
   query, remote, selected, statusHint = "", toTag, withAvatar,
 }) {
   const [focused, setFocused] = useState(false);
+  // Foco recibido desde la navegación a errores tras «Guardar»: el campo conserva su presentación de
+  // error (borde, motivo y sin sugerencias) hasta que el usuario pulsa o escribe en él.
+  const [errorPinned, setErrorPinned] = useState(false);
+  const interactive = focused && !errorPinned;
   // Teclado de la selección explícita: opción activa y sugerencias cerradas con Escape.
   const [activeIndex, setActiveIndex] = useState(-1);
   const [dismissed, setDismissed] = useState(false);
@@ -68,7 +73,7 @@ function QuoteEntityTagField({
       .map(tagOf)
       .filter((tag) => !explicitSelection || !searchKey || normalizeTagSearchText(tag.label).includes(searchKey))
       .slice(0, explicitSelection ? VISIBLE_SUGGESTIONS : undefined);
-  const listOpen = explicitSelection && focused && suggestions.length > 0;
+  const listOpen = explicitSelection && interactive && suggestions.length > 0;
   const active = listOpen && activeIndex < suggestions.length ? activeIndex : -1;
 
   // Ayuda en vivo de la búsqueda: fallo de lectura, carga, aviso del texto escrito o «sin opciones».
@@ -82,7 +87,7 @@ function QuoteEntityTagField({
   // El error de un intento de guardado anterior cede ante la ayuda en vivo mientras el campo tiene el
   // foco: sin ello, un cliente sin proyectos (o una búsqueda en curso o fallida) no explicaría por qué
   // no aparecen sugerencias. Al salir del campo vuelve a mostrarse si sigue sin resolverse.
-  const showError = Boolean(error) && !(focused && liveHint);
+  const showError = Boolean(error) && !(interactive && liveHint);
   const hint = showError ? error : liveHint;
   const hintIsError = showError || (Boolean(remote.error) && hint === remote.error);
 
@@ -149,8 +154,9 @@ function QuoteEntityTagField({
         value={query}
         // Input solo muestra sugerencias en su estado Focused: con un error previo el campo vuelve a
         // Default mientras tiene el foco; el HintText inferior muestra el motivo o, si la búsqueda
-        // tiene algo que decir (cargando, sin opciones, fallo), esa ayuda en vivo.
-        state={error && !focused ? "Error" : "Default"}
+        // tiene algo que decir (cargando, sin opciones, fallo), esa ayuda en vivo. Con el foco puesto
+        // por la navegación a errores sigue en Error hasta la primera interacción (errorPinned).
+        state={error && !interactive ? "Error" : "Default"}
         showHint={false}
         aria-describedby={hint ? hintId : undefined}
         aria-invalid={error ? true : undefined}
@@ -181,15 +187,23 @@ function QuoteEntityTagField({
         onTagOptionSelect={selectOption}
         onChange={(event) => {
           if (selected) return;
+          // Escribir, pegar o autocompletar es una interacción aunque no haya pulsación de tecla.
+          setErrorPinned(false);
           setActiveIndex(-1);
           setDismissed(false);
           onQueryChange(event.target.value);
         }}
-        onFocus={() => setFocused(true)}
+        onFocus={(event) => {
+          setFocused(true);
+          setErrorPinned(isInvalidFieldNavigationFocus(event.target));
+        }}
         onBlur={() => {
           setFocused(false);
+          setErrorPinned(false);
           setActiveIndex(-1);
         }}
+        onPointerDown={() => setErrorPinned(false)}
+        onKeyDownCapture={() => setErrorPinned(false)}
         className="max-w-none"
         autoComplete="off"
       />

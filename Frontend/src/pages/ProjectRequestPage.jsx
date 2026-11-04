@@ -15,6 +15,7 @@ import ProjectRequestValidationStep from "../components/ui/ProjectRequestFlow/Pr
 import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
 import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
+import { useInvalidFieldFocus } from "../hooks/useInvalidFieldFocus.js";
 import { getProjectRequestFileErrors } from "../utils/projectRequestValidation.js";
 import { hasApplicableProperty, requiresPropertyAvailability } from "../utils/projectRequestApplicability.js";
 import { LEGACY_PROJECT_REQUEST_TYPES, PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
@@ -113,6 +114,7 @@ export default function ProjectRequestPage() {
   const showLandStatusQuestion = requiresPropertyAvailability(form.projectType);
   const showPropertyLegalSection = hasApplicableProperty(form);
   const formRef = useRef(null);
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => formRef.current });
   const {
     clear: clearLocationSuggestions,
     error: locationSuggestionsError,
@@ -174,16 +176,7 @@ export default function ProjectRequestPage() {
     setFileErrors(nextFileErrors);
 
     if (validateForSubmit(nextFileErrors)) {
-      window.requestAnimationFrame(() => {
-        const invalidField = formRef.current?.querySelector('[aria-invalid="true"]');
-        const focusTarget = invalidField?.matches("input, textarea, button")
-          ? invalidField
-          : invalidField?.querySelector("input, textarea, button");
-
-        invalidField?.scrollIntoView({ behavior: "smooth", block: "center" });
-        focusTarget?.focus({ preventScroll: true });
-      });
-
+      focusInvalidField();
       return;
     }
 

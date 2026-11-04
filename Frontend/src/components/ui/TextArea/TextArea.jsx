@@ -67,10 +67,13 @@ function TextArea({
   resize = false,
   textareaClassName,
   style,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   ...props
 }) {
   const generatedId = useId();
   const textAreaId = id ?? generatedId;
+  const hintId = `${textAreaId}-hint`;
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [internalValue, setInternalValue] = useState(defaultValue ?? "");
@@ -85,6 +88,11 @@ function TextArea({
     hasValue: isFilled,
   });
   const styles = TEXT_AREA_STATE_STYLES[resolvedState] ?? TEXT_AREA_STATE_STYLES.Default;
+  // Mismo contrato que Input: el estado Error se expone como aria-invalid (lo usa la navegación a
+  // errores, useInvalidFieldFocus) y la ayuda visible describe el campo.
+  const showResolvedHint = showHint && resolvedState !== "Focused";
+  const resolvedAriaDescribedBy = [ariaDescribedBy, showResolvedHint ? hintId : null].filter(Boolean).join(" ") || undefined;
+  const resolvedAriaInvalid = ariaInvalid ?? (resolvedState === "Error" ? true : undefined);
 
   const handleChange = (event) => {
     if (!isControlled) {
@@ -138,6 +146,8 @@ function TextArea({
             disabled={disabled}
             value={currentValue}
             placeholder={placeholder}
+            aria-describedby={resolvedAriaDescribedBy}
+            aria-invalid={resolvedAriaInvalid}
             rows={rows}
             className={clsx(
               "text-body-3 min-h-[var(--textarea-min-height)] w-full flex-1 border-0 bg-transparent p-0 tracking-[-0.5px] outline-none",
@@ -170,8 +180,8 @@ function TextArea({
         </div>
       </div>
 
-      {showHint && resolvedState !== "Focused" ? (
-        <HintText state={styles.hintState} hintText={hintText} className="w-full" />
+      {showResolvedHint ? (
+        <HintText id={hintId} state={styles.hintState} hintText={hintText} className="w-full" />
       ) : null}
     </div>
   );

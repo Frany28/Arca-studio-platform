@@ -4,6 +4,7 @@ import Button from "../../../../components/ui/Button/Button.jsx";
 import Input from "../../../../components/ui/Input/Input.jsx";
 import Modal, { ModalCloseButton } from "../../../../components/ui/Modal/Modal.jsx";
 import { useDialogKeyboard } from "../../../../hooks/useDialogKeyboard.js";
+import { useInvalidFieldFocus } from "../../../../hooks/useInvalidFieldFocus.js";
 import {
   BASE_UNIT_LOCKED_REASON,
   DENOMINATION_MAX_LENGTH,
@@ -65,6 +66,7 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
   // Solo el alta depende del catálogo para enviar; la edición puede guardar el texto sin él.
   const catalogUnavailable = !editing && catalogPending;
   const labelPreview = previewUnitLabel(selectedOption?.label, text);
+  const focusInvalidField = useInvalidFieldFocus({ getContainer: () => document.getElementById("measurement-unit-form") });
 
   useDialogKeyboard({
     open: true,
@@ -87,6 +89,7 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
     const validationError = validateDenominationText(text);
     if (validationError) {
       setFieldError(validationError);
+      focusInvalidField();
       return;
     }
     setSubmitting(true);
@@ -104,7 +107,8 @@ function MeasurementUnitFormModal({ baseUnits, denomination, mode, onClose, onSu
     }
     const fieldMessage = result?.fieldErrors?.denomination || result?.fieldErrors?.measurementUnitId || "";
     setFieldError(fieldMessage);
-    if (!fieldMessage) setSubmitError(result?.message || "");
+    if (fieldMessage) focusInvalidField();
+    else setSubmitError(result?.message || "");
   }
 
   const hint = fieldError

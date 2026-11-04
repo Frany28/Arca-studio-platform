@@ -499,6 +499,11 @@ test("Architect: la reunión exige elección explícita y es independiente de ap
   await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
   await dialog.getByRole("alert").getByText("Selecciona una recomendación de reunión.").waitFor();
   assert.equal(mutations.length, 0);
+  // La navegación a errores enfoca la primera opción del grupo inválido, asociado a su mensaje.
+  const meetingGroup = dialog.getByRole("group", { name: "Recomendación de reunión" }).last();
+  assert.equal(await meetingGroup.getAttribute("aria-invalid"), "true");
+  assert.equal(await page.locator(`[id="${await meetingGroup.getAttribute("aria-describedby")}"]`).innerText(), "Selecciona una recomendación de reunión.");
+  await page.waitForFunction(() => document.activeElement?.closest("[role='group'][aria-invalid='true']") !== null);
   const selection = dialog.getByRole("button", { name: "No agendar reunión", exact: true });
   await selection.focus();
   await page.keyboard.press("Enter");

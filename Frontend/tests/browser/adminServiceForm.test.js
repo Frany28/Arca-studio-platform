@@ -1689,3 +1689,38 @@ for (const theme of ["light", "dark"]) {
     assert.equal(requestsOf(backend, "PATCH", /^\/api\/admin\/services\/3$/).length, 0);
   });
 }
+
+test("crear con errores enfoca el primer campo inválido dentro del modal sin mover la página", async (context) => {
+  const backend = createServiceCatalogBackend(sampleCatalog());
+  const page = await openTabulator(context, backend, { viewport: { height: 600, width: 390 } });
+  const dialog = await openCreate(page);
+  const form = dialog.locator("#service-form");
+  const create = dialog.getByRole("button", { name: "Crear", exact: true });
+  const pageScroll = () => page.evaluate(() => document.scrollingElement.scrollTop);
+  const before = await pageScroll();
+
+  // Nombre y tarifa completos: el primer error es la modalidad (DropdownMenu), luego la unidad.
+  await dialog.locator("#service-form-name").fill("Servicio de prueba");
+  await dialog.getByPlaceholder("0.00").fill("12.50");
+  await form.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await create.click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Modalidad de contratación");
+  const modality = page.getByRole("button", { name: "Modalidad de contratación", exact: true });
+  assert.equal(await modality.getAttribute("aria-expanded"), "false", "Enfocar no abre el menú");
+  assert.equal(await page.locator("[data-service-modality-field] [aria-invalid='true']").count(), 1);
+  const describedBy = await modality.getAttribute("aria-describedby");
+  assert.equal(await page.locator(`[id="${describedBy}"]`).innerText(), "Elige la modalidad de contratación.");
+  assert.equal(await modality.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const area = node.closest("form").getBoundingClientRect();
+    return rect.top >= area.top && rect.bottom <= area.bottom;
+  }), true, "El disparador queda visible en el área desplazable del modal");
+
+  await chooseModality(page, "Detalle por detalle");
+  await create.click();
+  await page.waitForFunction(() => document.activeElement?.id === "service-form-unit");
+  assert.equal(await dialog.getByText("Elige la unidad de medida.", { exact: true }).isVisible(), true);
+  assert.equal(await dialog.locator("#service-form-name").inputValue(), "Servicio de prueba", "El borrador se conserva");
+  assert.equal(await pageScroll(), before, "La página bajo el modal no se desplaza");
+  assert.equal(requestsOf(backend, "POST", /^\/api\/admin\/services$/).length, 0);
+});
