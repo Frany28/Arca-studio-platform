@@ -90,11 +90,59 @@ export function loadWithChunkRecovery(importer, {
 }
 
 /**
+ * Crea la precarga anticipada de un módulo diferido. Comparte petición entre llamadas y, si falla,
+ * la descarta sin recargar la página: la recuperación queda para la carga real al mostrarlo.
+ *
+ * @param {() => Promise<any>} importer - Función `() => import(...)`; el navegador reutiliza el
+ * módulo ya descargado cuando después lo pide `React.lazy`.
+ * @returns {(() => Promise<boolean>) & {getLoaded: () => any}} Precarga, que resuelve true si el
+ * módulo quedó disponible; `getLoaded()` devuelve ese módulo o null.
+ */
+export function createModulePreloader(importer) {
+  let pending = null;
+  let loaded = null;
+  const preload = () => {
+    pending ||= importer().then(
+      (module) => {
+        loaded = module;
+        return true;
+      },
+      () => {
+        pending = null;
+        return false;
+      },
+    );
+    return pending;
+  };
+  preload.getLoaded = () => loaded;
+  return preload;
+}
+
+/**
+ * Thenable ya cumplido: React.lazy lo resuelve en el mismo render, sin suspender ni mostrar el
+ * fallback (que React mantiene visible un mínimo de ~300 ms aunque el módulo llegue antes).
+ *
+ * @param {any} value - Módulo cargado.
+ * @returns {{status: string, value: any, then: Function}} Thenable síncrono.
+ */
+export function fulfilledThenable(value) {
+  return { status: "fulfilled", value, then: (onFulfilled) => onFulfilled?.(value) };
+}
+
+/**
  * Igual que `React.lazy`, con recuperación ante módulos no disponibles tras una publicación.
+ * El componente expone `preload()` para descargarlo antes de mostrarlo; si la precarga terminó,
+ * el primer render usa el módulo sin pasar por el fallback de Suspense.
  *
  * @param {() => Promise<{default: import("react").ComponentType}>} importer - `() => import(...)`.
- * @returns {import("react").LazyExoticComponent<any>} Componente diferido.
+ * @returns {import("react").LazyExoticComponent<any> & {preload: () => Promise<boolean>}} Componente diferido.
  */
 export function lazyWithRetry(importer) {
-  return lazy(() => loadWithChunkRecovery(importer));
+  const preload = createModulePreloader(importer);
+  const Component = lazy(() => {
+    const loaded = preload.getLoaded();
+    return loaded ? fulfilledThenable(loaded) : loadWithChunkRecovery(importer);
+  });
+  Component.preload = preload;
+  return Component;
 }

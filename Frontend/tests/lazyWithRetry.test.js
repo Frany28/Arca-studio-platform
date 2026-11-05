@@ -5,6 +5,8 @@ import {
   CHUNK_RELOAD_STORAGE_KEY,
   CHUNK_RELOAD_WINDOW_MS,
   claimChunkReload,
+  createModulePreloader,
+  fulfilledThenable,
   isChunkLoadError,
   loadWithChunkRecovery,
 } from "../src/utils/lazyWithRetry.js";
@@ -64,4 +66,28 @@ test("otros errores y la falta de almacenamiento no provocan recargas", async ()
 test("un módulo disponible se carga sin efectos", async () => {
   const module = { default: () => null };
   assert.equal(await loadWithChunkRecovery(() => Promise.resolve(module), { reload: () => assert.fail("no debe recargar"), storage: memoryStorage() }), module);
+});
+
+test("la precarga comparte una sola descarga y queda disponible para la carga real", async () => {
+  let calls = 0;
+  const preload = createModulePreloader(() => { calls += 1; return Promise.resolve({ default: () => null }); });
+  assert.deepEqual(await Promise.all([preload(), preload()]), [true, true]);
+  assert.equal(await preload(), true);
+  assert.equal(calls, 1);
+  assert.equal(typeof preload.getLoaded().default, "function", "el módulo queda disponible para el primer render");
+});
+
+test("una precarga fallida no recarga la página ni bloquea un reintento posterior", async () => {
+  let calls = 0;
+  const preload = createModulePreloader(() => { calls += 1; return calls === 1 ? Promise.reject(chunkError()) : Promise.resolve({}); });
+  assert.equal(await preload(), false);
+  assert.equal(await preload(), true);
+  assert.equal(calls, 2);
+});
+
+test("el thenable de un módulo precargado se cumple en el mismo turno (sin suspender)", () => {
+  const module = { default: () => null };
+  let received = null;
+  fulfilledThenable(module).then((value) => { received = value; });
+  assert.equal(received, module);
 });
