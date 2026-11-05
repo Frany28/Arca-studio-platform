@@ -129,8 +129,10 @@ const SIZE_CASES = [
   ["10. residencial sin inmueble", { ...WITHOUT_PROPERTY }, 100],
   ["11. comercial con inmueble disponible", { ...WITH_PROPERTY, projectType: "commercial" }, 85],
   ["12. corporativo con inmueble disponible", { ...WITH_PROPERTY, projectType: "corporate" }, 85],
-  ["12b. tipo histórico con inmueble disponible", { ...WITH_PROPERTY, projectType: "stands_exhibitions" }, 85],
+  // El identificador histórico es Stand publicitario: el inmueble guardado es N/A y no hace estimable el tamaño.
+  ["12b. tipo histórico con inmueble guardado", { ...WITH_PROPERTY, projectType: "stands_exhibitions" }, 100],
   ["12c. tipo histórico sin inmueble", { ...WITHOUT_PROPERTY, projectType: "stands_exhibitions" }, 100],
+  ["12d. tipo histórico con espacio asignado y medidas", { ...standWith({ spaceStatus: "assigned", hasSpacePlans: true }), projectType: "stands_exhibitions" }, 85],
   ["13. stand con espacio asignado y medidas", standWith({ spaceStatus: "assigned", hasSpacePlans: true }), 85],
   ["14. stand con espacio asignado sin medidas", standWith({ spaceStatus: "assigned", hasSpacePlans: false }), 100],
   ["14b. stand con espacio asignado sin responder medidas", standWith({ spaceStatus: "assigned", hasSpacePlans: null }), 100],
@@ -166,10 +168,14 @@ test("estimabilidad del tamaño: todas las combinaciones del stand y del inmuebl
       assert.equal(canEstimateProjectSize(standWith({ spaceStatus, hasSpacePlans })), spaceStatus === "assigned" && hasSpacePlans === true);
     }
   }
-  for (const projectType of ["residential", "commercial", "corporate", "stands_exhibitions", null]) {
+  for (const projectType of ["residential", "commercial", "corporate", null]) {
     for (const landStatus of ["available", "acquiring", "unavailable", null]) {
       assert.equal(canEstimateProjectSize({ landStatus, projectType }), landStatus === "available", `${projectType}/${landStatus}`);
     }
+  }
+  // Los stands, también con el identificador histórico, nunca estiman el tamaño por el inmueble.
+  for (const landStatus of ["available", "acquiring", "unavailable", null]) {
+    assert.equal(canEstimateProjectSize({ landStatus, projectType: "stands_exhibitions" }), false, landStatus);
   }
 });
 

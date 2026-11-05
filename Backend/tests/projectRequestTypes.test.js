@@ -23,9 +23,11 @@ const ROW = {
   reference_link: "https://example.test/referencia", compatibility_score: 73,
   compatibility_level: "high", compatibility_scoring_version: "2.2", compatibility_reason_codes: ["descriptionWeak"],
 };
+// Edición de un stand histórico: como Stand publicitario, sin inmueble y con requisitos del evento.
 const BODY = {
   projectName: ROW.project_name, projectType: "stands_exhibitions", projectLocation: ROW.location,
-  description: ROW.description, projectSize: "small_lt_80", developmentMode: "full", landStatus: "unavailable",
+  description: ROW.description, projectSize: "small_lt_80", developmentMode: "full", landStatus: null,
+  standRequirements: { spaceStatus: "unassigned" },
   investmentRange: "10k_50k", capitalAvailability: "available_now", startTime: "over_6_months",
   decisionMaker: "self", quality: "standard", experience: "first_time", referenceLink: ROW.reference_link,
 };
@@ -51,7 +53,8 @@ test("lecturas de cliente y cola conservan tipo, evaluación histórica y métri
     findings: null, level: "high", score: 73,
     observations: ["Una descripción más completa ayudará a evaluar mejor el alcance del proyecto."],
   });
-  const control = { ...record, projectType: "commercial" };
+  // Se lee como Stand publicitario sin recalcular la evaluación guardada.
+  const control = { ...record, projectType: "advertising_stand" };
   assert.deepEqual(buildProjectRequestMetrics(record), buildProjectRequestMetrics(control));
   assert.equal(publicRequest.completeness.score, 100);
   assert.deepEqual(evaluateProjectCompatibility(record), evaluateProjectCompatibility(control));
@@ -94,10 +97,13 @@ test("edición histórica permite conservar el tipo o elegir cualquier tipo vige
     return { rows: [{ ...ROW }] };
   });
   for (const projectType of READABLE_PROJECT_REQUEST_TYPES) {
-    // Stand publicitario no admite la pregunta del inmueble (N/A en 3.1).
-    const payload = edit({ ...BODY, projectType, ...(projectType === "advertising_stand" ? { landStatus: null, standRequirements: { spaceStatus: "unassigned" } } : {}) });
+    // Los stands (vigente e histórico) no admiten la pregunta del inmueble; los demás sí.
+    const isStand = ["advertising_stand", "stands_exhibitions"].includes(projectType);
+    const payload = edit({ ...BODY, projectType, ...(isStand ? {} : { landStatus: "unavailable", standRequirements: null }) });
     const result = await updateProjectRequest({ user: USER, projectRequestId: 7, payload });
-    assert.equal(result.projectType, projectType);
+    // El identificador histórico se guarda renombrado sobre la misma solicitud.
+    assert.equal(result.projectType, projectType === "stands_exhibitions" ? "advertising_stand" : projectType);
+    assert.equal(result.id, 7);
     assert.equal(result.compatibility.score, 73);
   }
   assert.equal(writes, READABLE_PROJECT_REQUEST_TYPES.length);

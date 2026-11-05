@@ -1,7 +1,7 @@
-import { ADVERTISING_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
+import { ADVERTISING_STAND_PROJECT_TYPE, LEGACY_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
 
 // No son opciones seleccionables: únicamente identifican solicitudes anteriores.
-export const LEGACY_PROJECT_REQUEST_TYPES = Object.freeze(["stands_exhibitions"]);
+export const LEGACY_PROJECT_REQUEST_TYPES = Object.freeze([LEGACY_STAND_PROJECT_TYPE]);
 
 export const PROJECT_REQUEST_OPTIONS = {
   standRequirementsStatus: [

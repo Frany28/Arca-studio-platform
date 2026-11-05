@@ -86,7 +86,7 @@ test("API rechaza los datos exclusivos en todos los otros tipos y conserva solic
 
 test("la cadena de validación conserva código, mensaje y campos al rechazar otro tipo", () => {
   let error;
-  validate(updateProjectRequestSchema)({ body: { ...BODY, ...OTHER_TYPE_LAND, projectType: "stands_exhibitions", standRequirements: REQUIREMENTS }, params: { projectRequestId: "1" } }, {}, (result) => { error = result; });
+  validate(updateProjectRequestSchema)({ body: { ...BODY, ...OTHER_TYPE_LAND, projectType: "residential", standRequirements: REQUIREMENTS }, params: { projectRequestId: "1" } }, {}, (result) => { error = result; });
   assert.equal(error.status, 400);
   assert.equal(error.code, "VALIDATION_ERROR");
   assert.equal(typeof error.publicMessage, "string");

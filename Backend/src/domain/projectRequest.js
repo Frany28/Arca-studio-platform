@@ -1,4 +1,4 @@
-import { ADVERTISING_STAND_PROJECT_TYPE, isAdvertisingStand } from "./projectRequestStand.js";
+import { ADVERTISING_STAND_PROJECT_TYPE, isAdvertisingStand, LEGACY_STAND_PROJECT_TYPE } from "./projectRequestStand.js";
 
 export const PROJECT_REQUEST_VALUES = {
   capitalAvailability: [
@@ -43,7 +43,7 @@ export const PROJECT_REQUEST_VALUES = {
 };
 
 // Los tipos retirados solo se conservan para leer métricas y editar registros existentes.
-export const LEGACY_PROJECT_REQUEST_TYPES = Object.freeze(["stands_exhibitions"]);
+export const LEGACY_PROJECT_REQUEST_TYPES = Object.freeze([LEGACY_STAND_PROJECT_TYPE]);
 export const READABLE_PROJECT_REQUEST_TYPES = Object.freeze([
   ...PROJECT_REQUEST_VALUES.projectType,
   ...LEGACY_PROJECT_REQUEST_TYPES,

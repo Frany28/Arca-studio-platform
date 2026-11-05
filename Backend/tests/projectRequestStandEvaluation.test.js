@@ -227,10 +227,13 @@ test("históricos: la compatibilidad 3.0 guardada conserva puntuación, nivel, v
 test("históricos: un stand sin bloque guardado no recibe respuestas ficticias ni penalización", () => {
   const withoutSection = { ...STAND, standRequirements: null };
   assert.deepEqual(buildProjectRequestMetrics(withoutSection).completeness, { answered: 12, applicable: 12, missingFields: [], score: 100 });
-  // El tipo retirado conserva su catálogo: inmueble aplicable y sin preguntas del stand.
-  const legacy = { ...RESIDENTIAL, projectType: "stands_exhibitions" };
-  assert.deepEqual(buildProjectRequestMetrics(legacy), buildProjectRequestMetrics(RESIDENTIAL));
-  assert.deepEqual(evaluateProjectCompatibility({ ...legacy, startTime: "immediate" }), evaluateProjectCompatibility({ ...RESIDENTIAL, startTime: "immediate" }));
+  // El identificador histórico es Stand publicitario: el inmueble guardado es N/A y, sin bloque,
+  // las preguntas del stand tampoco aplican; se evalúa igual que un stand vigente sin sección.
+  const legacy = { ...RESIDENTIAL, projectType: "stands_exhibitions", standRequirements: null };
+  const current = { ...legacy, projectType: "advertising_stand" };
+  assert.deepEqual(buildProjectRequestMetrics(legacy), buildProjectRequestMetrics(current));
+  assert.deepEqual(evaluateProjectCompatibility({ ...legacy, startTime: "immediate" }), evaluateProjectCompatibility({ ...current, startTime: "immediate" }));
+  assert.equal(evaluateProjectCompatibility({ ...legacy, landStatus: "unavailable", startTime: "immediate" }).score, 100, "sin cruce de inmueble frente al inicio");
 });
 
 test("históricos: reenviar un borrador de stand con inmueble guardado evalúa con la versión vigente sin esa deducción", async (context) => {

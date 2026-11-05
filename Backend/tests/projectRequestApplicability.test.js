@@ -17,7 +17,8 @@ const SUBMISSION_ID = "550e8400-e29b-41d4-a716-446655440000";
 test("paridad: inmueble y documentación legal aplican igual en frontend y backend", () => {
   for (const projectType of PROJECT_TYPES) {
     assert.equal(frontend.requiresPropertyAvailability(projectType), backend.requiresPropertyAvailability(projectType), String(projectType));
-    assert.equal(backend.requiresPropertyAvailability(projectType), projectType !== "advertising_stand");
+    // El identificador histórico es el mismo Stand publicitario (Propuesta V3.3 §11).
+    assert.equal(backend.requiresPropertyAvailability(projectType), !["advertising_stand", "stands_exhibitions"].includes(projectType));
     for (const landStatus of LAND_STATUSES) {
       assert.equal(frontend.hasAvailableProperty(landStatus), backend.hasAvailableProperty(landStatus));
       const answers = { landStatus, projectType };

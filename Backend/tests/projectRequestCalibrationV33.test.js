@@ -187,10 +187,11 @@ test("la calibración interna mantiene 30 escenarios con la distribución docume
   assert.deepEqual(new Set(CALIBRATION_SCENARIOS.map(([, , , , status]) => status)), new Set([NONE, REVIEW, HIGH_RISK, INSUFFICIENT]));
 });
 
-test("el identificador histórico «Stands y exhibiciones» se evalúa como Stand publicitario (PDF §11)", {
-  todo: "Pendiente: el motor lo evalúa como arquitectura (80 frente a 100). Requiere confirmar registros existentes y aprobar la adaptación de lectura antes de corregirlo.",
-}, () => {
+test("el identificador histórico «Stands y exhibiciones» se evalúa como Stand publicitario (PDF §11)", () => {
   const legacy = withoutProperty({ landStatus: "unavailable", projectSize: "unknown", projectType: "stands_exhibitions", startTime: "immediate" });
   const current = stand({ projectSize: "unknown", startTime: "immediate" }, { documentTypes: [], hasSpacePlans: false, requirementsStatus: "unavailable", spaceStatus: "unassigned" });
-  assert.equal(evaluateProjectCompatibility(legacy).score, evaluateProjectCompatibility(current).score);
+  // H01/H02 del análisis: el registro histórico no hereda el cruce de inmueble frente al inicio.
+  assert.deepEqual(evaluateProjectCompatibility(legacy), evaluateProjectCompatibility(current));
+  assert.equal(evaluateProjectCompatibility(legacy).score, 100);
+  assert.equal(evaluateFinancialViability(legacy).status, evaluateFinancialViability(current).status);
 });

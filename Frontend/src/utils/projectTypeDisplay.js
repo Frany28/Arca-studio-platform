@@ -2,8 +2,8 @@ export const PROJECT_TYPE_LABELS = {
   commercial: "Comercial",
   corporate: "Corporativo",
   residential: "Residencial",
-  // Etiqueta de lectura histórica; no forma parte del catálogo seleccionable.
-  stands_exhibitions: "Stands y exhibiciones",
+  // Identificador histórico del mismo servicio (Propuesta V3.3 §11): se muestra con el nombre vigente.
+  stands_exhibitions: "Stand publicitario",
   advertising_stand: "Stand publicitario",
 };
 

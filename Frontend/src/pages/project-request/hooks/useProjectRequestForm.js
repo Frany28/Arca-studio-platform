@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { EMPTY_PROPERTY_DETAIL_FIELDS, normalizeConditionalFormFields } from "../../../utils/projectRequestApplicability.js";
-import { EMPTY_STAND_FORM_FIELDS } from "../../../utils/projectRequestStand.js";
+import { EMPTY_STAND_FORM_FIELDS, toCurrentProjectType } from "../../../utils/projectRequestStand.js";
 
 import { getProjectRequestFieldErrors } from "../../../utils/projectRequestValidation.js";
 
@@ -45,7 +45,8 @@ function createInitialForm(initialRequest) {
     hasStandSpacePlans: initialRequest?.standRequirements?.hasSpacePlans === true
       ? "Yes" : initialRequest?.standRequirements?.hasSpacePlans === false ? "No" : "Indeterminate",
     projectName: initialRequest?.projectName || "",
-    projectType: initialRequest?.projectType || INITIAL_FORM.projectType,
+    // El identificador histórico de stands se edita como Stand publicitario (renombramiento).
+    projectType: toCurrentProjectType(initialRequest?.projectType) || INITIAL_FORM.projectType,
     location: initialRequest?.location || "",
     locationFormattedAddress: initialRequest?.formattedAddress || "",
     locationLatitude: initialRequest?.locationCoordinates?.latitude ?? null,

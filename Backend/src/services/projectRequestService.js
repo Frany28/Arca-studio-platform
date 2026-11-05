@@ -1,6 +1,7 @@
 import { withTransaction } from "../config/db.js";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { isAllowedProjectRequestType } from "../domain/projectRequest.js";
+import { toCurrentProjectType } from "../domain/projectRequestStand.js";
 import { evaluateProjectCompatibility, publicCompatibility } from "../domain/projectRequestCompatibility.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import { verifyAndConsumeProjectRequestCode } from "./projectRequestVerificationService.js";
@@ -145,9 +146,12 @@ export async function updateProjectRequest({ payload, projectRequestId, user }) 
   }
   assertAllowedProjectType(payload.projectType, current.projectType);
   await assertAvailableName(user, payload, projectRequestId);
+  // Renombramiento del identificador histórico de stands (Propuesta V3.3 §11): se guarda el
+  // tipo vigente sobre la misma solicitud, que además es el único que admite requisitos del stand.
+  const currentPayload = { ...payload, projectType: toCurrentProjectType(payload.projectType) };
   let updated;
   try {
-    updated = await updateProjectRequestDraft(projectRequestId, user, payload);
+    updated = await updateProjectRequestDraft(projectRequestId, user, currentPayload);
   } catch (error) {
     if (error?.code === "23505") {
       throw new ConflictError(

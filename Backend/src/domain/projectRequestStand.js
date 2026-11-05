@@ -1,5 +1,7 @@
-// Tipo vigente de Figma; stands_exhibitions se conserva únicamente en registros históricos.
+// Tipo vigente de Figma. stands_exhibitions es el identificador histórico del mismo servicio:
+// solo puede aparecer en registros anteriores y nunca se acepta en solicitudes nuevas.
 export const ADVERTISING_STAND_PROJECT_TYPE = "advertising_stand";
+export const LEGACY_STAND_PROJECT_TYPE = "stands_exhibitions";
 
 export const STAND_REQUIREMENTS_VALUES = Object.freeze({
   requirementsStatus: Object.freeze(["available", "in_process", "unavailable"]),
@@ -8,14 +10,27 @@ export const STAND_REQUIREMENTS_VALUES = Object.freeze({
 });
 
 /**
- * Determina si las preguntas de requisitos del evento aplican al tipo de solicitud.
- * Solo el stand publicitario las habilita; no incluye la categoría histórica de stands.
+ * Determina si la solicitud es un Stand publicitario, reconociendo también su identificador
+ * histórico `stands_exhibitions` (mismo servicio, Propuesta V3.3 §11). Es la única equivalencia:
+ * aplicabilidad, validación, completitud, compatibilidad y presentación la reutilizan.
  *
  * @param {string|null|undefined} projectType - Identificador del catálogo de proyectos.
- * @returns {boolean} true exclusivamente para advertising_stand.
+ * @returns {boolean} true para advertising_stand y stands_exhibitions.
  */
 export function isAdvertisingStand(projectType) {
-  return projectType === ADVERTISING_STAND_PROJECT_TYPE;
+  return projectType === ADVERTISING_STAND_PROJECT_TYPE || projectType === LEGACY_STAND_PROJECT_TYPE;
+}
+
+/**
+ * Devuelve el identificador vigente de un tipo de solicitud: el histórico de stands pasa a
+ * `advertising_stand` (renombramiento) y los demás se conservan. Se aplica al guardar una
+ * solicitud editable; las evaluaciones ya guardadas no se recalculan.
+ *
+ * @param {string|null|undefined} projectType - Tipo recibido o guardado.
+ * @returns {string|null|undefined} Tipo vigente.
+ */
+export function toCurrentProjectType(projectType) {
+  return projectType === LEGACY_STAND_PROJECT_TYPE ? ADVERTISING_STAND_PROJECT_TYPE : projectType;
 }
 
 /**
