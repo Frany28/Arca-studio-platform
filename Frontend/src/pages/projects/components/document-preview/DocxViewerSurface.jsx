@@ -23,6 +23,10 @@ function DocxViewerSurface({ annotations = [], data, focusedId, onPointCreate, o
       className: "arca-docx",
       ignoreFonts: false,
       inWrapper: true,
+      // docx-preview muestra el HTML incrustado (altChunk) en un iframe srcdoc sin sandbox. Ese
+      // contenido procede del archivo subido: no se renderiza, para no ejecutar sus scripts (la CSP
+      // de la aplicación ya los bloquea y el intento solo generaba un error en consola).
+      renderAltChunks: false,
       renderFooters: true,
       renderHeaders: true,
     }).then(() => {
