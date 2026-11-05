@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { lazyWithRetry as lazy } from "../../../../utils/lazyWithRetry.js";
 
 import Loader from "../../../../components/ui/Loader/Loader.jsx";
 

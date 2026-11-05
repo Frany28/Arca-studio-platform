@@ -1,4 +1,4 @@
-import { lazy, StrictMode, Suspense } from "react";
+import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { Outlet, Route, RouterProvider, createBrowserRouter, createRoutesFromElements } from "react-router-dom";
 import "./index.css";
@@ -6,7 +6,10 @@ import { AuthProvider } from "./auth/AuthContext.jsx";
 import { RecentProjectsProvider } from "./auth/RecentProjectsContext.jsx";
 import ProtectedRoute from "./auth/ProtectedRoute.jsx";
 import PublicOnlyRoute from "./auth/PublicOnlyRoute.jsx";
+import RouteErrorPage from "./components/RouteErrorPage.jsx";
 import ThemeSync from "./components/ui/ThemeSync.jsx";
+// Carga diferida con recuperación ante módulos eliminados por una nueva publicación.
+import { lazyWithRetry as lazy } from "./utils/lazyWithRetry.js";
 
 const InternalDashboardRouter = lazy(
   () => import("./pages/internal-dashboard/InternalDashboardRouter.jsx"),
@@ -85,7 +88,7 @@ function AppRoot() {
 // protege los formularios con cambios sin guardar (useUnsavedChangesGuard).
 const router = createBrowserRouter(
   createRoutesFromElements(
-    <Route element={<AppRoot />}>
+    <Route element={<AppRoot />} errorElement={<RouteErrorPage />}>
             <Route element={<PublicOnlyRoute />}>
               <Route path="/" element={<Login />} />
               <Route path="/login" element={<Login />} />

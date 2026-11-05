@@ -9,6 +9,15 @@
   status = 200
   force = true
 
+# Los archivos de /assets/ llevan un hash por publicación y Netlify elimina los anteriores. Un
+# chunk inexistente (pestaña abierta con el index.html de una versión previa) debe responder 404
+# y no el index.html de la regla SPA: servido con 200 y nosniff, el navegador lo rechaza como
+# módulo con un error confuso. Sin `force`, los archivos existentes se sirven normalmente.
+[[redirects]]
+  from = "/assets/*"
+  to = "/404.html"
+  status = 404
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -22,3 +31,16 @@
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+# Archivos con hash de Vite: su contenido nunca cambia bajo el mismo nombre (caché inmutable).
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# index.html se revalida siempre para descubrir la versión publicada (las rutas SPA reescritas a
+# index.html conservan el valor por defecto de Netlify, también max-age=0 y must-revalidate).
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
