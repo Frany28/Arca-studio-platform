@@ -5,6 +5,16 @@ import { evaluateProjectCompatibility } from "../src/domain/projectRequestCompat
 import { evaluateProjectRequestCompleteness } from "../src/domain/projectRequestCompleteness.js";
 import { evaluateFinancialViability } from "../src/domain/projectRequestFinancialViability.js";
 import { buildProjectRequestReviewObservations } from "../src/domain/projectRequestReviewObservations.js";
+import {
+  CALIBRATION_SCENARIOS,
+  HIGH_RISK,
+  INSUFFICIENT,
+  NONE,
+  PDF_EXAMPLES,
+  REVIEW,
+  stand,
+  withoutProperty,
+} from "./fixtures/projectRequestCalibrationScenarios.js";
 
 /*
  * Calibración de la fórmula 3.3 frente a la «Propuesta de Algoritmo de Evaluación V3.3»
@@ -16,115 +26,13 @@ import { buildProjectRequestReviewObservations } from "../src/domain/projectRequ
  *   escenarios se incorporarán como anexo oficial cuando se ejecuten sobre el motor real; hasta
  *   entonces son calibración interna, no escenarios aprobados.
  *
- * Los valores esperados se calculan a mano con las tablas del PDF (secciones 5 a 8), no se copian
- * de la salida del motor: así la prueba detecta divergencias entre el motor y el documento. Las
- * respuestas que el perfil base no especifica (decisor, experiencia, propietarios, modalidad) usan
- * opciones que el PDF declara sin efecto (0) en la compatibilidad y en la coherencia financiera.
+ * Los escenarios se definen en `fixtures/projectRequestCalibrationScenarios.js` (fuente única,
+ * compartida con el script del informe). Los valores esperados se calculan a mano con las tablas
+ * del PDF (secciones 5 a 8), no se copian de la salida del motor: así la prueba detecta
+ * divergencias entre el motor y el documento. Las respuestas que el perfil base no especifica
+ * (decisor, experiencia, propietarios, modalidad) usan opciones que el PDF declara sin efecto (0)
+ * en la compatibilidad y en la coherencia financiera.
  */
-
-const ARCHITECTURE_BASE = Object.freeze({
-  capitalAvailability: "available_now",
-  decisionMaker: "self",
-  description: "Remodelación integral de la vivienda familiar con terraza.",
-  developmentMode: "full",
-  experience: "positive",
-  hasMultipleOwners: false,
-  hasPlans: true,
-  investmentRange: "10k_50k",
-  landStatus: "available",
-  legalDocumentationStatus: "available",
-  legalDocumentTypes: ["property_deed"],
-  location: "Maracaibo, Estado Zulia",
-  projectName: "Escenario de calibración",
-  projectSize: "small_lt_80",
-  projectType: "residential",
-  quality: "standard",
-  referenceLink: "https://es.pinterest.com/pin",
-  standRequirements: null,
-  startTime: "over_6_months",
-});
-
-// Sin inmueble disponible las preguntas legales y de planos son N/A y llegan vacías (contrato).
-const WITHOUT_PROPERTY = Object.freeze({ hasMultipleOwners: null, hasPlans: null, legalDocumentationStatus: null, legalDocumentTypes: [] });
-
-const STAND_BASE = Object.freeze({
-  ...ARCHITECTURE_BASE,
-  ...WITHOUT_PROPERTY,
-  landStatus: null,
-  projectType: "advertising_stand",
-  standRequirements: Object.freeze({
-    documentTypes: ["exhibitor_manual"],
-    hasSpacePlans: true,
-    requirementsStatus: "available",
-    spaceStatus: "assigned",
-  }),
-});
-
-const architecture = (changes = {}) => ({ ...ARCHITECTURE_BASE, ...changes });
-const withoutProperty = (changes = {}) => architecture({ ...WITHOUT_PROPERTY, ...changes });
-const stand = (changes = {}, requirements = {}) => ({
-  ...STAND_BASE,
-  ...changes,
-  standRequirements: { ...STAND_BASE.standRequirements, ...requirements },
-});
-
-const NONE = "NO_OBVIOUS_CONFLICT";
-const REVIEW = "REVIEW_REQUIRED";
-const HIGH_RISK = "HIGH_RISK";
-const INSUFFICIENT = "INSUFFICIENT_DATA";
-
-/*
- * Cada escenario: respuestas, causas esperadas con su deducción (PDF §6), información completada
- * (PDF §7: respondidas/aplicables), estado financiero (PDF §8) y avisos de planos (PDF §11).
- * La puntuación y la clasificación (PDF §10) se derivan de las causas esperadas.
- */
-const PDF_EXAMPLES = [
-  ["§9 Solicitud coherente, inmueble disponible y tamaño definido", architecture(), {}, [17, 17], NONE],
-  ["§9 Inmueble disponible sin planos", architecture({ hasPlans: false }), {}, [17, 17], NONE, ["propertyBlueprintsUnavailable"]],
-  ["§9 Inmueble disponible y tamaño desconocido", architecture({ projectSize: "unknown" }), { PROJECT_SIZE_UNDEFINED: 15 }, [17, 17], NONE],
-  ["§9 Inmueble aún no disponible, tamaño desconocido, inicio flexible", withoutProperty({ landStatus: "unavailable", projectSize: "unknown" }), {}, [13, 13], NONE],
-  ["§9 Inmueble sin documentación legal", architecture({ legalDocumentationStatus: "unavailable", legalDocumentTypes: [] }), { LEGAL_DOCUMENTATION_PENDING: 6 }, [16, 16], NONE],
-  ["§9 Modalidad «Por definir»", architecture({ developmentMode: "undecided" }), { EXECUTION_MODE_UNDEFINED: 10 }, [17, 17], NONE],
-  ["§9 Grande con menos de $10,000 USD", architecture({ investmentRange: "under_10k", projectSize: "large_200_500" }), { FINANCIAL_SCOPE_MISMATCH: 25 }, [17, 17], REVIEW],
-  ["§9 Muy grande y Premium con menos de $10,000 USD", architecture({ investmentRange: "under_10k", projectSize: "very_large_gt_500", quality: "premium" }), { FINANCIAL_SCOPE_MISMATCH: 35 }, [17, 17], REVIEW],
-  ["§9 Capital indefinido e inicio inmediato", architecture({ capitalAvailability: "undefined", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 20 }, [17, 17], HIGH_RISK],
-  ["§9 Stand sin espacio asignado, tamaño desconocido, inicio flexible", stand({ projectSize: "unknown" }, { hasSpacePlans: false, spaceStatus: "unassigned" }), {}, [16, 16], NONE],
-  ["§9 Stand asignado, con medidas y tamaño desconocido", stand({ projectSize: "unknown" }), { PROJECT_SIZE_UNDEFINED: 15 }, [16, 16], NONE],
-  ["§9 Sin archivos ni enlace", architecture({ referenceLink: null }), {}, [17, 17], NONE],
-];
-
-const CALIBRATION_SCENARIOS = [
-  ["R01", architecture(), {}, [17, 17], NONE],
-  ["R02", withoutProperty({ investmentRange: "50k_150k", landStatus: "unavailable", projectSize: "medium_80_200" }), {}, [13, 13], NONE],
-  ["R03", architecture({ developmentMode: "undecided", hasPlans: false, projectSize: "unknown", referenceLink: null }), { EXECUTION_MODE_UNDEFINED: 10, PROJECT_SIZE_UNDEFINED: 15 }, [17, 17], NONE, ["propertyBlueprintsUnavailable"]],
-  ["R04", architecture({ decisionMaker: null, experience: null, hasPlans: null, legalDocumentationStatus: "in_process", legalDocumentTypes: [], quality: null }), { LEGAL_DOCUMENTATION_PENDING: 3 }, [12, 16], NONE, ["propertyBlueprintsUnconfirmed"]],
-  ["R05", withoutProperty({ landStatus: "unavailable", startTime: "immediate" }), { PROPERTY_TIMING_MISMATCH: 20 }, [13, 13], NONE],
-  ["R06", withoutProperty({ capitalAvailability: "seeking_financing", landStatus: "acquiring", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 15, PROPERTY_TIMING_MISMATCH: 10 }, [13, 13], REVIEW],
-  ["R07", architecture({ investmentRange: "under_10k", projectSize: "large_200_500", quality: "premium" }), { FINANCIAL_SCOPE_MISMATCH: 25 }, [17, 17], REVIEW],
-  ["R08", architecture({ capitalAvailability: "undefined", investmentRange: "undefined", projectSize: "very_large_gt_500", quality: "luxury", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 20, FINANCIAL_DEFINITION_INSUFFICIENT: 20 }, [17, 17], HIGH_RISK],
-  ["C01", architecture({ developmentMode: "phased", investmentRange: "50k_150k", legalDocumentTypes: ["lease_contract"], projectSize: "medium_80_200", projectType: "commercial", startTime: "1_3_months" }), {}, [17, 17], NONE],
-  ["C02", architecture({ developmentMode: "phased", investmentRange: "under_10k", projectSize: "very_large_gt_500", projectType: "commercial" }), { FINANCIAL_SCOPE_MISMATCH: 35 }, [17, 17], REVIEW],
-  ["C03", architecture({ projectType: "commercial", quality: "luxury" }), { FINANCIAL_SCOPE_MISMATCH: 20 }, [17, 17], REVIEW],
-  ["C04", architecture({ capitalAvailability: "undefined", projectType: "commercial", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 20 }, [17, 17], HIGH_RISK],
-  ["C05", architecture({ capitalAvailability: "seeking_financing", projectType: "commercial", startTime: "3_6_months" }), {}, [17, 17], NONE],
-  ["C06", architecture({ capitalAvailability: "within_3_months", hasPlans: false, legalDocumentationStatus: "unavailable", legalDocumentTypes: [], projectType: "commercial", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 10, LEGAL_DOCUMENTATION_PENDING: 6 }, [16, 16], REVIEW, ["propertyBlueprintsUnavailable"]],
-  ["K01", architecture({ decisionMaker: "company_board", investmentRange: "over_150k", projectSize: "large_200_500", projectType: "corporate", quality: "premium", startTime: "3_6_months" }), {}, [17, 17], NONE],
-  ["K02", architecture({ investmentRange: "undefined", projectSize: "large_200_500", projectType: "corporate" }), { FINANCIAL_DEFINITION_INSUFFICIENT: 15 }, [17, 17], INSUFFICIENT],
-  ["K03", architecture({ investmentRange: "under_10k", projectType: "corporate", quality: "premium" }), { FINANCIAL_SCOPE_MISMATCH: 20 }, [17, 17], REVIEW],
-  ["K04", withoutProperty({ capitalAvailability: "undefined", landStatus: "unavailable", projectSize: "unknown", projectType: "corporate", startTime: "1_3_months" }), { CAPITAL_TIMING_MISMATCH: 10, PROPERTY_TIMING_MISMATCH: 10 }, [13, 13], REVIEW],
-  ["K05", architecture({ capitalAvailability: "seeking_financing", developmentMode: "undecided", investmentRange: "under_10k", legalDocumentationStatus: "unavailable", legalDocumentTypes: [], projectSize: "unknown", projectType: "corporate", quality: "luxury", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 15, EXECUTION_MODE_UNDEFINED: 10, FINANCIAL_SCOPE_MISMATCH: 30, LEGAL_DOCUMENTATION_PENDING: 6, PROJECT_SIZE_UNDEFINED: 15 }, [16, 16], REVIEW],
-  ["K06", architecture({ decisionMaker: null, experience: null, projectSize: null, projectType: "corporate", quality: null, referenceLink: null }), { PROJECT_SIZE_UNDEFINED: 15 }, [13, 17], INSUFFICIENT],
-  ["S01", stand(), {}, [16, 16], NONE],
-  ["S02", stand({ projectSize: "unknown" }), { PROJECT_SIZE_UNDEFINED: 15 }, [16, 16], NONE],
-  ["S03", stand({ projectSize: "unknown" }, { hasSpacePlans: false }), {}, [16, 16], NONE],
-  ["S04", stand({ projectSize: "unknown" }, { documentTypes: [], hasSpacePlans: null, requirementsStatus: "in_process", spaceStatus: "in_process" }), {}, [14, 15], NONE],
-  ["S05", stand({ startTime: "immediate" }, { documentTypes: [], hasSpacePlans: false, requirementsStatus: "unavailable", spaceStatus: "unassigned" }), {}, [15, 15], NONE],
-  ["S06", stand({}, { documentTypes: [], hasSpacePlans: null }), {}, [14, 16], NONE],
-  ["S07", stand({ investmentRange: "under_10k", projectSize: "large_200_500" }), { FINANCIAL_SCOPE_MISMATCH: 25 }, [16, 16], REVIEW],
-  ["S08", stand({ capitalAvailability: "undefined", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 20 }, [16, 16], HIGH_RISK],
-  ["S09", stand({ investmentRange: "undefined", quality: "premium", startTime: "1_3_months" }), { FINANCIAL_DEFINITION_INSUFFICIENT: 15 }, [16, 16], INSUFFICIENT],
-  ["S10", stand({ capitalAvailability: "seeking_financing", developmentMode: "undecided", investmentRange: "under_10k", projectSize: "very_large_gt_500", quality: "luxury", startTime: "immediate" }), { CAPITAL_TIMING_MISMATCH: 15, EXECUTION_MODE_UNDEFINED: 10, FINANCIAL_SCOPE_MISMATCH: 35 }, [16, 16], REVIEW],
-];
 
 /**
  * Clasificación vigente (PDF §10) para la puntuación esperada.
