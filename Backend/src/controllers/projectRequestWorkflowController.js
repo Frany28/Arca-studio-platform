@@ -1,5 +1,6 @@
 import {
   applyProjectRequestDecision,
+  getAdminProjectRequestDetail,
   loadProjectRequestReviewQueue,
   submitProjectRequestReview,
 } from "../services/projectRequestWorkflowService.js";
@@ -24,6 +25,27 @@ export async function listProjectRequestReviews(req, res, next) {
     });
     res.setHeader("Cache-Control", "private, no-store");
     res.status(200).json({ projectRequests: page.items, nextCursor: page.nextCursor });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Responde el detalle administrativo de una solicitud enviada, identificado por su ID.
+ * La ruta ya exige rol administrador; la respuesta es privada y no se almacena en caché.
+ *
+ * @param {import("express").Request} req - Solicitud HTTP con `params.projectRequestId` validado.
+ * @param {import("express").Response} res - Respuesta HTTP con `{ projectRequest }`.
+ * @param {Function} next - Función que entrega errores al middleware central.
+ * @returns {Promise<void>} Finalización de la operación.
+ */
+export async function getAdminProjectRequest(req, res, next) {
+  try {
+    const projectRequest = await getAdminProjectRequestDetail({
+      projectRequestId: req.params.projectRequestId,
+    });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.status(200).json({ projectRequest });
   } catch (error) {
     next(error);
   }

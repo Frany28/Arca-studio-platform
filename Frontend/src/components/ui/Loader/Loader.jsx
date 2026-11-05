@@ -460,6 +460,65 @@ function AdminUserDetailsSkeleton() {
 
 // Reproduce el drawer "Detalles de Solicitud": fecha/estado, anillo de compatibilidad de
 // 64 px, dos barras de indicadores, recomendación, justificación y campos del proyecto.
+// Consulta administrativa de una solicitud: cabecera con indicador y cinco etapas, dos
+// indicadores en fila y las dos columnas de información (tarjeta y preferencias).
+function AdminProjectRequestSkeleton() {
+  return (
+    <div className="flex w-full flex-col items-center gap-[48px]">
+      <div className="flex w-full flex-col gap-[16px]">
+        <div className="flex w-full items-start justify-between gap-[24px]">
+          <div className="flex min-w-0 flex-col gap-[8px]">
+            <SkeletonBlock className="h-[24px] w-[220px] max-w-full rounded-[var(--radius-2)] min-[768px]:h-[58px] min-[768px]:w-[420px]" tone="text" />
+            <SkeletonBlock className="h-[17px] w-[160px] rounded-[var(--radius-1)] min-[768px]:h-[21px]" delay={60} tone="muted" />
+          </div>
+          <SkeletonBlock className="size-[96px] shrink-0 rounded-[var(--radius-full)]" delay={90} />
+        </div>
+        <div className="flex w-full gap-[12px] min-[480px]:gap-[24px]">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className={clsx(index >= 2 ? "hidden min-[768px]:flex" : "flex", "min-w-0 flex-1 flex-col gap-[12px]")}>
+              <SkeletonBlock className="h-[4px] w-full rounded-[var(--radius-none)]" delay={120 + index * 40} />
+              <SkeletonBlock className="h-[14px] w-3/4 rounded-[var(--radius-1)]" delay={140 + index * 40} tone="text" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex w-full max-w-[850px] flex-wrap gap-[24px]">
+        {Array.from({ length: 2 }, (_, index) => (
+          <div key={index} className="flex min-w-[200px] flex-1 flex-col gap-[8px]">
+            <SkeletonBlock className="h-[14px] w-[140px] rounded-[var(--radius-1)]" delay={200 + index * 50} tone="text" />
+            <SkeletonBlock className="h-[8px] w-full rounded-[var(--radius-full)]" delay={220 + index * 50} />
+          </div>
+        ))}
+      </div>
+      <div className="flex w-full max-w-[850px] flex-wrap items-start gap-[24px]">
+        <div className="flex min-w-[min(100%,250px)] flex-1 flex-col gap-[24px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] p-[16px]">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="flex flex-col gap-[8px]">
+              <SkeletonBlock className="h-[14px] w-[130px] rounded-[var(--radius-1)]" delay={260 + index * 45} tone="text" />
+              <SkeletonBlock className={clsx("w-full rounded-[var(--radius-1)]", index === 3 ? "h-[68px]" : "h-[14px] max-w-[180px]")} delay={280 + index * 45} tone="muted" />
+            </div>
+          ))}
+        </div>
+        <div className="flex min-w-[min(100%,250px)] flex-1 flex-col gap-[24px] py-[16px]">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="flex flex-col gap-[8px]">
+              <SkeletonBlock className="h-[14px] w-[150px] rounded-[var(--radius-1)]" delay={300 + index * 45} tone="text" />
+              <SkeletonBlock className="h-[14px] w-[160px] rounded-[var(--radius-1)]" delay={320 + index * 45} tone="muted" />
+            </div>
+          ))}
+          <div className="flex items-start gap-[12px]">
+            <SkeletonBlock className="h-[90px] w-[150px] shrink-0 rounded-[var(--radius-1)]" delay={500} />
+            <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
+              <SkeletonBlock className="h-[14px] w-[120px] rounded-[var(--radius-1)]" delay={520} tone="text" />
+              <SkeletonBlock className="h-[14px] w-[140px] rounded-[var(--radius-1)]" delay={540} tone="muted" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminRequestDetailsSkeleton() {
   return (
     <div className="flex w-full flex-col gap-[24px]">
@@ -738,6 +797,8 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <QuoteServicePickerSkeleton />;
   } else if (preset === "adminUserDetails") {
     content = <AdminUserDetailsSkeleton />;
+  } else if (preset === "adminProjectRequest") {
+    content = <AdminProjectRequestSkeleton />;
   } else if (preset === "adminRequestDetails") {
     content = <AdminRequestDetailsSkeleton />;
   } else if (preset === "detailValue") {

@@ -76,6 +76,7 @@ async function openPage(context, { role = "architect", queue = [REQUEST], queueP
       "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: overviewRequests || queue } },
       "/api/admin/assignees": { assignees: [] },
       "/api/admin/users/41": { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } },
+      "/api/admin/project-requests/7": { projectRequest: { ...REQUEST, files: [], reviews: [] } },
     };
     if (realDashboard && fixtures[path]) { await route.fulfill({ json: fixtures[path] }); return; }
     errors.push(`HTTP inesperado: ${path}`);
@@ -312,6 +313,21 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   for (const [index, path] of paths.entries()) {
     assert.equal(calls.filter((call) => call.path === path).length, before[index] + 1, `${path}: ${JSON.stringify(calls)}`);
   }
+});
+
+test("Dashboard admin real: el menú del drawer abre la vista completa y conserva el regreso", async (context) => {
+  const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true });
+  await page.waitForLoadState("networkidle");
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  await drawer.getByRole("button", { name: "Acciones para Casa Norte" }).click();
+  await page.getByRole("menuitem", { name: "Abrir vista completa" }).click();
+
+  await page.waitForURL("**/solicitudes-proyecto/7");
+  await page.getByRole("heading", { level: 1, name: "Casa Norte" }).waitFor();
+  await page.getByRole("link", { name: "Dashboard" }).click();
+  await page.waitForURL("**/dashboard-arquitecto");
+  assert.equal(mutations.length, 0);
 });
 
 test("Dashboard admin real: el drawer de detalle muestra datos reales y preselecciona la decisión", async (context) => {
@@ -615,17 +631,20 @@ test("Dashboard admin real: menú de acciones del drawer — orden, teclado y pr
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "Acciones para Casa Norte" });
   await menu.waitFor();
-  assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["Aprobar", "Solicitar más información", "Rechazar"]);
-  // Un único divisor interactivo, antes de la acción destructiva (el del encabezado es decorativo).
-  assert.equal(await menu.getByRole("separator").count(), 1);
+  // La consulta completa va primero y separada de las decisiones.
+  assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["Abrir vista completa", "Aprobar", "Solicitar más información", "Rechazar"]);
+  // Divisores interactivos: tras la consulta y antes de la acción destructiva (el del encabezado es decorativo).
+  assert.equal(await menu.getByRole("separator").count(), 2);
   const focused = () => page.evaluate(() => document.activeElement?.textContent);
-  await page.waitForFunction(() => document.activeElement?.textContent === "Aprobar");
+  await page.waitForFunction(() => document.activeElement?.textContent === "Abrir vista completa");
   await page.keyboard.press("ArrowUp");
   assert.equal(await focused(), "Rechazar");
   await page.keyboard.press("Home");
-  assert.equal(await focused(), "Aprobar");
+  assert.equal(await focused(), "Abrir vista completa");
   await page.keyboard.press("End");
   assert.equal(await focused(), "Rechazar");
+  await page.keyboard.press("ArrowDown");
+  assert.equal(await focused(), "Abrir vista completa");
   await page.keyboard.press("ArrowDown");
   assert.equal(await focused(), "Aprobar");
   await page.keyboard.press("ArrowDown");

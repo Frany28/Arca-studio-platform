@@ -139,6 +139,26 @@ export const adminApi = {
     });
   },
 
+  /**
+   * Obtiene el detalle administrativo de una solicitud enviada por ID, con métricas,
+   * responsables (con URL de avatar), revisiones, metadatos de adjuntos y proyecto convertido.
+   *
+   * @param {Object} params - Solicitud y cancelación.
+   * @param {number|string} params.projectRequestId - Solicitud a consultar.
+   * @param {AbortSignal} [params.signal] - Cancela la lectura al cambiar de solicitud o desmontar.
+   * @returns {Promise<{projectRequest: Object}>} Solicitud con su estado vigente.
+   */
+  async getProjectRequest({ projectRequestId, signal }) {
+    const payload = await apiRequest(
+      `/admin/project-requests/${encodeURIComponent(projectRequestId)}`,
+      { signal },
+    );
+    const projectRequest = payload?.projectRequest;
+    return projectRequest
+      ? { ...payload, projectRequest: { ...projectRequest, ...withAdminAssigneeAvatars(projectRequest) } }
+      : payload;
+  },
+
   async updateProjectRequestAssignees({ assigneeIds, projectRequestId }) {
     const payload = await apiRequest(
       `/admin/project-requests/${encodeURIComponent(projectRequestId)}/assignees`,

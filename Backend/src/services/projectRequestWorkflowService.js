@@ -1,8 +1,10 @@
 import { AppError, ConflictError, NotFoundError } from "../errors/appError.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import { buildProjectRequestReviewObservations } from "../domain/projectRequestReviewObservations.js";
+import { listProjectRequestFiles } from "../repositories/fileRepository.js";
 import {
   decideProjectRequest as decideProjectRequestRecord,
+  findProjectRequestForAdmin,
   listProjectRequestReviewQueue,
   upsertProjectRequestReview,
 } from "../repositories/projectRequestWorkflowRepository.js";
@@ -36,6 +38,29 @@ function toPublicWorkflowRequest({ answers, ...request }) {
 export async function loadProjectRequestReviewQueue({ cursor, limit, user }) {
   const page = await listProjectRequestReviewQueue({ cursor, limit, user });
   return { ...page, items: page.items.map(toPublicWorkflowRequest) };
+}
+
+/**
+ * Obtiene una solicitud enviada por ID para la consulta administrativa, con sus métricas
+ * calculadas (algoritmo vigente, sin persistirlas), observaciones de revisión, responsables,
+ * revisiones, proyecto convertido y los metadatos de sus adjuntos (sin descargar contenido).
+ *
+ * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
+ * @param {number|string} options.projectRequestId - Solicitud a consultar.
+ * @returns {Promise<object>} Solicitud pública con `files` (id, nombre, tipo, tamaño y fecha).
+ * @throws {NotFoundError} PROJECT_REQUEST_NOT_FOUND si no existe, está eliminada o es un borrador.
+ */
+export async function getAdminProjectRequestDetail({ projectRequestId }) {
+  const record = await findProjectRequestForAdmin(projectRequestId);
+  if (!record) {
+    throw new NotFoundError(
+      "PROJECT_REQUEST_NOT_FOUND",
+      "Solicitud de proyecto no encontrada.",
+    );
+  }
+
+  const files = await listProjectRequestFiles(record.id);
+  return { ...toPublicWorkflowRequest(record), files };
 }
 
 /**

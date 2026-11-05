@@ -3,7 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../api/http.js";
 
 // Resultado de la última lectura terminada; la carga se deriva comparando su id y revisión.
-const INITIAL_STATE = Object.freeze({ error: "", projectRequest: null, requestId: null, revision: -1 });
+const INITIAL_STATE = Object.freeze({ error: "", errorStatus: null, projectRequest: null, requestId: null, revision: -1 });
+
+/**
+ * Lector por defecto: solicitud propia del cliente autenticado.
+ *
+ * @param {number|string} projectRequestId - Solicitud a consultar.
+ * @param {{signal: AbortSignal}} options - Cancelación de la lectura.
+ * @returns {Promise<{projectRequest: Object}>} Respuesta de la API.
+ */
+function fetchOwnProjectRequest(projectRequestId, { signal }) {
+  return api.projectRequests.get(projectRequestId, { signal });
+}
 
 /**
  * Lee del backend una solicitud propia con su estado vigente y sus adjuntos persistidos,
@@ -14,14 +25,18 @@ const INITIAL_STATE = Object.freeze({ error: "", projectRequest: null, requestId
  * sobrescribe la más reciente. El resultado se conserva para el mismo id (volver a la vista
  * no repite la petición); `reload` fuerza una nueva lectura, por ejemplo tras un error.
  * Sin caché compartida: el dato es privado del usuario y vive con la página.
+ * `fetchProjectRequest` permite reutilizar el ciclo con otro endpoint autorizado (por ejemplo,
+ * el detalle administrativo); debe ser una referencia estable para no repetir la lectura.
  *
  * @param {Object} params - Solicitud a consultar y activación.
  * @param {number|string|null} params.projectRequestId - Solicitud propia del cliente.
  * @param {boolean} params.enabled - Si la vista de consulta está visible.
- * @returns {{error: string, loading: boolean, projectRequest: Object|null, reload: Function}}
- *   Solicitud con `files`, estado de carga, mensaje de error y acción de reintento.
+ * @param {(id: number|string, options: {signal: AbortSignal}) => Promise<{projectRequest: Object}>} [params.fetchProjectRequest]
+ *   Lector de la solicitud; por defecto, la solicitud propia del cliente.
+ * @returns {{error: string, errorStatus: number|null, loading: boolean, projectRequest: Object|null, reload: Function}}
+ *   Solicitud con `files`, estado de carga, mensaje y estado HTTP del error (null si fue de red) y reintento.
  */
-export default function useProjectRequestDetail({ enabled, projectRequestId }) {
+export default function useProjectRequestDetail({ enabled, fetchProjectRequest = fetchOwnProjectRequest, projectRequestId }) {
   const [state, setState] = useState(INITIAL_STATE);
   const [revision, setRevision] = useState(0);
   // Clave (id + revisión) de la última lectura iniciada: evita repetirla al volver a la vista.
@@ -38,11 +53,11 @@ export default function useProjectRequestDetail({ enabled, projectRequestId }) {
     startedKeyRef.current = key;
     const controller = new AbortController();
     let settled = false;
-    api.projectRequests.get(projectRequestId, { signal: controller.signal })
+    fetchProjectRequest(projectRequestId, { signal: controller.signal })
       .then((data) => {
         if (controller.signal.aborted) return;
         settled = true;
-        setState({ error: "", projectRequest: data?.projectRequest || null, requestId: projectRequestId, revision });
+        setState({ error: "", errorStatus: null, projectRequest: data?.projectRequest || null, requestId: projectRequestId, revision });
       })
       .catch((error) => {
         // La cancelación es deliberada (cambio de vista, de id o desmontaje): no es un error visible.
@@ -50,6 +65,7 @@ export default function useProjectRequestDetail({ enabled, projectRequestId }) {
         settled = true;
         setState({
           error: error?.message || "No se pudo cargar la solicitud.",
+          errorStatus: Number.isInteger(error?.status) ? error.status : null,
           projectRequest: null,
           requestId: projectRequestId,
           revision,
@@ -61,12 +77,13 @@ export default function useProjectRequestDetail({ enabled, projectRequestId }) {
       // Una lectura abortada antes de terminar no cuenta: se repetirá al volver a la vista.
       if (!settled && startedKeyRef.current === key) startedKeyRef.current = null;
     };
-  }, [enabled, hasId, projectRequestId, revision]);
+  }, [enabled, fetchProjectRequest, hasId, projectRequestId, revision]);
 
   const reload = useCallback(() => setRevision((current) => current + 1), []);
 
   return {
     error: isSettled ? state.error : "",
+    errorStatus: isSettled ? state.errorStatus : null,
     loading: enabled && hasId && !isSettled,
     projectRequest: isSettled ? state.projectRequest : null,
     reload,

@@ -10,6 +10,7 @@ import RouteErrorPage from "./components/RouteErrorPage.jsx";
 import ThemeSync from "./components/ui/ThemeSync.jsx";
 // Carga diferida con recuperación ante módulos eliminados por una nueva publicación.
 import { lazyWithRetry as lazy } from "./utils/lazyWithRetry.js";
+import { ADMIN_PROJECT_REQUEST_ROUTE } from "./utils/projectRequestRoutes.js";
 
 const InternalDashboardRouter = lazy(
   () => import("./pages/internal-dashboard/InternalDashboardRouter.jsx"),
@@ -18,6 +19,9 @@ const AdminUsersPage = lazy(
   () => import("./pages/admin-users/AdminUsersPage.jsx"),
 );
 const AdminProjectsPage = lazy(() => import("./pages/admin-projects/AdminProjectsPage.jsx"));
+const AdminProjectRequestPage = lazy(
+  () => import("./pages/admin-project-request/AdminProjectRequestPage.jsx"),
+);
 const AdminFilesPage = lazy(
   () => import("./pages/admin-files/AdminFilesPage.jsx"),
 );
@@ -131,6 +135,7 @@ const router = createBrowserRouter(
               <Route path="/archivos" element={<AdminFilesPage />} />
               <Route path="/usuarios" element={<AdminUsersPage />} />
               <Route path="/gestion-proyectos" element={<AdminProjectsPage />} />
+              <Route path={ADMIN_PROJECT_REQUEST_ROUTE} element={<AdminProjectRequestPage />} />
               {/* Las subrutas del módulo conservan el elemento activo del riel. */}
               <Route
                 path="/servicios-cotizaciones/*"

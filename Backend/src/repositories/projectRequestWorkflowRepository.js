@@ -1,6 +1,96 @@
 import { pool, query } from "../config/db.js";
 import { pageResult } from "../utils/pagination.js";
 
+// Columnas y relaciones de una solicitud en el flujo de revisión. Las comparten la cola técnica
+// y el detalle administrativo por ID para que ambos devuelvan responsables, revisiones y
+// adjuntos con la misma forma y el mismo mapeo (`toWorkflowRequest`).
+const WORKFLOW_REQUEST_COLUMNS = `
+        request.id,
+        request.client_id,
+        request.requested_by,
+        request.project_name,
+        request.project_type,
+        request.stand_requirements,
+        request.location,
+        request.description,
+        request.status,
+        request.compatibility_score,
+        request.compatibility_level,
+        request.project_size,
+        request.development_mode,
+        request.land_status,
+        request.legal_documentation_status,
+        request.legal_document_types,
+        request.has_multiple_owners,
+        request.has_plans,
+        request.investment_range,
+        request.capital_availability,
+        request.expected_start_time,
+        request.decision_maker,
+        request.quality_expectation,
+        request.prior_design_experience,
+        request.correction_reason,
+        request.rejection_reason,
+        request.created_at,
+        request.updated_at,
+        coalesce(assignment.assignees, '[]'::json) as assignees,
+        coalesce(review.reviews, '[]'::json) as reviews,
+        coalesce(attachment.files, '[]'::json) as files`;
+
+const WORKFLOW_REQUEST_RELATIONS = `
+      left join lateral (
+        select json_agg(
+          json_build_object(
+            'id', employee.id,
+            'name', concat_ws(' ', employee.first_name, employee.last_name),
+            'hasProfilePhoto', employee.profile_photo_url is not null,
+            'roleCode', role.code
+          ) order by employee.first_name, employee.last_name, employee.id
+        ) as assignees
+        from public.project_request_assignees request_assignment
+        inner join public.users employee on employee.id = request_assignment.user_id
+        inner join public.roles role on role.id = employee.role_id
+        where request_assignment.project_request_id = request.id
+          and employee.deleted_at is null
+      ) assignment on true
+      left join lateral (
+        select json_agg(
+          json_build_object(
+            'note', request_review.note,
+            'meetingRecommendation', request_review.meeting_recommendation,
+            'recommendation', request_review.recommendation,
+            'updatedAt', request_review.updated_at,
+            'reviewer', json_build_object(
+              'id', reviewer.id,
+              'name', concat_ws(' ', reviewer.first_name, reviewer.last_name),
+              'hasProfilePhoto', reviewer.profile_photo_url is not null,
+              'roleCode', reviewer_role.code
+            )
+          ) order by request_review.updated_at desc
+        ) as reviews
+        from public.project_request_reviews request_review
+        inner join public.users reviewer on reviewer.id = request_review.reviewer_id
+        inner join public.roles reviewer_role on reviewer_role.id = reviewer.role_id
+        where request_review.project_request_id = request.id
+      ) review on true
+      left join lateral (
+        select json_agg(
+          json_build_object(
+            'id', file.id,
+            'name', coalesce(version.original_name, file.title),
+            'fileType', file.file_type
+          ) order by file.created_at, file.id
+        ) as files
+        from public.files file
+        left join public.file_versions version
+          on version.file_id = file.id
+          and version.version_number = file.current_version
+          and version.deleted_at is null
+        where file.project_request_id = request.id
+          and file.deleted_at is null
+          and file.status <> 'deleted'
+      ) attachment on true`;
+
 /**
  * Transforma el valor de person a la representación pública esperada.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
@@ -146,90 +236,9 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
   const result = await query(
     `
       select
-        request.id,
-        request.client_id,
-        request.requested_by,
-        request.project_name,
-        request.project_type,
-        request.stand_requirements,
-        request.location,
-        request.description,
-        request.status,
-        request.compatibility_score,
-        request.compatibility_level,
-        request.project_size,
-        request.development_mode,
-        request.land_status,
-        request.legal_documentation_status,
-        request.legal_document_types,
-        request.has_multiple_owners,
-        request.has_plans,
-        request.investment_range,
-        request.capital_availability,
-        request.expected_start_time,
-        request.decision_maker,
-        request.quality_expectation,
-        request.prior_design_experience,
-        request.correction_reason,
-        request.rejection_reason,
-        request.created_at,
-        request.updated_at,
-        coalesce(assignment.assignees, '[]'::json) as assignees,
-        coalesce(review.reviews, '[]'::json) as reviews,
-        coalesce(attachment.files, '[]'::json) as files
+${WORKFLOW_REQUEST_COLUMNS}
       from public.project_requests request
-      left join lateral (
-        select json_agg(
-          json_build_object(
-            'id', employee.id,
-            'name', concat_ws(' ', employee.first_name, employee.last_name),
-            'hasProfilePhoto', employee.profile_photo_url is not null,
-            'roleCode', role.code
-          ) order by employee.first_name, employee.last_name, employee.id
-        ) as assignees
-        from public.project_request_assignees request_assignment
-        inner join public.users employee on employee.id = request_assignment.user_id
-        inner join public.roles role on role.id = employee.role_id
-        where request_assignment.project_request_id = request.id
-          and employee.deleted_at is null
-      ) assignment on true
-      left join lateral (
-        select json_agg(
-          json_build_object(
-            'note', request_review.note,
-            'meetingRecommendation', request_review.meeting_recommendation,
-            'recommendation', request_review.recommendation,
-            'updatedAt', request_review.updated_at,
-            'reviewer', json_build_object(
-              'id', reviewer.id,
-              'name', concat_ws(' ', reviewer.first_name, reviewer.last_name),
-              'hasProfilePhoto', reviewer.profile_photo_url is not null,
-              'roleCode', reviewer_role.code
-            )
-          ) order by request_review.updated_at desc
-        ) as reviews
-        from public.project_request_reviews request_review
-        inner join public.users reviewer on reviewer.id = request_review.reviewer_id
-        inner join public.roles reviewer_role on reviewer_role.id = reviewer.role_id
-        where request_review.project_request_id = request.id
-      ) review on true
-      left join lateral (
-        select json_agg(
-          json_build_object(
-            'id', file.id,
-            'name', coalesce(version.original_name, file.title),
-            'fileType', file.file_type
-          ) order by file.created_at, file.id
-        ) as files
-        from public.files file
-        left join public.file_versions version
-          on version.file_id = file.id
-          and version.version_number = file.current_version
-          and version.deleted_at is null
-        where file.project_request_id = request.id
-          and file.deleted_at is null
-          and file.status <> 'deleted'
-      ) attachment on true
+${WORKFLOW_REQUEST_RELATIONS}
       where request.deleted_at is null
         and request.status in ('pending_verification', 'pending_review')
         and (
@@ -257,6 +266,66 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
     toWorkflowRequest,
     (row) => [row.updated_at, Number(row.id)],
   );
+}
+
+/**
+ * Amplía el mapeo de la cola con los datos que solo muestra el detalle administrativo:
+ * enlace de referencia, dirección normalizada, fecha de decisión y proyecto creado al convertir.
+ * El proyecto se omite si fue eliminado, para no enlazar a un recurso inexistente.
+ *
+ * @param {object} row - Fila obtenida desde PostgreSQL.
+ * @returns {object} Solicitud del flujo con `referenceLink`, `formattedAddress`, `reviewedAt` y `convertedProject` (id, nombre, estado y slug).
+ */
+function toAdminProjectRequestDetail(row) {
+  return {
+    ...toWorkflowRequest(row),
+    convertedProject: row.converted_project_id == null || row.converted_project_name == null
+      ? null
+      : {
+          id: Number(row.converted_project_id),
+          name: row.converted_project_name,
+          publicSlug: row.converted_project_public_slug || null,
+          status: row.converted_project_status,
+        },
+    formattedAddress: row.formatted_address || null,
+    referenceLink: row.reference_link || null,
+    reviewedAt: row.reviewed_at || null,
+  };
+}
+
+/**
+ * Busca en PostgreSQL una solicitud enviada por ID para la consulta administrativa, con
+ * responsables, revisiones, adjuntos y proyecto convertido. Los borradores pertenecen solo
+ * al cliente y se tratan como inexistentes; la autorización de rol se aplica en la ruta.
+ *
+ * @param {number|string} projectRequestId - Solicitud a consultar.
+ * @returns {Promise<object|null>} Solicitud mapeada con sus respuestas internas, o null si no es accesible.
+ */
+export async function findProjectRequestForAdmin(projectRequestId) {
+  const result = await query(
+    `
+      select
+${WORKFLOW_REQUEST_COLUMNS},
+        request.reference_link,
+        request.formatted_address,
+        request.reviewed_at,
+        request.converted_project_id,
+        converted_project.name as converted_project_name,
+        converted_project.status as converted_project_status,
+        converted_project.public_slug as converted_project_public_slug
+      from public.project_requests request
+${WORKFLOW_REQUEST_RELATIONS}
+      left join public.projects converted_project
+        on converted_project.id = request.converted_project_id
+        and converted_project.deleted_at is null
+      where request.id = $1
+        and request.deleted_at is null
+        and request.status <> 'draft'
+      limit 1
+    `,
+    [projectRequestId],
+  );
+  return result.rows[0] ? toAdminProjectRequestDetail(result.rows[0]) : null;
 }
 
 /**

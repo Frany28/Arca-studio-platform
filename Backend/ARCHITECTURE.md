@@ -226,6 +226,10 @@ Una funcionalidad está terminada cuando:
 
 `project_request_reviews` conserva `recommendation` para la valoración de workflow (`approve`, `reject`, `changes_requested`), `note` para su justificación y `meeting_recommendation` para la decisión independiente de reunión. El nuevo enum nullable no tiene default ni backfill histórico. El servicio coordina la revisión y los errores de contexto; el repositorio guarda atómicamente ambos conceptos con consultas parametrizadas y bloqueo de la solicitud. Zod valida los códigos del dominio en `src/domain/projectRequestReview.js`. El contrato se extiende en `/review` y `/review-queue` sin añadir rutas ni cambiar las decisiones administrativas. Consultar [contrato y migración](../docs/PROJECT_REQUEST_MEETING_RECOMMENDATION.md).
 
+### Consulta administrativa por ID
+
+`GET /api/admin/project-requests/:projectRequestId` (router `admin`: sesión + rol `admin`; `projectRequestIdSchema`) → `getAdminProjectRequest` → `getAdminProjectRequestDetail` → `findProjectRequestForAdmin` + `listProjectRequestFiles`. Devuelve `{ projectRequest }` con `Cache-Control: private, no-store`: la misma forma que una entrada de la cola técnica (métricas calculadas al vuelo, `reviewObservations`, responsables y revisiones, sin las respuestas internas) más `referenceLink`, `formattedAddress`, `reviewedAt`, `convertedProject` (`id`, `name`, `status`, `publicSlug`; null si el proyecto fue eliminado) y `files` con tamaño y fecha (solo metadatos). Cubre todos los estados salvo `draft`; un borrador, una solicitud eliminada o inexistente responden `404 PROJECT_REQUEST_NOT_FOUND`. Las columnas y relaciones compartidas con la cola viven en `WORKFLOW_REQUEST_COLUMNS`/`WORKFLOW_REQUEST_RELATIONS`. No reutiliza `GET /project-requests/:id`, exclusivo del propietario.
+
 ## Cálculo de cotizaciones
 
 `src/domain/quoteTotals.js` (`calculateQuoteTotals`) es la única fuente de los importes de una cotización. Lo utilizarán el servicio de cotizaciones, las validaciones y el PDF. No conoce el catálogo, PostgreSQL ni HTTP: recibe cantidades y tarifas aplicadas como parámetros, por lo que las tarifas del tabulador nunca se codifican en el motor.

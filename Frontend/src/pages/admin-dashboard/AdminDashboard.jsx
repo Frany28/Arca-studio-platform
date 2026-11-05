@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
@@ -7,6 +8,7 @@ import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer
 import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import { useProjectRequestWorkflow } from "../../hooks/useProjectRequestWorkflow.js";
 import InternalDashboardLayout from "../../layouts/InternalDashboardLayout.jsx";
+import { getAdminProjectRequestPath } from "../../utils/projectRequestRoutes.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
 import { isProjectOperationallyReadOnly } from "../../utils/projectReadOnly.js";
 import AdminDashboardHeader from "./components/AdminDashboardHeader.jsx";
@@ -45,6 +47,7 @@ function AdminDashboard({ empty = false }) {
   } = useDashboardProjects({ empty, user, projectsRequestKey });
   const navigation = useDashboardNavigation({ projectRows, roleCode: currentUser.roleCode });
   const { navigate, isNotificationsDrawerOpen, setIsNotificationsDrawerOpen, handleActivitySelect } = navigation;
+  const location = useLocation();
   const [adminMetricsRequestKey, setAdminMetricsRequestKey] = useState(0);
   const [adminOverviewRequestKey, setAdminOverviewRequestKey] = useState(0);
   const {
@@ -111,6 +114,20 @@ function AdminDashboard({ empty = false }) {
     reviewQueue,
     openRequestWorkflow: workflow.open,
   });
+  /**
+   * Cierra el drawer y abre la consulta completa de la solicitud seleccionada. El estado de
+   * navegación conserva el dashboard como contexto de regreso de la consulta.
+   *
+   * @returns {void}
+   */
+  const handleViewRequest = () => {
+    const requestId = requestDetails.details?.id;
+    if (requestId == null) return;
+    requestDetails.close();
+    navigate(getAdminProjectRequestPath(requestId), {
+      state: { from: { label: "Dashboard", to: `${location.pathname}${location.search}` } },
+    });
+  };
   const upcomingDeliveries = useMemo(
     () =>
       [...projectRows]
@@ -221,6 +238,7 @@ function AdminDashboard({ empty = false }) {
         onClose={requestDetails.close}
         onOpenWorkflow={requestDetails.openWorkflow}
         onRetryQueue={requestDetails.retryQueue}
+        onViewRequest={handleViewRequest}
       />
       <ProjectRequestWorkflowModal
         key={

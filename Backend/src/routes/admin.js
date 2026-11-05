@@ -9,7 +9,10 @@ import {
   updateProjectRequestAssignees,
   streamAdminAssigneeProfilePhoto,
 } from "../controllers/adminDashboardController.js";
-import { patchProjectRequestDecision } from "../controllers/projectRequestWorkflowController.js";
+import {
+  getAdminProjectRequest,
+  patchProjectRequestDecision,
+} from "../controllers/projectRequestWorkflowController.js";
 import {
   getPermissions,
   getRolePermissionMatrix,
@@ -40,6 +43,7 @@ import {
   projectAssigneesSchema,
   projectRequestAssigneesSchema,
 } from "../validation/adminDashboardSchemas.js";
+import { projectRequestIdSchema } from "../validation/projectRequestSchemas.js";
 import { projectRequestDecisionSchema } from "../validation/projectRequestWorkflowSchemas.js";
 import {
   adminUserCreateSchema,
@@ -134,6 +138,7 @@ router.patch(
   validate(adminProjectBulkActionSchema),
   updateAdminProjects,
 );
+router.get("/project-requests/:projectRequestId", validate(projectRequestIdSchema), getAdminProjectRequest);
 router.put(
   "/project-requests/:projectRequestId/assignees",
   validate(projectRequestAssigneesSchema),
