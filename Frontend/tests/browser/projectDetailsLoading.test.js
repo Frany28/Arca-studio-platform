@@ -308,10 +308,8 @@ test("subir un archivo actualiza los archivos del proyecto con una recarga en se
   await waitForOpenTab(page, "Subir archivos");
   await page.locator('input[type="file"]').first().setInputFiles({ name: "Plano tardío.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 prueba") });
   await page.waitForTimeout(1500);
-  // StrictMode (desarrollo) ejecuta dos veces el actualizador que programa la subida; cada subida
-  // completada recarga los archivos una vez.
-  assert.ok(uploads > 0);
-  assert.equal(projectReads.filter((path) => path === PROJECT_BY_ID).length, uploads, "una recarga por subida");
+  assert.equal(uploads, 1, "una sola subida por archivo seleccionado");
+  assert.equal(projectReads.filter((path) => path === PROJECT_BY_ID).length, 1, "una recarga tras la subida");
   assert.equal(await page.getByText("Cargando proyecto").count(), 0, "sin volver al Loader del proyecto");
 
   await page.getByRole("tab", { name: "Documentos" }).click();

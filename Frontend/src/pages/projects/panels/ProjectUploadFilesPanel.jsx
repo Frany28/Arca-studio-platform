@@ -70,6 +70,12 @@ export default function ProjectUploadFilesPanel({ onFilesChanged, projectId }) {
   const [files, setFiles] = useState([]);
   const [submitError, setSubmitError] = useState("");
   const uploadControllersRef = useRef(new Map());
+  // Archivos vigentes para validar una selección fuera del actualizador de estado.
+  const filesRef = useRef(files);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   useEffect(() => {
     const controllers = uploadControllersRef.current;
@@ -184,37 +190,37 @@ export default function ProjectUploadFilesPanel({ onFilesChanged, projectId }) {
     }
 
     setSubmitError("");
-    setFiles((currentFiles) => {
-      const nextFiles = [...currentFiles];
-      const filesToUpload = [];
 
-      for (const file of selectedFiles) {
-        const errorMessage = getFileError(file, nextFiles);
-        const fileItem = {
-          canUpload: !errorMessage,
-          errorMessage,
-          file,
-          id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
-          loadedBytes: 0,
-          progress: 0,
-          status: errorMessage ? "failed" : "pending",
-          totalBytes: file.size || 0,
-          uploadResult: null,
-        };
+    // Los ítems (con su id aleatorio) y las subidas se crean aquí, una vez por selección: un
+    // actualizador de estado debe ser puro, porque React puede ejecutarlo más de una vez
+    // (StrictMode lo hace siempre) y cada ejecución lanzaba subidas duplicadas.
+    const knownFiles = [...filesRef.current];
+    const selectedItems = [];
 
-        nextFiles.push(fileItem);
+    for (const file of selectedFiles) {
+      const errorMessage = getFileError(file, knownFiles);
+      const fileItem = {
+        canUpload: !errorMessage,
+        errorMessage,
+        file,
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        loadedBytes: 0,
+        progress: 0,
+        status: errorMessage ? "failed" : "pending",
+        totalBytes: file.size || 0,
+        uploadResult: null,
+      };
 
-        if (!errorMessage) {
-          filesToUpload.push(fileItem);
-        }
-      }
+      knownFiles.push(fileItem);
+      selectedItems.push(fileItem);
+    }
 
-      window.setTimeout(() => {
-        filesToUpload.forEach(uploadFile);
-      }, 0);
-
-      return nextFiles;
-    });
+    filesRef.current = knownFiles;
+    setFiles((currentFiles) => [...currentFiles, ...selectedItems]);
+    // Las actualizaciones de cada subida se encolan después de añadir los ítems.
+    selectedItems
+      .filter((fileItem) => !fileItem.errorMessage)
+      .forEach(uploadFile);
   };
 
   const handleFileRemove = async (fileItem) => {
