@@ -12,7 +12,7 @@ import "../../../src/index.css";
 // Arnés del campo de adjuntos real (useProjectRequestFiles + ProjectRequestAttachmentsField) con
 // el mismo envío que ProjectRequestPage: valida los archivos y pide la navegación a errores.
 // `layout=modal` lo monta en un Modal con el formulario como área desplazable; `draft=1` simula un
-// borrador en curso, que rechaza nuevas selecciones sin añadirlas a la lista.
+// borrador en curso, que admite agregar nuevas selecciones.
 const params = new URLSearchParams(window.location.search);
 const layout = params.get("layout") || "page";
 const draftId = params.get("draft") === "1" ? 99 : null;

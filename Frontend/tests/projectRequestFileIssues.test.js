@@ -43,8 +43,8 @@ test("reparto de errores: por archivo (id estable) y de sección, solo con los m
   assert.deepEqual([...split.byFileId], [["f-2", "notas.txt: formato no permitido."]]);
   assert.deepEqual(split.general, []);
 
-  // Una selección rechazada (borrador en curso) no procede de ningún archivo: es de la sección.
-  const rejected = "Ya existe un borrador en proceso. Reintenta el envío antes de cambiar los archivos.";
+  // Un mensaje que no procede del validador (p. ej., una eliminación remota fallida) es de la sección.
+  const rejected = "plano.pdf: no se pudo eliminar.";
   const onlyRejected = splitProjectRequestFileErrors(files, [rejected]);
   assert.equal(onlyRejected.byFileId.size, 0, "Un mensaje inactivo no se muestra en la tarjeta");
   assert.deepEqual(onlyRejected.general, [rejected]);

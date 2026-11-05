@@ -1,7 +1,9 @@
+import { withTransaction } from "../config/db.js";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { isAllowedProjectRequestType } from "../domain/projectRequest.js";
 import { evaluateProjectCompatibility, publicCompatibility } from "../domain/projectRequestCompatibility.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
+import { verifyAndConsumeProjectRequestCode } from "./projectRequestVerificationService.js";
 import {
   createProjectRequestDraft,
   findExistingProjectNameForClient,
@@ -169,14 +171,19 @@ export async function updateProjectRequest({ payload, projectRequestId, user }) 
  * Envía la solicitud de proyecto después de validar el estado y las reglas aplicables.
  * Calcula la compatibilidad vigente desde las respuestas guardadas (los adjuntos no puntúan)
  * y la persiste en PostgreSQL junto con el cambio de estado y su auditoría.
+ * Exige el código de validación emitido para esta solicitud y este usuario: se verifica y se
+ * consume en la misma transacción que el cambio de estado, con la fila bloqueada, de modo que
+ * el envío no puede omitir la validación ni reutilizar un código. Un intento fallido se confirma
+ * antes de responder el error. El reintento idempotente de una solicitud ya enviada no lo exige.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
  * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
+ * @param {string} options.verificationCode - Código de seis dígitos recibido por correo.
  * @returns {Promise<unknown>} Resultado producido por la operación.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
-export async function submitProjectRequest({ projectRequestId, user }) {
+export async function submitProjectRequest({ projectRequestId, user, verificationCode }) {
   requireClient(user);
   const current = await findProjectRequestOwnedByUser(projectRequestId, user);
   if (!current) {
@@ -202,9 +209,17 @@ export async function submitProjectRequest({ projectRequestId, user }) {
   await assertAvailableName(user, current, projectRequestId);
   // Desde 3.2 los adjuntos no puntúan: la evaluación usa solo las respuestas guardadas.
   const evaluation = evaluateProjectCompatibility(current);
-  let submitted;
+  let outcome;
   try {
-    submitted = await submitProjectRequestForUser(projectRequestId, user, evaluation);
+    outcome = await withTransaction(async (client) => {
+      const verificationError = await verifyAndConsumeProjectRequestCode(client, {
+        code: verificationCode,
+        projectRequestId,
+        user,
+      });
+      if (verificationError) return { verificationError };
+      return { submitted: await submitProjectRequestForUser(projectRequestId, user, evaluation, client) };
+    });
   } catch (error) {
     if (error?.code === "23505") {
       throw new ConflictError(
@@ -215,5 +230,6 @@ export async function submitProjectRequest({ projectRequestId, user }) {
     }
     throw error;
   }
-  return toPublicProjectRequest(submitted);
+  if (outcome.verificationError) throw outcome.verificationError;
+  return toPublicProjectRequest(outcome.submitted);
 }

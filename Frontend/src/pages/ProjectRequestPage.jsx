@@ -16,16 +16,17 @@ import ResponsiveSideNavigation from "../components/ui/SideNavigation/Responsive
 import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { useInvalidFieldFocus } from "../hooks/useInvalidFieldFocus.js";
-import { getProjectRequestFileErrors } from "../utils/projectRequestValidation.js";
 import { hasApplicableProperty, requiresPropertyAvailability } from "../utils/projectRequestApplicability.js";
 import { LEGACY_PROJECT_REQUEST_TYPES, PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
 import { getProjectTypeLabel } from "../utils/projectTypeDisplay.js";
 import ProjectRequestAttachmentsField from "./project-request/components/ProjectRequestAttachmentsField.jsx";
 import ProjectRequestStandSection from "./project-request/components/ProjectRequestStandSection.jsx";
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
+import ProjectRequestSummaryView from "./project-request/components/ProjectRequestSummaryView.jsx";
+import useProjectRequestDetail from "./project-request/hooks/useProjectRequestDetail.js";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
-import useProjectRequestSubmission from "./project-request/hooks/useProjectRequestSubmission.js";
+import useProjectRequestSubmission, { REQUEST_VIEWS } from "./project-request/hooks/useProjectRequestSubmission.js";
 import useProjectRequestNavigation from "./project-request/hooks/useProjectRequestNavigation.js";
 import useProjectRequestNotifications from "./project-request/hooks/useProjectRequestNotifications.js";
 import {
@@ -41,6 +42,7 @@ import {
   createUserSideNavigationItems,
   getDashboardPath,
 } from "../utils/sideNavigationItems.js";
+import { PROJECT_REQUEST_FOOTER_CLASS_NAME } from "./project-request/utils/projectRequestLayout.js";
 
 
 export default function ProjectRequestPage() {
@@ -75,7 +77,6 @@ export default function ProjectRequestPage() {
     cancelRequestAction,
     collapseSidebar,
     confirmRequestAction,
-    expandSidebar,
     isRequestActionModalOpen,
     isSidebarExpanded,
     pendingRequestAction,
@@ -128,15 +129,19 @@ export default function ProjectRequestPage() {
   });
   const {
     closeValidation,
+    codeStatus,
     draftId,
     isRequestReceived,
     isSubmitting,
     isValidationModalOpen,
     openValidation,
     receivedRequest,
+    requestView,
+    resendCode,
     resetSubmission,
     setValidationCode,
-    showRequestForm,
+    showRequestStatus,
+    showRequestSummary,
     submitError,
     submitValidation,
     validationCode,
@@ -150,19 +155,39 @@ export default function ProjectRequestPage() {
     viewRequest,
   });
   const {
+    allowRemoteRemoval,
+    attachmentsError,
+    attachmentsLoading,
     fileErrors,
     files,
+    getSubmitFileErrors,
     handleFilesChange,
+    reloadAttachments,
     removeFile,
     resetFiles,
     setFileErrors,
     updateFileItem,
   } = useProjectRequestFiles({
+    // Una corrección autorizada conserva y muestra los adjuntos ya guardados en la solicitud.
+    correctionRequestId: initialRequest?.status === "changes_requested" ? initialRequest.id : null,
     currentFieldErrors,
     draftId,
     hasAttemptedSubmit,
     setShowRequiredAlert,
   });
+  // La consulta lee del backend el estado vigente y los adjuntos persistidos de la solicitud;
+  // una vez leída, también alimenta la vista de estado para no mostrar un estado anterior.
+  const requestDetail = useProjectRequestDetail({
+    enabled: requestView === REQUEST_VIEWS.summary,
+    projectRequestId: receivedRequest?.id ?? null,
+  });
+  const currentRequest = requestDetail.projectRequest || receivedRequest;
+  const navigateToDashboard = () => navigate(getDashboardPath(currentUser.roleCode));
+  // Las acciones están al pie: cada cambio de vista lleva al inicio de la nueva vista.
+  const switchRequestView = (showView) => () => {
+    showView();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const navigationItems = useMemo(
     () => createUserSideNavigationItems([], currentUser.roleCode),
     [currentUser.roleCode],
@@ -172,7 +197,7 @@ export default function ProjectRequestPage() {
     clearLocationSuggestions();
   };
   const handleFrontendSubmit = () => {
-    const nextFileErrors = getProjectRequestFileErrors(files);
+    const nextFileErrors = getSubmitFileErrors();
     setFileErrors(nextFileErrors);
 
     if (validateForSubmit(nextFileErrors)) {
@@ -217,15 +242,21 @@ export default function ProjectRequestPage() {
             onUtilityActionClick={toggleNotifications}
           />
 
-          {isRequestReceived ? (
+          {requestView === REQUEST_VIEWS.summary ? (
+            <ProjectRequestSummaryView
+              error={requestDetail.error}
+              loading={requestDetail.loading}
+              projectRequest={requestDetail.projectRequest}
+              onRetry={requestDetail.reload}
+              onViewStatus={switchRequestView(showRequestStatus)}
+              onBackToDashboard={navigateToDashboard}
+            />
+          ) : isRequestReceived ? (
             <ProjectRequestReceivedView
-              compatibility={receivedRequest?.compatibility}
-              projectRequest={receivedRequest}
-              onViewRequest={() => {
-                showRequestForm();
-                expandSidebar();
-              }}
-              onBackToDashboard={() => navigate(getDashboardPath(currentUser.roleCode))}
+              compatibility={currentRequest?.compatibility}
+              projectRequest={currentRequest}
+              onViewRequest={switchRequestView(showRequestSummary)}
+              onBackToDashboard={navigateToDashboard}
             />
           ) : (
             <div className="content-reveal mx-auto flex w-full max-w-[1200px] flex-col items-center gap-[48px] px-[16px] pb-[48px] min-[768px]:px-[24px] min-[1024px]:px-[48px]">
@@ -344,6 +375,10 @@ export default function ProjectRequestPage() {
 
               <FormSection title="Referencias" description="Comparte imágenes, enlaces o cualquier material de referencia que represente tu visión del proyecto. Esto nos ayudará a comprender mejor el estilo, la atmósfera y los acabados que deseas lograr.">
                 <ProjectRequestAttachmentsField
+                  allowRemoteRemoval={allowRemoteRemoval}
+                  loadingPersisted={attachmentsLoading}
+                  persistedError={attachmentsError}
+                  onRetryPersisted={reloadAttachments}
                   disabled={isSubmitting}
                   fileErrors={fileErrors}
                   files={files}
@@ -358,7 +393,7 @@ export default function ProjectRequestPage() {
               <div className="w-full max-w-[850px]">
                 <p className="text-[16px] leading-[19px] tracking-[-0.5px] text-[var(--color-text-100)]">Al enviar este formulario, nuestro equipo revisará la información y se pondrá en contacto contigo en un plazo aproximado de 24–48 horas.</p>
               </div>
-              <footer className="flex w-full max-w-[850px] flex-col-reverse gap-[8px] min-[480px]:flex-row min-[480px]:justify-end">
+              <footer className={PROJECT_REQUEST_FOOTER_CLASS_NAME}>
                 <Button theme="Primary" type="Outline" size="M" fitContent={false} showLeftIcon={false} showRightIcon={false} className="h-[41px] w-full min-[480px]:w-auto" onClick={requestReset}>Limpiar formulario</Button>
                 <Button disabled={isSubmitting} theme="Primary" type="Solid" htmlType="submit" size="M" fitContent={false} showLeftIcon={false} showRightIcon={false} className="h-[41px] w-full min-[480px]:w-auto">{isSubmitting ? "Enviando" : "Enviar"}</Button>
               </footer>
@@ -392,7 +427,9 @@ export default function ProjectRequestPage() {
       <ProjectRequestValidationStep
         open={isValidationModalOpen}
         code={validationCode}
+        codeStatus={codeStatus}
         onCodeChange={setValidationCode}
+        onResendCode={resendCode}
         isSubmitting={isSubmitting}
         submitError={submitError}
         onClose={closeValidation}

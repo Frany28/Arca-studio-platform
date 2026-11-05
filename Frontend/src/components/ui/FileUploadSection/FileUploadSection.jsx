@@ -100,6 +100,8 @@ function getFileAttachmentType(file) {
  * Tarjeta de un archivo. Con `file.validationMessage` (opcional) muestra el motivo bajo la tarjeta
  * con el HintText de error y el borde de error de la variante fallida, y lo asocia a su botón de
  * quitar; sin él, la tarjeta no cambia. Los ids salen de getFileUploadCardIds (estables por `id`).
+ * Una tarjeta completada muestra «Añadir archivo»; con `file.removeWhenCompleted` y `file.onRemove`
+ * muestra en su lugar «Eliminar archivo», para adjuntos ya guardados que el flujo permite quitar.
  *
  * @param {Object} props - Archivo, ids y acciones.
  * @param {boolean} [props.disabled=false] - Bloquea las acciones.
@@ -121,6 +123,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
   // En la tarjeta fallida, el botón de texto ejecuta `file.onRemove` cuando el archivo no tiene
   // reintento propio (mismo orden que su onClick).
   const failedButtonRemoves = !file.onRetryUpload && Boolean(file.onRemove);
+  const showsAddAction = isCompleted && !(file.removeWhenCompleted && file.onRemove);
 
   const card = (
     <div
@@ -195,7 +198,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
         )}
       </div>
 
-      {isCompleted ? (
+      {showsAddAction ? (
         <Button
           theme="Primary"
           type="Ghost"

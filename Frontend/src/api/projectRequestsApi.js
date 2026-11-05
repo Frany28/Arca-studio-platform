@@ -12,6 +12,18 @@ export const projectRequestsApi = {
     return apiRequest(`/project-requests?${params.toString()}`);
   },
 
+  /**
+   * Obtiene una solicitud propia del cliente con sus adjuntos persistidos (`files`).
+   *
+   * @param {number|string} projectRequestId - Solicitud a consultar.
+   * @param {Object} [options] - Opciones de la petición.
+   * @param {AbortSignal} [options.signal] - Cancela la lectura al cambiar de vista o desmontar.
+   * @returns {Promise<{projectRequest: Object}>} Solicitud con estado actual y adjuntos.
+   */
+  get(projectRequestId, { signal } = {}) {
+    return apiRequest(`/project-requests/${encodeURIComponent(projectRequestId)}`, { signal });
+  },
+
   create(payload) {
     return apiRequest("/project-requests", {
       body: JSON.stringify(payload),
@@ -52,9 +64,29 @@ export const projectRequestsApi = {
     });
   },
 
-  submit(projectRequestId) {
-    return apiRequest(`/project-requests/${projectRequestId}/submit`, {
+  /**
+   * Pide al backend un código de validación para enviar el borrador; llega al correo del cliente.
+   *
+   * @param {number|string} projectRequestId - Borrador que se va a enviar.
+   * @returns {Promise<{verification: {expiresAt: string, resendAvailableAt: string}}>} Vencimiento y próximo reenvío.
+   */
+  requestVerificationCode(projectRequestId) {
+    return apiRequest(`/project-requests/${projectRequestId}/verification-code`, {
       body: JSON.stringify({}),
+      method: "POST",
+    });
+  },
+
+  /**
+   * Envía la solicitud con el código recibido; el backend lo verifica y lo consume.
+   *
+   * @param {number|string} projectRequestId - Borrador que se envía.
+   * @param {string} verificationCode - Código de seis dígitos.
+   * @returns {Promise<{projectRequest: Object}>} Solicitud enviada.
+   */
+  submit(projectRequestId, verificationCode) {
+    return apiRequest(`/project-requests/${projectRequestId}/submit`, {
+      body: JSON.stringify({ verificationCode }),
       method: "POST",
     });
   },

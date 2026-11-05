@@ -215,6 +215,14 @@ export const projectRequestIdSchema = z.object({
   params: z.object({ projectRequestId: positiveId }),
 });
 
+// El envío exige el código de validación de seis dígitos enviado al correo del cliente.
+export const submitProjectRequestSchema = z.object({
+  body: z.object({
+    verificationCode: z.string().regex(/^\d{6}$/, "Ingresa el código de 6 dígitos."),
+  }).strict(),
+  params: z.object({ projectRequestId: positiveId }),
+});
+
 export const projectRequestFileIdSchema = z.object({
   params: z.object({ fileId: positiveId, projectRequestId: positiveId }),
 });

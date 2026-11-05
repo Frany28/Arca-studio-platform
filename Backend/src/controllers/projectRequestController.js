@@ -3,7 +3,11 @@ import {
   submitProjectRequest as submitProjectRequestService,
   updateProjectRequest as updateProjectRequestService,
 } from "../services/projectRequestService.js";
-import { listUserProjectRequests } from "../services/projectRequestQueryService.js";
+import {
+  getUserProjectRequest,
+  listUserProjectRequests,
+} from "../services/projectRequestQueryService.js";
+import { issueProjectRequestVerificationCode } from "../services/projectRequestVerificationService.js";
 import { decodeCursor, parsePageLimit } from "../utils/pagination.js";
 
 /**
@@ -24,6 +28,27 @@ export async function listProjectRequests(req, res, next) {
       user: req.user,
     });
     res.status(200).json({ projectRequests: page.items, nextCursor: page.nextCursor });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Devuelve una solicitud propia del cliente con sus adjuntos para la vista de consulta.
+ * Coordina la solicitud HTTP y delega en el servicio la comprobación de propiedad.
+ *
+ * @param {import("express").Request} req - Solicitud HTTP con el identificador validado.
+ * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
+ * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @returns {Promise<void>} Finalización de la operación.
+ */
+export async function getProjectRequest(req, res, next) {
+  try {
+    const projectRequest = await getUserProjectRequest({
+      projectRequestId: req.params.projectRequestId,
+      user: req.user,
+    });
+    res.status(200).json({ projectRequest });
   } catch (error) {
     next(error);
   }
@@ -86,8 +111,30 @@ export async function submitProjectRequest(req, res, next) {
     const projectRequest = await submitProjectRequestService({
       projectRequestId: req.params.projectRequestId,
       user: req.user,
+      verificationCode: req.body.verificationCode,
     });
     res.status(200).json({ projectRequest });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Emite y envía por correo el código de validación del envío de una solicitud propia.
+ * Coordina la solicitud HTTP y delega en el servicio las reglas de estado, reenvío y correo.
+ *
+ * @param {import("express").Request} req - Solicitud HTTP con el identificador validado.
+ * @param {import("express").Response} res - Respuesta HTTP con vencimiento y próximo reenvío.
+ * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @returns {Promise<void>} Finalización de la operación.
+ */
+export async function requestProjectRequestVerificationCode(req, res, next) {
+  try {
+    const verification = await issueProjectRequestVerificationCode({
+      projectRequestId: req.params.projectRequestId,
+      user: req.user,
+    });
+    res.status(201).json({ verification });
   } catch (error) {
     next(error);
   }

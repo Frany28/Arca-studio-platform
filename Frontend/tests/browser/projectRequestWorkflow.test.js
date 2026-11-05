@@ -30,7 +30,7 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Intercepta HTTP del hook real y permite resolver lecturas y mutaciones de forma controlada.
  * Registra peticiones y errores; cada prueba dispone de sesión y transportes aislados.
  */
-async function openPage(context, { role = "architect", queue = [REQUEST], holdQueue = false, realDashboard = false, clientResponse } = {}) {
+async function openPage(context, { role = "architect", queue = [REQUEST], queuePages = {}, overviewRequests, holdQueue = false, realDashboard = false, clientResponse } = {}) {
   const session = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await session.newPage();
   const calls = [];
@@ -50,7 +50,9 @@ async function openPage(context, { role = "architect", queue = [REQUEST], holdQu
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    calls.push({ method: request.method(), path, body: request.postDataJSON() });
+    // La query solo se registra si existe, para no alterar el registro que comparan otras pruebas.
+    const search = new URL(request.url()).search;
+    calls.push({ method: request.method(), path, body: request.postDataJSON(), ...(search ? { search } : {}) });
     if (request.method() !== "GET") { mutations.push(route); return; }
     if (path === "/api/admin/users/41" && clientResponse) {
       clientReads.push(route);
@@ -59,14 +61,19 @@ async function openPage(context, { role = "architect", queue = [REQUEST], holdQu
     }
     if (path === "/api/project-requests/review-queue") {
       if (holdQueue) { reads.push(route); return; }
-      await route.fulfill({ json: { projectRequests: queue, nextCursor: "ignored-next-page" } });
+      // Paginación por cursor: sin cursor, la primera página; queuePages define las siguientes.
+      const cursor = new URL(request.url()).searchParams.get("cursor");
+      const page = cursor ? queuePages[cursor] : { projectRequests: queue, nextCursor: queuePages.first ?? null };
+      if (!page) { errors.push(`Cursor inesperado: ${cursor}`); await route.fulfill({ status: 400, json: { message: "Cursor" } }); return; }
+      if (page.status) { await route.fulfill({ status: page.status, json: { message: page.message } }); return; }
+      await route.fulfill({ json: { projectRequests: page.projectRequests, nextCursor: page.nextCursor ?? null } });
       return;
     }
     const fixtures = {
       "/api/auth/me": { user: { id: 1, firstName: "Workflow", email: "workflow@example.test", role, status: "active" } },
       "/api/projects": { projects: [], nextCursor: null },
       "/api/admin/dashboard-metrics": { metrics: {} },
-      "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: queue } },
+      "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: overviewRequests || queue } },
       "/api/admin/assignees": { assignees: [] },
       "/api/admin/users/41": { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } },
     };
@@ -651,4 +658,58 @@ test("Dashboard admin real: menú de acciones del drawer — orden, teclado y pr
     reason: "Falta adjuntar los planos del terreno.",
   });
   await mutations[0].fulfill({ json: {} });
+});
+
+const SECOND_PAGE_REQUEST = { ...REQUEST, id: 8, projectName: "Casa Sur", location: "Cabimas, Zulia", projectType: "commercial", clientId: 2, requestedBy: 41, compatibility: { level: "high", score: 81 } };
+
+test("Cola paginada: «Cargar más» pide la página siguiente por cursor, combina sin duplicar y conserva lo cargado si falla", async (context) => {
+  const { page, calls } = await openPage(context, {
+    queuePages: {
+      first: "c2",
+      c2: { projectRequests: [REQUEST, SECOND_PAGE_REQUEST], nextCursor: "c3" },
+      c3: { status: 500, message: "Error temporal de la cola." },
+    },
+  });
+  assert.equal((await state(page)).reviewQueue.hasMore, true);
+  await page.evaluate(() => window.workflowHarness.result.reviewQueue.loadMore());
+  await waitState(page, (result) => result.reviewQueue.requests.length === 2 && !result.reviewQueue.loadingMore);
+  const afterSecond = await state(page);
+  assert.deepEqual(afterSecond.reviewQueue.requests.map((request) => request.id), [7, 8], "sin duplicados");
+  assert.ok(calls.some((call) => call.path.endsWith("/review-queue") && (call.search || "").includes("cursor=c2")));
+
+  await page.evaluate(() => window.workflowHarness.result.reviewQueue.loadMore());
+  await waitState(page, (result) => result.reviewQueue.loadMoreError === "Error temporal de la cola.");
+  const afterError = await state(page);
+  assert.equal(afterError.reviewQueue.requests.length, 2, "conserva lo cargado");
+  assert.equal(afterError.reviewQueue.hasMore, true, "permite reintentar la página");
+});
+
+test("Cola paginada: releer la primera página descarta una página adicional en curso", async (context) => {
+  const { page } = await openPage(context, {
+    queuePages: { first: "c2", c2: { projectRequests: [SECOND_PAGE_REQUEST], nextCursor: null } },
+  });
+  // La página 2 llega después del reintento: no debe mezclarse con la nueva lectura.
+  await page.route((url) => url.searchParams.get("cursor") === "c2", async (route) => {
+    await new Promise((resolve) => { setTimeout(resolve, 400); });
+    await route.fallback();
+  });
+  await page.evaluate(() => { window.workflowHarness.result.reviewQueue.loadMore(); window.workflowHarness.result.reviewQueue.retry(); });
+  await waitState(page, (result) => !result.reviewQueue.loading && !result.reviewQueue.loadingMore);
+  await page.waitForTimeout(600);
+  assert.deepEqual((await state(page)).reviewQueue.requests.map((request) => request.id), [7]);
+});
+
+test("Dashboard admin real: el drawer localiza en páginas siguientes una solicitud que no está en la primera", async (context) => {
+  const { page, calls } = await openPage(context, {
+    role: "admin",
+    realDashboard: true,
+    queue: [REQUEST],
+    overviewRequests: [SECOND_PAGE_REQUEST],
+    queuePages: { first: "c2", c2: { projectRequests: [SECOND_PAGE_REQUEST], nextCursor: null } },
+  });
+  await page.waitForLoadState("networkidle");
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Sur", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  await drawer.getByText("Cabimas, Zulia", { exact: true }).first().waitFor();
+  assert.equal(calls.filter((call) => call.path.endsWith("/review-queue") && (call.search || "").includes("cursor=c2")).length, 1);
 });

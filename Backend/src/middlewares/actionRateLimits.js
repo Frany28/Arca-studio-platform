@@ -41,6 +41,11 @@ export const ACTION_RATE_LIMITS = Object.freeze({
     windowMs: positiveIntegerSetting("COMMENT_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
   }),
   ownSessionRevoke: Object.freeze({ max: 10, windowMs: HOUR_MS }),
+  // Cada emisión envía un correo: además del plazo entre reenvíos por solicitud, se limita por usuario.
+  projectRequestVerificationCodes: Object.freeze({
+    max: positiveIntegerSetting("PROJECT_REQUEST_CODE_RATE_LIMIT_MAX", 10),
+    windowMs: positiveIntegerSetting("PROJECT_REQUEST_CODE_RATE_LIMIT_WINDOW_MS", HOUR_MS),
+  }),
   projectRequests: Object.freeze({
     max: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_MAX", 10),
     windowMs: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
@@ -68,6 +73,10 @@ export function createUserActionRateLimit(scope, limit) {
 
 export const commentRateLimit = createUserActionRateLimit("comments", ACTION_RATE_LIMITS.comments);
 export const requestRateLimit = createUserActionRateLimit("project-requests", ACTION_RATE_LIMITS.projectRequests);
+export const verificationCodeRateLimit = createUserActionRateLimit(
+  "project-request-verification-codes",
+  ACTION_RATE_LIMITS.projectRequestVerificationCodes,
+);
 export const uploadRateLimit = createUserActionRateLimit("uploads", ACTION_RATE_LIMITS.uploads);
 export const ownSessionRevokeRateLimit = createUserActionRateLimit("own-session-revoke", ACTION_RATE_LIMITS.ownSessionRevoke);
 

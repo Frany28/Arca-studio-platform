@@ -195,7 +195,11 @@ function ArchitectDashboard({ empty = false }) {
     >
       <ProjectRequestReviewQueue
         error={reviewQueue.error}
+        hasMore={reviewQueue.hasMore}
         loading={reviewQueue.loading}
+        loadingMore={reviewQueue.loadingMore}
+        loadMoreError={reviewQueue.loadMoreError}
+        onLoadMore={reviewQueue.loadMore}
         requests={reviewQueue.requests}
         onOpen={workflow.open}
         onRetry={reviewQueue.retry}

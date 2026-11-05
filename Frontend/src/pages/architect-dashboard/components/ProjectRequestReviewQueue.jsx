@@ -3,7 +3,34 @@ import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
 
-function ProjectRequestReviewQueue({ error, loading, onOpen, onRetry, requests = [] }) {
+/**
+ * Cola de solicitudes asignadas al arquitecto, paginada por cursor.
+ * Muestra carga, error con reintento, vacío y lista; «Cargar más» pide la página siguiente
+ * y, si falla, conserva lo cargado y muestra el motivo bajo la lista.
+ *
+ * @param {Object} props - Estado de la cola y acciones.
+ * @param {Array} [props.requests=[]] - Solicitudes cargadas.
+ * @param {boolean} props.loading - Primera página en curso.
+ * @param {string} props.error - Error de la primera página.
+ * @param {boolean} [props.hasMore=false] - Hay más páginas.
+ * @param {boolean} [props.loadingMore=false] - Página adicional en curso.
+ * @param {string} [props.loadMoreError=""] - Error de la página adicional.
+ * @param {Function} [props.onLoadMore] - Carga la página siguiente.
+ * @param {Function} props.onOpen - Abre la revisión de una solicitud.
+ * @param {Function} props.onRetry - Relee la primera página.
+ * @returns {import("react").ReactElement} Sección de la cola.
+ */
+function ProjectRequestReviewQueue({
+  error,
+  hasMore = false,
+  loading,
+  loadingMore = false,
+  loadMoreError = "",
+  onLoadMore,
+  onOpen,
+  onRetry,
+  requests = [],
+}) {
   return (
     <section className="mx-auto flex w-full max-w-[1200px] flex-col gap-[12px] px-[16px] pb-[24px] sm:px-[24px] lg:px-[48px]">
       <h2 className="text-heading-5 text-[var(--color-text-300)]">Solicitudes asignadas</h2>
@@ -33,6 +60,16 @@ function ProjectRequestReviewQueue({ error, loading, onOpen, onRetry, requests =
               </Button>
             </article>
           ))}
+          {hasMore ? (
+            <div className="flex justify-center border-t border-[var(--color-neutral-200)] py-[12px]">
+              <Button theme="Primary" type="Outline" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={loadingMore} onClick={onLoadMore}>
+                {loadingMore ? "Cargando..." : "Cargar más"}
+              </Button>
+            </div>
+          ) : null}
+          {loadMoreError ? (
+            <p className="pb-[12px] text-center text-body-4 text-[var(--color-danger-100)]" role="alert">{loadMoreError}</p>
+          ) : null}
         </div>
       ) : (
         <EmptyState

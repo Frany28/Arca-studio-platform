@@ -13,6 +13,7 @@ import { evaluateProjectRequestCompleteness } from "../src/domain/projectRequest
 import { evaluateFinancialViability } from "../src/domain/projectRequestFinancialViability.js";
 import { buildProjectRequestReviewObservations, REVIEW_OBSERVATIONS } from "../src/domain/projectRequestReviewObservations.js";
 import { STAND_REQUIREMENTS_VALUES } from "../src/domain/projectRequestStand.js";
+import { mockVerifiedSubmitTransaction, VALID_VERIFICATION_CODE } from "./helpers/projectRequestSubmitMock.js";
 
 process.env.DATABASE_URL ||= "postgres://localhost/arca-contract-test";
 const { pool } = await import("../src/config/db.js");
@@ -275,6 +276,7 @@ test("envío: guarda 3.3 sin deducción por planos ni por tamaño no estimable",
     }
     return { rows: [{ ...row }] };
   });
-  await submitProjectRequest({ projectRequestId: 5, user: { id: 1, clientId: 2 } });
+  await mockVerifiedSubmitTransaction(context, pool, { projectRequestId: 5, userId: 1 });
+  await submitProjectRequest({ projectRequestId: 5, user: { id: 1, clientId: 2 }, verificationCode: VALID_VERIFICATION_CODE });
   assert.deepEqual([evaluationValues[3], evaluationValues[5], evaluationValues[6]], [100, "[]", "3.3"]);
 });

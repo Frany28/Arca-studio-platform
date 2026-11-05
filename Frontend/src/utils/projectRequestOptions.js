@@ -99,3 +99,17 @@ export const PROJECT_REQUEST_OPTIONS = {
 export function optionValues(field) {
   return new Set((PROJECT_REQUEST_OPTIONS[field] || []).map(({ value }) => value));
 }
+
+/**
+ * Resuelve la etiqueta visible de una respuesta guardada a partir del catálogo del formulario.
+ * Devuelve el fallback para campos desconocidos, valores vacíos o códigos sin opción vigente.
+ *
+ * @param {string} field - Campo de `PROJECT_REQUEST_OPTIONS`.
+ * @param {string|null|undefined} value - Código guardado.
+ * @param {string} [fallback=""] - Texto para respuestas ausentes o desconocidas.
+ * @returns {string} Etiqueta de la opción o fallback.
+ */
+export function getProjectRequestOptionLabel(field, value, fallback = "") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return (PROJECT_REQUEST_OPTIONS[field] || []).find((option) => option.value === value)?.label || fallback;
+}

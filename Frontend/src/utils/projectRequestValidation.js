@@ -189,6 +189,9 @@ export function getProjectRequestRequiredFieldErrors(values = {}, context = {}) 
  * comprueba nombres de hasta 150 caracteres, duplicados sin distinguir mayúsculas (se señala la
  * repetición, no el primero), máximo diez archivos, 50 MiB por archivo y 200 MiB totales. Los
  * límites de cantidad y de tamaño total son de la sección (`index: null`). No lanza por validación.
+ * Un adjunto ya guardado en la solicitud (`persisted: true`) cuenta para la cantidad, el tamaño
+ * total y los duplicados, pero no repite las comprobaciones de nombre, formato y tamaño individual:
+ * el backend las aplicó al recibirlo y su MIME guardado puede no coincidir con el de un `File`.
  *
  * @param {Array} [files=[]] - Archivos o wrappers del formulario.
  * @returns {Array<{message: string, index: number|null}>} Problemas en el orden de los mensajes;
@@ -206,6 +209,11 @@ export function getProjectRequestFileIssues(files = []) {
     const extension = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
     const expectedMime = FILE_MIME_BY_EXTENSION.get(extension);
     totalBytes += Number(file?.size || 0);
+    if (item?.persisted) {
+      if (name && names.has(name.toLowerCase())) add(`${name}: está repetido.`, index);
+      names.add(name.toLowerCase());
+      return;
+    }
     if (!name || name.length > PROJECT_REQUEST_FILE_LIMITS.maxNameLength) add(`${name || "Un archivo"}: nombre inválido.`, index);
     else if (names.has(name.toLowerCase())) add(`${name}: está repetido.`, index);
     names.add(name.toLowerCase());

@@ -10,6 +10,7 @@ import { buildProjectRequestMetrics } from "../src/domain/projectRequestEvaluati
 import { STAND_REQUIREMENTS_VALUES } from "../src/domain/projectRequestStand.js";
 import { validate } from "../src/middlewares/validate.js";
 import { createProjectRequestSchema, updateProjectRequestSchema } from "../src/validation/projectRequestSchemas.js";
+import { mockVerifiedSubmitTransaction, VALID_VERIFICATION_CODE } from "./helpers/projectRequestSubmitMock.js";
 
 process.env.DATABASE_URL ||= "postgres://localhost/arca-contract-test";
 const { pool } = await import("../src/config/db.js");
@@ -252,7 +253,8 @@ test("históricos: reenviar un borrador de stand con inmueble guardado evalúa c
     }
     return { rows: [{ ...row }] };
   });
-  const result = await submitProjectRequest({ projectRequestId: 9, user: { id: 1, clientId: 2 } });
+  await mockVerifiedSubmitTransaction(context, pool, { projectRequestId: 9, userId: 1 });
+  const result = await submitProjectRequest({ projectRequestId: 9, user: { id: 1, clientId: 2 }, verificationCode: VALID_VERIFICATION_CODE });
   assert.equal(evaluationValues[3], 100);
   assert.equal(evaluationValues[5], "[]");
   assert.equal(evaluationValues[6], COMPATIBILITY_SCORING_VERSION);

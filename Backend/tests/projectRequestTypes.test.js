@@ -4,6 +4,7 @@ import { isAllowedProjectRequestType, PROJECT_REQUEST_VALUES, READABLE_PROJECT_R
 import { COMPATIBILITY_SCORING_VERSION, evaluateProjectCompatibility } from "../src/domain/projectRequestCompatibility.js";
 import { buildProjectRequestMetrics } from "../src/domain/projectRequestEvaluation.js";
 import { createProjectRequestSchema, updateProjectRequestSchema } from "../src/validation/projectRequestSchemas.js";
+import { mockVerifiedSubmitTransaction, VALID_VERIFICATION_CODE } from "./helpers/projectRequestSubmitMock.js";
 
 process.env.DATABASE_URL ||= "postgres://localhost/arca-contract-test";
 const { pool } = await import("../src/config/db.js");
@@ -113,7 +114,8 @@ test("reenvío después de correcciones evalúa con la versión vigente sin conv
     }
     return { rows: [{ ...ROW }] };
   });
-  const result = await submitProjectRequest({ projectRequestId: 7, user: USER });
+  await mockVerifiedSubmitTransaction(context, pool, { projectRequestId: 7, userId: USER.id });
+  const result = await submitProjectRequest({ projectRequestId: 7, user: USER, verificationCode: VALID_VERIFICATION_CODE });
   assert.equal(result.projectType, "stands_exhibitions");
   assert.equal(result.compatibility.score, 100);
   assert.equal(result.completeness.score, 100);

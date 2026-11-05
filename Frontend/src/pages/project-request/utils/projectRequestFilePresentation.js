@@ -10,15 +10,18 @@ const FILE_CARD_STATUS = {
 };
 
 /**
- * Indica si un adjunto todavía puede quitarse de la selección local.
- * Los archivos subidos ya pertenecen al borrador remoto y los que están subiendo tienen
- * una petición en curso, por lo que solo se permiten pendientes y fallidos.
+ * Indica si un adjunto puede quitarse. Los pendientes y fallidos solo existen en la selección
+ * local. Un adjunto subido (`remoteId`) pertenece a la solicitud y solo se quita cuando el flujo
+ * autoriza eliminar en el servidor (borrador o corrección), y nunca mientras se está eliminando.
+ * Los que están subiendo tienen una petición en curso y no se quitan.
  *
- * @param {{status: string}} item - Adjunto del formulario.
- * @returns {boolean} true si quitarlo no afecta datos ya persistidos.
+ * @param {{status: string, remoteId?: number, removing?: boolean}} item - Adjunto del formulario.
+ * @param {{allowRemoteRemoval?: boolean}} [options] - Si la solicitud admite eliminar adjuntos guardados.
+ * @returns {boolean} true si el adjunto puede quitarse.
  */
-export function isProjectRequestFileRemovable(item) {
-  return item?.status === "pending" || item?.status === "error";
+export function isProjectRequestFileRemovable(item, { allowRemoteRemoval = false } = {}) {
+  if (item?.status === "pending" || item?.status === "error") return true;
+  return allowRemoteRemoval && item?.status === "uploaded" && Boolean(item.remoteId) && !item.removing;
 }
 
 /**
@@ -28,10 +31,12 @@ export function isProjectRequestFileRemovable(item) {
  * el reintento completo lo realiza el envío del formulario.
  *
  * @param {Array<{id: string, file: File, status: string, progress: number, error: string}>} files - Adjuntos.
+ * Los adjuntos guardados que se pueden eliminar muestran «Eliminar archivo» en su tarjeta completada.
  * @param {(id: string) => void} [onRemove] - Quita un adjunto por id.
+ * @param {{allowRemoteRemoval?: boolean}} [options] - Ver isProjectRequestFileRemovable.
  * @returns {Array<Object>} Tarjetas con nombre, tipo, estado, progreso, tamaños y acciones.
  */
-export function toProjectRequestFileCards(files, onRemove) {
+export function toProjectRequestFileCards(files, onRemove, options = {}) {
   return (files || []).map((item) => {
     const totalBytes = Number(item.file?.size) || 0;
     const progress = item.status === "uploaded" ? 100 : Number(item.progress) || 0;
@@ -41,7 +46,8 @@ export function toProjectRequestFileCards(files, onRemove) {
       errorMessage: item.error || "No se pudo subir el archivo.",
       id: item.id,
       name: item.file?.name || "Archivo",
-      onRemove: onRemove && isProjectRequestFileRemovable(item) ? () => onRemove(item.id) : undefined,
+      onRemove: onRemove && isProjectRequestFileRemovable(item, options) ? () => onRemove(item.id) : undefined,
+      removeWhenCompleted: item.status === "uploaded",
       progress,
       status: FILE_CARD_STATUS[item.status] || "pending",
       totalSizeLabel: formatFileSize(totalBytes),

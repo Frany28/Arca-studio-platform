@@ -195,6 +195,44 @@ export async function getProjectRequestFileUsage(projectRequestId, executor = po
 }
 
 /**
+ * Lista los adjuntos vigentes de una solicitud con los metadatos de su versión actual.
+ * Consulta PostgreSQL con parámetros; el llamador debe haber comprobado antes el acceso
+ * a la solicitud, porque esta consulta no filtra por usuario.
+ *
+ * @param {number|string} projectRequestId - Solicitud cuyos adjuntos se consultan.
+ * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
+ * @returns {Promise<Array<{ id: number, name: string, fileType: string|null, size: number, createdAt: string }>>}
+ *   Adjuntos ordenados por fecha de carga.
+ */
+export async function listProjectRequestFiles(projectRequestId, executor = poolExecutor) {
+  const result = await executor.query(
+    `
+      select
+        f.id,
+        coalesce(fv.original_name, f.title) as name,
+        f.file_type,
+        coalesce(fv.file_size, 0)::bigint as file_size,
+        f.created_at
+      from public.files f
+      left join public.file_versions fv
+        on fv.file_id = f.id and fv.is_current = true and fv.deleted_at is null
+      where f.project_request_id = $1
+        and f.deleted_at is null
+        and f.status <> 'deleted'
+      order by f.created_at, f.id
+    `,
+    [projectRequestId],
+  );
+  return result.rows.map((row) => ({
+    createdAt: row.created_at,
+    fileType: row.file_type || null,
+    id: Number(row.id),
+    name: row.name || "Archivo",
+    size: Number(row.file_size || 0),
+  }));
+}
+
+/**
  * Busca el archivo existente de la solicitud y devuelve null cuando no existe un registro accesible.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *

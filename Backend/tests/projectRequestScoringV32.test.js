@@ -10,6 +10,7 @@ import {
 } from "../src/domain/projectRequestCompatibility.js";
 import { evaluateProjectRequestCompleteness } from "../src/domain/projectRequestCompleteness.js";
 import { evaluateFinancialViability } from "../src/domain/projectRequestFinancialViability.js";
+import { mockVerifiedSubmitTransaction, VALID_VERIFICATION_CODE } from "./helpers/projectRequestSubmitMock.js";
 
 process.env.DATABASE_URL ||= "postgres://localhost/arca-contract-test";
 const { pool } = await import("../src/config/db.js");
@@ -175,7 +176,8 @@ test("envío: evalúa con la versión vigente sin consultar el uso de archivos n
     }
     return { rows: [{ ...row }] };
   });
-  const result = await submitProjectRequest({ projectRequestId: 5, user: { id: 1, clientId: 2 } });
+  await mockVerifiedSubmitTransaction(context, pool, { projectRequestId: 5, userId: 1 });
+  const result = await submitProjectRequest({ projectRequestId: 5, user: { id: 1, clientId: 2 }, verificationCode: VALID_VERIFICATION_CODE });
   assert.ok(!statements.some((sql) => /as file_count/.test(sql)));
   assert.equal(evaluationValues[3], 100);
   assert.equal(evaluationValues[5], "[]");

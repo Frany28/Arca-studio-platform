@@ -251,20 +251,15 @@ test("quitar el último archivo lleva el foco al anterior; sin tarjetas, a «Eli
   assert.equal(await page.locator("[data-file-count]").innerText(), "0 archivos");
 });
 
-test("selección rechazada que no llega a la lista: el motivo se muestra bajo la zona de carga y describe el grupo", async (context) => {
+test("con un borrador en curso, las nuevas selecciones se agregan sin bloquearse", async (context) => {
   const page = await openField(context, { draft: true, viewport: { height: 900, width: 1280 } });
   await page.locator('input[type="file"]').setInputFiles([png("fachada.png")]);
+  await page.locator('input[type="file"]').setInputFiles([png("terraza.png")]);
   const group = page.getByRole("group", { name: "Subir imágenes / archivos (opcional)" });
-  await page.getByText("Ya existe un borrador en proceso. Reintenta el envío antes de cambiar los archivos.").waitFor();
-  assert.equal(await group.getAttribute("aria-invalid"), "true");
-  assert.equal(await group.getAttribute("data-invalid-field-control"), null, "Sin tarjeta a la que dirigir el foco");
-  assert.equal(await page.locator("[data-file-count]").innerText(), "0 archivos");
-  const placement = await page.evaluate(() => {
-    const message = document.getElementById(document.querySelector("[role='group']").getAttribute("aria-describedby"));
-    const choose = [...document.querySelectorAll("button")].find((node) => node.textContent.trim() === "Elige un archivo");
-    return message.getBoundingClientRect().top - choose.getBoundingClientRect().bottom;
-  });
-  assert.equal(placement > 0 && placement < 120, true, "Junto al control de carga");
+  await page.getByRole("button", { name: "Eliminar archivo terraza.png" }).waitFor();
+  assert.equal(await page.locator("[data-file-count]").innerText(), "2 archivos");
+  assert.equal(await group.getAttribute("aria-invalid"), null);
+  assert.equal(await page.getByRole("alert").count(), 0);
 });
 
 test("modal con scroll interno: enfoca el archivo afectado dentro del formulario sin mover la página", async (context) => {

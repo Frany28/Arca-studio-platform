@@ -2,6 +2,7 @@ import Button from "../../../components/ui/Button/Button.jsx";
 import ProgressBarLabel from "../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
 import ProgressStepBase from "../../../components/ui/ProgressStepBase/ProgressStepBase.jsx";
 import { getCompatibilityLevelLabel } from "../../../utils/projectRequestCompatibility.js";
+import { PROJECT_REQUEST_FOOTER_CLASS_NAME } from "../utils/projectRequestLayout.js";
 
 const REQUEST_STATUS_STEPS = [
   {
@@ -172,7 +173,7 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
         </h2>
 
         <div
-          className="grid w-full grid-cols-1 gap-x-[24px] gap-y-[24px] min-[480px]:grid-cols-2 min-[1024px]:grid-cols-5"
+          className="grid w-full grid-cols-2 gap-x-[24px] gap-y-[24px] min-[1024px]:grid-cols-5"
           aria-label="Progreso de la solicitud"
         >
           {requestSteps.map((step, index) => (
@@ -200,7 +201,7 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
         Nuestro equipo revisará la información y se comunicará contigo en un plazo de 24–48 horas hábiles.
       </p>
 
-      <footer className="flex w-full max-w-[850px] flex-col-reverse gap-[8px] min-[480px]:flex-row min-[480px]:justify-end">
+      <footer className={PROJECT_REQUEST_FOOTER_CLASS_NAME}>
         <Button
           theme="Primary"
           type="Outline"

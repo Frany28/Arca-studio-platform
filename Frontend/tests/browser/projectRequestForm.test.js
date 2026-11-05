@@ -11,6 +11,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const REQUEST_ID = 31;
+// Código que el backend simulado acepta; cualquier otro responde VERIFICATION_CODE_INVALID.
+const VALID_CODE = "482913";
 let server;
 let browser;
 let origin;
@@ -31,34 +33,54 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Abre la solicitud como cliente con la API simulada: registra cada llamada y responde
  * al borrador, la carga de archivos y el envío final como lo hace el backend real.
  */
-async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, initialRequest } = {}) {
+async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, initialRequest, viewRequest, detailResponses = [], deleteResponses = [], verificationResponses = [] } = {}) {
   const session = await browser.newContext({ viewport });
   const page = await session.newPage();
   const calls = [];
   const errors = [];
-  if (initialRequest) {
-    await page.addInitScript((request) => {
-      window.history.replaceState({ usr: { initialRequest: request }, key: "stand-test", idx: 0 }, "");
-    }, initialRequest);
+  if (initialRequest || viewRequest) {
+    await page.addInitScript((state) => {
+      window.history.replaceState({ usr: state, key: "stand-test", idx: 0 }, "");
+    }, initialRequest ? { initialRequest } : { viewRequest });
   }
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
-    calls.push({ body: (method === "POST" && path === "/api/project-requests") || (method === "PATCH" && path === `/api/project-requests/${REQUEST_ID}`) ? request.postDataJSON() : null, fileName: request.headers()["x-file-name"], method, path });
+    calls.push({ body: (method === "POST" && path === "/api/project-requests") || (method === "PATCH" && path === `/api/project-requests/${REQUEST_ID}`) || path.endsWith("/submit") ? request.postDataJSON() : null, fileName: request.headers()["x-file-name"], method, path });
     if (path === "/api/auth/me") return route.fulfill({ json: { user: { id: 5, firstName: "Cliente", email: "cliente@example.test", role: { code: "client", name: "Cliente" }, status: "active" } } });
     if (path === "/api/geoapify/address-suggestions") return route.fulfill({ json: { suggestions: [] } });
     if (method === "POST" && path === "/api/project-requests") return route.fulfill({ status: 201, json: { projectRequest: { id: REQUEST_ID, status: "draft" } } });
     if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/files`) return route.fulfill({ status: 201, json: { file: { id: 1 } } });
+    // Detalle de consulta: cada respuesta de detailResponses se usa una vez; después, la última.
+    // Una función decide la respuesta en cada lectura (StrictMode repite la primera en desarrollo).
+    if (method === "GET" && path === `/api/project-requests/${REQUEST_ID}`) {
+      const response = typeof detailResponses === "function"
+        ? detailResponses()
+        : detailResponses.length > 1 ? detailResponses.shift() : detailResponses[0];
+      return route.fulfill(response || { json: { projectRequest: { id: REQUEST_ID, files: [] } } });
+    }
+    // Eliminación de adjuntos: cada respuesta de deleteResponses se usa una vez; después, éxito.
+    if (method === "DELETE" && path.startsWith(`/api/project-requests/${REQUEST_ID}/files/`)) {
+      return route.fulfill(deleteResponses.shift() || { json: { id: Number(path.split("/").pop()) } });
+    }
+    // Emisión del código: el backend lo envía al correo; la prueba usa VALID_CODE.
+    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/verification-code`) {
+      return route.fulfill(verificationResponses.shift() || { status: 201, json: { verification: { expiresAt: "2030-01-01T00:00:00Z", resendAvailableAt: "2030-01-01T00:00:00Z" } } });
+    }
     if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/submit`) {
+      const { verificationCode } = request.postDataJSON() || {};
+      if (verificationCode !== VALID_CODE) {
+        return route.fulfill({ status: 400, json: { code: "VERIFICATION_CODE_INVALID", message: "El código no es correcto. Te quedan 4 intentos." } });
+      }
       return route.fulfill({ json: { projectRequest: { id: REQUEST_ID, projectName: "Casa Lago", status: "pending_verification", compatibility: { level: "excellent", score: 84, observations: [] } } } });
     }
     return route.fulfill({ json: {} });
   });
   context.after(async () => { await session.close(); assert.deepEqual(errors, []); });
   await page.goto(`${origin}/solicitudes/nueva`);
-  await page.getByRole("heading", { name: "Solicitud de proyecto" }).waitFor();
+  await page.getByRole("heading", { name: viewRequest ? "Solicitud recibida" : "Solicitud de proyecto" }).waitFor();
   return { calls, page };
 }
 
@@ -266,9 +288,12 @@ async function fillLegalSection(page) {
 
 /** Envía con el código temporal y devuelve el cuerpo guardado al crear o editar el borrador. */
 async function submitWithCode(page, calls) {
+  const codeIssued = page.waitForResponse((response) => response.url().endsWith(`/project-requests/${REQUEST_ID}/verification-code`));
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await codeIssued;
   const codeDialog = page.getByRole("dialog");
-  await codeDialog.getByRole("textbox", { name: "Código" }).fill("123456");
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+  await codeDialog.getByRole("textbox", { name: "Código" }).fill(VALID_CODE);
   const submitted = page.waitForRequest((request) => request.url().endsWith(`/project-requests/${REQUEST_ID}/submit`));
   await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
   await submitted;
@@ -346,16 +371,22 @@ test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con a
   await page.getByRole("button", { name: "Eliminar archivo" }).last().click();
   assert.equal(await page.getByText("terraza", { exact: true }).count(), 0);
 
-  // Abrir el código y volver atrás no pierde datos ni crea el borrador.
+  // Abrir el código guarda el borrador y pide el código al backend; cerrar no pierde datos ni
+  // sube archivos, y volver a abrirlo actualiza el mismo borrador en lugar de crear otro.
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
   const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
   await codeDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
   await codeDialog.waitFor({ state: "detached" });
   assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago");
-  assert.equal(calls.filter((call) => call.method === "POST").length, 0);
+  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1);
+  assert.equal(calls.filter((call) => call.path.endsWith("/verification-code")).length, 1);
+  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 0);
 
   const body = await submitWithCode(page, calls);
   await page.getByText("Excelente compatibilidad").first().waitFor();
+  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1, "un solo borrador");
+  assert.deepEqual(calls.find((call) => call.path.endsWith("/submit")).body, { verificationCode: VALID_CODE });
   assert.equal(body.projectName, "Casa Lago");
   assert.equal(body.landStatus, "available");
   assert.equal(body.legalDocumentationStatus, "available");
@@ -534,4 +565,182 @@ test("Adjuntos en móvil (375 × 667) con 11 archivos: el motivo general y «Eli
   assert.deepEqual(state.messages, ["Puedes adjuntar un máximo de 10 archivos."]);
   assert.equal(state.focused, "Elige un archivo", "Error de la sección: no se enfoca un «Eliminar» arbitrario");
   assert.equal(state.targetVisible && state.messagesVisible, true, "Control y motivo visibles simultáneamente");
+});
+
+const PERSISTED_REQUEST = {
+  id: REQUEST_ID, status: "pending_review", projectName: "Casa Lago", projectType: "residential",
+  location: "Maracaibo, Estado Zulia", description: "Vivienda unifamiliar de dos plantas frente al lago, con terraza.",
+  createdAt: "2026-03-22T12:00:00Z", developmentMode: "phased", landStatus: "unavailable",
+  investmentRange: "10k_50k", capitalAvailability: "available_now", startTime: "immediate",
+  referenceLink: "https://es.pinterest.com/pin",
+  compatibility: { level: "excellent", score: 84, observations: [] },
+  files: [
+    { id: 7, name: "Plano.pdf", fileType: "application/pdf", size: 5242880, createdAt: "2026-02-12T10:00:00Z" },
+    { id: 8, name: "fachada.png", fileType: "image/png", size: 204800, createdAt: "2026-02-12T10:00:00Z" },
+  ],
+};
+const detailCalls = (calls) => calls.filter((call) => call.method === "GET" && call.path === `/api/project-requests/${REQUEST_ID}`);
+
+test("Consulta: tras enviar, «Ver solicitud» muestra la solicitud en solo lectura con los adjuntos del backend", async (context) => {
+  const { calls, page } = await openRequestPage(context, { detailResponses: [{ json: { projectRequest: PERSISTED_REQUEST } }] });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await submitWithCode(page, calls);
+
+  await page.getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  const summary = page.getByRole("region", { name: "Información de la solicitud" });
+  await summary.waitFor();
+  // Solo lectura: sin controles de edición ni envío.
+  assert.equal(await page.getByRole("textbox").count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).count(), 0);
+  assert.equal(await page.locator('input[type="file"]').count(), 0);
+  for (const text of ["Casa Lago", "Residencial", "En revisión", "Por fases", "No todavía", "$10,000 - $50,000 USD", "De inmediato", "Plano.pdf", "fachada.png", "5.0MB"]) {
+    await summary.getByText(text, { exact: true }).first().waitFor();
+  }
+  // Los adjuntos provienen del backend, no de la selección local («Plano.pdf» no se adjuntó en la sesión).
+  assert.equal(detailCalls(calls).length, 1);
+  assert.equal(await summary.getByRole("link", { name: "Abrir fachada.png en una pestaña nueva" }).getAttribute("href"), `/api/project-requests/${REQUEST_ID}/files/8/content`);
+  await summary.getByRole("button", { name: "Ver Plano.pdf" }).waitFor();
+
+  // «Ver estado» vuelve al progreso; volver a la consulta reutiliza la lectura.
+  await page.getByRole("button", { name: "Ver estado", exact: true }).click();
+  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
+  await page.getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  await summary.waitFor();
+  assert.equal(detailCalls(calls).length, 1);
+
+  await page.getByRole("button", { name: "Volver al Dashboard", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/dashboard-clientes");
+});
+
+test("Consulta: una solicitud abierta desde el dashboard muestra su estado y reintenta la lectura fallida", async (context) => {
+  const { calls, page } = await openRequestPage(context, {
+    viewRequest: { ...PERSISTED_REQUEST, files: undefined },
+    detailResponses: [
+      { status: 500, json: { code: "INTERNAL_ERROR", message: "Error temporal." } },
+      { json: { projectRequest: PERSISTED_REQUEST } },
+    ],
+  });
+  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
+  assert.equal(detailCalls(calls).length, 0, "la vista de estado no necesita los adjuntos");
+
+  await page.getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  await page.getByText("No pudimos cargar la solicitud", { exact: true }).waitFor();
+  await page.getByText("Error temporal.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await page.getByRole("region", { name: "Información de la solicitud" }).getByText("Plano.pdf", { exact: true }).waitFor();
+  assert.equal(detailCalls(calls).length, 2);
+});
+
+const CORRECTION_REQUEST = {
+  id: REQUEST_ID, status: "changes_requested", projectName: "Casa Lago", projectType: "residential",
+  location: "Maracaibo, Estado Zulia", description: "Vivienda unifamiliar de dos plantas frente al lago, con terraza.",
+  developmentMode: "phased", landStatus: "unavailable", investmentRange: "10k_50k",
+  capitalAvailability: "available_now", startTime: "immediate", correctionReason: "Agrega referencias de la fachada.",
+};
+const CORRECTION_DETAIL = { json: { projectRequest: { ...CORRECTION_REQUEST, files: PERSISTED_REQUEST.files } } };
+
+test("Corrección: conserva los adjuntos guardados, admite agregar y eliminar y reenvía la misma solicitud", async (context) => {
+  const { calls, page } = await openRequestPage(context, { initialRequest: CORRECTION_REQUEST, detailResponses: [CORRECTION_DETAIL] });
+  // Los adjuntos guardados aparecen como completados y se pueden eliminar.
+  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
+  await page.getByRole("button", { name: "Eliminar archivo fachada.png" }).waitFor();
+
+  // Agregar con borrador remoto ya no se bloquea; un nombre ya guardado se rechaza como repetido.
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.setInputFiles([pngFile("fachada.png")]);
+  await page.getByText("fachada.png: está repetido.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Eliminar archivo fachada.png" }).last().click();
+  await page.getByText("fachada.png: está repetido.", { exact: true }).waitFor({ state: "detached" });
+  await fileInput.setInputFiles([pngFile("terraza.png")]);
+  await page.getByRole("button", { name: "Eliminar archivo terraza.png" }).waitFor();
+
+  // Eliminar un adjunto guardado lo borra en el servidor.
+  const deleted = page.waitForRequest((request) => request.method() === "DELETE");
+  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).click();
+  assert.match((await deleted).url(), new RegExp(`/project-requests/${REQUEST_ID}/files/7$`));
+  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor({ state: "detached" });
+
+  await submitWithCode(page, calls);
+  // Reenvío sobre la solicitud existente: sin crear otra y subiendo solo el archivo nuevo.
+  assert.equal(calls.some((call) => call.method === "POST" && call.path === "/api/project-requests"), false);
+  assert.ok(calls.some((call) => call.method === "PATCH" && call.path === `/api/project-requests/${REQUEST_ID}`));
+  const uploads = calls.filter((call) => call.path === `/api/project-requests/${REQUEST_ID}/files`);
+  assert.deepEqual(uploads.map((call) => decodeURIComponent(call.fileName || "")), ["terraza.png"]);
+  assert.equal(calls.filter((call) => call.method === "DELETE").length, 1);
+});
+
+test("Corrección: si eliminar un adjunto guardado falla, se conserva y se informa el motivo", async (context) => {
+  const { page } = await openRequestPage(context, {
+    initialRequest: CORRECTION_REQUEST,
+    detailResponses: [CORRECTION_DETAIL],
+    deleteResponses: [{ status: 409, json: { code: "PROJECT_REQUEST_NOT_EDITABLE", message: "La solicitud ya no admite cambios." } }],
+  });
+  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).click();
+  await page.getByText("Plano.pdf: La solicitud ya no admite cambios.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
+});
+
+test("Corrección: sin los adjuntos guardados no se envía y se puede reintentar la lectura", async (context) => {
+  let failing = true;
+  const { calls, page } = await openRequestPage(context, {
+    initialRequest: CORRECTION_REQUEST,
+    detailResponses: () => (failing ? { status: 500, json: { code: "INTERNAL_ERROR", message: "Error temporal." } } : CORRECTION_DETAIL),
+  });
+  const message = "No se pudieron cargar los archivos adjuntos: Error temporal.";
+  await page.getByText(message, { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  assert.equal(await page.getByRole("dialog").count(), 0, "no se abre el código de validación");
+  assert.equal(await page.getByText(message, { exact: true }).count(), 1, "el motivo no se duplica");
+  const readsBeforeRetry = detailCalls(calls).length;
+  failing = false;
+  await page.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
+  assert.equal(detailCalls(calls).length, readsBeforeRetry + 1);
+  assert.equal(await page.getByText(message, { exact: true }).count(), 0, "el aviso desaparece al cargar");
+});
+
+test("Validación: un código incorrecto mantiene el modal con el motivo y «Reenviar código» pide otro", async (context) => {
+  const { calls, page } = await openRequestPage(context, {
+    verificationResponses: [
+      { status: 201, json: { verification: {} } },
+      { status: 429, json: { code: "VERIFICATION_CODE_RECENTLY_SENT", message: "Ya enviamos un código. Podrás solicitar otro en 42 segundos.", retryAfter: 42 } },
+    ],
+  });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+  const send = codeDialog.getByRole("button", { name: "Enviar", exact: true });
+  assert.equal(await send.isDisabled(), true, "sin seis dígitos no se envía");
+
+  await codeDialog.getByRole("textbox", { name: "Código" }).fill("000000");
+  await send.click();
+  await codeDialog.getByText("El código no es correcto. Te quedan 4 intentos.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("heading", { name: "Solicitud recibida" }).count(), 0);
+
+  // El reenvío respeta el plazo del backend y muestra su motivo.
+  await codeDialog.getByRole("button", { name: "Reenviar código", exact: true }).click();
+  await codeDialog.getByText("Ya enviamos un código. Podrás solicitar otro en 42 segundos.", { exact: true }).waitFor();
+  assert.equal(calls.filter((call) => call.path.endsWith("/verification-code")).length, 2);
+
+  await codeDialog.getByRole("textbox", { name: "Código" }).fill(VALID_CODE);
+  await send.click();
+  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
+  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1);
+});
+
+test("Validación: si el código no se puede enviar, se informa y no se puede confirmar", async (context) => {
+  const { page } = await openRequestPage(context, {
+    verificationResponses: [{ status: 503, json: { code: "EMAIL_SERVICE_NOT_CONFIGURED", message: "No pudimos enviar el código de validación. Inténtalo de nuevo." } }],
+  });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByText("No pudimos enviar el código de validación. Inténtalo de nuevo.", { exact: true }).waitFor();
+  await codeDialog.getByText("No pudimos enviar el código. Puedes solicitar otro.", { exact: true }).waitFor();
+  await codeDialog.getByRole("button", { name: "Reenviar código", exact: true }).click();
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
 });

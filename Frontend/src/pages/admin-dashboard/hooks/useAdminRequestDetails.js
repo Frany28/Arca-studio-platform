@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildAdminRequestDetails, findRequestById } from "../utils/adminRequestDetails.js";
 import { useAdminRequestClient } from "./useAdminRequestClient.js";
@@ -14,7 +14,7 @@ import { useAdminRequestClient } from "./useAdminRequestClient.js";
  *
  * @param {Object} params - Fuentes ya cargadas y apertura del workflow.
  * @param {Array} params.newRequests - Solicitudes de `overview.newRequests`.
- * @param {{requests: Array, loading: boolean, error: string, retry: Function}} params.reviewQueue - Cola técnica.
+ * @param {{requests: Array, loading: boolean, loadingMore: boolean, error: string, retry: Function, loadUntil: Function}} params.reviewQueue - Cola técnica paginada.
  * @param {(request: Object, options?: {initialAction?: string}) => void} params.openRequestWorkflow - Abre el modal de decisión.
  * @returns {Object} Estado de apertura, vista resuelta, cliente y acciones del drawer.
  */
@@ -26,19 +26,31 @@ export function useAdminRequestDetails({ newRequests, reviewQueue, openRequestWo
     () => (summary ? buildAdminRequestDetails({ queueRequest, summary }) : null),
     [queueRequest, summary],
   );
+  // Una búsqueda por solicitud abierta: si una página falla no se reintenta en bucle; el
+  // reintento explícito de la cola vuelve a habilitarla.
+  const lookedUpRef = useRef(null);
+  const { hasMore, loadUntil, loading: queueLoading, loadingMore } = reviewQueue;
+  const shouldLookUp = selection.open && Boolean(summary) && !queueRequest && !queueLoading && !loadingMore && hasMore;
+  useEffect(() => {
+    if (!shouldLookUp || lookedUpRef.current === selection.requestId) return;
+    lookedUpRef.current = selection.requestId;
+    void loadUntil?.(selection.requestId);
+  }, [loadUntil, selection.requestId, shouldLookUp]);
   const client = useAdminRequestClient({
     userId: details?.clientUserId ?? null,
     enabled: selection.open,
   });
 
-  // La cola puede seguir cargando al abrir el drawer; la solicitud del overview existe,
-  // pero sin la cola faltarían compatibilidad, revisiones y cliente.
+  // La cola puede seguir cargando al abrir el drawer (primera página o las siguientes, si la
+  // solicitud no estaba en la primera); sin ella faltarían compatibilidad, revisiones y cliente.
   let status = "ready";
   if (!summary) status = "missing";
-  else if (!queueRequest && reviewQueue.loading) status = "loading";
+  else if (!queueRequest && (reviewQueue.loading || reviewQueue.loadingMore)) status = "loading";
 
   /**
-   * Abre el drawer para la solicitud elegida en "Nuevas solicitudes".
+   * Abre el drawer para la solicitud elegida en "Nuevas solicitudes". Si no está entre las
+   * páginas cargadas de la cola, recorre las siguientes para mostrar sus datos completos.
+   *
    * @param {{id: number|string}} request - Solicitud del overview.
    * @returns {void}
    */
@@ -68,7 +80,10 @@ export function useAdminRequestDetails({ newRequests, reviewQueue, openRequestWo
     open,
     openWorkflow,
     queueError: queueRequest ? "" : reviewQueue.error,
-    retryQueue: reviewQueue.retry,
+    retryQueue: () => {
+      lookedUpRef.current = null;
+      reviewQueue.retry();
+    },
     status,
   };
 }

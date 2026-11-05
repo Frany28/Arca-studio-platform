@@ -350,10 +350,11 @@ export async function updateProjectRequestDraft(projectRequestId, user, payload)
  * @param {string} projectRequestId - Valor de `projectRequestId` requerido por esta operación.
  * @param {unknown} user - Usuario autenticado que ejecuta la operación.
  * @param {unknown} evaluation - Valor de `evaluation` requerido por esta operación.
+ * @param {{ query: Function }} [executor] - Cliente de la transacción del envío; por defecto, el pool.
  * @returns {Promise<unknown>} Resultado producido por la operación.
  */
-export async function submitProjectRequestForUser(projectRequestId, user, evaluation) {
-  const result = await query(
+export async function submitProjectRequestForUser(projectRequestId, user, evaluation, executor = { query }) {
+  const result = await executor.query(
     `
       with target as (
         select id as target_id, status as old_status
