@@ -46,12 +46,14 @@ after(async () => { await browser?.close(); await server?.close(); });
  * @param {string} [options.path] - Ruta del detalle con su query.
  * @param {(pathname: string, readNumber: number) => Promise<Object>|Object} [options.readProject] - Proyecto por lectura.
  * @param {string} [options.initScript] - Script previo a la aplicación (p. ej. emular la red).
- * @returns {Promise<{page: import("playwright").Page, projectReads: string[], modules: string[]}>} Página y registros.
+ * @param {boolean} [options.waitForProject=true] - Espera el título del proyecto antes de devolver.
+ * @returns {Promise<{documentLoads: () => number, page: import("playwright").Page, projectReads: string[], modules: string[]}>} Página y registros.
  */
 async function openDetail(context, {
   initScript,
   path = `/proyectos/${PROJECT.id}`,
   readProject = (pathname) => (pathname.endsWith(OTHER_PROJECT.publicSlug) ? OTHER_PROJECT : PROJECT),
+  waitForProject = true,
 } = {}) {
   const session = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   context.after(() => session.close());
@@ -60,6 +62,8 @@ async function openDetail(context, {
   if (initScript) await page.addInitScript(initScript);
   const projectReads = [];
   const modules = [];
+  let loads = 0;
+  page.on("load", () => { loads += 1; });
   page.on("request", (request) => modules.push(new URL(request.url()).pathname));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const { pathname } = new URL(route.request().url());
@@ -72,13 +76,14 @@ async function openDetail(context, {
     if (/^\/api\/projects\/[^/]+$/.test(pathname)) {
       projectReads.push(pathname);
       const project = await readProject(pathname, projectReads.length);
+      if (project instanceof Error) return route.fulfill({ status: 503, json: { code: "UNAVAILABLE", message: project.message } });
       return route.fulfill({ json: { project } });
     }
     return route.fulfill({ json: {} });
   });
   await page.goto(`${origin}${path}`, { timeout: NAVIGATION_TIMEOUT_MS });
-  await page.getByRole("heading", { level: 1, name: PROJECT.name }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
-  return { modules, page, projectReads };
+  if (waitForProject) await page.getByRole("heading", { level: 1, name: PROJECT.name }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
+  return { documentLoads: () => loads, modules, page, projectReads };
 }
 
 /** Navega dentro del router sin recargar el documento, como un enlace interno. */
@@ -248,4 +253,68 @@ test("una pestaña precargada abre sin mostrar su skeleton", async (context) => 
   await page.waitForTimeout(600);
   assert.equal(await page.getByRole("tab", { name: "Documentos" }).getAttribute("aria-selected"), "true");
   assert.equal(await page.evaluate(() => window.__skeletonSeen), false, "sin skeleton tras la precarga");
+});
+
+test("si falla la carga del proyecto, «Reintentar» vuelve a pedirlo y lo muestra", async (context) => {
+  let available = false;
+  const { page, projectReads } = await openDetail(context, {
+    readProject: () => (available ? PROJECT : new Error("No se pudo cargar el proyecto.")),
+    waitForProject: false,
+  });
+
+  await page.getByText("No se pudo cargar el proyecto.").waitFor();
+  const failedReads = projectReads.length;
+  available = true;
+  await page.getByRole("button", { name: "Reintentar" }).click();
+  await page.getByRole("heading", { level: 1, name: PROJECT.name }).waitFor();
+  assert.ok(projectReads.length > failedReads, "el reintento vuelve a pedir el proyecto");
+  assert.equal(await page.getByText("No se pudo cargar el proyecto.").count(), 0);
+});
+
+test("una precarga fallida no recarga la página y la apertura conserva la recuperación de chunks", async (context) => {
+  const { documentLoads, modules, page } = await openDetail(context, { path: `/proyectos/${PROJECT.publicSlug}` });
+  // Como tras una nueva publicación: el chunk del panel ya no existe en el servidor.
+  const missing = (url) => url.pathname === DOCUMENTS_MODULE;
+  await page.route(missing, (route) => route.fulfill({ status: 404, body: "Not Found" }));
+
+  await page.getByRole("tab", { name: "Documentos" }).hover();
+  await page.waitForTimeout(600);
+  assert.equal(modules.includes(DOCUMENTS_MODULE), true, "se intentó la precarga");
+  assert.equal(documentLoads(), 1, "la precarga fallida no recarga la página");
+
+  await page.getByRole("tab", { name: "Documentos" }).click();
+  await page.getByRole("heading", { level: 1, name: PROJECT.name }).waitFor();
+  assert.equal(documentLoads(), 2, "al abrirla, la carga real recarga una sola vez para obtener la versión vigente");
+  assert.equal(await page.getByText("Unexpected Application Error").count(), 0);
+
+  // Con el chunk disponible, la pestaña abre normalmente.
+  await page.unroute(missing);
+  await page.getByRole("tab", { name: "Documentos" }).click();
+  await waitForOpenTab(page, "Documentos");
+});
+
+test("subir un archivo actualiza los archivos del proyecto con una recarga en segundo plano", async (context) => {
+  const { page, projectReads } = await openDetail(context, {
+    path: `/proyectos/${PROJECT.publicSlug}`,
+    readProject: (pathname) => (pathname === PROJECT_BY_ID ? { ...PROJECT, files: [LATE_FILE] } : PROJECT),
+  });
+  let uploads = 0;
+  await page.route((url) => url.pathname === `/api/projects/${PROJECT.id}/files`, (route) => {
+    uploads += 1;
+    return route.fulfill({ status: 201, json: { file: { id: LATE_FILE.id } } });
+  });
+
+  await page.getByRole("tab", { name: "Subir archivos" }).click();
+  await waitForOpenTab(page, "Subir archivos");
+  await page.locator('input[type="file"]').first().setInputFiles({ name: "Plano tardío.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 prueba") });
+  await page.waitForTimeout(1500);
+  // StrictMode (desarrollo) ejecuta dos veces el actualizador que programa la subida; cada subida
+  // completada recarga los archivos una vez.
+  assert.ok(uploads > 0);
+  assert.equal(projectReads.filter((path) => path === PROJECT_BY_ID).length, uploads, "una recarga por subida");
+  assert.equal(await page.getByText("Cargando proyecto").count(), 0, "sin volver al Loader del proyecto");
+
+  await page.getByRole("tab", { name: "Documentos" }).click();
+  await waitForOpenTab(page, "Documentos");
+  await page.getByText("Plano tardío", { exact: false }).first().waitFor();
 });

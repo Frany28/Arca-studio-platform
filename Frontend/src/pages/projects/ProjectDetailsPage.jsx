@@ -36,6 +36,7 @@ import {
   isProjectOperationallyReadOnly,
 } from "../../utils/projectReadOnly.js";
 import Alert from "../../components/ui/Alert/Alert.jsx";
+import Button from "../../components/ui/Button/Button.jsx";
 import { ProjectReadOnlyProvider } from "../../contexts/ProjectReadOnlyContext.jsx";
 import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.js";
 
@@ -63,6 +64,7 @@ export default function ProjectDetailsPage({
     projectLoading,
     refreshProjectFiles,
     resolvedProjectId,
+    retryProjectLoad,
   } = useProjectDetailsData({
     navigate,
     providedProject,
@@ -214,9 +216,14 @@ export default function ProjectDetailsPage({
                 label="Cargando proyecto"
               />
             ) : projectError ? (
-              <p className="py-[48px] text-body-3 text-[var(--color-danger-100)]">
-                {projectError}
-              </p>
+              <div className="flex flex-col items-start gap-[12px] py-[48px]">
+                <p className="text-body-3 text-[var(--color-danger-100)]">
+                  {projectError}
+                </p>
+                <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} onClick={retryProjectLoad}>
+                  Reintentar
+                </Button>
+              </div>
             ) : (
               <>
                 <ProjectOverviewHeader project={presentedProject} />

@@ -54,7 +54,8 @@ function getMissingFocusedFileId(project, searchParams) {
  * @param {Object|null} params.providedProject - Proyecto inicial; su presencia evita la carga del efecto.
  * @param {string|undefined} params.routeProjectSlug - Id o slug recibido desde la ruta.
  * @param {URLSearchParams} params.searchParams - Query que se conserva al reemplazar la ruta.
- * @returns {Object} Proyecto, id resuelto, carga, error como texto, fecha de sincronizaci?n, setter y refreshProjectFiles.
+ * @returns {Object} Proyecto, id resuelto, carga, error como texto, fecha de sincronizaci?n, setter,
+ * refreshProjectFiles y retryProjectLoad (repite la carga por ruta tras un error).
  */
 export default function useProjectDetailsData({
   navigate,
@@ -83,6 +84,8 @@ export default function useProjectDetailsData({
     providedProject ? new Date().toISOString() : null,
   );
   const [resolvedProjectId, setResolvedProjectId] = useState(initialProjectId);
+  // Intentos de carga por ruta: «Reintentar» lo incrementa para repetir la carga tras un error.
+  const [loadAttempt, setLoadAttempt] = useState(0);
   // Último proyecto aplicado y query vigente: la carga los consulta sin depender de ellos, para que
   // un cambio de query no la repita.
   const projectRef = useRef(providedProject);
@@ -170,7 +173,17 @@ export default function useProjectDetailsData({
     providedProject,
     routeProjectSlug,
     routeUsesNumericProjectId,
+    loadAttempt,
   ]);
+
+  /**
+   * Repite la carga del proyecto de la ruta; tras un error no hay proyecto cargado y vuelve a pedirlo.
+   *
+   * @returns {void}
+   */
+  const retryProjectLoad = useCallback(() => {
+    setLoadAttempt((attempt) => attempt + 1);
+  }, []);
 
   /**
    * Recarga el proyecto completo con sus archivos usando el id resuelto y fecha la sincronizaci?n.
@@ -229,6 +242,7 @@ export default function useProjectDetailsData({
     projectLoading,
     refreshProjectFiles,
     resolvedProjectId,
+    retryProjectLoad,
     setProject,
   };
 }
