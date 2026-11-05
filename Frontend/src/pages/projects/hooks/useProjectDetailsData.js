@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
-import { getProjectPath } from "../../../utils/projectRoutes.js";
+import { getProjectPath, getProjectSlug } from "../../../utils/projectRoutes.js";
 
 /**
  * Inicializa el detalle con el proyecto proporcionado o carga proyecto y archivos desde la API.
  * Sin proyecto proporcionado usa el id num?rico positivo de ruta o env?a su slug;
- * una carga por ruta num?rica reemplaza la URL por la ruta del proyecto conservando la query.
+ * una carga por ruta num?rica reemplaza la URL por la ruta del proyecto conservando la query,
+ * sin volver a pedir el proyecto al llegar a ese slug.
  *
  * @param {Object} params - Proyecto opcional y contexto de la ruta.
  * @param {Function} params.navigate - Navegaci?n del router, usada para reemplazar la ruta num?rica.
@@ -42,6 +43,9 @@ export default function useProjectDetailsData({
     providedProject ? new Date().toISOString() : null,
   );
   const [resolvedProjectId, setResolvedProjectId] = useState(initialProjectId);
+  // Slug al que esta carga redirigió la ruta numérica: el proyecto ya está cargado y esa
+  // redirección no debe volver a pedirlo ni mostrar de nuevo el Loader.
+  const replacedRouteSlugRef = useRef(null);
 
   useEffect(() => {
     if (providedProject) {
@@ -49,6 +53,17 @@ export default function useProjectDetailsData({
     }
 
     let isMounted = true;
+
+    const replacedRouteSlug = replacedRouteSlugRef.current;
+    replacedRouteSlugRef.current = null;
+    if (!initialProjectId && replacedRouteSlug && replacedRouteSlug === routeProjectSlug) {
+      queueMicrotask(() => {
+        if (isMounted) setProjectLoading(false);
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
     queueMicrotask(() => {
       if (!isMounted) return;
       setProjectLoading(true);
@@ -97,6 +112,7 @@ export default function useProjectDetailsData({
           setResolvedProjectId(nextProject?.id || initialProjectId);
 
           if (routeUsesNumericProjectId && nextProject) {
+            replacedRouteSlugRef.current = getProjectSlug(nextProject);
             navigate(getProjectPath(nextProject, searchParams.toString()), {
               replace: true,
             });

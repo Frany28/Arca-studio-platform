@@ -7,6 +7,16 @@ export const PROJECT_DETAIL_TABS = [
   "Subir archivos",
 ];
 
+// Skeleton de Loader para cada pestaña, en el mismo orden que PROJECT_DETAIL_TABS.
+export const PROJECT_DETAIL_LOADER_SECTIONS = [
+  "info",
+  "renders",
+  "documents",
+  "tracking",
+  "warranties",
+  "upload",
+];
+
 export const PROJECT_DETAIL_DATA = {
   id: "quinta-bella-vista",
   title: "Quinta Bella Vista",

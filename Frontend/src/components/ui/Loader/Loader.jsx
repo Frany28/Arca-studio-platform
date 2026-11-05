@@ -684,9 +684,14 @@ function UploadPanelSkeleton() {
   return <div className="flex flex-col gap-[20px]"><SkeletonBlock className="h-[260px] w-full rounded-[var(--radius-3)]" /><div className="flex justify-between gap-[20px] max-sm:flex-col"><div className="flex flex-col gap-[8px]"><SkeletonBlock className="h-[12px] w-[220px] rounded-[var(--radius-1)]" tone="text" /><SkeletonBlock className="h-[11px] w-[310px] max-w-full rounded-[var(--radius-1)]" tone="muted" /></div><SkeletonBlock className="h-[40px] w-[132px] rounded-[var(--radius-2)]" delay={100} /></div>{Array.from({ length: 2 }, (_, index) => <SkeletonBlock key={index} className="h-[64px] w-full rounded-[var(--radius-2)]" delay={140 + index * 70} />)}</div>;
 }
 
-function ProjectDetailSkeleton({ section = "info" }) {
+// Skeleton de una sola pestaña del detalle; lo comparten la carga del proyecto y la del panel diferido.
+function ProjectDetailPanelSkeleton({ section = "info" }) {
   const panels = { documents: <DocumentsPanelSkeleton />, info: <InfoPanelSkeleton />, renders: <RendersPanelSkeleton />, tracking: <TrackingPanelSkeleton />, upload: <UploadPanelSkeleton />, warranties: <WarrantiesPanelSkeleton /> };
-  return <div className="flex w-full flex-col gap-[32px] py-[24px]"><ProjectDetailHeaderSkeleton activeSection={section} />{panels[section] || panels.info}</div>;
+  return panels[section] || panels.info;
+}
+
+function ProjectDetailSkeleton({ section = "info" }) {
+  return <div className="flex w-full flex-col gap-[32px] py-[24px]"><ProjectDetailHeaderSkeleton activeSection={section} /><ProjectDetailPanelSkeleton section={section} /></div>;
 }
 
 function Loader({ className, count = 1, label = "Cargando contenido", preset = "projectRow", section = "info", variant }) {
@@ -699,6 +704,8 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <ProjectGallerySkeleton />;
   } else if (preset === "projectDetail") {
     content = <ProjectDetailSkeleton section={section} />;
+  } else if (preset === "projectDetailPanel") {
+    content = <ProjectDetailPanelSkeleton section={section} />;
   } else if (preset === "requestRow") {
     content = Array.from({ length: itemCount }, (_, index) => <RequestRowSkeleton key={index} />);
   } else if (preset === "projectShowcase") {

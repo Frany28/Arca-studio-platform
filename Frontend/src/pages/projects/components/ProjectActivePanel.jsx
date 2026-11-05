@@ -1,11 +1,42 @@
-import ProjectDocumentsPanel from "../panels/ProjectDocumentsPanel.jsx";
-import ProjectInfoPanel from "../panels/ProjectInfoPanel.jsx";
-import ProjectRendersPanel from "../panels/ProjectRendersPanel.jsx";
-import ProjectTrackingPanel from "../panels/ProjectTrackingPanel.jsx";
-import ProjectUploadFilesPanel from "../panels/ProjectUploadFilesPanel.jsx";
-import ProjectWarrantiesPanel from "../panels/ProjectWarrantiesPanel.jsx";
+import { Suspense } from "react";
 
-export default function ProjectActivePanel({
+import Loader from "../../../components/ui/Loader/Loader.jsx";
+import { lazyWithRetry as lazy } from "../../../utils/lazyWithRetry.js";
+import ProjectInfoPanel from "../panels/ProjectInfoPanel.jsx";
+import { PROJECT_DETAIL_LOADER_SECTIONS } from "../projectDetailsData.js";
+
+// Información es la pestaña inicial y se carga con la página. El resto se descarga al abrirla:
+// Renders arrastra three.js y los visores, y retenerlos retrasaba las lecturas del detalle.
+// lazyWithRetry recupera los chunks ausentes tras una publicación nueva.
+const ProjectDocumentsPanel = lazy(() => import("../panels/ProjectDocumentsPanel.jsx"));
+const ProjectRendersPanel = lazy(() => import("../panels/ProjectRendersPanel.jsx"));
+const ProjectTrackingPanel = lazy(() => import("../panels/ProjectTrackingPanel.jsx"));
+const ProjectUploadFilesPanel = lazy(() => import("../panels/ProjectUploadFilesPanel.jsx"));
+const ProjectWarrantiesPanel = lazy(() => import("../panels/ProjectWarrantiesPanel.jsx"));
+
+/**
+ * Muestra el panel de la pestaña activa; los paneles diferidos usan su skeleton durante la carga.
+ *
+ * @param {Object} props - Pestaña activa, proyecto presentado y acciones de cada panel.
+ * @returns {import("react").ReactElement} Panel activo.
+ */
+export default function ProjectActivePanel(props) {
+  return (
+    <Suspense
+      fallback={
+        <Loader
+          preset="projectDetailPanel"
+          section={PROJECT_DETAIL_LOADER_SECTIONS[props.activeProjectTabIndex] || "info"}
+          label="Cargando sección del proyecto"
+        />
+      }
+    >
+      <ActivePanel {...props} />
+    </Suspense>
+  );
+}
+
+function ActivePanel({
   activeProjectTabIndex,
   clearFocusedRenderComment,
   filesSynchronizedAt,

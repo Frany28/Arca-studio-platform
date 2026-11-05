@@ -15,7 +15,10 @@ import ProjectDetailTabMenu from "./components/ProjectDetailTabMenu.jsx";
 import ProjectOverviewHeader from "./components/ProjectOverviewHeader.jsx";
 import ProjectActivePanel from "./components/ProjectActivePanel.jsx";
 import { ProjectDocumentViewerModal } from "./components/ProjectDocumentPreview.jsx";
-import { PROJECT_DETAIL_DATA } from "./projectDetailsData.js";
+import {
+  PROJECT_DETAIL_DATA,
+  PROJECT_DETAIL_LOADER_SECTIONS,
+} from "./projectDetailsData.js";
 import useProjectDetailsData from "./hooks/useProjectDetailsData.js";
 import useProjectDetailsComments from "./hooks/useProjectDetailsComments.js";
 import useProjectDetailsNavigation from "./hooks/useProjectDetailsNavigation.js";
@@ -36,14 +39,6 @@ import Alert from "../../components/ui/Alert/Alert.jsx";
 import { ProjectReadOnlyProvider } from "../../contexts/ProjectReadOnlyContext.jsx";
 import { createUserSideNavigationItems } from "../../utils/sideNavigationItems.js";
 
-const PROJECT_DETAIL_LOADER_SECTIONS = [
-  "info",
-  "renders",
-  "documents",
-  "tracking",
-  "warranties",
-  "upload",
-];
 export default function ProjectDetailsPage({
   project: providedProject = null,
   initialActiveProjectTabIndex = 0,
