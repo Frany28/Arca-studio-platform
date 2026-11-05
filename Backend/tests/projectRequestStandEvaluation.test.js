@@ -224,11 +224,17 @@ test("históricos: la compatibilidad 3.0 guardada conserva puntuación, nivel, v
   assert.deepEqual(publicCompatibility({ ...persisted, version: COMPATIBILITY_SCORING_VERSION }), publicRequest.compatibility);
 });
 
-test("históricos: un stand sin bloque guardado no recibe respuestas ficticias ni penalización", () => {
+test("históricos: un stand sin bloque guardado cuenta sus preguntas como pendientes, sin respuestas ficticias ni penalización", () => {
   const withoutSection = { ...STAND, standRequirements: null };
-  assert.deepEqual(buildProjectRequestMetrics(withoutSection).completeness, { answered: 12, applicable: 12, missingFields: [], score: 100 });
-  // El identificador histórico es Stand publicitario: el inmueble guardado es N/A y, sin bloque,
-  // las preguntas del stand tampoco aplican; se evalúa igual que un stand vigente sin sección.
+  // Propuesta V3.3 §7: un stand tiene 15 preguntas aplicables; sin bloque, las tres del stand están pendientes.
+  assert.deepEqual(buildProjectRequestMetrics(withoutSection).completeness, {
+    answered: 12, applicable: 15, missingFields: ["standRequirements.requirementsStatus", "standRequirements.spaceStatus", "standRequirements.hasSpacePlans"], score: 80,
+  });
+  for (const block of [undefined, [], "texto"]) {
+    assert.equal(buildProjectRequestMetrics({ ...STAND, standRequirements: block }).completeness.applicable, 15, String(block));
+  }
+  // El identificador histórico es Stand publicitario: el inmueble guardado es N/A y se evalúa
+  // igual que un stand vigente sin sección. Las preguntas pendientes no restan compatibilidad.
   const legacy = { ...RESIDENTIAL, projectType: "stands_exhibitions", standRequirements: null };
   const current = { ...legacy, projectType: "advertising_stand" };
   assert.deepEqual(buildProjectRequestMetrics(legacy), buildProjectRequestMetrics(current));

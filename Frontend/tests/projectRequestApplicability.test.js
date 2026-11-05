@@ -23,8 +23,9 @@ test("solo Stand publicitario deja N/A la pregunta del inmueble y su sección le
     assert.equal(requiresPropertyAvailability(value), value !== "advertising_stand", value);
     assert.equal(hasApplicableProperty({ projectType: value, landStatus: "available" }), value !== "advertising_stand", value);
   }
-  // El tipo histórico y un formulario sin tipo conservan la pregunta.
-  assert.equal(requiresPropertyAvailability("stands_exhibitions"), true);
+  // El identificador histórico es el mismo Stand publicitario; un formulario sin tipo conserva la pregunta.
+  assert.equal(requiresPropertyAvailability("stands_exhibitions"), false);
+  assert.equal(hasApplicableProperty({ projectType: "stands_exhibitions", landStatus: "available" }), false);
   assert.equal(requiresPropertyAvailability(""), true);
 });
 

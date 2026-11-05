@@ -138,17 +138,27 @@ function appliesWithProperty(answers) {
 }
 
 /**
- * Indica si aplican las preguntas de «Requisitos del stand»: tipo Stand publicitario con bloque.
- * El contrato exige el bloque desde que existe el tipo; su ausencia identifica un registro que
- * nunca recibió la sección, cuyas preguntas quedan N/A sin respuestas ficticias ni penalización.
+ * Devuelve el bloque de requisitos del stand solo si es un objeto; en otro caso null.
+ * Un registro anterior a la sección (p. ej. con el identificador histórico) no tiene bloque.
  *
  * @param {object} answers - Respuestas de la solicitud.
- * @returns {boolean} true cuando el stand tiene su sección de requisitos.
+ * @returns {object|null} Bloque `standRequirements` o null.
+ */
+function readStandBlock(answers) {
+  const block = answers.standRequirements;
+  return block !== null && typeof block === "object" && !Array.isArray(block) ? block : null;
+}
+
+/**
+ * Indica si aplican las preguntas básicas de «Requisitos del stand»: cualquier Stand publicitario,
+ * incluido el identificador histórico (Propuesta V3.3 §7 y §11). Sin bloque guardado las preguntas
+ * siguen aplicando y cuentan como pendientes; solo afecta a la información completada.
+ *
+ * @param {object} answers - Respuestas de la solicitud.
+ * @returns {boolean} true para los stands.
  */
 function appliesWithStandSection(answers) {
-  const block = answers.standRequirements;
-  return isAdvertisingStand(answers.projectType)
-    && block !== null && typeof block === "object" && !Array.isArray(block);
+  return isAdvertisingStand(answers.projectType);
 }
 
 /**
@@ -160,12 +170,12 @@ function appliesWithStandSection(answers) {
  */
 function appliesWithStandDocuments(answers) {
   return appliesWithStandSection(answers)
-    && allowsStandDocumentSelection(answers.standRequirements.requirementsStatus);
+    && allowsStandDocumentSelection(readStandBlock(answers)?.requirementsStatus);
 }
 
 /**
  * Crea el lector de una respuesta dentro del bloque de requisitos del stand.
- * Solo se invoca cuando la sección aplica, por lo que el bloque existe.
+ * Tolera un bloque ausente o inválido: la respuesta se lee como no respondida.
  *
  * @param {string} key - Propiedad del bloque `standRequirements`.
  * @returns {(answers: object) => unknown} Lector de la respuesta.
@@ -179,7 +189,7 @@ function readStandAnswer(key) {
    * @returns {unknown} Respuesta guardada.
    */
   return function readNestedAnswer(answers) {
-    return answers.standRequirements[key];
+    return readStandBlock(answers)?.[key];
   };
 }
 

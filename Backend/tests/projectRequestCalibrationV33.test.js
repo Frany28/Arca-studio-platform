@@ -187,6 +187,20 @@ test("la calibración interna mantiene 30 escenarios con la distribución docume
   assert.deepEqual(new Set(CALIBRATION_SCENARIOS.map(([, , , , status]) => status)), new Set([NONE, REVIEW, HIGH_RISK, INSUFFICIENT]));
 });
 
+test("stand histórico sin requisitos guardados: 15 aplicables, 3 pendientes del stand y compatibilidad persistida intacta (PDF §7 y §11)", () => {
+  const persisted = { level: "high", reasonCodes: ["landUnavailableImmediate"], score: 80, version: "3.3" };
+  const legacy = { ...withoutProperty({ landStatus: "unavailable", projectType: "stands_exhibitions", startTime: "immediate" }), compatibility: persisted };
+  const completeness = evaluateProjectRequestCompleteness(legacy);
+  assert.deepEqual(completeness, {
+    answered: 12,
+    applicable: 15,
+    missingFields: ["standRequirements.requirementsStatus", "standRequirements.spaceStatus", "standRequirements.hasSpacePlans"],
+    score: 80,
+  });
+  // Leer las métricas no recalcula ni modifica la evaluación guardada.
+  assert.deepEqual(legacy.compatibility, { level: "high", reasonCodes: ["landUnavailableImmediate"], score: 80, version: "3.3" });
+});
+
 test("el identificador histórico «Stands y exhibiciones» se evalúa como Stand publicitario (PDF §11)", () => {
   const legacy = withoutProperty({ landStatus: "unavailable", projectSize: "unknown", projectType: "stands_exhibitions", startTime: "immediate" });
   const current = stand({ projectSize: "unknown", startTime: "immediate" }, { documentTypes: [], hasSpacePlans: false, requirementsStatus: "unavailable", spaceStatus: "unassigned" });

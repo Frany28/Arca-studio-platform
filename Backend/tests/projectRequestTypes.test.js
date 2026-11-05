@@ -56,7 +56,10 @@ test("lecturas de cliente y cola conservan tipo, evaluación histórica y métri
   // Se lee como Stand publicitario sin recalcular la evaluación guardada.
   const control = { ...record, projectType: "advertising_stand" };
   assert.deepEqual(buildProjectRequestMetrics(record), buildProjectRequestMetrics(control));
-  assert.equal(publicRequest.completeness.score, 100);
+  // Stand sin requisitos guardados (Propuesta V3.3 §7): 15 aplicables, las 3 del stand pendientes.
+  assert.deepEqual(publicRequest.completeness, {
+    answered: 12, applicable: 15, missingFields: ["standRequirements.requirementsStatus", "standRequirements.spaceStatus", "standRequirements.hasSpacePlans"], score: 80,
+  });
   assert.deepEqual(evaluateProjectCompatibility(record), evaluateProjectCompatibility(control));
   const queue = await loadProjectRequestReviewQueue({ cursor: null, limit: 25, user: USER });
   assert.equal(queue.items[0].projectType, "stands_exhibitions");
@@ -124,6 +127,7 @@ test("reenvío después de correcciones evalúa con la versión vigente sin conv
   const result = await submitProjectRequest({ projectRequestId: 7, user: USER, verificationCode: VALID_VERIFICATION_CODE });
   assert.equal(result.projectType, "stands_exhibitions");
   assert.equal(result.compatibility.score, 100);
-  assert.equal(result.completeness.score, 100);
+  assert.equal(result.completeness.applicable, 15);
+  assert.equal(result.completeness.score, 80);
   assert.equal(evaluationValues[6], COMPATIBILITY_SCORING_VERSION);
 });

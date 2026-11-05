@@ -13,10 +13,9 @@ test("project types use their database-backed display labels", () => {
   assert.equal(getProjectTypeDisplay("commercial"), "Proyecto Comercial");
   assert.equal(getProjectTypeDisplay("corporate"), "Proyecto Corporativo");
   assert.equal(getProjectTypeDisplay("residential"), "Proyecto Residencial");
-  assert.equal(
-    getProjectTypeDisplay("stands_exhibitions"),
-    "Proyecto Stands y exhibiciones",
-  );
+  // El identificador histórico se muestra con el nombre vigente del mismo servicio.
+  assert.equal(getProjectTypeDisplay("stands_exhibitions"), "Proyecto Stand publicitario");
+  assert.equal(getProjectTypeDisplay("advertising_stand"), "Proyecto Stand publicitario");
 });
 
 test("project type display handles unknown and missing values", () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { LEGACY_PROJECT_REQUEST_TYPES, PROJECT_REQUEST_OPTIONS } from "../src/utils/projectRequestOptions.js";
-import { isAdvertisingStand, normalizeStandFormFields } from "../src/utils/projectRequestStand.js";
+import { isAdvertisingStand, normalizeStandFormFields, toCurrentProjectType } from "../src/utils/projectRequestStand.js";
 import { buildProjectRequestPayload, getProjectRequestFieldErrors } from "../src/utils/projectRequestValidation.js";
 import { buildAdminRequestDetails } from "../src/pages/admin-dashboard/utils/adminRequestDetails.js";
 
@@ -68,9 +68,11 @@ test("el catálogo vigente retira la opción anterior y solo permite conservarla
   const historical = { ...form, projectType: "stands_exhibitions" };
   assert.ok(getProjectRequestFieldErrors(historical).projectType);
   assert.ok(getProjectRequestFieldErrors(historical, { existingProjectType: "residential" }).projectType);
-  assert.deepEqual(getProjectRequestFieldErrors(historical, { existingProjectType: "stands_exhibitions" }), {});
-  const payload = buildProjectRequestPayload(historical);
-  assert.equal(payload.projectType, "stands_exhibitions");
-  assert.equal("standRequirements" in payload, false);
-  assert.equal(buildAdminRequestDetails({ summary: { id: 1, projectType: "stands_exhibitions" } }).projectTypeLabel, "Stands y exhibiciones");
+  assert.equal(getProjectRequestFieldErrors(historical, { existingProjectType: "stands_exhibitions" }).projectType, undefined);
+  // Mismo servicio (Propuesta V3.3 §11): se edita y se muestra como Stand publicitario.
+  assert.equal(isAdvertisingStand("stands_exhibitions"), true);
+  assert.equal(toCurrentProjectType("stands_exhibitions"), "advertising_stand");
+  assert.equal(toCurrentProjectType("residential"), "residential");
+  assert.ok("standRequirements" in buildProjectRequestPayload(historical), "recibe las preguntas del stand");
+  assert.equal(buildAdminRequestDetails({ summary: { id: 1, projectType: "stands_exhibitions" } }).projectTypeLabel, "Stand publicitario");
 });

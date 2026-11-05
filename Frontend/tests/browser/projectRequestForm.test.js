@@ -301,7 +301,7 @@ async function submitWithCode(page, calls) {
   return calls.find((call) => call.body && ["POST", "PATCH"].includes(call.method)).body;
 }
 
-test("Tipo histórico: restaura, muestra la etiqueta sin opción seleccionable y conserva el tipo al reenviar", async (context) => {
+test("Tipo histórico: se edita como Stand publicitario y se reenvía renombrado sobre la misma solicitud", async (context) => {
   const { page, calls } = await openRequestPage(context, { initialRequest: {
     id: REQUEST_ID, status: "changes_requested", projectName: "Exhibición anterior", projectType: "stands_exhibitions",
     location: "Maracaibo, Estado Zulia", description: "Diseño del espacio de exposición para el evento.",
@@ -309,15 +309,17 @@ test("Tipo histórico: restaura, muestra la etiqueta sin opción seleccionable y
     capitalAvailability: "available_now", startTime: "over_6_months",
   } });
   const selector = page.getByRole("button", { name: "Tipo de proyecto", exact: true });
-  assert.match(await selector.textContent(), /Stands y exhibiciones/);
-  await selector.click();
-  assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["Residencial", "Comercial", "Corporativo", "Stand publicitario"]);
-  assert.equal(await page.getByRole("menuitem", { name: "Stands y exhibiciones", exact: true }).count(), 0);
-  await selector.click();
-  assert.equal(await standSection(page).count(), 0);
+  assert.match(await selector.textContent(), /Stand publicitario/);
+  assert.equal(await page.getByText("Stands y exhibiciones", { exact: true }).count(), 0);
+  // Mismo servicio (Propuesta V3.3 §11): reglas del stand, sin inmueble ni sección legal.
+  await standSection(page).waitFor();
+  assert.equal(await landQuestion(page).count(), 0);
+  assert.equal(await legalSection(page).count(), 0);
+  await choose(page, STAND_SPACE_LABEL, "Sí, ya está asignado");
   const body = await submitWithCode(page, calls);
-  assert.equal(body.projectType, "stands_exhibitions");
-  assert.equal("standRequirements" in body, false);
+  assert.equal(body.projectType, "advertising_stand");
+  assert.equal(body.landStatus, null);
+  assert.equal(body.standRequirements.spaceStatus, "assigned");
   assert.equal(calls.some((call) => call.method === "POST" && call.path === "/api/project-requests"), false);
   assert.ok(calls.some((call) => call.method === "PATCH" && call.path === `/api/project-requests/${REQUEST_ID}`));
 });

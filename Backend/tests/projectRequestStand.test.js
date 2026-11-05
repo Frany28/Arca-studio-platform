@@ -116,10 +116,11 @@ test("3.1: los requisitos del stand solo participan en completitud, nunca en com
           assert.deepEqual(buildProjectRequestMetrics(withStand).financialViability, metrics.financialViability);
           const completeness = buildProjectRequestMetrics(withStand).completeness;
           if (isAdvertisingStand(projectType)) {
-            // 12 generales sin inmueble; +3 del stand; +1 si las normas habilitan documentos.
-            const standQuestions = standRequirements === null ? 0 : standRequirements.requirementsStatus === "available" ? 4 : 3;
+            // 12 generales sin inmueble; +3 del stand; +1 si las normas habilitan documentos. Sin bloque
+            // las tres básicas aplican y quedan pendientes (Propuesta V3.3 §7).
+            const standQuestions = standRequirements?.requirementsStatus === "available" ? 4 : 3;
             assert.equal(completeness.applicable, 12 + standQuestions);
-            assert.equal(completeness.missingFields.length, 0);
+            assert.equal(completeness.missingFields.length, standRequirements === null ? 3 : 0);
           } else {
             assert.deepEqual(completeness, metrics.completeness);
             assert.ok(!completeness.missingFields.some((field) => field.startsWith("stand")));

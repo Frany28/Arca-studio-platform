@@ -421,14 +421,16 @@ test("Drawer admin: sin observaciones aplicables no muestra la sección", async 
   assert.equal(await drawer.getByRole("list", { name: "Observaciones para la revisión inicial" }).count(), 0);
 });
 
-test("Drawer admin: conserva el tipo histórico retirado sin convertirlo ni pedir requisitos", async (context) => {
+test("Drawer admin: muestra el tipo histórico como Stand publicitario sin modificar el registro", async (context) => {
   const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [{
     ...REQUEST, clientId: 2, requestedBy: 41, projectType: "stands_exhibitions", standRequirements: null,
     compatibility: { score: 73, level: "high" },
   }] });
   const drawer = await openClientDetails(page);
-  await drawer.getByText("Stands y exhibiciones", { exact: true }).waitFor();
-  assert.equal(await drawer.getByRole("region", { name: "Requisitos del stand" }).count(), 0);
+  await drawer.getByText("Stand publicitario", { exact: true }).first().waitFor();
+  assert.equal(await drawer.getByText("Stands y exhibiciones", { exact: true }).count(), 0);
+  // Registro anterior a la sección del stand: se informa la ausencia, sin respuestas inventadas.
+  await drawer.getByText("Sin información registrada", { exact: true }).waitFor();
   assert.equal(mutations.length, 0);
 });
 
