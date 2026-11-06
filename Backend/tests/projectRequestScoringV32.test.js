@@ -104,7 +104,10 @@ test("8. varias evidencias de una misma causa descuentan una sola vez", () => {
 test("9. históricos 3.0 y 3.1 conservan puntuación, nivel y motivos de referencias retirados", () => {
   for (const version of ["3.0", "3.1"]) {
     const persisted = { level: "excellent", reasonCodes: ["referenceFilesMissing", "referenceLinkMissing"], score: 93, version };
-    const publicResult = toPublicProjectRequest({ ...RESIDENTIAL, compatibility: persisted, id: 1, submissionId: "x" }).compatibility;
+    // El cliente conserva puntuación y nivel guardados, sin hallazgos ni observaciones internas.
+    const clientResult = toPublicProjectRequest({ ...RESIDENTIAL, compatibility: persisted, id: 1, submissionId: "x" }).compatibility;
+    assert.deepEqual(clientResult, { level: "excellent", score: 93 }, version);
+    const publicResult = publicCompatibility(persisted);
     assert.equal(publicResult.score, 93, version);
     assert.equal(publicResult.level, "excellent", version);
     assert.deepEqual(publicResult.findings.map(({ code, severity }) => [code, severity]), [
@@ -182,5 +185,5 @@ test("envío: evalúa con la versión vigente sin consultar el uso de archivos n
   assert.equal(evaluationValues[3], 100);
   assert.equal(evaluationValues[5], "[]");
   assert.equal(evaluationValues[6], COMPATIBILITY_SCORING_VERSION);
-  assert.deepEqual(result.compatibility, { findings: [], level: "excellent", observations: [], score: 100 });
+  assert.deepEqual(result.compatibility, { level: "excellent", score: 100 });
 });

@@ -216,12 +216,13 @@ test("históricos: la compatibilidad 3.0 guardada conserva puntuación, nivel, v
   const publicRequest = toPublicProjectRequest(record);
   assert.equal(publicRequest.compatibility.score, 80);
   assert.equal(publicRequest.compatibility.level, "excellent");
-  assert.deepEqual(publicRequest.compatibility.findings.map(({ code }) => code), ["PROPERTY_TIMING_MISMATCH"]);
-  assert.deepEqual(publicRequest.compatibility.observations, ["Se necesita definir el inmueble antes de iniciar de inmediato."]);
-  assert.deepEqual(publicCompatibility(persisted), publicRequest.compatibility);
+  assert.deepEqual(publicRequest.compatibility, { level: "excellent", score: 80 }, "el cliente no recibe hallazgos ni observaciones");
+  const internal = publicCompatibility(persisted);
+  assert.deepEqual(internal.findings.map(({ code }) => code), ["PROPERTY_TIMING_MISMATCH"]);
+  assert.deepEqual(internal.observations, ["Se necesita definir el inmueble antes de iniciar de inmediato."]);
   assert.deepEqual(persisted, { level: "excellent", reasonCodes: ["landUnavailableImmediate"], score: 80, version: "3.0" });
   // La versión vigente usa el mismo catálogo de evidencias para reconstruir hallazgos.
-  assert.deepEqual(publicCompatibility({ ...persisted, version: COMPATIBILITY_SCORING_VERSION }), publicRequest.compatibility);
+  assert.deepEqual(publicCompatibility({ ...persisted, version: COMPATIBILITY_SCORING_VERSION }), internal);
 });
 
 test("históricos: un stand sin bloque guardado cuenta sus preguntas como pendientes, sin respuestas ficticias ni penalización", () => {

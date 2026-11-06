@@ -100,7 +100,8 @@ test("6. observaciones de planos: textos acordados, sin puntos ni efecto en otra
   }
   // El cliente no recibe estas observaciones en su compatibilidad pública.
   const publicRequest = toPublicProjectRequest({ ...WITH_PROPERTY, hasPlans: false, compatibility: evaluateProjectCompatibility({ ...WITH_PROPERTY, hasPlans: false }), id: 1, submissionId: "x" });
-  assert.deepEqual(publicRequest.compatibility.observations, []);
+  assert.deepEqual(publicRequest.compatibility, { level: publicRequest.compatibility.level, score: publicRequest.compatibility.score });
+  assert.equal("observations" in publicRequest.compatibility, false);
   assert.equal("reviewObservations" in publicRequest, false);
   assert.deepEqual(buildProjectRequestReviewObservations(null), []);
 });
@@ -212,7 +213,8 @@ test("19. compatibilidad histórica 3.0, 3.1 y 3.2 se conserva sin recalcular", 
     const publicRequest = toPublicProjectRequest({ ...WITHOUT_PROPERTY, projectSize: "unknown", compatibility: persisted, id: 2, submissionId: "x" });
     assert.equal(publicRequest.compatibility.score, persisted.score, persisted.version);
     assert.equal(publicRequest.compatibility.level, persisted.level, persisted.version);
-    assert.equal(publicRequest.compatibility.findings.length, persisted.reasonCodes.length, persisted.version);
+    assert.equal("findings" in publicRequest.compatibility, false, "el cliente no recibe hallazgos");
+    assert.equal(publicCompatibility(persisted).findings.length, persisted.reasonCodes.length, persisted.version);
     assert.deepEqual(persisted, snapshot);
   }
 });

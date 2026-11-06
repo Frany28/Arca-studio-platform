@@ -57,16 +57,15 @@ function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
 }
 
 /**
- * Confirmación del cliente según Figma 3727:543692. Conserva los resultados y motivos reales
- * de la API y comparte las etapas con la consulta administrativa, sin adelantar hitos futuros.
+ * Confirmación del cliente según Figma 3727:543692. Conserva el resultado y los motivos de
+ * decisión reales de la API y comparte las etapas con la consulta administrativa, sin adelantar
+ * hitos futuros. Las observaciones del algoritmo de compatibilidad son internas de la revisión:
+ * el backend no las envía al cliente y esta vista no las muestra aunque una respuesta las incluya.
  * @param {Object} props - Evaluación, solicitud vigente y acciones de consulta y regreso.
  * @returns {import("react").ReactElement} Confirmación responsive de la solicitud.
  */
 function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRequest, projectRequest }) {
   const evaluation = getCompatibilityPresentation(compatibility);
-  const observations = Array.isArray(compatibility?.observations)
-    ? compatibility.observations.slice(0, 3)
-    : [];
   const requestSteps = buildProjectRequestStages(projectRequest?.status);
   const decisionMessage = projectRequest?.correctionReason || projectRequest?.rejectionReason;
   return (
@@ -107,11 +106,6 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
               <p className="text-body-3 text-[var(--color-text-100)]">Evaluación de compatibilidad pendiente.</p>
             )}
           </div>
-          {observations.length ? (
-            <ul className="flex list-disc flex-col gap-[8px] pl-[20px] text-body-3 text-[var(--color-text-200)]">
-              {observations.map((observation) => <li key={observation}>{observation}</li>)}
-            </ul>
-          ) : null}
         </div>
       </section>
 

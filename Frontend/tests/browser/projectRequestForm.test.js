@@ -660,7 +660,7 @@ test("Solicitud recibida: cinco etapas de Figma, evaluación alineada y acciones
   }
 });
 
-test("Solicitud recibida: conserva motivos, observaciones y estados reales sin completar hitos futuros", async (context) => {
+test("Solicitud recibida: conserva motivos y estados reales, sin observaciones internas ni hitos futuros", async (context) => {
   for (const [status, expected] of [
     ["pending_verification", "Pendiente"], ["changes_requested", "Correcciones solicitadas"],
     ["rejected", "Rechazada"], ["converted", "Aprobada"],
@@ -677,7 +677,8 @@ test("Solicitud recibida: conserva motivos, observaciones y estados reales sin c
       nodes.filter((node) => node.className.includes("--color-accent-300")).length);
     assert.equal(completedSteps, status === "pending_verification" ? 1 : status === "changes_requested" ? 2 : 3);
     await page.getByRole("status").getByText("Motivo comunicado por el equipo.").waitFor();
-    await page.getByText("Completa la información del proyecto.", { exact: true }).waitFor();
+    // Las observaciones del algoritmo son internas: no se muestran aunque una respuesta las incluya.
+    assert.equal(await page.getByText("Completa la información del proyecto.", { exact: true }).count(), 0);
     assert.equal(await page.getByRole("progressbar").getAttribute("aria-valuenow"), "33");
     assert.ok(await page.locator(".progress-fill-reveal").evaluate((node) => node.className.includes("--color-danger-200")));
   }

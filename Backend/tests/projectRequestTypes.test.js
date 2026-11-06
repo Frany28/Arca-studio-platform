@@ -49,10 +49,8 @@ test("lecturas de cliente y cola conservan tipo, evaluación histórica y métri
   const publicRequest = toPublicProjectRequest(record);
   assert.equal(publicRequest.projectType, "stands_exhibitions");
   assert.equal(publicRequest.standRequirements, null);
-  assert.deepEqual(publicRequest.compatibility, {
-    findings: null, level: "high", score: 73,
-    observations: ["Una descripción más completa ayudará a evaluar mejor el alcance del proyecto."],
-  });
+  // El cliente conserva la evaluación guardada (nivel y puntuación) sin observaciones internas.
+  assert.deepEqual(publicRequest.compatibility, { level: "high", score: 73 });
   // Se lee como Stand publicitario sin recalcular la evaluación guardada.
   const control = { ...record, projectType: "advertising_stand" };
   assert.deepEqual(buildProjectRequestMetrics(record), buildProjectRequestMetrics(control));

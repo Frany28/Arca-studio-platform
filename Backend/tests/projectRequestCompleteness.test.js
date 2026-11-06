@@ -4,6 +4,7 @@ import test from "node:test";
 import { evaluateProjectRequestCompleteness } from "../src/domain/projectRequestCompleteness.js";
 import { evaluateFinancialViability } from "../src/domain/projectRequestFinancialViability.js";
 import { buildProjectRequestMetrics } from "../src/domain/projectRequestEvaluation.js";
+import { publicCompatibility } from "../src/domain/projectRequestCompatibility.js";
 
 // El servicio importa la configuración de PostgreSQL; la prueba no ejecuta consultas.
 process.env.DATABASE_URL ||= "postgres://localhost/arca-contract-test";
@@ -115,12 +116,11 @@ test("public project request keeps compatibility and adds independent metrics", 
   });
 
   assert.equal(publicRequest.submissionId, undefined);
-  assert.deepEqual(publicRequest.compatibility, {
-    findings: null,
-    level: "high",
-    observations: ["Un inicio inmediato debe coordinarse con el proceso de decisión de la empresa o junta."],
-    score: 70,
-  });
+  // El cliente solo recibe nivel y puntuación; las observaciones son internas de la revisión.
+  assert.deepEqual(publicRequest.compatibility, { level: "high", score: 70 });
+  assert.deepEqual(publicCompatibility({ level: "high", reasonCodes: ["companyImmediate"], score: 70, version: "2.2" }).observations, [
+    "Un inicio inmediato debe coordinarse con el proceso de decisión de la empresa o junta.",
+  ]);
   assert.equal(publicRequest.completeness.score, 100);
   assert.equal(publicRequest.financialViability.score, 85);
   assert.equal(publicRequest.financialViability.status, "INSUFFICIENT_DATA");

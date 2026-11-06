@@ -2,7 +2,7 @@ import { withTransaction } from "../config/db.js";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { isAllowedProjectRequestType } from "../domain/projectRequest.js";
 import { toCurrentProjectType } from "../domain/projectRequestStand.js";
-import { evaluateProjectCompatibility, publicCompatibility } from "../domain/projectRequestCompatibility.js";
+import { clientCompatibility, evaluateProjectCompatibility } from "../domain/projectRequestCompatibility.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import { verifyAndConsumeProjectRequestCode } from "./projectRequestVerificationService.js";
 import {
@@ -39,8 +39,8 @@ function requireClient(user) {
 
 /**
  * Transforma el registro de la solicitud a su contrato público.
- * Expone la compatibilidad persistida y calcula al vuelo la completitud y la viabilidad
- * financiera; son métricas separadas que no modifican ni se derivan del score.
+ * Expone de la compatibilidad persistida solo nivel y puntuación (hallazgos y observaciones son
+ * internos de la revisión) y calcula al vuelo la completitud y la viabilidad financiera.
  *
  * @param {object} record - Registro obtenido del repositorio de solicitudes.
  * @returns {object} Solicitud pública con `compatibility`, `completeness` y `financialViability`.
@@ -50,7 +50,7 @@ export function toPublicProjectRequest(record) {
   return {
     ...projectRequest,
     ...buildProjectRequestMetrics(record),
-    compatibility: publicCompatibility(compatibility),
+    compatibility: clientCompatibility(compatibility),
   };
 }
 

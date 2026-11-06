@@ -406,6 +406,29 @@ function toPublicFinding(finding) {
  * @returns {{findings: Array<object>|null, level: string, observations: Array<string>, score: number}|null} Compatibilidad pública o null.
  */
 export function publicCompatibility(evaluation) {
+  return buildPublicCompatibility(evaluation);
+}
+
+/**
+ * Compatibilidad que recibe el cliente en sus solicitudes: solo nivel y puntuación. Hallazgos y
+ * observaciones del algoritmo son información interna de la revisión y no se le exponen.
+ *
+ * @param {{level: string, reasonCodes?: Array<string>, score: number|null, version?: string}|null} evaluation - Evaluación guardada.
+ * @returns {{level: string, score: number}|null} Compatibilidad del cliente o null sin evaluación.
+ */
+export function clientCompatibility(evaluation) {
+  const compatibility = buildPublicCompatibility(evaluation);
+  return compatibility ? { level: compatibility.level, score: compatibility.score } : null;
+}
+
+/**
+ * Construye la compatibilidad pública con hallazgos y hasta tres observaciones, según la versión
+ * del algoritmo con la que se evaluó la solicitud (las versiones anteriores no tienen hallazgos).
+ *
+ * @param {{level: string, reasonCodes?: Array<string>, score: number|null, version?: string}|null} evaluation - Evaluación guardada.
+ * @returns {{findings: Array<object>|null, level: string, observations: Array<string>, score: number}|null} Compatibilidad pública o null.
+ */
+function buildPublicCompatibility(evaluation) {
   if (!evaluation || evaluation.score === null || evaluation.score === undefined) {
     return null;
   }
