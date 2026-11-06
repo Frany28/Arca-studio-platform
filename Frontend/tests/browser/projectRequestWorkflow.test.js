@@ -338,7 +338,7 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
     requestedBy: 41,
     compatibility: { level: "excellent", score: 92 },
     completeness: { answered: 12, applicable: 13, missingFields: ["decisionMaker"], score: 92 },
-    financialViability: { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" },
+    financialViability: { findings: [], score: 100, status: "NO_OBVIOUS_CONFLICT" },
     createdAt: "2026-03-22T12:00:00.000Z",
     location: "Maracaibo, Zulia",
     projectType: "residential",
@@ -353,15 +353,14 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   for (const text of ["Excelente compatibilidad", "Score general: 92/100", "Maracaibo, Zulia", "Residencial", "Agendar reunión", "El cliente posee terreno y presupuesto adecuado.", "Esteban Ruiz", "Nextj"]) {
     await drawer.getByText(text, { exact: true }).first().waitFor();
   }
-  // Completitud real de la API; la viabilidad sin reglas aprobadas no muestra porcentaje.
+  // Ambas métricas porcentuales proceden de la API y mantienen valores independientes.
   assert.equal(await drawer.locator('[data-prototype="true"]').count(), 0);
   await drawer.getByText("12 de 13 preguntas aplicables respondidas", { exact: true }).waitFor();
   assert.equal(await drawer.locator('[data-metric="completeness"] [role="progressbar"]').getAttribute("aria-valuenow"), "92");
   const viability = drawer.locator('[data-metric="financial-viability"]');
-  await viability.getByText("Sin incoherencias financieras detectadas", { exact: true }).waitFor();
-  // Sin conflicto no se presenta como aprobación financiera.
-  await viability.getByText("No equivale a una aprobación financiera.", { exact: true }).waitFor();
-  assert.equal(await viability.locator('[role="progressbar"]').count(), 0);
+  assert.equal(await viability.getByRole("progressbar").getAttribute("aria-valuenow"), "100");
+  assert.equal(await viability.getByText("100%", { exact: true }).count(), 1);
+  assert.equal(await viability.locator('[role="progressbar"]').count(), 1);
   assert.equal(calls.filter((call) => call.path === "/api/admin/users/41").length, 1);
   assert.equal(calls.filter((call) => ["/api/admin/users/2", "/api/admin/users/7"].includes(call.path)).length, 0);
   // El drawer reutiliza la cola ya cargada por el dashboard: abrirlo no la vuelve a leer.
@@ -565,7 +564,7 @@ for (const [meetingRecommendation, label, colorToken] of [
       completeness: { answered: 11, applicable: 17, missingFields: [], score: 65 },
       financialViability: {
         findings: [{ category: "TEMPORAL", code: "CAPITAL_TIMING_MISMATCH", evidence: [{ code: "capitalUndefinedImmediate", explanation: "La disponibilidad de capital necesita aclararse para un inicio inmediato." }], explanation: "La disponibilidad de capital necesita aclararse para un inicio inmediato.", outcome: "HIGH_RISK", severity: "HIGH" }],
-        score: null,
+        score: 80,
         status: "HIGH_RISK",
       },
       reviews: [
@@ -609,11 +608,11 @@ for (const [meetingRecommendation, label, colorToken] of [
       const completenessBar = drawer.locator('[data-metric="completeness"] [role="progressbar"]');
       assert.equal(await completenessBar.getAttribute("aria-valuenow"), "65");
       assert.equal(await completenessBar.locator(":scope > div").evaluate((element) => getComputedStyle(element).backgroundColor), await tokenColor("--color-warning-200"));
-      // Riesgo elevado: texto con tono Danger, motivo visible y sin barra porcentual.
+      // Riesgo elevado: porcentaje con tono Danger y motivo visible, independiente del 28 general.
       const viability = drawer.locator('[data-metric="financial-viability"]');
-      assert.equal(await viability.locator('[role="progressbar"]').count(), 0);
-      const riskLabel = viability.getByText("Riesgo financiero elevado", { exact: true });
-      assert.equal(await riskLabel.evaluate((element) => getComputedStyle(element).color), await tokenColor("--color-danger-100"));
+      const financialBar = viability.getByRole("progressbar");
+      assert.equal(await financialBar.getAttribute("aria-valuenow"), "80");
+      assert.equal(await financialBar.locator(":scope > div").evaluate((element) => getComputedStyle(element).backgroundColor), await tokenColor("--color-danger-200"));
       await viability.getByRole("list", { name: "Motivos de la evaluación financiera" })
         .getByText("La disponibilidad de capital necesita aclararse para un inicio inmediato.", { exact: true }).waitFor();
       const circle = drawer.getByRole("progressbar", { name: "Compatibilidad: 28 de 100" });

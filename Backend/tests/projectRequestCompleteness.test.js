@@ -98,10 +98,10 @@ test("invalid values are not counted as answered", () => {
   assert.equal(evaluateProjectRequestCompleteness(null).answered, 0);
 });
 
-test("financial viability never reports an invented percentage", () => {
-  // Antes era un PENDING_RULES fijo; ahora es un estado derivado de la matriz relativa.
+test("financial viability reuses financial deductions independently from completeness", () => {
+  // Inversión indefinida: deducción financiera existente de 15, sin efecto del inmueble.
   const metrics = buildProjectRequestMetrics(ANSWERED_WITHOUT_PROPERTY);
-  assert.equal(metrics.financialViability.score, null);
+  assert.equal(metrics.financialViability.score, 85);
   assert.equal(metrics.financialViability.status, "INSUFFICIENT_DATA");
   assert.deepEqual(metrics.financialViability, evaluateFinancialViability(ANSWERED_WITHOUT_PROPERTY));
 });
@@ -122,6 +122,6 @@ test("public project request keeps compatibility and adds independent metrics", 
     score: 70,
   });
   assert.equal(publicRequest.completeness.score, 100);
-  assert.equal(publicRequest.financialViability.score, null);
+  assert.equal(publicRequest.financialViability.score, 85);
   assert.equal(publicRequest.financialViability.status, "INSUFFICIENT_DATA");
 });

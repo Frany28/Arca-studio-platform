@@ -1,4 +1,4 @@
-import { describeCompatibilityEvidence } from "./projectRequestCompatibility.js";
+import { buildCompatibilityFindings, describeCompatibilityEvidence, detectCompatibilityEvidence } from "./projectRequestCompatibility.js";
 import {
   CAPITAL_TIMING_MATRIX,
   FINANCIAL_CONTEXT_ENTRIES,
@@ -17,18 +17,23 @@ export { FINANCIAL_VIABILITY_STATUSES } from "./projectRequestFinancialMatrix.js
  *
  * No mide riqueza ni demuestra que el dinero alcance para ejecutar una obra: sin precios de
  * referencia ni conocer qué cubre el presupuesto, solo puede detectar combinaciones que
- * conviene aclarar. Por eso `score` es siempre null y el resultado es un estado:
+ * conviene aclarar. El porcentaje reutiliza los pesos del algoritmo vigente y conserva el estado:
  *
  * - NO_OBVIOUS_CONFLICT: sin contradicciones con las reglas disponibles (no es una aprobación).
  * - REVIEW_REQUIRED: una combinación debe aclararla un administrador.
  * - HIGH_RISK: señal fuerte de dependencia económica (no demuestra inviabilidad).
  * - INSUFFICIENT_DATA: faltan respuestas para contrastar presupuesto y alcance.
  *
- * No aplica deducciones: la compatibilidad 3.0 ya descuenta las mismas evidencias una vez
- * por causa, y esta métrica reutiliza sus códigos sin modificar ese score.
+ * Calcula 100 menos las deducciones financieras, una por causa, sin modificar la compatibilidad.
+ * Sin las respuestas necesarias devuelve score null; no sustituye datos ausentes por solvencia.
  */
 
 const SEVERITY_RANK = { HIGH: 3, LOW: 1, MEDIUM: 2 };
+const FINANCIAL_SCORING_CAUSES = new Set([
+  "FINANCIAL_DEFINITION_INSUFFICIENT",
+  "FINANCIAL_SCOPE_MISMATCH",
+  "CAPITAL_TIMING_MISMATCH",
+]);
 
 const OUTCOME_TO_STATUS = Object.freeze({
   [FINANCIAL_OUTCOMES.HIGH_RISK]: FINANCIAL_VIABILITY_STATUSES.HIGH_RISK,
@@ -170,12 +175,36 @@ function groupFinancialFindings(entries) {
 }
 
 /**
+ * Calcula el porcentaje financiero con los pesos y la agrupación del algoritmo vigente.
+ * Parte de 100 y resta el máximo por causa financiera; no persiste ni altera otras métricas.
+ * Sin presupuesto, capital, plazo o referencia de alcance válidos devuelve null.
+ *
+ * @param {object} answers - Respuestas guardadas de la solicitud.
+ * @returns {number|null} Porcentaje de 0 a 100 o null si faltan respuestas evaluables.
+ */
+function calculateFinancialScore(answers) {
+  const hasBudget = answers.investmentRange === "undefined"
+    || isComparable(SCOPE_BUDGET_MATRIX.small_lt_80, answers.investmentRange);
+  const hasScope = isComparable(SCOPE_BUDGET_MATRIX, answers.projectSize)
+    || isComparable(QUALITY_BUDGET_MATRIX, answers.quality);
+  if (!hasBudget || !hasScope
+    || !isComparable(CAPITAL_TIMING_MATRIX, answers.capitalAvailability)
+    || !isComparable(CAPITAL_TIMING_MATRIX.available_now, answers.startTime)) return null;
+
+  const findings = buildCompatibilityFindings(detectCompatibilityEvidence(answers));
+  const deduction = findings
+    .filter((finding) => FINANCIAL_SCORING_CAUSES.has(finding.code))
+    .reduce((total, finding) => total + finding.deduction, 0);
+  return Math.max(0, Math.min(100, 100 - deduction));
+}
+
+/**
  * Evalúa la coherencia financiera observable de una solicitud con la matriz relativa.
  * Usa inversión, tamaño, calidad, modalidad, capital y plazo; no usa tipo, ubicación,
- * inmueble ni experiencia. Es pura, no persiste nada y no altera la compatibilidad.
+ * inmueble ni experiencia. Añade el porcentaje del algoritmo vigente sin alterar la compatibilidad.
  *
  * @param {object} answers - Registro de la solicitud con los nombres de campo del dominio.
- * @returns {{findings: Array<object>, score: null, status: string}} Evaluación financiera.
+ * @returns {{findings: Array<object>, score: number|null, status: string}} Evaluación financiera.
  */
 export function evaluateFinancialViability(answers) {
   const source = answers || {};
@@ -188,7 +217,7 @@ export function evaluateFinancialViability(answers) {
 
   return {
     findings,
-    score: null,
+    score: calculateFinancialScore(source),
     status: OUTCOME_TO_STATUS[outcome],
   };
 }

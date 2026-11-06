@@ -70,7 +70,10 @@ function assertScenario([id, answers, causes, [answered, applicable], financialS
 
   const financial = evaluateFinancialViability(answers);
   assert.equal(financial.status, financialStatus, `${id}: coherencia financiera (PDF §8)`);
-  assert.equal(financial.score, null, `${id}: la coherencia financiera no tiene porcentaje`);
+  const financialDeductions = ["FINANCIAL_DEFINITION_INSUFFICIENT", "FINANCIAL_SCOPE_MISMATCH", "CAPITAL_TIMING_MISMATCH"]
+    .reduce((total, cause) => total + (causes[cause] || 0), 0);
+  const hasScope = ["small_lt_80", "medium_80_200", "large_200_500", "very_large_gt_500"].includes(answers.projectSize) || answers.quality != null;
+  assert.equal(financial.score, hasScope ? 100 - financialDeductions : null, `${id}: porcentaje financiero sin duplicar causas`);
 
   assert.deepEqual(buildProjectRequestReviewObservations(answers).map(({ code }) => code), observations, `${id}: avisos de planos (PDF §11)`);
 }

@@ -4,6 +4,7 @@ import meetingSuggestedIcon from "../../../../assets/project-requests/meeting-su
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import CircleProgressBarLabel from "../../../../components/ui/CircleProgressBarLabel/CircleProgressBarLabel.jsx";
 import ProgressBarLabel from "../../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
+import ProjectRequestFinancialMetric from "../../../../components/project-requests/ProjectRequestFinancialMetric.jsx";
 import RequestDetailField from "./RequestDetailField.jsx";
 
 // Icono de la recomendación; el texto del Badge comunica el valor, no solo el color.
@@ -16,8 +17,8 @@ const RECOMMENDATION_ICONS = {
  * Bloque de evaluación del drawer: compatibilidad, información completada y viabilidad
  * financiera como métricas independientes de la API, más la decisión de reunión y la
  * justificación de la última revisión técnica, sin derivarlas del workflow.
- * Sin score, la viabilidad muestra su estado de coherencia, una aclaración y los motivos,
- * nunca una barra ni un porcentaje; "sin incoherencias" no se presenta como aprobación.
+ * La viabilidad usa la barra porcentual compartida con el detalle y conserva los motivos.
+ * Sin score muestra el estado vacío, sin sustituirlo por una puntuación de demostración.
  * Las observaciones para la revisión son avisos sin puntos y solo aparecen cuando aplican.
  * `unavailableText` se usa cuando la solicitud no llegó en la cola técnica.
  *
@@ -53,40 +54,7 @@ function AdminRequestEvaluation({ details }) {
         </dd>
       </dl>
 
-      {financialViability?.score != null ? (
-        <ProgressBarLabel
-          className="w-full"
-          position="side"
-          title="Viabilidad financiera"
-          value={financialViability.score}
-          max={100}
-          showTitle
-          animated
-          data-metric="financial-viability"
-        />
-      ) : (
-        <dl className="m-0" data-metric="financial-viability" data-status={financialViability?.status}>
-          <RequestDetailField label="Viabilidad financiera">
-            {financialViability ? (
-              <span className="flex flex-col gap-[8px]">
-                <span className={financialViability.toneClassName || undefined}>{financialViability.text}</span>
-                {financialViability.hint ? (
-                  <span className="text-[12px] leading-[14px] tracking-[-0.5px] text-[var(--color-text-100)] dark:text-[var(--color-text-200)]">
-                    {financialViability.hint}
-                  </span>
-                ) : null}
-                {financialViability.reasons.length ? (
-                  <ul className="text-body-3 m-0 flex list-disc flex-col gap-[4px] pl-[20px]" aria-label="Motivos de la evaluación financiera">
-                    {financialViability.reasons.map((reason) => (
-                      <li key={reason.code} data-outcome={reason.outcome}>{reason.explanation}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </span>
-            ) : unavailableText}
-          </RequestDetailField>
-        </dl>
-      )}
+      <ProjectRequestFinancialMetric metric={financialViability} showReasons unavailableText={unavailableText} />
 
       {completeness ? (
         <ProgressBarLabel

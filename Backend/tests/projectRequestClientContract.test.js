@@ -61,5 +61,5 @@ test("review queue expone completitud y viabilidad separadas sin publicar las re
   assert.deepEqual(request.compatibility, { level: "excellent", score: 100 });
   assert.deepEqual(request.completeness, { answered: 12, applicable: 13, missingFields: ["decisionMaker"], score: 92 });
   // Busca financiamiento con plazo flexible y presupuesto coherente: sin hallazgos financieros.
-  assert.deepEqual(request.financialViability, { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" });
+  assert.deepEqual(request.financialViability, { findings: [], score: 100, status: "NO_OBVIOUS_CONFLICT" });
 });

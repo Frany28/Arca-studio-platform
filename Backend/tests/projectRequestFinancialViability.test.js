@@ -43,7 +43,7 @@ const COHERENT_REQUEST = {
  * Evalúa la coherencia financiera de la solicitud base con los cambios indicados.
  *
  * @param {object} values - Respuestas que sustituyen a las de la solicitud base.
- * @returns {{findings: Array<object>, score: null, status: string}} Evaluación financiera.
+ * @returns {{findings: Array<object>, score: number|null, status: string}} Evaluación financiera.
  */
 function financialWith(values) {
   return evaluateFinancialViability({ ...COHERENT_REQUEST, ...values });
@@ -61,13 +61,13 @@ function summary(evaluation) {
 
 test("1. small project with a low budget is not observed", () => {
   const result = financialWith({ investmentRange: "under_10k", quality: "functional_economic" });
-  assert.deepEqual(result, { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" });
+  assert.deepEqual(result, { findings: [], score: 100, status: "NO_OBVIOUS_CONFLICT" });
 });
 
-test("2. a large project with a high budget is not rewarded nor observed; score stays null", () => {
+test("2. a large project with a high budget is not rewarded beyond 100 nor observed", () => {
   for (const investmentRange of ["50k_150k", "over_150k"]) {
     const result = financialWith({ investmentRange, projectSize: "large_200_500" });
-    assert.deepEqual(result, { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" }, investmentRange);
+    assert.deepEqual(result, { findings: [], score: 100, status: "NO_OBVIOUS_CONFLICT" }, investmentRange);
   }
   // Más presupuesto nunca cambia una celda sin conflicto.
   assert.deepEqual(financialWith({ investmentRange: "over_150k" }), financialWith({ investmentRange: "10k_50k" }));
@@ -76,7 +76,7 @@ test("2. a large project with a high budget is not rewarded nor observed; score 
 test("3. a large project with a low budget requires review, not inviability", () => {
   const result = financialWith({ investmentRange: "under_10k", projectSize: "large_200_500" });
   assert.equal(result.status, "REVIEW_REQUIRED");
-  assert.equal(result.score, null);
+  assert.equal(result.score, 75);
   assert.deepEqual(summary(result), [
     ["FINANCIAL_SCOPE_MISMATCH", "REVIEW_REQUIRED", ["largeBudgetUnder10k"]],
     ["BUDGET_COVERAGE_UNSPECIFIED", "INFORMATIVE", ["budgetCoverageUnspecified"]],
@@ -135,7 +135,7 @@ test("10. undefined capital never assumes solvency or insolvency", () => {
   // Inicio inmediato sin capital definido: dependencia económica fuerte, no inviabilidad.
   const immediate = financialWith({ capitalAvailability: "undefined", startTime: "immediate" });
   assert.equal(immediate.status, "HIGH_RISK");
-  assert.equal(immediate.score, null);
+  assert.equal(immediate.score, 80);
 
   // Capital declarado con inicio inmediato no genera advertencia por sí solo.
   assert.equal(financialWith({ capitalAvailability: "available_now", startTime: "immediate" }).status, "NO_OBVIOUS_CONFLICT");
@@ -199,6 +199,17 @@ test("14. evidence of the same cause is grouped into one finding with the strong
   assert.deepEqual(scopeFindings[0].evidence.map(({ code }) => code), ["veryLargeBudget10k50k", "luxuryBudget10k50k"]);
   assert.equal(scopeFindings[0].severity, "HIGH");
   assert.equal(result.findings.filter(({ code }) => code === "BUDGET_COVERAGE_UNSPECIFIED").length, 1);
+});
+
+test("porcentaje financiero: máximo por causa, causas independientes y datos insuficientes", () => {
+  assert.equal(financialWith({ investmentRange: "under_10k", projectSize: "very_large_gt_500", quality: "luxury" }).score, 65, "35, no 35 + 30, por alcance y calidad");
+  assert.equal(financialWith({ capitalAvailability: "undefined", investmentRange: "under_10k", projectSize: "very_large_gt_500", quality: "luxury", startTime: "immediate" }).score, 45, "35 de alcance + 20 de capital; el inmueble no participa");
+  assert.equal(financialWith({ investmentRange: "undefined", projectSize: "very_large_gt_500", quality: "luxury", startTime: "immediate" }).score, 80, "máximo de la causa de definición financiera, no solo la evidencia base de 15");
+  assert.equal(financialWith({ capitalAvailability: "seeking_financing", startTime: "1_3_months" }).score, 92);
+  for (const missing of [{ quality: null, projectSize: "unknown" }, { investmentRange: null }, { capitalAvailability: null }, { startTime: null }]) {
+    assert.equal(financialWith(missing).score, null, JSON.stringify(missing));
+  }
+  assert.equal(evaluateFinancialViability(null).score, null);
 });
 
 test("15. historical compatibility results keep their contract", () => {

@@ -139,8 +139,8 @@ test("el detalle devuelve métricas, relaciones, adjuntos y proyecto convertido 
   assert.equal("answers" in projectRequest, false);
   assert.deepEqual(projectRequest.compatibility, { level: "excellent", score: 92 });
   assert.equal(Number.isInteger(projectRequest.completeness.score), true);
-  // La coherencia financiera es cualitativa: el contrato vigente no expone puntuación.
-  assert.equal(projectRequest.financialViability.score, null);
+  // Porcentaje calculado desde las respuestas, independiente del 92 de compatibilidad persistida.
+  assert.equal(projectRequest.financialViability.score, 100);
   assert.equal(typeof projectRequest.financialViability.status, "string");
   assert.ok(Array.isArray(projectRequest.reviewObservations));
   assert.deepEqual(projectRequest.convertedProject, { id: 40, name: "Casa Prueba", publicSlug: "solicitud-9", status: "pending" });

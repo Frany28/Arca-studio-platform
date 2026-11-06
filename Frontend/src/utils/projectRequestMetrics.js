@@ -9,6 +9,12 @@ export const FINANCIAL_VIABILITY_UNAVAILABLE_TEXT = "Evaluación no disponible";
 
 const COMPLETE_FILL_CLASS = "bg-[var(--color-success-200)]";
 const INCOMPLETE_FILL_CLASS = "bg-[var(--color-warning-200)]";
+const FINANCIAL_FILL_BY_STATUS = {
+  HIGH_RISK: "bg-[var(--color-danger-200)]",
+  INSUFFICIENT_DATA: INCOMPLETE_FILL_CLASS,
+  NO_OBVIOUS_CONFLICT: COMPLETE_FILL_CLASS,
+  REVIEW_REQUIRED: INCOMPLETE_FILL_CLASS,
+};
 
 /**
  * Normaliza la completitud devuelta por la API para una barra de progreso.
@@ -59,11 +65,11 @@ function toFinancialReasons(findings) {
 
 /**
  * Normaliza la viabilidad financiera devuelta por la API.
- * Sin score numérico devuelve el estado de coherencia con su texto, tono y motivos; nunca
- * un porcentaje. Un estado desconocido se muestra como evaluación no disponible.
+ * Con score numérico devuelve el porcentaje entero y el color semántico de la barra.
+ * Conserva motivos y estados anteriores para respuestas incompletas o de versiones previas.
  *
  * @param {{findings?: Array<object>, score?: number|null, status?: string}|null|undefined} financialViability - Métrica de la API.
- * @returns {{hint: string, reasons: Array<object>, score: number|null, status: string, text: string, toneClassName: string}|null} Datos de presentación o null si falta.
+ * @returns {{fillClassName?: string, hint: string, reasons: Array<object>, score: number|null, status: string, text: string, toneClassName: string}|null} Datos de presentación o null si falta.
  */
 export function getFinancialViabilityPresentation(financialViability) {
   if (!financialViability) return null;
@@ -72,6 +78,7 @@ export function getFinancialViabilityPresentation(financialViability) {
   const score = Number(financialViability.score);
   if (financialViability.score != null && Number.isFinite(score)) {
     return {
+      fillClassName: FINANCIAL_FILL_BY_STATUS[financialViability.status] || "bg-[var(--color-neutral-400)]",
       hint: "",
       reasons,
       score: Math.round(Math.max(0, Math.min(100, score))),

@@ -29,7 +29,7 @@ const REQUEST = Object.freeze({
   ],
   financialViability: {
     findings: [{ code: "CAPITAL_TIMING_MISMATCH", explanation: "El capital no coincide con el inicio previsto.", outcome: "REVIEW_REQUIRED" }],
-    score: null,
+    score: 85,
     status: "REVIEW_REQUIRED",
   },
   formattedAddress: "Maracaibo, Zulia, Venezuela",
@@ -130,10 +130,10 @@ test("muestra la solicitud real con una única lectura y sin descargar adjuntos"
   await page.getByText("Proyecto Residencial", { exact: true }).waitFor();
   assert.equal(await page.getByRole("progressbar", { name: /^Compatibilidad: 92 de 100/ }).count(), 1);
   assert.equal(await page.locator("[aria-current='step']").innerText().then((text) => text.includes("Revisión")), true);
-  // Coherencia financiera cualitativa en la posición del diseño: sin barra ni porcentaje.
-  const financial = page.locator("[data-metric='financial-coherence']");
-  assert.match(await financial.innerText(), /Requiere revisión financiera/);
-  assert.doesNotMatch(await financial.innerText(), /%/);
+  const financial = page.locator("[data-metric='financial-viability']");
+  assert.equal(await financial.getByRole("progressbar").getAttribute("aria-valuenow"), "85");
+  assert.match(await financial.innerText(), /85%/);
+  assert.doesNotMatch(await financial.innerText(), /Requiere revisión financiera/);
   await page.getByText("92%", { exact: true }).last().waitFor();
   for (const text of ["$10,000 - $50,000 USD", "Disponible ahora", "plano.pdf", "fachada.png", "Responsables asignados", "Recomienda aprobar"]) {
     await page.getByText(text, { exact: true }).first().waitFor();
@@ -151,6 +151,33 @@ test("el resumen reutiliza el drawer y solo entonces consulta al cliente", async
   await drawer.getByText("Agendar reunión", { exact: true }).waitFor();
   assert.equal(await drawer.getByRole("button", { name: "Ver solicitud" }).count(), 0);
   assert.deepEqual(reads.filter((read) => !SHELL_READS.has(read)), [DETAIL_PATH, "/api/admin/users/11"]);
+});
+
+test("la viabilidad porcentual coincide en detalle y resumen, sin datos de prototipo", async (context) => {
+  for (const score of [95, 0, null]) {
+    const { page } = await openPage(context, { detail: { json: { projectRequest: {
+      ...REQUEST, financialViability: { findings: [], score, status: "NO_OBVIOUS_CONFLICT" },
+    } } } });
+    const metric = page.locator("[data-metric='financial-viability']");
+    if (score == null) {
+      assert.equal(await metric.getByRole("progressbar").count(), 0);
+      await metric.getByText("Información no disponible", { exact: true }).waitFor();
+    } else {
+      assert.equal(await metric.getByRole("progressbar", { name: `Viabilidad financiera: ${score}%` }).getAttribute("aria-valuenow"), String(score));
+      assert.match(await metric.innerText(), new RegExp(`${score}%`));
+    }
+    await page.getByRole("button", { name: "Ver resumen & recomendación" }).click();
+    const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+    const drawerMetric = drawer.locator("[data-metric='financial-viability']");
+    if (score == null) {
+      assert.equal(await drawerMetric.getByRole("progressbar").count(), 0);
+    } else {
+      assert.equal(await drawerMetric.getByRole("progressbar").getAttribute("aria-valuenow"), String(score));
+      assert.match(await drawerMetric.innerText(), new RegExp(`${score}%`));
+      assert.equal(await drawerMetric.locator(".progress-fill-reveal").count(), 1);
+    }
+    assert.doesNotMatch(await drawerMetric.innerText(), /Subtítulo aquí|Sin incoherencias financieras detectadas/);
+  }
 });
 
 test("responsive sin desbordamiento horizontal en claro y oscuro", async (context) => {

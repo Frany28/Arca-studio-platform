@@ -124,16 +124,16 @@ test("9. históricos 3.0 y 3.1 conservan puntuación, nivel y motivos de referen
 
 test("10. la coherencia financiera no cambia con referencias ni con la nueva versión", () => {
   const scenarios = [
-    [RESIDENTIAL, "NO_OBVIOUS_CONFLICT"],
-    [{ ...RESIDENTIAL, capitalAvailability: "undefined", startTime: "immediate" }, "HIGH_RISK"],
-    [{ ...RESIDENTIAL, investmentRange: "under_10k", projectSize: "large_200_500" }, "REVIEW_REQUIRED"],
-    [{ ...RESIDENTIAL, investmentRange: "undefined" }, "INSUFFICIENT_DATA"],
-    [STAND, "NO_OBVIOUS_CONFLICT"],
+    [RESIDENTIAL, "NO_OBVIOUS_CONFLICT", 100],
+    [{ ...RESIDENTIAL, capitalAvailability: "undefined", startTime: "immediate" }, "HIGH_RISK", 80],
+    [{ ...RESIDENTIAL, investmentRange: "under_10k", projectSize: "large_200_500" }, "REVIEW_REQUIRED", 75],
+    [{ ...RESIDENTIAL, investmentRange: "undefined" }, "INSUFFICIENT_DATA", 85],
+    [STAND, "NO_OBVIOUS_CONFLICT", 100],
   ];
-  for (const [answers, status] of scenarios) {
+  for (const [answers, status, score] of scenarios) {
     const result = evaluateFinancialViability(answers);
     assert.equal(result.status, status);
-    assert.equal(result.score, null);
+    assert.equal(result.score, score);
     assert.deepEqual(evaluateFinancialViability({ ...answers, hasFiles: false, referenceLink: null }), result);
     assert.deepEqual(evaluateFinancialViability({ ...answers, ...REFERENCES }), result);
   }

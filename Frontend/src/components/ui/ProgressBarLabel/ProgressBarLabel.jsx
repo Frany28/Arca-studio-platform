@@ -37,6 +37,7 @@ function ProgressBarLabel({
   valueLabel,
   trackClassName,
   fillClassName,
+  "aria-label": ariaLabel,
   ...props
 }) {
   const resolvedPosition = PROGRESS_BAR_LABEL_POSITIONS.includes(position)
@@ -56,6 +57,7 @@ function ProgressBarLabel({
         className,
       )}
       data-node-id={PROGRESS_BAR_LABEL_NODE_IDS[resolvedPosition]}
+      aria-label={ariaLabel}
       {...props}
     >
       {resolvedPosition === "top" && showTitle ? (
@@ -76,6 +78,7 @@ function ProgressBarLabel({
             trackClassName,
           )}
           role="progressbar"
+          aria-label={ariaLabel || title}
           aria-valuemin={0}
           aria-valuemax={max}
           aria-valuenow={clamp(value, 0, max)}
@@ -100,6 +103,7 @@ function ProgressBarLabel({
               trackClassName,
             )}
             role="progressbar"
+            aria-label={ariaLabel || title}
             aria-valuemin={0}
             aria-valuemax={max}
             aria-valuenow={clamp(value, 0, max)}

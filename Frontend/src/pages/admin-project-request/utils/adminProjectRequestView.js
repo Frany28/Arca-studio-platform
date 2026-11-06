@@ -47,8 +47,8 @@ export function buildAdminProjectRequestHeader(projectRequest) {
 }
 
 /**
- * Indicadores de la fila de progreso: coherencia financiera cualitativa (sin porcentaje,
- * algoritmo 3.3) en la posición del diseño y porcentaje entero de información completada.
+ * Indicadores porcentuales de la fila de progreso: viabilidad financiera del algoritmo
+ * e información completada de la API, independientes de la compatibilidad general.
  *
  * @param {Object} projectRequest - Detalle administrativo de la API.
  * @returns {{completeness: Object|null, financialViability: Object|null}} Métricas normalizadas.

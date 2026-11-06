@@ -1,13 +1,13 @@
 import ProgressBarLabel from "../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
+import ProjectRequestFinancialMetric from "../../../components/project-requests/ProjectRequestFinancialMetric.jsx";
 
 const UNAVAILABLE_TEXT = "Información no disponible";
 const METRIC_CLASS_NAME = "flex min-w-[200px] flex-1 flex-col gap-[4px]";
 
 /**
  * Fila de indicadores bajo la cabecera (Figma 3727:687210: dos «Progress bar label» de
- * 850 px máx. con gap 24). La primera posición conserva la jerarquía del diseño pero muestra
- * la viabilidad financiera como estado de coherencia del algoritmo 3.3: cualitativo, nunca una barra ni un
- * porcentaje. La segunda es la información completada como porcentaje entero real.
+ * 850 px máx. con gap 24). Ambas posiciones muestran porcentajes enteros de la API:
+ * viabilidad financiera e información completada, sin derivarlas de la compatibilidad.
  *
  * @param {Object} props - Métricas normalizadas por `buildAdminProjectRequestMetrics`.
  * @param {Object|null} props.completeness - Completitud de la API o null si falta.
@@ -17,17 +17,7 @@ const METRIC_CLASS_NAME = "flex min-w-[200px] flex-1 flex-col gap-[4px]";
 function AdminProjectRequestMetrics({ completeness, financialViability }) {
   return (
     <section aria-label="Indicadores de la solicitud" className="flex w-full max-w-[850px] flex-wrap items-start gap-[24px]">
-      <dl className={`${METRIC_CLASS_NAME} m-0`} data-metric="financial-coherence" data-status={financialViability?.status}>
-        <dt className="text-heading-8 text-[var(--color-text-300)]">Viabilidad financiera</dt>
-        <dd className="m-0 flex flex-col gap-[4px]">
-          <span className={`text-heading-8 ${financialViability?.toneClassName || "text-[var(--color-text-200)]"}`}>
-            {financialViability ? financialViability.text : UNAVAILABLE_TEXT}
-          </span>
-          {financialViability?.hint ? (
-            <span className="text-body-4 text-[var(--color-text-100)] dark:text-[var(--color-text-200)]">{financialViability.hint}</span>
-          ) : null}
-        </dd>
-      </dl>
+      <ProjectRequestFinancialMetric className={METRIC_CLASS_NAME} metric={financialViability} />
 
       {completeness ? (
         <ProgressBarLabel

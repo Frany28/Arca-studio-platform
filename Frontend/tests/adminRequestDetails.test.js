@@ -136,6 +136,20 @@ test("la viabilidad financiera solo muestra porcentaje cuando la API lo calcula"
   assert.equal(getFinancialViabilityPresentation(undefined), null);
 });
 
+test("el porcentaje financiero se normaliza sin depender del score general y conserva sus motivos", () => {
+  for (const [status, token] of [["NO_OBVIOUS_CONFLICT", "success"], ["REVIEW_REQUIRED", "warning"], ["HIGH_RISK", "danger"]]) {
+    const metric = getFinancialViabilityPresentation({ score: 94.6, status, findings: [{ code: "X", explanation: "Motivo financiero", outcome: "REVIEW_REQUIRED" }] });
+    assert.equal(metric.score, 95);
+    assert.equal(metric.fillClassName, `bg-[var(--color-${token}-200)]`);
+    assert.equal(metric.reasons[0].explanation, "Motivo financiero");
+    assert.equal(metric.text, "");
+  }
+  assert.equal(getFinancialViabilityPresentation({ score: 0 }).score, 0);
+  assert.equal(getFinancialViabilityPresentation({ score: 120 }).score, 100);
+  assert.equal(getFinancialViabilityPresentation({ score: -10 }).score, 0);
+  assert.equal(getFinancialViabilityPresentation({ score: "inválido" }).score, null);
+});
+
 test("la revisión más reciente no depende del orden de la API", () => {
   assert.equal(getLatestRequestReview(QUEUE_REQUEST.reviews).recommendation, "approve");
   assert.equal(getLatestRequestReview([...QUEUE_REQUEST.reviews].reverse()).recommendation, "approve");

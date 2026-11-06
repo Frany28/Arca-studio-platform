@@ -21,7 +21,7 @@ const REQUEST = Object.freeze({
   assignees: [{ hasProfilePhoto: true, id: 5, name: "Ana Pérez", profilePhotoUrl: "/api/admin/assignees/5/profile-photo", roleCode: "architect" }],
   compatibility: { level: "medium", score: 61.6 },
   completeness: { answered: 11, applicable: 13, missingFields: ["quality", "experience"], score: 84.6 },
-  financialViability: { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" },
+  financialViability: { findings: [], score: 95, status: "NO_OBVIOUS_CONFLICT" },
   id: 9,
   projectName: "Casa Prueba",
   projectType: "residential",
@@ -68,14 +68,13 @@ test("sin compatibilidad ni tipo la cabecera no inventa un 0 % ni un tipo", () =
   assert.equal(header.project.category, "Tipo de proyecto no registrado");
 });
 
-test("información completada es entera y la coherencia financiera es cualitativa", () => {
+test("información completada y viabilidad financiera usan porcentajes independientes de la API", () => {
   const metrics = buildAdminProjectRequestMetrics(REQUEST);
 
   assert.equal(metrics.completeness.score, 85);
   assert.equal(metrics.completeness.answered, 11);
-  assert.equal(metrics.financialViability.score, null);
-  assert.equal(metrics.financialViability.text, "Sin incoherencias financieras detectadas");
-  assert.equal(metrics.financialViability.hint, "No equivale a una aprobación financiera.");
+  assert.equal(metrics.financialViability.score, 95);
+  assert.equal(metrics.financialViability.fillClassName, "bg-[var(--color-success-200)]");
 
   const missing = buildAdminProjectRequestMetrics({});
   assert.equal(missing.completeness, null);

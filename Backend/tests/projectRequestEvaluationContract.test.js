@@ -100,7 +100,7 @@ test("3.1: el contrato guardado separa el stand de la evaluación del inmueble y
             assert.deepEqual(publicRequest.completeness.missingFields, expectedMissing);
             assert.equal(publicRequest.completeness.answered, publicRequest.completeness.applicable - expectedMissing.length);
             assert.equal(publicRequest.completeness.score, Math.round(publicRequest.completeness.answered / publicRequest.completeness.applicable * 100));
-            assert.deepEqual(publicRequest.financialViability, { findings: [], score: null, status: "NO_OBVIOUS_CONFLICT" });
+            assert.deepEqual(publicRequest.financialViability, { findings: [], score: 100, status: "NO_OBVIOUS_CONFLICT" });
             assert.deepEqual(publicRequest.standRequirements, body.standRequirements);
             assert.equal(new Set(evaluation.findings.map(({ code }) => code)).size, evaluation.findings.length);
           }
