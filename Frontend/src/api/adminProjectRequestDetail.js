@@ -1,10 +1,11 @@
 /* Deduplica la lectura del detalle administrativo de una solicitud mientras está en curso. */
 import { api } from "./http.js";
 
-// Clave: ID de la solicitud. Alcance: pestaña actual (ruta exclusiva de administradores).
+// Clave: usuario + ID de la solicitud. Alcance: pestaña actual (ruta exclusiva de
+// administradores); incluir al usuario impide entregar una lectura iniciada con otra sesión.
 // Duración: solo mientras la petición está en curso; al resolverse o fallar se elimina, de
-// modo que cada visita o reintento lee el estado vigente y ningún error queda en caché.
-const inFlightByRequestId = new Map();
+// modo que cada visita, reintento o revalidación lee el estado vigente y ningún error queda en caché.
+const inFlightByKey = new Map();
 
 /**
  * Lee el detalle administrativo de una solicitud reutilizando la petición equivalente en curso.
@@ -13,18 +14,19 @@ const inFlightByRequestId = new Map();
  * La señal del consumidor no cancela la petición compartida, solo su uso del resultado.
  *
  * @param {number|string} projectRequestId - Solicitud a consultar.
- * @param {{signal?: AbortSignal}} [options] - Cancelación del consumidor.
+ * @param {{signal?: AbortSignal, scopeKey?: number|string}} [options] - Cancelación del consumidor
+ *   y usuario de la sesión que delimita la deduplicación.
  * @returns {Promise<{projectRequest: Object}>} Respuesta de `GET /admin/project-requests/:id`.
  */
-export function loadAdminProjectRequest(projectRequestId, { signal } = {}) {
-  const key = String(projectRequestId);
-  let request = inFlightByRequestId.get(key);
+export function loadAdminProjectRequest(projectRequestId, { scopeKey, signal } = {}) {
+  const key = `${scopeKey ?? "admin-session"}:${projectRequestId}`;
+  let request = inFlightByKey.get(key);
 
   if (!request) {
     request = api.admin
       .getProjectRequest({ projectRequestId })
-      .finally(() => inFlightByRequestId.delete(key));
-    inFlightByRequestId.set(key, request);
+      .finally(() => inFlightByKey.delete(key));
+    inFlightByKey.set(key, request);
   }
 
   if (!signal) return request;

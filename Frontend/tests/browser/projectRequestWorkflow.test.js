@@ -30,7 +30,7 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Intercepta HTTP del hook real y permite resolver lecturas y mutaciones de forma controlada.
  * Registra peticiones y errores; cada prueba dispone de sesión y transportes aislados.
  */
-async function openPage(context, { role = "architect", queue = [REQUEST], queuePages = {}, overviewRequests, holdQueue = false, realDashboard = false, clientResponse } = {}) {
+async function openPage(context, { role = "architect", queue = [REQUEST], queuePages = {}, overviewRequests, assignees = [], holdQueue = false, realDashboard = false, clientResponse } = {}) {
   const session = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await session.newPage();
   const calls = [];
@@ -73,8 +73,9 @@ async function openPage(context, { role = "architect", queue = [REQUEST], queueP
       "/api/auth/me": { user: { id: 1, firstName: "Workflow", email: "workflow@example.test", role, status: "active" } },
       "/api/projects": { projects: [], nextCursor: null },
       "/api/admin/dashboard-metrics": { metrics: {} },
-      "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: overviewRequests || queue } },
-      "/api/admin/assignees": { assignees: [] },
+      // overviewRequests puede ser una función para simular el estado vigente tras una mutación.
+      "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: (typeof overviewRequests === "function" ? overviewRequests() : overviewRequests) || queue } },
+      "/api/admin/assignees": { assignees },
       "/api/admin/users/41": { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } },
       "/api/admin/project-requests/7": { projectRequest: { ...REQUEST, files: [], reviews: [] } },
     };
@@ -733,4 +734,139 @@ test("Dashboard admin real: el drawer localiza en páginas siguientes una solici
   const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
   await drawer.getByText("Cabimas, Zulia", { exact: true }).first().waitFor();
   assert.equal(calls.filter((call) => call.path.endsWith("/review-queue") && (call.search || "").includes("cursor=c2")).length, 1);
+});
+
+// --- Fase 2: sincronización tras operaciones confirmadas ---
+
+/** Rutas que el dashboard admin relee tras una mutación o al reanudar la vista. */
+const SYNC_PATHS = ["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/project-requests/review-queue"];
+/** Cuenta lecturas por ruta para comparar antes y después de una operación. */
+function countReads(calls, paths) {
+  return paths.map((path) => calls.filter((call) => call.method === "GET" && call.path === path).length);
+}
+
+for (const [role, label, response, expected] of [
+  ["architect", "Guardar revisión", { review: {} }, { title: "Revisión guardada", content: "Casa Norte", theme: "Success" }],
+  ["admin", "Confirmar decisión", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
+]) {
+  test(`${role}: el aviso de éxito se publica solo tras la confirmación de la API`, async (context) => {
+    const { page, mutations } = await openPage(context, { role });
+    await openRequest(page);
+    const dialog = page.getByRole("dialog");
+    if (role === "admin") await dialog.getByRole("button", { name: "Aprobar", exact: true }).click();
+    await dialog.getByRole("textbox").fill("Nota de la operación");
+    if (role === "architect") await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
+    await dialog.getByRole("button", { name: label, exact: true }).click();
+    await waitMutation(page, mutations);
+    assert.equal((await state(page)).workflow.feedback, null);
+    await mutations[0].fulfill({ json: response });
+    await waitState(page, (result) => Boolean(result.workflow.feedback));
+    const { feedback } = (await state(page)).workflow;
+    for (const [key, value] of Object.entries(expected)) assert.equal(feedback[key], value, key);
+    // El cierre solo descarta el aviso indicado.
+    await page.evaluate(() => window.workflowHarness.result.workflow.dismissFeedback("otro-aviso"));
+    assert.notEqual((await state(page)).workflow.feedback, null);
+    await page.evaluate((id) => window.workflowHarness.result.workflow.dismissFeedback(id), feedback.id);
+    await waitState(page, (result) => result.workflow.feedback === null);
+  });
+}
+
+for (const [role, code] of [["admin", "PROJECT_REQUEST_INVALID_STATE"], ["architect", "PROJECT_REQUEST_CLOSED"], ["admin", "PROJECT_REQUEST_NOT_FOUND"]]) {
+  test(`${role}: ${code} relee la cola y conserva el modal sin aviso de éxito`, async (context) => {
+    const { page, calls, mutations } = await openPage(context, { role });
+    await openRequest(page);
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox").fill("Nota conservada");
+    if (role === "architect") await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
+    await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Guardar revisión", exact: true }).click();
+    await waitMutation(page, mutations);
+    const queueReread = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/project-requests/review-queue");
+    await mutations[0].fulfill({ status: code.endsWith("NOT_FOUND") ? 404 : 409, json: { code, message: "La solicitud ya cambió de estado." } });
+    await queueReread;
+    await waitState(page, (result) => !result.workflow.submitting && Boolean(result.workflow.error) && !result.reviewQueue.loading);
+    assert.equal(queueCalls(calls), 2);
+    const result = await state(page);
+    assert.equal(result.workflow.selectedRequest.id, 7);
+    assert.equal(result.workflow.feedback, null);
+    assert.equal(await dialog.getByRole("textbox").inputValue(), "Nota conservada");
+    assert.deepEqual(await page.evaluate(() => window.workflowHarness.events), []);
+  });
+}
+
+test("Dashboard admin real: aprobar avisa del proyecto creado y retira la solicitud del overview", async (context) => {
+  let decided = false;
+  const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, overviewRequests: () => (decided ? [] : [REQUEST]) });
+  await page.waitForLoadState("networkidle");
+  const newRequests = page.locator('[data-admin-new-requests="true"]');
+  await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Acciones para Casa Norte" }).click();
+  await page.getByRole("menuitem", { name: "Aprobar" }).click();
+  const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
+  await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await decisionRequest;
+  assert.equal(mutations.length, 1);
+  decided = true;
+  await mutations[0].fulfill({ json: { project: { id: 40, name: "Casa Norte", status: "pending" }, projectRequest: { id: 7, status: "converted" } } });
+  await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
+  await page.getByText("Proyecto creado correctamente.", { exact: true }).waitFor();
+  await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).waitFor({ state: "detached" });
+  await page.waitForLoadState("networkidle");
+  assert.equal(await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).count(), 0);
+});
+
+test("Dashboard admin real: un conflicto de estado relee overview, métricas y cola sin cerrar el modal", async (context) => {
+  const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true });
+  await page.waitForLoadState("networkidle");
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  const before = countReads(calls, SYNC_PATHS);
+  const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
+  await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await decisionRequest;
+  const reread = SYNC_PATHS.map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
+  await mutations[0].fulfill({ status: 409, json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes que están en revisión." } });
+  await Promise.all(reread);
+  await page.waitForLoadState("networkidle");
+  assert.deepEqual(countReads(calls, SYNC_PATHS), before.map((count) => count + 1));
+  await page.getByRole("dialog").getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
+  assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
+});
+
+test("Dashboard admin real: una asignación confirmada relee overview y métricas además de la cola", async (context) => {
+  const { page, calls, mutations } = await openPage(context, {
+    role: "admin",
+    realDashboard: true,
+    assignees: [{ id: 11, name: "Luis Mora", roleCode: "architect" }],
+  });
+  await page.waitForLoadState("networkidle");
+  const before = countReads(calls, SYNC_PATHS);
+  const field = page.getByLabel("Responsables de Casa Norte").locator("visible=true").first();
+  await field.click();
+  await field.fill("Luis");
+  const assignmentRequest = page.waitForRequest((request) => request.method() === "PUT");
+  await field.press("Enter");
+  await assignmentRequest;
+  assert.equal(mutations.length, 1);
+  const assignment = calls.find((call) => call.method === "PUT");
+  assert.equal(assignment.path, "/api/admin/project-requests/7/assignees");
+  assert.deepEqual([...assignment.body.assigneeIds].sort((a, b) => a - b), [9, 11]);
+  const reread = SYNC_PATHS.map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
+  await mutations[0].fulfill({ json: { assignees: [{ id: 9, name: "Ana" }, { id: 11, name: "Luis Mora" }] } });
+  await Promise.all(reread);
+  await page.waitForLoadState("networkidle");
+  assert.deepEqual(countReads(calls, SYNC_PATHS), before.map((count) => count + 1));
+});
+
+test("Dashboard admin real: recuperar la conexión revalida overview, métricas y cola sin releer proyectos", async (context) => {
+  const { page, calls } = await openPage(context, { role: "admin", realDashboard: true });
+  await page.waitForLoadState("networkidle");
+  const paths = [...SYNC_PATHS, "/api/projects"];
+  const before = countReads(calls, paths);
+  const reread = SYNC_PATHS.map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await Promise.all(reread);
+  await page.waitForLoadState("networkidle");
+  assert.deepEqual(countReads(calls, paths), [...before.slice(0, 3).map((count) => count + 1), before[3]]);
+  // El contenido sigue visible durante y después de la revalidación.
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).waitFor();
 });

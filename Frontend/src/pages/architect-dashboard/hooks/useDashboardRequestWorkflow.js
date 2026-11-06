@@ -1,6 +1,10 @@
 import { useProjectRequestWorkflow } from "../../../hooks/useProjectRequestWorkflow.js";
 import { submitArchitectRequestReview } from "../utils/architectRequestReview.js";
 import { submitAdminRequestDecision } from "../../admin-dashboard/utils/adminRequestDecision.js";
+import {
+  getProjectRequestDecisionFeedback,
+  getProjectRequestReviewFeedback,
+} from "../../../utils/projectRequestSync.js";
 import { useAdminRequestAssignments } from "../../admin-dashboard/hooks/useAdminRequestAssignments.js";
 
 /**
@@ -14,7 +18,7 @@ import { useAdminRequestAssignments } from "../../admin-dashboard/hooks/useAdmin
  * @param {Object|null} params.firstAdminRequest - Solicitud prioritaria del overview para las acciones de login.
  * @param {Function} params.onRequestAssigneesUpdated - Recibe ID y responsables confirmados para actualizar el overview.
  * @param {Function} params.onAdminDecisionCommitted - Solicita refrescar overview, métricas y proyectos tras una decisión admin.
- * @returns {Object} reviewQueue agrupa lectura/error/reintento; workflow, selección/error/envío;
+ * @returns {Object} reviewQueue agrupa lectura/error/reintento; workflow, selección/error/envío/aviso de éxito;
  * assignment, modal/borrador/envío/feedback; loginActions, accesos a asignación y revisión.
  */
 export function useDashboardRequestWorkflow({
@@ -31,6 +35,9 @@ export function useDashboardRequestWorkflow({
     submitOperation: roleCode === "admin"
       ? (request, values) => submitAdminRequestDecision(request, values, onAdminDecisionCommitted)
       : submitArchitectRequestReview,
+    getSuccessFeedback: roleCode === "admin"
+      ? (request, values, result) => getProjectRequestDecisionFeedback(request, values.action, result)
+      : getProjectRequestReviewFeedback,
   });
   const { assignment, loginActions } = useAdminRequestAssignments({
     firstAdminRequest,

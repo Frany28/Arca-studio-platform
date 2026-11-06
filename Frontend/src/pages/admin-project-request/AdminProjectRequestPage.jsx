@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
 import { loadAdminProjectRequest } from "../../api/adminProjectRequestDetail.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
+import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import Breadcrumb from "../../components/ui/Breadcrumb/Breadcrumb.jsx";
 import EmptyState from "../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
@@ -21,6 +22,7 @@ import ProjectOverviewHeader from "../projects/components/ProjectOverviewHeader.
 import AdminProjectRequestActionBar from "./components/AdminProjectRequestActionBar.jsx";
 import AdminProjectRequestMetrics from "./components/AdminProjectRequestMetrics.jsx";
 import AdminProjectRequestTeam from "./components/AdminProjectRequestTeam.jsx";
+import { useAdminProjectRequestSync } from "./hooks/useAdminProjectRequestSync.js";
 import {
   buildAdminProjectRequestHeader,
   buildAdminProjectRequestMetrics,
@@ -38,6 +40,8 @@ const NO_PROJECT_SHORTCUTS = [];
  * indicadores del algoritmo 3.3, adjuntos, responsables y revisiones; el drawer «Detalles de
  * Solicitud» del dashboard se reutiliza como resumen y recomendación, y solo entonces se
  * consultan los datos del cliente. Admite enlaces directos y vuelve al contexto de origen.
+ * Cada visita lee el estado vigente; al volver a la pestaña o recuperar la conexión se
+ * revalida en segundo plano y se avisa de los cambios hechos por otras personas.
  *
  * @returns {import("react").ReactElement} Página de la solicitud.
  */
@@ -51,13 +55,20 @@ function AdminProjectRequestPage() {
   const projectRequestId = parseProjectRequestId(params.projectRequestId);
   const returnTarget = getRequestReturnTarget(location.state);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const sessionScope = user?.id ?? user?.email ?? null;
+  // Lector deduplicado del endpoint administrativo (nunca el del propietario), estable mientras
+  // no cambie la sesión: un cambio de usuario vuelve a leer en lugar de reutilizar la lectura.
+  const fetchProjectRequest = useCallback(
+    (id, options) => loadAdminProjectRequest(id, { ...options, scopeKey: sessionScope }),
+    [sessionScope],
+  );
   const detail = useProjectRequestDetail({
     enabled: projectRequestId !== null,
-    // Lector estable y deduplicado del endpoint administrativo (nunca el del propietario).
-    fetchProjectRequest: loadAdminProjectRequest,
+    fetchProjectRequest,
     projectRequestId,
   });
   const projectRequest = detail.projectRequest;
+  const sync = useAdminProjectRequestSync({ hasProjectRequest: Boolean(projectRequest), revalidate: detail.revalidate });
   const drawerDetails = useMemo(
     () => (projectRequest ? buildAdminRequestDetails({ queueRequest: projectRequest, summary: projectRequest }) : null),
     [projectRequest],
@@ -143,6 +154,21 @@ function AdminProjectRequestPage() {
         onClose={() => setIsNotificationsDrawerOpen(false)}
         recentActivity={[]}
       />
+      {sync.feedback ? (
+        <AlertToast
+          trigger={sync.feedback.id}
+          theme={sync.feedback.theme}
+          title={sync.feedback.title}
+          content={sync.feedback.content}
+          description={sync.feedback.description}
+          showActions={Boolean(sync.feedback.canRetry)}
+          secondaryActionLabel="Ahora no"
+          primaryActionLabel="Reintentar"
+          onPrimaryAction={sync.revalidate}
+          onDismiss={() => sync.dismissFeedback(sync.feedback.id)}
+          aria-label={sync.feedback.title}
+        />
+      ) : null}
     </InternalDashboardLayout>
   );
 }

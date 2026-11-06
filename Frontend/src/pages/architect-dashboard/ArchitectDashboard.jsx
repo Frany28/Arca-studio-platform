@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api/http.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
+import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import EmptyState from "../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
@@ -13,6 +14,7 @@ import {
 } from "../../hooks/useProjectComments.js";
 import { getProjectNamesById } from "../../utils/commentDisplay.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
+import { getProjectRequestReviewFeedback } from "../../utils/projectRequestSync.js";
 import { getCommentNavigationParams } from "../../utils/commentSelection.js";
 import { ARCHITECT_DRAWER_RECENT_ACTIVITY } from "./architectDashboardData.js";
 import ArchitectProjectGroup from "./components/ArchitectProjectGroup.jsx";
@@ -69,6 +71,8 @@ function ArchitectDashboard({ empty = false }) {
     empty,
     scopeKey: currentUser.roleCode,
     submitOperation: submitArchitectRequestReview,
+    // Aviso «Revisión guardada» solo tras la confirmación de la API; la cola se relee después.
+    getSuccessFeedback: getProjectRequestReviewFeedback,
   });
   const canManagePublication =
     user?.permissionCodes?.includes("projects.publish");
@@ -266,6 +270,17 @@ function ArchitectDashboard({ empty = false }) {
         onClose={workflow.close}
         onSubmit={workflow.submit}
       />
+      {workflow.feedback ? (
+        <AlertToast
+          trigger={workflow.feedback.id}
+          theme={workflow.feedback.theme}
+          title={workflow.feedback.title}
+          content={workflow.feedback.content}
+          description={workflow.feedback.description}
+          onDismiss={() => workflow.dismissFeedback(workflow.feedback.id)}
+          aria-label={workflow.feedback.title}
+        />
+      ) : null}
     </InternalDashboardLayout>
   );
 }

@@ -1,14 +1,17 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
+import { invalidateAdminDashboardOverview } from "../../api/adminDashboardOverview.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
 import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import { useProjectRequestWorkflow } from "../../hooks/useProjectRequestWorkflow.js";
+import { useResumeRevalidation } from "../../hooks/useResumeRevalidation.js";
 import InternalDashboardLayout from "../../layouts/InternalDashboardLayout.jsx";
 import { getAdminProjectRequestPath } from "../../utils/projectRequestRoutes.js";
+import { getProjectRequestDecisionFeedback, isStaleProjectRequestError } from "../../utils/projectRequestSync.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
 import { isProjectOperationallyReadOnly } from "../../utils/projectReadOnly.js";
 import AdminDashboardHeader from "./components/AdminDashboardHeader.jsx";
@@ -24,12 +27,19 @@ import { useAdminProjectMutations } from "./hooks/useAdminProjectMutations.js";
 import { useAdminRequestAssignments } from "./hooks/useAdminRequestAssignments.js";
 import { useAdminRequestDetails } from "./hooks/useAdminRequestDetails.js";
 import { submitAdminRequestDecision } from "./utils/adminRequestDecision.js";
+import { removeDecidedOverviewRequest } from "./utils/adminRequestSync.js";
 import { useDashboardProjects } from "../../hooks/useDashboardProjects.js";
 import ProjectRequestWorkflowModal from "../../components/project-requests/ProjectRequestWorkflowModal.jsx";
 
 /**
  * Compone exclusivamente métricas, operación, solicitudes y proyectos administrativos.
  * Conserva mutaciones, feedback y claves coordinadas de refresco de la página original.
+ *
+ * Sincronización de solicitudes (sin tiempo real): una asignación o decisión confirmada se
+ * refleja de inmediato con la respuesta de la API, invalida la caché del overview y relee en
+ * segundo plano overview, métricas y cola; la aprobación relee además los proyectos. Un
+ * conflicto de estado (otra persona ya decidió) también relee. Al volver a la pestaña o
+ * recuperar la conexión se revalidan overview, métricas y cola.
  *
  * @param {Object} props - Opciones del escenario de dashboard.
  * @param {boolean} [props.empty=false] - Omite cargas y muestra los estados vacíos actuales.
@@ -59,6 +69,7 @@ function AdminDashboard({ empty = false }) {
     adminOverviewLoading,
     adminAssignees,
     adminAssigneesLoading,
+    revalidate: revalidateAdminData,
     setAdminOverview,
   } = useAdminDashboardData({
     empty,
@@ -69,10 +80,12 @@ function AdminDashboard({ empty = false }) {
   });
   /**
    * Reconcilia responsables confirmados con las solicitudes del overview.
-   * Conserva los demás datos de cada solicitud y la colección actual.
+   * Conserva los demás datos de cada solicitud y la colección actual. La respuesta no incluye
+   * el estado (asignar un arquitecto lo pasa a revisión), así que se invalida la caché y se
+   * relee el overview y las métricas en segundo plano.
    * @param {number} requestId - ID confirmado de la solicitud.
    * @param {Array} assignees - Responsables devueltos por la API.
-   * @returns {void} Programa la actualización local del overview.
+   * @returns {void} Programa la actualización local del overview y su revalidación.
    */
   const handleRequestAssigneesUpdated = (requestId, assignees) => {
     setAdminOverview((currentOverview) => ({
@@ -83,25 +96,57 @@ function AdminDashboard({ empty = false }) {
           : currentRequest,
       ),
     }));
+    invalidateAdminDashboardOverview();
+    revalidateAdminData();
   };
 
   /**
-   * Programa las tres lecturas externas tras una decisión confirmada.
-   * La cola se refresca por separado desde el núcleo compartido del workflow.
-   * @returns {void} Incrementa las claves de overview, métricas y proyectos.
+   * Refleja una decisión confirmada: retira la solicitud decidida de «Nuevas solicitudes»,
+   * invalida la caché del overview, relee overview y métricas sin ocultarlos y vuelve a leer
+   * los proyectos (la aprobación crea uno). La cola se refresca desde el workflow compartido.
+   * @param {{projectRequest?: {id: number, status: string}}} [result] - Respuesta de la decisión.
+   * @returns {void} Programa la reconciliación y las lecturas externas.
    */
-  const handleAdminDecisionCommitted = () => {
-    setAdminOverviewRequestKey((current) => current + 1);
-    setAdminMetricsRequestKey((current) => current + 1);
+  const handleAdminDecisionCommitted = (result) => {
+    setAdminOverview((currentOverview) => removeDecidedOverviewRequest(currentOverview, result?.projectRequest));
+    invalidateAdminDashboardOverview();
+    revalidateAdminData();
     setProjectsRequestKey((current) => current + 1);
+  };
+
+  /**
+   * Guarda la decisión; si la API indica que la solicitud ya cambió (otra persona la decidió o
+   * eliminó), relee overview y métricas para no conservar el estado anterior. El workflow
+   * relee la cola y el modal conserva el borrador y el error.
+   * @param {Object} request - Solicitud decidida.
+   * @param {Object} values - Acción y nota del formulario.
+   * @returns {Promise<Object>} Respuesta confirmada de la decisión.
+   * @throws {Error} Propaga el error al workflow.
+   */
+  const submitDecision = async (request, values) => {
+    try {
+      return await submitAdminRequestDecision(request, values, handleAdminDecisionCommitted);
+    } catch (error) {
+      if (isStaleProjectRequestError(error)) {
+        invalidateAdminDashboardOverview();
+        revalidateAdminData();
+      }
+      throw error;
+    }
   };
 
   const { reviewQueue, workflow } = useProjectRequestWorkflow({
     enabled: currentUser.roleCode === "admin" && !empty,
     empty,
+    getSuccessFeedback: (request, values, result) => getProjectRequestDecisionFeedback(request, values.action, result),
     scopeKey: currentUser.roleCode,
-    submitOperation: (request, values) => submitAdminRequestDecision(request, values, handleAdminDecisionCommitted),
+    submitOperation: submitDecision,
   });
+  // Cambios de otras personas mientras la pestaña estaba oculta o sin conexión.
+  useResumeRevalidation(() => {
+    revalidateAdminData();
+    reviewQueue.retry();
+  }, { enabled: currentUser.roleCode === "admin" && !empty });
   const { assignment, loginActions } = useAdminRequestAssignments({
     firstAdminRequest: adminOverview?.newRequests?.[0] || null,
     reviewRequests: reviewQueue.requests,
@@ -270,6 +315,17 @@ function AdminDashboard({ empty = false }) {
         onAssign={loginActions.assign}
         onView={loginActions.view}
       />
+      {workflow.feedback ? (
+        <AlertToast
+          trigger={workflow.feedback.id}
+          theme={workflow.feedback.theme}
+          title={workflow.feedback.title}
+          content={workflow.feedback.content}
+          description={workflow.feedback.description}
+          onDismiss={() => workflow.dismissFeedback(workflow.feedback.id)}
+          aria-label={workflow.feedback.title}
+        />
+      ) : null}
       {assignment.feedback ? (
         <AlertToast
           trigger={assignment.feedback.id}

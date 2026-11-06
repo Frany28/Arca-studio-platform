@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../api/http.js";
+import { isStaleProjectRequestError } from "../utils/projectRequestSync.js";
 
 // Tope de páginas que se recorren para localizar una solicitud concreta (25 por página).
 const MAX_LOOKUP_PAGES = 20;
@@ -25,16 +26,21 @@ function mergeQueuePage(current, page) {
  * cargan bajo demanda (`loadMore`) o hasta encontrar una solicitud (`loadUntil`), se combinan
  * por id y, si fallan, conservan lo ya cargado. Cada relectura de la primera página invalida
  * las páginas en curso, de modo que una respuesta antigua nunca mezcla datos de otra lectura.
+ * Si el envío falla porque la solicitud cambió de estado o desapareció (otra persona la decidió),
+ * la cola se relee para no seguir mostrando el estado anterior; el modal conserva su borrador.
  *
  * @param {Object} params - Habilitación, ámbito de lectura y operación del consumidor.
  * @param {boolean} params.enabled - Habilita la lectura compartida de la cola.
  * @param {boolean} params.empty - Conserva el reinicio del escenario vacío.
  * @param {string} params.scopeKey - Cambiar el ámbito vuelve a leer la cola.
- * @param {Function} params.submitOperation - Guarda la solicitud y notifica sus efectos externos.
+ * @param {Function} params.submitOperation - Guarda la solicitud y notifica sus efectos externos;
+ *   su resultado se entrega a `getSuccessFeedback`.
+ * @param {(request: Object, values: Object, result: unknown) => Object|null} [params.getSuccessFeedback]
+ *   Aviso de éxito ({theme, title, content, description}) tras una operación confirmada.
  * @returns {Object} Cola con cursor, carga de páginas y reintento, y workflow con selección,
- *   error y estado de envío.
+ *   error, estado de envío y el aviso de éxito vigente (`feedback`, con `id` nuevo en cada envío).
  */
-export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOperation }) {
+export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOperation, getSuccessFeedback }) {
   const [reviewRequests, setReviewRequests] = useState([]);
   const [reviewRequestsError, setReviewRequestsError] = useState("");
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(
@@ -50,6 +56,7 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
   const [selectedInitialAction, setSelectedInitialAction] = useState(undefined);
   const [workflowError, setWorkflowError] = useState("");
   const [workflowSubmitting, setWorkflowSubmitting] = useState(false);
+  const [workflowFeedback, setWorkflowFeedback] = useState(null);
 
   useEffect(() => {
     // Nueva generación: las páginas adicionales todavía en curso se descartan al llegar.
@@ -169,7 +176,8 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
   /**
    * Ejecuta la operación recibida y cierra la solicitud solo cuando termina con éxito.
    * El error conserva selección y borrador del modal; siempre libera submitting.
-   * La recarga posterior se programa sin esperar la nueva lectura de la cola.
+   * La recarga posterior se programa sin esperar la nueva lectura de la cola. El aviso de éxito
+   * se publica solo tras la confirmación de la API; un error de estado obsoleto relee la cola.
    *
    * @param {Object} params - Acción, reunión opcional y nota normalizadas por el modal consumidor.
    * @returns {Promise<void>} Completa el envío; los errores quedan en workflow.error.
@@ -179,11 +187,15 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
     setWorkflowSubmitting(true);
     setWorkflowError("");
     try {
-      await submitOperation(selectedRequest, { action, meetingRecommendation, note });
+      const values = { action, meetingRecommendation, note };
+      const result = await submitOperation(selectedRequest, values);
+      const feedback = getSuccessFeedback?.(selectedRequest, values, result) || null;
       setSelectedRequest(null);
       setReviewRequestsRevision((current) => current + 1);
+      if (feedback) setWorkflowFeedback({ ...feedback, id: `${selectedRequest.id}-${Date.now()}` });
     } catch (error) {
       setWorkflowError(error?.message || "No se pudo guardar la revisión.");
+      if (isStaleProjectRequestError(error)) setReviewRequestsRevision((current) => current + 1);
     } finally {
       setWorkflowSubmitting(false);
     }
@@ -216,6 +228,9 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
       initialAction: selectedInitialAction,
       error: workflowError,
       submitting: workflowSubmitting,
+      feedback: workflowFeedback,
+      // Solo cierra el aviso indicado: uno nuevo publicado durante la salida se conserva.
+      dismissFeedback: (id) => setWorkflowFeedback((current) => (current?.id === id ? null : current)),
       open: openRequestWorkflow,
       close: closeRequestWorkflow,
       submit: submitRequestWorkflow,

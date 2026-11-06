@@ -70,10 +70,11 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Abre la consulta real aislando HTTP: cualquier mutación o lectura no prevista falla la prueba.
  *
  * @param {Object} context - Contexto de node:test.
- * @param {Object} [options] - Ruta, tema, viewport y respuesta del detalle.
+ * @param {Object} [options] - Ruta, tema, viewport, respuesta del detalle, otros detalles por ruta,
+ *   rol de la sesión, reloj simulado y si una lectura no prevista debe fallar la prueba.
  * @returns {Promise<{page: import("playwright").Page, reads: Array<string>}>} Página y lecturas registradas.
  */
-async function openPage(context, { detail = { json: { projectRequest: REQUEST } }, path = "/solicitudes-proyecto/9", state = null, theme = "light", viewport = { height: 1000, width: 1440 }, waitFor = "Casa Prueba" } = {}) {
+async function openPage(context, { clock = false, detail = { json: { projectRequest: REQUEST } }, extraDetails = {}, path = "/solicitudes-proyecto/9", role = "admin", state = null, strictReads = true, theme = "light", viewport = { height: 1000, width: 1440 }, waitFor = "Casa Prueba" } = {}) {
   const session = await browser.newContext({ viewport });
   const page = applyBrowserTimeouts(await session.newPage());
   const errors = [];
@@ -83,6 +84,7 @@ async function openPage(context, { detail = { json: { projectRequest: REQUEST } 
     if (state) history.replaceState({ usr: state, key: "test", idx: 0 }, "");
   }, { state, theme });
   page.on("pageerror", (error) => errors.push(error.message));
+  if (clock) await page.clock.install();
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const { pathname } = new URL(route.request().url());
     if (route.request().method() !== "GET") {
@@ -94,13 +96,14 @@ async function openPage(context, { detail = { json: { projectRequest: REQUEST } 
       const response = typeof detail === "function" ? await detail(reads.filter((read) => read === DETAIL_PATH).length) : detail;
       return response === "abort" ? route.abort() : route.fulfill(response);
     }
+    if (extraDetails[pathname]) return route.fulfill(extraDetails[pathname]);
     const payload = {
-      "/api/auth/me": { user: { email: "admin@example.test", firstName: "Admin", id: 1, lastName: "Prueba", role: "admin", status: "active" } },
+      "/api/auth/me": { user: { email: "admin@example.test", firstName: "Admin", id: 1, lastName: "Prueba", role, status: "active" } },
       "/api/admin/users/11": { user: { companyName: "Empresa Prueba", id: 11, name: "Cliente Prueba" } },
       // Lo solicita el proveedor compartido de proyectos recientes del shell, no la vista.
       "/api/projects": { nextCursor: null, projects: [] },
     }[pathname];
-    if (!payload) errors.push(`Lectura no prevista: ${pathname}`);
+    if (!payload && strictReads) errors.push(`Lectura no prevista: ${pathname}`);
     return route.fulfill({ json: payload || {}, status: payload ? 200 : 404 });
   });
   context.after(async () => { await session.close(); assert.deepEqual(errors, []); });
@@ -180,4 +183,119 @@ test("estados de inexistencia, permisos, conexión y reintento", async (context)
   });
   await retry.page.getByRole("button", { name: "Reintentar" }).click();
   await retry.page.getByRole("heading", { level: 1, name: "Casa Prueba" }).waitFor();
+});
+
+// --- Fase 2: revalidación sin tiempo real ---
+
+/** Promesa resoluble desde la prueba para retener una respuesta del detalle. */
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+/** Cuenta las lecturas del detalle registradas hasta el momento. */
+function detailReads(reads, path = DETAIL_PATH) {
+  return reads.filter((read) => read === path).length;
+}
+/** Espera a que el detalle se haya leído `count` veces. */
+async function waitDetailReads(page, reads, count, path = DETAIL_PATH) {
+  const deadline = Date.now() + NAVIGATION_TIMEOUT_MS;
+  while (detailReads(reads, path) < count) {
+    if (Date.now() > deadline) throw new Error(`Se esperaban ${count} lecturas de ${path}`);
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+  }
+}
+
+test("al volver a la pestaña revalida en segundo plano y avisa de cambios hechos por otra persona", async (context) => {
+  const held = deferred();
+  const converted = { ...REQUEST, convertedProject: { id: 40, name: "Casa Prueba", publicSlug: "solicitud-9", status: "pending" }, status: "converted" };
+  const { page, reads } = await openPage(context, {
+    clock: true,
+    detail: (attempt) => (attempt === 1 ? { json: { projectRequest: REQUEST } } : held.promise),
+  });
+  const showTab = () => page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+
+  // Volver enseguida no repite la lectura (intervalo mínimo desde la carga).
+  await showTab();
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(detailReads(reads), 1);
+
+  await page.clock.fastForward("00:31");
+  await showTab();
+  await waitDetailReads(page, reads, 2);
+  // Mientras revalida se conserva lo mostrado, sin skeleton.
+  await page.getByRole("heading", { level: 1, name: "Casa Prueba" }).waitFor();
+  assert.equal(await page.getByLabel("Cargando solicitud").count(), 0);
+  assert.equal(await page.getByText("Solicitud actualizada", { exact: true }).count(), 0);
+
+  held.resolve({ json: { projectRequest: converted } });
+  await page.getByText("Solicitud actualizada", { exact: true }).waitFor();
+  await page.getByText(/Ahora está en estado «Proyecto creado»/).waitFor();
+  await page.getByRole("button", { name: "Ver proyecto" }).waitFor();
+  assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
+});
+
+test("sin cambios no avisa; un fallo conserva la solicitud y permite reintentar", async (context) => {
+  const withNewReview = {
+    ...REQUEST,
+    reviews: [...REQUEST.reviews, { meetingRecommendation: "DO_NOT_SCHEDULE_MEETING", note: "Revisar costos.", recommendation: "request_changes", reviewer: { id: 6, name: "Luis Mora" }, updatedAt: "2026-10-03T12:00:00.000Z" }],
+  };
+  const responses = [{ json: { projectRequest: REQUEST } }, { json: { projectRequest: { ...REQUEST } } }, "abort", { json: { projectRequest: withNewReview } }];
+  const { page, reads } = await openPage(context, { detail: (attempt) => responses[attempt - 1] });
+  const reconnect = () => page.evaluate(() => window.dispatchEvent(new Event("online")));
+
+  await reconnect();
+  await waitDetailReads(page, reads, 2);
+  await page.waitForLoadState("networkidle");
+  assert.equal(await page.getByText("Solicitud actualizada", { exact: true }).count(), 0);
+
+  await reconnect();
+  await page.getByText("No se pudo actualizar la solicitud", { exact: true }).waitFor();
+  await page.getByRole("heading", { level: 1, name: "Casa Prueba" }).waitFor();
+
+  await page.getByRole("button", { name: "Reintentar" }).click();
+  await page.getByText("Solicitud actualizada", { exact: true }).waitFor();
+  await page.getByText(/responsables o revisiones/).waitFor();
+  // La revisión nueva se muestra sin recargar la vista.
+  await page.getByText("Revisar costos.", { exact: true }).waitFor();
+  assert.equal(detailReads(reads), 4);
+});
+
+test("si la solicitud deja de existir, la revalidación sustituye el contenido por su estado", async (context) => {
+  const { page } = await openPage(context, {
+    detail: (attempt) => (attempt === 1 ? { json: { projectRequest: REQUEST } } : { json: { code: "PROJECT_REQUEST_NOT_FOUND", message: "No encontrada" }, status: 404 }),
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await page.getByText("La solicitud no existe", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("heading", { level: 1, name: "Casa Prueba" }).count(), 0);
+  assert.equal(await page.getByText("No se pudo actualizar la solicitud", { exact: true }).count(), 0);
+});
+
+test("una revalidación tardía no sobrescribe otra solicitud tras navegar", async (context) => {
+  const held = deferred();
+  const otherPath = "/api/admin/project-requests/10";
+  const { page, reads } = await openPage(context, {
+    detail: (attempt) => (attempt === 1 ? { json: { projectRequest: REQUEST } } : held.promise),
+    extraDetails: { [otherPath]: { json: { projectRequest: { ...REQUEST, id: 10, projectName: "Casa Diez" } } } },
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await waitDetailReads(page, reads, 2);
+
+  await page.evaluate(() => {
+    history.pushState(history.state, "", "/solicitudes-proyecto/10");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
+  });
+  await page.getByRole("heading", { level: 1, name: "Casa Diez" }).waitFor();
+  held.resolve({ json: { projectRequest: { ...REQUEST, projectName: "Respuesta obsoleta", status: "rejected" } } });
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(await page.getByRole("heading", { level: 1, name: "Casa Diez" }).count(), 1);
+  assert.equal(await page.getByText("Respuesta obsoleta").count(), 0);
+  assert.equal(await page.getByText("Solicitud actualizada", { exact: true }).count(), 0);
+});
+
+test("solo administradores: otro rol se redirige sin leer el detalle", async (context) => {
+  const { page, reads } = await openPage(context, { role: "architect", strictReads: false, waitFor: "Solicitudes asignadas" });
+  assert.notEqual(new URL(page.url()).pathname, "/solicitudes-proyecto/9");
+  assert.equal(detailReads(reads), 0);
 });
