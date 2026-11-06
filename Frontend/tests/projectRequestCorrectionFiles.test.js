@@ -42,7 +42,8 @@ test("los adjuntos subidos solo se pueden eliminar cuando la solicitud lo autori
   assert.equal(isProjectRequestFileRemovable(saved, { allowRemoteRemoval: true }), true);
   assert.equal(isProjectRequestFileRemovable({ ...saved, removing: true }, { allowRemoteRemoval: true }), false);
   assert.equal(isProjectRequestFileRemovable({ ...saved, remoteId: null }, { allowRemoteRemoval: true }), false);
-  assert.equal(isProjectRequestFileRemovable({ status: "uploading", remoteId: 3 }, { allowRemoteRemoval: true }), false);
+  // Uno en curso se puede quitar: quitarlo cancela la transferencia.
+  assert.equal(isProjectRequestFileRemovable({ status: "uploading", remoteId: null }), true);
 
   const removed = [];
   const [card] = toProjectRequestFileCards([saved], (id) => removed.push(id), { allowRemoteRemoval: true });

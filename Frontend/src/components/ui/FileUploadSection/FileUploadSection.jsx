@@ -102,6 +102,8 @@ function getFileAttachmentType(file) {
  * quitar; sin él, la tarjeta no cambia. Los ids salen de getFileUploadCardIds (estables por `id`).
  * Una tarjeta completada muestra «Añadir archivo»; con `file.removeWhenCompleted` y `file.onRemove`
  * muestra en su lugar «Eliminar archivo», para adjuntos ya guardados que el flujo permite quitar.
+ * Opcionales por archivo (sin ellos la tarjeta no cambia): `file.completedLabel` sustituye
+ * «Completado» y `file.removeWhenFailed` añade la papelera a una tarjeta fallida con reintento.
  *
  * @param {Object} props - Archivo, ids y acciones.
  * @param {boolean} [props.disabled=false] - Bloquea las acciones.
@@ -166,7 +168,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
                 )}
               >
                 {isCompleted
-                  ? "Completado"
+                  ? file.completedLabel || "Completado"
                   : isPending
                     ? "Pendiente"
                     : "Subiendo..."}
@@ -212,7 +214,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
           disabled={disabled}
           onClick={onAddFile}
         />
-      ) : !isFailed && file.onRemove ? (
+      ) : (!isFailed || (file.removeWhenFailed && !failedButtonRemoves)) && file.onRemove ? (
         <Button
           theme="Primary"
           type="Ghost"

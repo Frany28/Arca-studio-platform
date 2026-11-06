@@ -23,9 +23,10 @@ import ProjectRequestStandSection from "./project-request/components/ProjectRequ
 import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
 import ProjectRequestSummaryView from "./project-request/components/ProjectRequestSummaryView.jsx";
 import useProjectRequestDetail from "./project-request/hooks/useProjectRequestDetail.js";
+import useProjectRequestDraft from "./project-request/hooks/useProjectRequestDraft.js";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
-import useProjectRequestSubmission, { REQUEST_VIEWS } from "./project-request/hooks/useProjectRequestSubmission.js";
+import useProjectRequestSubmission, { REQUEST_VIEWS, VERIFICATION_MODES } from "./project-request/hooks/useProjectRequestSubmission.js";
 import useProjectRequestNavigation from "./project-request/hooks/useProjectRequestNavigation.js";
 import useProjectRequestNotifications from "./project-request/hooks/useProjectRequestNotifications.js";
 import {
@@ -52,6 +53,8 @@ export default function ProjectRequestPage() {
   const mobileNavigation = useMobileNavigationDrawer();
   const viewRequest = location.state?.viewRequest || null;
   const initialRequest = location.state?.initialRequest || viewRequest;
+  // Un borrador o una solicitud devuelta se recuperan con sus adjuntos guardados en el backend.
+  const recoveryRequestId = ["draft", "changes_requested"].includes(initialRequest?.status) ? initialRequest.id : null;
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
   const {
     close: closeNotifications,
@@ -126,10 +129,11 @@ export default function ProjectRequestPage() {
     selected:
       form.locationLatitude !== null && form.locationLatitude !== undefined,
   });
+  // Borrador único compartido por los adjuntos (subida automática) y el envío.
+  const draft = useProjectRequestDraft({ form, initialRequest });
   const {
     closeValidation,
     codeStatus,
-    draftId,
     isRequestReceived,
     isSubmitting,
     isValidationModalOpen,
@@ -144,9 +148,9 @@ export default function ProjectRequestPage() {
     submitError,
     submitValidation,
     validationCode,
+    verificationMode,
   } = useProjectRequestSubmission({
-    form,
-    initialRequest,
+    draft,
     onSubmitted: () => {
       collapseSidebar();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -160,18 +164,18 @@ export default function ProjectRequestPage() {
     fileErrors,
     files,
     getSubmitFileErrors,
+    getTransferBlockReason,
     handleFilesChange,
     reloadAttachments,
     removeFile,
     resetFiles,
+    retryFile,
     setFileErrors,
-    updateFileItem,
   } = useProjectRequestFiles({
-    // Una corrección autorizada conserva y muestra los adjuntos ya guardados en la solicitud.
-    correctionRequestId: initialRequest?.status === "changes_requested" ? initialRequest.id : null,
     currentFieldErrors,
-    draftId,
+    draft,
     hasAttemptedSubmit,
+    recoveryRequestId,
     setShowRequiredAlert,
   });
   // La consulta lee del backend el estado vigente y los adjuntos persistidos de la solicitud;
@@ -206,8 +210,9 @@ export default function ProjectRequestPage() {
 
     openValidation();
   };
+  // Los adjuntos ya se subieron al seleccionarlos: el envío solo se bloquea si alguno sigue sin guardar.
   const handleValidationSubmit = (code) => {
-    submitValidation(code, { files, updateFileItem });
+    submitValidation(code, { blockedReason: getTransferBlockReason() });
   };
   // El drawer móvil se monta en portal: el contenedor oculto en móvil no lo afecta.
   const sidebar = (
@@ -389,6 +394,7 @@ export default function ProjectRequestPage() {
                   files={files}
                   onFilesSelected={handleFilesChange}
                   onRemove={removeFile}
+                  onRetry={retryFile}
                 />
                 <TextField error={hasAttemptedSubmit ? fieldErrors.referenceLink : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.referenceLink)} label="Link de referencia (Pinterest, web, etc.)" optional icon={Link21} placeholder='Ej. “https://es.pinterest.com/pin”' value={form.referenceLink} onChange={update("referenceLink", fileErrors)} />
               </FormSection>
@@ -437,6 +443,7 @@ export default function ProjectRequestPage() {
         onResendCode={resendCode}
         isSubmitting={isSubmitting}
         submitError={submitError}
+        testMode={verificationMode === VERIFICATION_MODES.test}
         onClose={closeValidation}
         onPrevious={closeValidation}
         onNext={handleValidationSubmit}

@@ -9,31 +9,36 @@ const FILE_CARD_STATUS = {
   uploading: "uploading",
 };
 
+// Un adjunto subido está guardado en el borrador, pero la solicitud aún no se ha enviado.
+export const UPLOADED_PENDING_SUBMIT_LABEL = "Subido · Pendiente de enviar solicitud";
+
 /**
  * Indica si un adjunto puede quitarse. Los pendientes y fallidos solo existen en la selección
- * local. Un adjunto subido (`remoteId`) pertenece a la solicitud y solo se quita cuando el flujo
- * autoriza eliminar en el servidor (borrador o corrección), y nunca mientras se está eliminando.
- * Los que están subiendo tienen una petición en curso y no se quitan.
+ * local; quitar uno que está subiendo cancela su transferencia. Un adjunto subido (`remoteId`)
+ * pertenece a la solicitud y solo se quita cuando el flujo autoriza eliminar en el servidor
+ * (existe el borrador), y nunca mientras se está eliminando.
  *
  * @param {{status: string, remoteId?: number, removing?: boolean}} item - Adjunto del formulario.
  * @param {{allowRemoteRemoval?: boolean}} [options] - Si la solicitud admite eliminar adjuntos guardados.
  * @returns {boolean} true si el adjunto puede quitarse.
  */
 export function isProjectRequestFileRemovable(item, { allowRemoteRemoval = false } = {}) {
-  if (item?.status === "pending" || item?.status === "error") return true;
+  if (item?.status === "pending" || item?.status === "error" || item?.status === "uploading") return true;
   return allowRemoteRemoval && item?.status === "uploaded" && Boolean(item.remoteId) && !item.removing;
 }
 
 /**
  * Adapta los adjuntos del formulario al contrato de tarjetas de `FileUploadSection`.
  * Calcula el tamaño cargado a partir del progreso y solo expone `onRemove` en los adjuntos
- * que se pueden quitar; sin `onRemove`, la tarjeta fallida no ofrece reintento local porque
- * el reintento completo lo realiza el envío del formulario.
+ * que se pueden quitar. Un adjunto subido muestra «Subido · Pendiente de enviar solicitud» (está
+ * guardado, pero la solicitud no se ha enviado); uno con error de subida ofrece «Intenta de
+ * nuevo» (`onRetry`) y, además, su papelera para quitarlo.
  *
  * @param {Array<{id: string, file: File, status: string, progress: number, error: string}>} files - Adjuntos.
  * Los adjuntos guardados que se pueden eliminar muestran «Eliminar archivo» en su tarjeta completada.
  * @param {(id: string) => void} [onRemove] - Quita un adjunto por id.
- * @param {{allowRemoteRemoval?: boolean}} [options] - Ver isProjectRequestFileRemovable.
+ * @param {{allowRemoteRemoval?: boolean, onRetry?: (id: string) => void}} [options] - Ver
+ *   isProjectRequestFileRemovable; `onRetry` vuelve a subir un adjunto fallido.
  * @returns {Array<Object>} Tarjetas con nombre, tipo, estado, progreso, tamaños y acciones.
  */
 export function toProjectRequestFileCards(files, onRemove, options = {}) {
@@ -46,8 +51,11 @@ export function toProjectRequestFileCards(files, onRemove, options = {}) {
       errorMessage: item.error || "No se pudo subir el archivo.",
       id: item.id,
       name: item.file?.name || "Archivo",
+      completedLabel: UPLOADED_PENDING_SUBMIT_LABEL,
       onRemove: onRemove && isProjectRequestFileRemovable(item, options) ? () => onRemove(item.id) : undefined,
+      onRetryUpload: item.status === "error" && options.onRetry ? () => options.onRetry(item.id) : undefined,
       removeWhenCompleted: item.status === "uploaded",
+      removeWhenFailed: item.status === "error",
       progress,
       status: FILE_CARD_STATUS[item.status] || "pending",
       totalSizeLabel: formatFileSize(totalBytes),

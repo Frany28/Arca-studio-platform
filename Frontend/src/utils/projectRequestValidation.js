@@ -1,3 +1,4 @@
+import { UPLOAD_TRANSFER_LIMIT_BYTES } from "../config/uploadTransferLimit.js";
 import { hasApplicableProperty, requiresPropertyAvailability } from "./projectRequestApplicability.js";
 import { LEGACY_PROJECT_REQUEST_TYPES, optionValues } from "./projectRequestOptions.js";
 import { allowsStandDocumentSelection, isAdvertisingStand } from "./projectRequestStand.js";
@@ -192,12 +193,16 @@ export function getProjectRequestRequiredFieldErrors(values = {}, context = {}) 
  * Un adjunto ya guardado en la solicitud (`persisted: true`) cuenta para la cantidad, el tamaño
  * total y los duplicados, pero no repite las comprobaciones de nombre, formato y tamaño individual:
  * el backend las aplicó al recibirlo y su MIME guardado puede no coincidir con el de un `File`.
+ * Además del límite funcional de 50 MB, aplica el límite temporal por subida del despliegue
+ * (`UPLOAD_TRANSFER_LIMIT_BYTES`), para no aceptar un archivo que la plataforma rechazaría.
  *
  * @param {Array} [files=[]] - Archivos o wrappers del formulario.
+ * @param {Object} [options] - Límites del entorno.
+ * @param {number|null} [options.transferLimitBytes] - Máximo por subida del despliegue; null sin límite propio.
  * @returns {Array<{message: string, index: number|null}>} Problemas en el orden de los mensajes;
  * `index` es la posición del adjunto en `files` o null si el problema es de la sección.
  */
-export function getProjectRequestFileIssues(files = []) {
+export function getProjectRequestFileIssues(files = [], { transferLimitBytes = UPLOAD_TRANSFER_LIMIT_BYTES } = {}) {
   const issues = [];
   const add = (message, index = null) => issues.push({ index, message });
   if (files.length > PROJECT_REQUEST_FILE_LIMITS.maxCount) add("Puedes adjuntar un máximo de 10 archivos.");
@@ -220,9 +225,22 @@ export function getProjectRequestFileIssues(files = []) {
     if (!expectedMime || expectedMime !== String(file?.type || "").toLowerCase()) add(`${name || "Un archivo"}: formato no permitido.`, index);
     if (!Number.isFinite(file?.size) || file.size <= 0) add(`${name || "Un archivo"}: está vacío.`, index);
     else if (file.size > PROJECT_REQUEST_FILE_LIMITS.maxFileBytes) add(`${name}: supera 50 MB.`, index);
+    else if (transferLimitBytes && file.size > transferLimitBytes) add(`${name}: supera ${formatTransferLimit(transferLimitBytes)}, el máximo por archivo que admite temporalmente este entorno.`, index);
   });
   if (totalBytes > PROJECT_REQUEST_FILE_LIMITS.maxTotalBytes) add("Los archivos no pueden superar 200 MB en total.");
   return issues;
+}
+
+/**
+ * Formatea el límite por subida del entorno en MB con coma decimal (p. ej. «4,5 MB»).
+ * Usa megabytes decimales, como la documentación de la plataforma que lo impone.
+ *
+ * @param {number} bytes - Límite en bytes.
+ * @returns {string} Límite legible.
+ */
+export function formatTransferLimit(bytes) {
+  const megabytes = Math.floor((bytes / 1_000_000) * 10) / 10;
+  return `${String(megabytes).replace(".", ",")} MB`;
 }
 
 /**

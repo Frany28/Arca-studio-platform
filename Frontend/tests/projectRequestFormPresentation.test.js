@@ -40,19 +40,30 @@ test("los adjuntos se presentan con su estado real y progreso", () => {
   assert.equal(cards[0].name, "plano.pdf");
 });
 
-test("solo los adjuntos pendientes o fallidos se pueden quitar", () => {
+test("se quitan pendientes, fallidos y en curso (cancela); el fallido ofrece reintento y papelera", () => {
   const removed = [];
+  const retried = [];
   const cards = toProjectRequestFileCards([
     { file: file("a.png", 1), id: "pending", status: "pending" },
     { file: file("b.png", 1), id: "uploading", status: "uploading" },
     { file: file("c.png", 1), id: "uploaded", status: "uploaded" },
     { file: file("d.png", 1), id: "failed", status: "error" },
-  ], (id) => removed.push(id));
+  ], (id) => removed.push(id), { onRetry: (id) => retried.push(id) });
 
-  assert.deepEqual(cards.map((card) => typeof card.onRemove), ["function", "undefined", "undefined", "function"]);
+  // Un subido sin borrador autorizado no se elimina; uno en curso se cancela.
+  assert.deepEqual(cards.map((card) => typeof card.onRemove), ["function", "function", "undefined", "function"]);
   cards[0].onRemove();
+  cards[1].onRemove();
   cards[3].onRemove();
-  assert.deepEqual(removed, ["pending", "failed"]);
+  assert.deepEqual(removed, ["pending", "uploading", "failed"]);
+  // Solo el fallido ofrece «Intenta de nuevo», junto a su papelera.
+  assert.deepEqual(cards.map((card) => typeof card.onRetryUpload), ["undefined", "undefined", "undefined", "function"]);
+  assert.deepEqual(cards.map((card) => card.removeWhenFailed), [false, false, false, true]);
+  cards[3].onRetryUpload();
+  assert.deepEqual(retried, ["failed"]);
+  // El subido está guardado, pero la solicitud aún no se envió.
+  assert.equal(cards[2].status, "completed");
+  assert.equal(cards[2].completedLabel, "Subido · Pendiente de enviar solicitud");
   assert.equal(isProjectRequestFileRemovable(undefined), false);
   // Sin callback (p. ej. durante el envío) ninguna tarjeta ofrece quitar.
   assert.ok(toProjectRequestFileCards([{ file: file("a.png", 1), id: "x", status: "pending" }]).every((card) => !card.onRemove));

@@ -206,6 +206,57 @@ export const createProjectRequestSchema = z.object({
   }).strict(),
 });
 
+// Borrador vacío: el formulario lo crea al adjuntar el primer archivo, antes de que el cliente
+// complete los campos. Solo lleva el submissionId idempotente; los datos se guardan después con
+// la actualización completa (updateProjectRequestSchema) y el envío valida el registro entero.
+export const createProjectRequestDraftSchema = z.object({
+  body: z.object({ submissionId: z.uuid() }).strict(),
+});
+
+/**
+ * Indica si el cuerpo de una creación corresponde a un borrador vacío (solo `submissionId`), que
+ * se valida con createProjectRequestDraftSchema en lugar del esquema completo de la solicitud.
+ *
+ * @param {unknown} body - Cuerpo recibido en POST /project-requests.
+ * @returns {boolean} true si el cuerpo solo contiene `submissionId`.
+ */
+export function isEmptyProjectRequestDraftBody(body) {
+  return Boolean(body) && typeof body === "object" && !Array.isArray(body)
+    && Object.keys(body).length === 1 && Object.hasOwn(body, "submissionId");
+}
+
+// Datos que el formulario exige siempre (projectRequestBody), con su campo en la API pública.
+// Un registro solo llega a borrador por dos vías: la creación vacía (todos nulos) o una creación o
+// actualización completa ya validada con projectRequestBody. Por eso basta comprobar su presencia
+// para detectar un borrador que nunca se guardó completo, sin revalidar con las reglas vigentes
+// datos históricos que el contrato sigue admitiendo (tipos y respuestas de versiones anteriores).
+const REQUIRED_STORED_FIELDS = Object.freeze([
+  ["projectName", "projectName"],
+  ["projectType", "projectType"],
+  ["projectLocation", "location"],
+  ["description", "description"],
+  ["developmentMode", "developmentMode"],
+  ["investmentRange", "investmentRange"],
+  ["capitalAvailability", "capitalAvailability"],
+  ["startTime", "startTime"],
+]);
+
+/**
+ * Comprueba que una solicitud almacenada tiene los datos obligatorios del formulario. Un borrador
+ * creado al adjuntar archivos carece de ellos hasta que el cliente guarda el formulario completo.
+ *
+ * @param {Object} record - Solicitud leída de PostgreSQL (toProjectRequestRecord).
+ * @returns {Object<string, string>|null} Campos ausentes (`body.<campo>` → motivo) o null.
+ */
+export function findIncompleteProjectRequestFields(record) {
+  const missing = REQUIRED_STORED_FIELDS.filter(([, recordField]) => {
+    const value = record?.[recordField];
+    return value === null || value === undefined || String(value).trim() === "";
+  });
+  if (!missing.length) return null;
+  return Object.fromEntries(missing.map(([bodyField]) => [`body.${bodyField}`, "Completa este dato antes de enviar la solicitud."]));
+}
+
 export const updateProjectRequestSchema = z.object({
   body: projectRequestBody,
   params: z.object({ projectRequestId: positiveId }),

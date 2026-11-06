@@ -293,6 +293,32 @@ export async function createProjectRequestDraft(user, payload) {
 }
 
 /**
+ * Crea en PostgreSQL un borrador vacío (cliente, autor y submissionId) al que se asocian los
+ * adjuntos antes de completar el formulario. Es idempotente por submissionId: un reintento o una
+ * creación simultánea devuelve el mismo borrador. Los datos se guardan después con la actualización.
+ *
+ * @param {object} user - Cliente autenticado propietario del borrador.
+ * @param {string} submissionId - Identificador idempotente generado por el formulario.
+ * @returns {Promise<object|null>} Borrador creado o existente con ese submissionId.
+ */
+export async function createEmptyProjectRequestDraft(user, submissionId) {
+  const result = await query(
+    `
+      insert into public.project_requests (client_id, requested_by, status, submission_id)
+      values ($1, $2, 'draft', $3::uuid)
+      on conflict (client_id, requested_by, submission_id)
+        where submission_id is not null and deleted_at is null
+      do nothing
+      returning ${SELECT_FIELDS}
+    `,
+    [user.clientId, user.id, submissionId],
+  );
+
+  if (result.rows[0]) return toProjectRequestRecord(result.rows[0]);
+  return findProjectRequestBySubmissionId(submissionId, user);
+}
+
+/**
  * Actualiza en PostgreSQL un borrador o solicitud devuelta, conservando sus permisos.
  * Reemplaza los requisitos del evento; al cambiar de tipo, el contrato los limpia a null.
  *

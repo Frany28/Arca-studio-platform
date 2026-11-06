@@ -29,6 +29,8 @@ const CODE_HINTS = Object.freeze({
   sending: "Enviando un código a tu correo...",
   sent: "Enviamos un código a tu correo",
 });
+// Validación temporal de staging (la activa el backend para cuentas autorizadas): no hay correo.
+const TEST_MODE_HINT = "Modo de pruebas: introduce cualquier código de 6 dígitos";
 
 /**
  * Paso «Validación» del envío (Figma: modal «Solicitud de Proyecto» con el campo «Código»).
@@ -43,6 +45,8 @@ const CODE_HINTS = Object.freeze({
  * @param {string} [props.submitError=""] - Error de la emisión o del envío.
  * @param {Function} props.onCodeChange - Actualiza el código (solo dígitos).
  * @param {Function} [props.onResendCode] - Solicita otro código.
+ * @param {boolean} [props.testMode=false] - Validación de pruebas informada por el backend: indica
+ *   que sirve cualquier código de 6 dígitos y no ofrece «Reenviar código» (no se envía correo).
  * @param {Function} props.onClose - Cierra el modal.
  * @param {Function} props.onPrevious - Acción «Cerrar».
  * @param {Function} props.onNext - Envía con el código.
@@ -59,6 +63,7 @@ function ProjectRequestValidationStep({
   submitError = "",
   onCodeChange,
   onResendCode,
+  testMode = false,
 }) {
   const hasNumericCode = /^\d{6}$/.test(String(code ?? "").trim());
   const isSendingCode = codeStatus === "sending";
@@ -83,7 +88,7 @@ function ProjectRequestValidationStep({
           size="S"
           type="Default input"
           placeholder="Ingresa el código"
-          hintText={CODE_HINTS[codeStatus] || CODE_HINTS.idle}
+          hintText={testMode && codeStatus === "sent" ? TEST_MODE_HINT : CODE_HINTS[codeStatus] || CODE_HINTS.idle}
           leftIcon={<SecurityIcon className="size-5" />}
           rightIcon={null}
           showLeftIcon
@@ -99,7 +104,7 @@ function ProjectRequestValidationStep({
         {submitError ? (
           <HintText state="Error" hintText={submitError} className="w-full" role="alert" />
         ) : null}
-        {onResendCode ? (
+        {onResendCode && !testMode ? (
           <Button
             theme="Primary"
             type="Ghost"

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { authConfig } from "../config/auth.js";
+import { allowsProjectRequestTestVerification } from "../config/projectRequestTestVerification.js";
 import { AppError, NotFoundError } from "../errors/appError.js";
 import { findProjectRequestOwnedByUser } from "../repositories/projectRequestRepository.js";
 import {
@@ -116,6 +117,29 @@ async function throwIssueRejection(projectRequestId, user) {
 }
 
 /**
+ * Comprueba que la solicitud es propia y editable, con los mismos errores que la emisión normal.
+ * La usa la validación de pruebas, que no almacena ningún código.
+ *
+ * @param {number|string} projectRequestId - Solicitud que se va a enviar.
+ * @param {object} user - Cliente autenticado.
+ * @returns {Promise<void>} Finaliza si la solicitud admite el envío.
+ * @throws {AppError} PROJECT_REQUEST_NOT_FOUND (404) o PROJECT_REQUEST_NOT_SUBMITTABLE (409).
+ */
+async function assertEditableOwnedRequest(projectRequestId, user) {
+  const current = await findProjectRequestOwnedByUser(projectRequestId, user);
+  if (!current) {
+    throw new NotFoundError("PROJECT_REQUEST_NOT_FOUND", "No se encontró la solicitud de proyecto.");
+  }
+  if (!EDITABLE_STATUSES.has(current.status)) {
+    throw new AppError({
+      code: "PROJECT_REQUEST_NOT_SUBMITTABLE",
+      message: "La solicitud no se encuentra en un estado que permita enviarla.",
+      status: 409,
+    });
+  }
+}
+
+/**
  * Construye el asunto y los cuerpos HTML y de texto del correo con el código.
  * Escapa el nombre del proyecto en HTML e indica el vencimiento y el uso único.
  *
@@ -136,16 +160,22 @@ function buildVerificationEmail(code, projectName) {
 /**
  * Emite un código de validación para enviar una solicitud propia y editable y lo envía al correo
  * del cliente. Sustituye el código anterior (reinicia intentos y vencimiento) y respeta un plazo
- * mínimo entre envíos. Si el correo falla, anula el código para permitir pedir otro.
+ * mínimo entre envíos. Si el correo falla, anula el código para permitir pedir otro. Con la
+ * validación de pruebas activa para la cuenta, no genera ni envía nada e informa `mode: "test"`.
  *
  * @param {object} options - Datos de la emisión.
  * @param {number|string} options.projectRequestId - Solicitud que se va a enviar.
  * @param {object} options.user - Cliente autenticado (id, clientId, email).
- * @returns {Promise<{ expiresAt: string, resendAvailableAt: string }>} Vencimiento y próximo reenvío.
+ * @returns {Promise<{ mode: "email"|"test", expiresAt?: string, resendAvailableAt?: string }>}
+ *   Modo de validación y, por correo, vencimiento y próximo reenvío.
  * @throws {AppError} Rechazos de emisión o errores del proveedor de correo.
  */
 export async function issueProjectRequestVerificationCode({ projectRequestId, user }) {
   requireClientUser(user);
+  if (allowsProjectRequestTestVerification(user)) {
+    await assertEditableOwnedRequest(projectRequestId, user);
+    return { mode: "test" };
+  }
   if (!user.email) {
     throw new AppError({ code: "EMAIL_REQUIRED", message: "Tu cuenta no tiene un correo para recibir el código.", status: 409 });
   }
@@ -177,6 +207,7 @@ export async function issueProjectRequestVerificationCode({ projectRequestId, us
   const sentAt = new Date(stored.sentAt || Date.now());
   return {
     expiresAt: expiresAt.toISOString(),
+    mode: "email",
     resendAvailableAt: new Date(sentAt.getTime() + PROJECT_REQUEST_VERIFICATION.resendCooldownSeconds * 1000).toISOString(),
   };
 }
@@ -198,7 +229,9 @@ function verificationError(code, message, status = 400) {
  * Verifica y consume el código dentro de la transacción del envío, con la fila bloqueada.
  * Un código ausente, vencido o bloqueado rechaza el envío; uno incorrecto suma un intento que
  * se confirma aunque el envío no continúe (por eso se devuelve el error en lugar de lanzarlo).
- * Uno correcto se elimina (uso único) antes de cambiar el estado de la solicitud.
+ * Uno correcto se elimina (uso único) antes de cambiar el estado de la solicitud. Con la
+ * validación de pruebas activa para la cuenta, se acepta cualquier código con formato válido
+ * (sin comprobar vencimiento, intentos ni coincidencia) y se registra la verificación igualmente.
  *
  * @param {{ query: Function }} executor - Cliente de la transacción del envío.
  * @param {object} options - Datos de la verificación.
@@ -212,6 +245,11 @@ export async function verifyAndConsumeProjectRequestCode(executor, { code, proje
   // Revalida el estado con la fila bloqueada: un cambio concurrente no debe consumir el código.
   if (!state || !EDITABLE_STATUSES.has(state.status)) {
     return verificationError("PROJECT_REQUEST_NOT_SUBMITTABLE", "La solicitud no se encuentra en un estado que permita enviarla.", 409);
+  }
+  if (allowsProjectRequestTestVerification(user)) {
+    // El formato de seis dígitos ya lo exige submitProjectRequestSchema.
+    await consumeProjectRequestVerificationCode(executor, projectRequestId);
+    return null;
   }
   if (!state.codeHash) {
     return verificationError("VERIFICATION_CODE_REQUIRED", "Solicita un código de validación para enviar la solicitud.");

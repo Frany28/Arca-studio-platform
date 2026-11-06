@@ -361,3 +361,127 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   assert.deepEqual(activeFiles.map((file) => file.title), ["terreno.png"]);
   for (const file of activeFiles) assert.ok(storage.has(file.file_name), "cada adjunto activo existe en el almacenamiento");
 });
+
+const requestRow = async (id) => (await database.client.query(
+  "select status, project_name, verified_at, verification_code_hash from public.project_requests where id = $1",
+  [id],
+)).rows[0];
+const activeFileCount = async (id) => (await fileRows(id)).filter((file) => !file.deleted_at && file.status !== "deleted").length;
+
+test("PostgreSQL y HTTP: borrador vacío al adjuntar, idempotente, no se envía incompleto y conserva sus adjuntos", { skip }, async () => {
+  const owner = await authAs(seed.owner);
+  const admin = await authAs(seed.admin);
+  const submissionId = randomUUID();
+
+  // Varias selecciones rápidas: creaciones simultáneas con el mismo submissionId → un solo borrador.
+  const creations = await Promise.all([1, 2, 3].map(() => api("/project-requests", { body: { submissionId }, headers: owner, method: "POST" })));
+  assert.deepEqual(creations.map((created) => created.status), [201, 201, 201]);
+  const id = creations[0].body.projectRequest.id;
+  assert.ok(creations.every((created) => created.body.projectRequest.id === id));
+  assert.deepEqual(await requestRow(id), { project_name: null, status: "draft", verification_code_hash: null, verified_at: null });
+  // Un cuerpo con datos parciales no es un borrador vacío: exige la solicitud completa.
+  assert.equal((await api("/project-requests", { body: { projectName: "Solo nombre", submissionId: randomUUID() }, headers: owner, method: "POST" })).status, 400);
+
+  // Los adjuntos se asocian al borrador antes de completar el formulario.
+  assert.equal((await upload(id, pdf("anexo.pdf"), owner)).status, 201);
+  assert.equal(await activeFileCount(id), 1);
+
+  // Sin el formulario guardado, el envío se rechaza antes de consumir el código y sigue como borrador.
+  assert.equal((await api(`/project-requests/${id}/verification-code`, { body: {}, headers: owner, method: "POST" })).status, 201);
+  const incomplete = await api(`/project-requests/${id}/submit`, { body: { verificationCode: sentCodes.at(-1) }, headers: owner, method: "POST" });
+  assert.equal(incomplete.status, 400);
+  assert.equal(incomplete.body.code, "VALIDATION_ERROR");
+  assert.ok(incomplete.body.fields["body.projectName"]);
+  assert.equal((await requestRow(id)).status, "draft");
+  assert.ok((await requestRow(id)).verification_code_hash, "el código no se consumió");
+
+  // La base de datos tampoco admite una solicitud enviada sin identidad.
+  await assert.rejects(
+    database.client.query("update public.project_requests set status = 'pending_verification' where id = $1", [id]),
+    { code: "23514" },
+  );
+
+  // Guardar el formulario completo en el mismo borrador; un código incorrecto conserva los adjuntos.
+  const payload = draftPayload();
+  assert.equal((await api(`/project-requests/${id}`, { body: payload, headers: owner, method: "PATCH" })).status, 200);
+  const wrongCode = sentCodes.at(-1) === "000000" ? "111111" : "000000";
+  const wrong = await api(`/project-requests/${id}/submit`, { body: { verificationCode: wrongCode }, headers: owner, method: "POST" });
+  assert.equal(wrong.body.code, "VERIFICATION_CODE_INVALID");
+  assert.equal((await requestRow(id)).status, "draft");
+  assert.equal(await activeFileCount(id), 1, "los adjuntos siguen en el borrador");
+
+  const submitted = await api(`/project-requests/${id}/submit`, { body: { verificationCode: sentCodes.at(-1) }, headers: owner, method: "POST" });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
+  assert.equal(submitted.body.projectRequest.status, "pending_verification");
+  assert.equal(await activeFileCount(id), 1);
+  // Una solicitud enviada ya no admite adjuntos ni cambios.
+  assert.equal((await upload(id, png("tarde.png"), owner)).status, 404);
+  const adminDetail = await api(`/admin/project-requests/${id}`, { headers: admin });
+  assert.deepEqual(adminDetail.body.projectRequest.files.map((file) => file.name), ["anexo.pdf"]);
+});
+
+test("PostgreSQL y HTTP: validación de pruebas solo para cuentas autorizadas, sin correo y sin duplicar", { skip }, async (context) => {
+  const previous = {
+    ARCA_DEPLOYMENT_STAGE: process.env.ARCA_DEPLOYMENT_STAGE,
+    PROJECT_REQUEST_TEST_VERIFICATION: process.env.PROJECT_REQUEST_TEST_VERIFICATION,
+    PROJECT_REQUEST_TEST_VERIFICATION_EMAILS: process.env.PROJECT_REQUEST_TEST_VERIFICATION_EMAILS,
+  };
+  context.after(() => {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+  Object.assign(process.env, {
+    ARCA_DEPLOYMENT_STAGE: "staging",
+    PROJECT_REQUEST_TEST_VERIFICATION: "enabled",
+    PROJECT_REQUEST_TEST_VERIFICATION_EMAILS: "cliente-ciclo@example.test",
+  });
+  const owner = await authAs(seed.owner);
+  const stranger = await authAs(seed.stranger);
+  const admin = await authAs(seed.admin);
+  const createComplete = async (headers) => {
+    const created = await api("/project-requests", { body: { ...draftPayload(), submissionId: randomUUID() }, headers, method: "POST" });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    return created.body.projectRequest.id;
+  };
+
+  // Cuenta autorizada: no se genera ni se envía correo y cualquier código de seis dígitos sirve.
+  const id = await createComplete(owner);
+  assert.equal((await upload(id, pdf("prueba.pdf"), owner)).status, 201);
+  const emailsBefore = sentCodes.length;
+  const issued = await api(`/project-requests/${id}/verification-code`, { body: {}, headers: owner, method: "POST" });
+  assert.equal(issued.status, 201);
+  assert.deepEqual(issued.body.verification, { mode: "test" });
+  assert.equal(sentCodes.length, emailsBefore, "no se envía correo");
+  assert.equal((await api(`/project-requests/${id}/submit`, { body: { verificationCode: "12345" }, headers: owner, method: "POST" })).status, 400, "conserva el formato");
+  const submitted = await api(`/project-requests/${id}/submit`, { body: { verificationCode: "123456" }, headers: owner, method: "POST" });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
+  assert.equal(submitted.body.projectRequest.status, "pending_verification");
+  assert.ok((await requestRow(id)).verified_at, "la verificación queda registrada");
+  assert.equal(await activeFileCount(id), 1, "los adjuntos siguen asociados");
+  // Un reintento del envío no crea otra solicitud ni cambia la existente.
+  const retried = await api(`/project-requests/${id}/submit`, { body: { verificationCode: "654321" }, headers: owner, method: "POST" });
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.projectRequest.id, id);
+  const total = (await database.client.query("select count(*)::int as total from public.project_requests where requested_by = $1 and status = 'pending_verification' and id = $2", [seed.owner, id])).rows[0].total;
+  assert.equal(total, 1);
+  assert.equal((await api(`/admin/project-requests/${id}`, { headers: admin })).body.projectRequest.files.length, 1);
+
+  // Cuenta no autorizada con el modo activo: verificación normal por correo.
+  const strangerId = await createComplete(stranger);
+  const strangerIssued = await api(`/project-requests/${strangerId}/verification-code`, { body: {}, headers: stranger, method: "POST" });
+  assert.equal(strangerIssued.body.verification.mode, "email");
+  assert.equal(sentCodes.length, emailsBefore + 1, "se envía el correo real");
+  const guess = sentCodes.at(-1) === "123456" ? "654321" : "123456";
+  assert.equal((await api(`/project-requests/${strangerId}/submit`, { body: { verificationCode: guess }, headers: stranger, method: "POST" })).body.code, "VERIFICATION_CODE_INVALID");
+
+  // Desactivar el modo restaura la verificación por correo también para la cuenta autorizada.
+  process.env.PROJECT_REQUEST_TEST_VERIFICATION = "";
+  const normalId = await createComplete(owner);
+  const normalIssued = await api(`/project-requests/${normalId}/verification-code`, { body: {}, headers: owner, method: "POST" });
+  assert.equal(normalIssued.body.verification.mode, "email");
+  const normalGuess = sentCodes.at(-1) === "123456" ? "654321" : "123456";
+  assert.equal((await api(`/project-requests/${normalId}/submit`, { body: { verificationCode: normalGuess }, headers: owner, method: "POST" })).body.code, "VERIFICATION_CODE_INVALID");
+  assert.equal((await requestRow(normalId)).status, "draft");
+});

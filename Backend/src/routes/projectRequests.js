@@ -22,7 +22,9 @@ import { validate } from "../middlewares/validate.js";
 import { requestRateLimit, uploadRateLimit, verificationCodeRateLimit } from "../middlewares/actionRateLimits.js";
 import { paginationSchema } from "../validation/schemas.js";
 import {
+  createProjectRequestDraftSchema,
   createProjectRequestSchema,
+  isEmptyProjectRequestDraftBody,
   projectRequestFileIdSchema,
   projectRequestIdSchema,
   submitProjectRequestSchema,
@@ -31,6 +33,22 @@ import {
 import { projectRequestReviewSchema } from "../validation/projectRequestWorkflowSchemas.js";
 
 const router = Router();
+const validateFullCreation = validate(createProjectRequestSchema);
+const validateEmptyDraftCreation = validate(createProjectRequestDraftSchema);
+
+/**
+ * Valida la creación de una solicitud: un cuerpo con solo `submissionId` crea un borrador vacío
+ * (adjuntos antes de completar el formulario); cualquier otro cuerpo exige la solicitud completa.
+ *
+ * @param {import("express").Request} req - Solicitud HTTP.
+ * @param {import("express").Response} res - Respuesta HTTP.
+ * @param {Function} next - Continúa la cadena o entrega el error de validación.
+ * @returns {void}
+ */
+function validateProjectRequestCreation(req, res, next) {
+  const validator = isEmptyProjectRequestDraftBody(req.body) ? validateEmptyDraftCreation : validateFullCreation;
+  validator(req, res, next);
+}
 
 router.get(
   "/review-queue",
@@ -49,7 +67,7 @@ router.put(
 );
 router.get("/", requireAuth, validate(paginationSchema), listProjectRequests);
 router.get("/:projectRequestId", requireAuth, validate(projectRequestIdSchema), getProjectRequest);
-router.post("/", requireAuth, requestRateLimit, validate(createProjectRequestSchema), createProjectRequest);
+router.post("/", requireAuth, requestRateLimit, validateProjectRequestCreation, createProjectRequest);
 router.patch("/:projectRequestId", requireAuth, requestRateLimit, validate(updateProjectRequestSchema), updateProjectRequest);
 router.post(
   "/:projectRequestId/verification-code",

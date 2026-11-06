@@ -6,6 +6,11 @@ import { evaluateProjectCompatibility, publicCompatibility } from "../domain/pro
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import { verifyAndConsumeProjectRequestCode } from "./projectRequestVerificationService.js";
 import {
+  findIncompleteProjectRequestFields,
+  isEmptyProjectRequestDraftBody,
+} from "../validation/projectRequestSchemas.js";
+import {
+  createEmptyProjectRequestDraft,
   createProjectRequestDraft,
   findExistingProjectNameForClient,
   findProjectRequestBySubmissionId,
@@ -91,17 +96,21 @@ async function assertAvailableName(user, payload, excludeProjectRequestId = null
 }
 
 /**
- * Crea una solicitud con tipo vigente y los datos validados recibidos.
- * Conserva idempotencia y unicidad del nombre; rechaza tipos retirados antes de guardar.
+ * Crea una solicitud con tipo vigente y los datos validados recibidos, o un borrador vacío cuando
+ * solo llega `submissionId` (adjuntos antes de completar el formulario). Conserva idempotencia y
+ * unicidad del nombre; rechaza tipos retirados antes de guardar.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {unknown} options.payload - Valor de `options.payload` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @param {object} options.payload - Cuerpo validado (completo o solo `submissionId`).
+ * @param {object} options.user - Cliente autenticado.
+ * @returns {Promise<object>} Solicitud pública creada o existente con ese submissionId.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function createProjectRequest({ payload, user }) {
   requireClient(user);
+  if (isEmptyProjectRequestDraftBody(payload)) {
+    return toPublicProjectRequest(await createEmptyProjectRequestDraft(user, payload.submissionId));
+  }
   assertAllowedProjectType(payload.projectType);
   const idempotentDraft = await findProjectRequestBySubmissionId(payload.submissionId, user);
   if (idempotentDraft) return toPublicProjectRequest(idempotentDraft);
@@ -210,6 +219,12 @@ export async function submitProjectRequest({ projectRequestId, user, verificatio
     });
   }
 
+  // Un borrador creado al adjuntar archivos puede no estar completo: se valida el registro entero
+  // con las reglas del formulario antes de consumir el código o cambiar el estado.
+  const incompleteFields = findIncompleteProjectRequestFields(current);
+  if (incompleteFields) {
+    throw new ValidationError("Completa la información de la solicitud antes de enviarla.", incompleteFields);
+  }
   await assertAvailableName(user, current, projectRequestId);
   // Desde 3.2 los adjuntos no puntúan: la evaluación usa solo las respuestas guardadas.
   const evaluation = evaluateProjectCompatibility(current);

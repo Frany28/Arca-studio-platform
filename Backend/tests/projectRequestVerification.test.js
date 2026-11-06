@@ -15,7 +15,23 @@ const { submitProjectRequest } = await import("../src/services/projectRequestSer
 const { submitProjectRequestSchema } = await import("../src/validation/projectRequestSchemas.js");
 
 const USER = { clientId: 2, email: "cliente@example.test", id: 11, role: { code: "client" } };
-const REQUEST_ROW = { client_id: "2", id: "9", project_name: "Casa <Lago>", requested_by: "11", status: "draft" };
+// Borrador completo: el envío valida el registro entero antes de verificar el código.
+const REQUEST_ROW = {
+  capital_availability: "available_now",
+  client_id: "2",
+  description: "Vivienda unifamiliar de dos plantas frente al lago.",
+  development_mode: "full",
+  expected_start_time: "immediate",
+  id: "9",
+  investment_range: "10k_50k",
+  land_status: "unavailable",
+  legal_document_types: [],
+  location: "Maracaibo, Estado Zulia",
+  project_name: "Casa <Lago>",
+  project_type: "residential",
+  requested_by: "11",
+  status: "draft",
+};
 
 /**
  * Configura un proveedor de correo simulado y devuelve los mensajes recibidos.

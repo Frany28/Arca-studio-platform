@@ -393,9 +393,9 @@ model project_requests {
   id                                         BigInt                 @id @default(autoincrement())
   client_id                                  BigInt
   requested_by                               BigInt
-  project_name                               String                 @db.VarChar(150)
-  project_type                               project_type
-  location                                   String                 @db.VarChar(255)
+  project_name                               String?                @db.VarChar(150)
+  project_type                               project_type?
+  location                                   String?                @db.VarChar(255)
   description                                String?
   has_plans                                  Boolean?
   legal_documentation_status                 project_legal_documentation_status?

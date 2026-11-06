@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
-import { buildProjectRequestPayload } from "../../../utils/projectRequestValidation.js";
 
 export const REQUEST_VIEWS = Object.freeze({ form: "form", status: "status", summary: "summary" });
 
@@ -13,84 +12,41 @@ export const VERIFICATION_CODE_STATUS = Object.freeze({
   sent: "sent",
 });
 
+// Modo de validación que informa el backend al emitir el código. `test` es la validación temporal
+// de staging para cuentas autorizadas: no se envía correo y se acepta cualquier código de 6 dígitos.
+export const VERIFICATION_MODES = Object.freeze({ email: "email", test: "test" });
+
 /**
- * Coordina borrador, código de validación, uploads secuenciales y envío final con la API.
+ * Coordina código de validación y envío final con la API sobre el borrador compartido.
  *
- * Al abrir la validación guarda el borrador (lo crea o lo actualiza) y pide al backend un código
- * que se envía al correo del cliente; el código se puede reenviar. Al confirmar sube los adjuntos
- * pendientes y envía la solicitud con el código, que el backend verifica y consume: el envío no
- * puede omitir la validación. Conserva borrador y submissionId al reintentar, y reutiliza el id
- * inicial solo para solicitudes changes_requested (la corrección actualiza la misma solicitud).
- * La vista inicia en "status" con viewRequest; tras enviar pasa a "status" y desde ahí solo
- * alterna con "summary" (consulta de solo lectura), sin reabrir el formulario editable.
+ * Al abrir la validación guarda el formulario completo en el borrador (`draft.saveForm`, que lo
+ * crea si aún no existe) y pide al backend un código para el correo del cliente; el código se
+ * puede reenviar. Al confirmar solo envía la solicitud con el código, que el backend verifica y
+ * consume: los adjuntos ya se subieron al seleccionarlos y no se vuelven a transferir, y el envío
+ * se bloquea mientras haya archivos sin guardar (`blockedReason`). Un código incorrecto deja la
+ * solicitud como borrador con sus adjuntos. Si el backend informa el modo de pruebas, no hay correo
+ * ni reenvío. La vista inicia en "status" con viewRequest; tras enviar pasa a "status" y desde ahí
+ * solo alterna con "summary" (consulta de solo lectura), sin reabrir el formulario editable.
  *
  * @param {Object} params - Datos del flujo y callback posterior.
- * @param {Object} params.form - Campos usados para construir el payload.
- * @param {Object|null} params.initialRequest - Solicitud inicial para recuperar un borrador corregible.
+ * @param {{draftId: number|string|null, ensureDraft: Function, saveForm: Function}} params.draft - Borrador compartido.
  * @param {Function} [params.onSubmitted] - Callback invocado tras el envío exitoso; no se espera su resultado.
  * @param {Object|null} params.viewRequest - Solicitud para inicializar la vista recibida.
- * @returns {Object} Borrador, código, estado de su emisión, modal, solicitud recibida, carga/error
- *   y acciones de validación, reenvío, envío, vista y reset.
+ * @returns {Object} Código, estado y modo de su emisión, modal, solicitud recibida, carga/error y
+ *   acciones de validación, reenvío, envío, vista y reset.
  */
-export default function useProjectRequestSubmission({
-  form,
-  initialRequest,
-  onSubmitted,
-  viewRequest,
-}) {
+export default function useProjectRequestSubmission({ draft, onSubmitted, viewRequest }) {
   const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
   const [validationCode, setValidationCode] = useState("");
   // Vista activa: formulario editable, estado de la solicitud enviada o consulta de solo lectura.
   const [requestView, setRequestView] = useState(viewRequest ? REQUEST_VIEWS.status : REQUEST_VIEWS.form);
   const [receivedRequest, setReceivedRequest] = useState(viewRequest);
-  const initialDraftId = initialRequest?.status === "changes_requested" ? initialRequest.id : null;
-  const [draftId, setDraftId] = useState(initialDraftId);
-  // Copia síncrona del borrador: la emisión del código y el envío ocurren en manejadores distintos.
-  const draftIdRef = useRef(initialDraftId);
   const [codeStatus, setCodeStatus] = useState(VERIFICATION_CODE_STATUS.idle);
+  const [verificationMode, setVerificationMode] = useState(VERIFICATION_MODES.email);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const submissionIdRef = useRef(null);
   // Descarta respuestas de emisiones anteriores (reapertura, reenvío o reset) para no mezclar estados.
   const codeRequestRef = useRef(0);
-
-  /**
-   * Registra el borrador remoto en el estado y en la copia síncrona.
-   *
-   * @param {number|string|null} id - Borrador creado o null al reiniciar.
-   * @returns {void}
-   */
-  const rememberDraft = (id) => {
-    draftIdRef.current = id;
-    setDraftId(id);
-  };
-
-  /**
-   * Crea el borrador con el submissionId idempotente o actualiza el existente con el formulario.
-   *
-   * @returns {Promise<number|string>} Id del borrador guardado.
-   * @throws {Error} Error de la API o borrador sin identificador.
-   */
-  const saveDraft = async () => {
-    if (!submissionIdRef.current) {
-      submissionIdRef.current = window.crypto.randomUUID();
-    }
-    if (draftIdRef.current) {
-      await api.projectRequests.update({
-        payload: buildProjectRequestPayload(form),
-        projectRequestId: draftIdRef.current,
-      });
-      return draftIdRef.current;
-    }
-
-    const created = await api.projectRequests.create(buildProjectRequestPayload(form, submissionIdRef.current));
-    const createdId = created?.projectRequest?.id;
-    if (!createdId) {
-      throw new Error("No se pudo identificar el borrador de la solicitud.");
-    }
-    rememberDraft(createdId);
-    return createdId;
-  };
 
   /**
    * Pide al backend un código para el borrador; ignora la respuesta si otra emisión la reemplazó.
@@ -99,7 +55,7 @@ export default function useProjectRequestSubmission({
    * del backend. Ocurre al reenviar o al cerrar y reabrir la validación antes del plazo.
    *
    * @param {Function} getDraftId - Devuelve (o guarda y devuelve) el borrador del código.
-   * @returns {Promise<void>} Actualiza codeStatus y submitError.
+   * @returns {Promise<void>} Actualiza codeStatus, verificationMode y submitError.
    */
   const issueCode = async (getDraftId) => {
     const requestId = codeRequestRef.current + 1;
@@ -108,8 +64,10 @@ export default function useProjectRequestSubmission({
     setSubmitError("");
     try {
       const projectRequestId = await getDraftId();
-      await api.projectRequests.requestVerificationCode(projectRequestId);
-      if (codeRequestRef.current === requestId) setCodeStatus(VERIFICATION_CODE_STATUS.sent);
+      const response = await api.projectRequests.requestVerificationCode(projectRequestId);
+      if (codeRequestRef.current !== requestId) return;
+      setVerificationMode(response?.verification?.mode === VERIFICATION_MODES.test ? VERIFICATION_MODES.test : VERIFICATION_MODES.email);
+      setCodeStatus(VERIFICATION_CODE_STATUS.sent);
     } catch (error) {
       if (codeRequestRef.current !== requestId) return;
       const codeStillValid = error?.code === "VERIFICATION_CODE_RECENTLY_SENT";
@@ -119,25 +77,26 @@ export default function useProjectRequestSubmission({
   };
 
   /**
-   * Abre la validación: guarda el borrador con el formulario actual y envía el código al correo.
+   * Abre la validación: guarda el formulario completo en el borrador y pide el código.
    *
    * @returns {void}
    */
   const openValidation = () => {
     setValidationCode("");
     setIsValidationModalOpen(true);
-    void issueCode(saveDraft);
+    void issueCode(draft.saveForm);
   };
 
   /**
-   * Solicita otro código para el mismo borrador (o lo guarda si aún no existe).
+   * Solicita otro código para el mismo borrador (o lo guarda si aún no existe). En modo de pruebas
+   * no hay correo que reenviar.
    *
    * @returns {void}
    */
   const resendCode = () => {
-    if (isSubmitting || codeStatus === VERIFICATION_CODE_STATUS.sending) return;
+    if (isSubmitting || codeStatus === VERIFICATION_CODE_STATUS.sending || verificationMode === VERIFICATION_MODES.test) return;
     setValidationCode("");
-    void issueCode(() => draftIdRef.current || saveDraft());
+    void issueCode(() => draft.draftId || draft.saveForm());
   };
 
   const closeValidation = () => {
@@ -151,8 +110,8 @@ export default function useProjectRequestSubmission({
   const showRequestSummary = () => setRequestView(REQUEST_VIEWS.summary);
 
   /**
-   * Limpia modal, código, emisión, vista recibida, borrador, error y submissionId local.
-   * No elimina el borrador remoto ni reinicia los estados de formulario o archivos.
+   * Limpia modal, código, emisión, vista recibida y error. Conserva el borrador remoto y sus
+   * adjuntos guardados (se eliminan con su botón) y no reinicia los estados de formulario o archivos.
    *
    * @returns {void} Restablece el estado local indicado sin cambiar isSubmitting.
    */
@@ -163,27 +122,29 @@ export default function useProjectRequestSubmission({
     setCodeStatus(VERIFICATION_CODE_STATUS.idle);
     setRequestView(REQUEST_VIEWS.form);
     setReceivedRequest(null);
-    rememberDraft(null);
     setSubmitError("");
-    submissionIdRef.current = null;
   };
 
   /**
-   * Sube los adjuntos pendientes y envía la solicitud con el código de seis dígitos, que el
-   * backend verifica y consume. Evita iniciar otro envío mientras isSubmitting sea true y
-   * requiere un borrador guardado al abrir la validación. Un código incorrecto, vencido o
-   * bloqueado deja el modal abierto con el motivo; los adjuntos ya subidos no se repiten.
+   * Envía la solicitud con el código de seis dígitos, que el backend verifica y consume. No sube
+   * archivos: si alguno no está guardado (`blockedReason`), informa el motivo sin llamar a la API.
+   * Evita iniciar otro envío mientras isSubmitting sea true y requiere el borrador guardado al
+   * abrir la validación. Un código incorrecto, vencido o bloqueado deja el modal abierto con el
+   * motivo, y la solicitud sigue como borrador con sus adjuntos.
    *
-   * @param {string|number} code - Código recibido por correo.
-   * @param {Object} options - Archivos y actualización de su presentación.
-   * @param {Array} options.files - Items con id, file y status.
-   * @param {Function} options.updateFileItem - Actualiza error, progreso, estado e id remoto del item.
+   * @param {string|number} code - Código recibido por correo (o cualquiera en modo de pruebas).
+   * @param {Object} [options] - Estado de los adjuntos.
+   * @param {string} [options.blockedReason=""] - Motivo por el que los adjuntos impiden enviar.
    * @returns {Promise<void>} Actualiza la vista recibida y llama onSubmitted tras éxito; captura errores.
    */
-  const submitValidation = async (code, { files, updateFileItem }) => {
+  const submitValidation = async (code, { blockedReason = "" } = {}) => {
     const verificationCode = String(code ?? "").trim();
-    const projectRequestId = draftIdRef.current;
+    const projectRequestId = draft.draftId;
     if (isSubmitting || !projectRequestId || !/^\d{6}$/.test(verificationCode)) {
+      return;
+    }
+    if (blockedReason) {
+      setSubmitError(blockedReason);
       return;
     }
 
@@ -192,28 +153,6 @@ export default function useProjectRequestSubmission({
     setSubmitError("");
 
     try {
-      for (const item of files) {
-        if (item.status === "uploaded") continue;
-
-        updateFileItem(item.id, { error: "", progress: 0, status: "uploading" });
-
-        try {
-          const uploaded = await api.projectRequests.uploadFile({
-            file: item.file,
-            onUploadProgress: ({ progress }) => updateFileItem(item.id, { progress }),
-            projectRequestId,
-          });
-          // El id remoto permite eliminar el adjunto si el envío no termina y se corrige.
-          updateFileItem(item.id, { progress: 100, remoteId: uploaded?.file?.id ?? null, status: "uploaded" });
-        } catch (error) {
-          updateFileItem(item.id, {
-            error: error.message || "No se pudo subir el archivo.",
-            status: "error",
-          });
-          throw error;
-        }
-      }
-
       const submitted = await api.projectRequests.submit(projectRequestId, verificationCode);
       setReceivedRequest(submitted?.projectRequest || null);
       setIsValidationModalOpen(false);
@@ -230,7 +169,6 @@ export default function useProjectRequestSubmission({
   return {
     closeValidation,
     codeStatus,
-    draftId,
     isRequestReceived: requestView !== REQUEST_VIEWS.form,
     isSubmitting,
     isValidationModalOpen,
@@ -245,5 +183,6 @@ export default function useProjectRequestSubmission({
     submitError,
     submitValidation,
     validationCode,
+    verificationMode,
   };
 }

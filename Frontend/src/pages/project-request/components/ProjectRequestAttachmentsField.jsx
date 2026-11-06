@@ -4,16 +4,24 @@ import Button from "../../../components/ui/Button/Button.jsx";
 import FileUploadSection from "../../../components/ui/FileUploadSection/FileUploadSection.jsx";
 import { getFileUploadCardIds } from "../../../components/ui/FileUploadSection/fileUploadSectionConfig.js";
 import HintText from "../../../components/ui/HintText/HintText.jsx";
+import { UPLOAD_TRANSFER_LIMIT_BYTES } from "../../../config/uploadTransferLimit.js";
+import { formatTransferLimit } from "../../../utils/projectRequestValidation.js";
 import { splitProjectRequestFileErrors, toProjectRequestFileCards } from "../utils/projectRequestFilePresentation.js";
 import { FieldLabel } from "./ProjectRequestFormFields.jsx";
 
 const ACCEPTED_FILE_TYPES = ".jpeg,.jpg,.png,.pdf,.mp4";
 const ATTACHMENTS_LABEL = "Subir imágenes / archivos (opcional)";
+// Texto de Figma con el límite funcional; si el despliegue impone uno menor por subida (temporal),
+// se indica para no anunciar que un archivo de hasta 50 MB se puede subir en este entorno.
+const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
+  ? `Formatos JPEG, PNG, PDF y MP4, hasta 50 MB (en este entorno de pruebas, hasta ${formatTransferLimit(UPLOAD_TRANSFER_LIMIT_BYTES)} por archivo).`
+  : undefined;
 
 /**
  * Campo "Referencias" del formulario: zona de carga del sistema (`FileUploadSection`) con una
- * tarjeta por adjunto que refleja su estado real (pendiente, subiendo, completado o fallido)
- * y permite quitar los que aún no se subieron. Los uploads ocurren al enviar la solicitud.
+ * tarjeta por adjunto que refleja su estado real (pendiente, subiendo, subido y pendiente de
+ * enviar la solicitud, o fallido con «Intenta de nuevo»). Los archivos se suben al seleccionarlos
+ * (useProjectRequestFiles); quitar uno en curso cancela su transferencia.
  *
  * Errores: el motivo de un adjunto concreto (formato, tamaño, nombre, vacío, repetido) se muestra
  * en su tarjeta y se asocia a su botón «Eliminar archivo …»; los de la sección (cantidad, tamaño
@@ -36,7 +44,8 @@ const ATTACHMENTS_LABEL = "Subir imágenes / archivos (opcional)";
  * @param {Array<string>} props.fileErrors - Errores de validación de adjuntos.
  * @param {boolean} props.disabled - Bloquea cambios durante el envío.
  * @param {(fileList: FileList) => void} props.onFilesSelected - Agrega archivos.
- * @param {(id: string) => void} props.onRemove - Quita un adjunto pendiente o fallido.
+ * @param {(id: string) => void} props.onRemove - Quita un adjunto (cancela, elimina o descarta).
+ * @param {(id: string) => void} [props.onRetry] - Vuelve a subir un adjunto fallido.
  * @returns {import("react").ReactElement} Campo de adjuntos.
  */
 function ProjectRequestAttachmentsField({
@@ -47,6 +56,7 @@ function ProjectRequestAttachmentsField({
   loadingPersisted = false,
   onFilesSelected,
   onRemove,
+  onRetry,
   onRetryPersisted,
   persistedError = "",
 }) {
@@ -88,7 +98,10 @@ function ProjectRequestAttachmentsField({
     });
   }
 
-  const fileCards = toProjectRequestFileCards(files, disabled ? undefined : removeFile, { allowRemoteRemoval })
+  const fileCards = toProjectRequestFileCards(files, disabled ? undefined : removeFile, {
+    allowRemoteRemoval,
+    onRetry: disabled ? undefined : onRetry,
+  })
     .map((card) => (byFileId.has(card.id) ? { ...card, validationMessage: byFileId.get(card.id) } : card));
 
   return (
@@ -111,6 +124,7 @@ function ProjectRequestAttachmentsField({
         viewportHeight={null}
         disabled={disabled}
         fileInputAccept={ACCEPTED_FILE_TYPES}
+        formatsLabel={FORMATS_LABEL}
         idPrefix={idPrefix}
         onFilesSelected={onFilesSelected}
         dropzoneSupportingContent={general.length || loadingPersisted || persistedError ? (

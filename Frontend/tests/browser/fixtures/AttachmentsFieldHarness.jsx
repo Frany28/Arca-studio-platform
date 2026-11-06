@@ -12,10 +12,15 @@ import "../../../src/index.css";
 // Arnés del campo de adjuntos real (useProjectRequestFiles + ProjectRequestAttachmentsField) con
 // el mismo envío que ProjectRequestPage: valida los archivos y pide la navegación a errores.
 // `layout=modal` lo monta en un Modal con el formulario como área desplazable; `draft=1` simula un
-// borrador en curso, que admite agregar nuevas selecciones.
+// borrador en curso, que admite agregar nuevas selecciones. El arnés prueba foco y mensajes, no la
+// red: la creación del borrador queda pendiente, así que las subidas automáticas de los archivos
+// válidos esperan sin transferir nada (sus tarjetas muestran «Subiendo...»).
 const params = new URLSearchParams(window.location.search);
 const layout = params.get("layout") || "page";
-const draftId = params.get("draft") === "1" ? 99 : null;
+const HARNESS_DRAFT = Object.freeze({
+  draftId: params.get("draft") === "1" ? 99 : null,
+  ensureDraft: () => new Promise(() => {}),
+});
 window.attachmentsHarness = { submissions: 0 };
 
 /**
@@ -26,7 +31,7 @@ window.attachmentsHarness = { submissions: 0 };
  */
 function AttachmentsForm({ className, formId, formRef, getContainer }) {
   const [, setShowRequiredAlert] = useState(false);
-  const files = useProjectRequestFiles({ currentFieldErrors: {}, draftId, hasAttemptedSubmit: false, setShowRequiredAlert });
+  const files = useProjectRequestFiles({ currentFieldErrors: {}, draft: HARNESS_DRAFT, hasAttemptedSubmit: false, setShowRequiredAlert });
   const focusInvalidField = useInvalidFieldFocus({ getContainer });
 
   /**

@@ -53,7 +53,10 @@ async function openRequestPage(context, { viewport = { width: 1440, height: 1000
     if (path === "/api/geoapify/address-suggestions") return route.fulfill({ json: { suggestions: addressSuggestions } });
     if (method === "POST" && path === "/api/project-requests") return route.fulfill({ status: 201, json: { projectRequest: { id: REQUEST_ID, status: "draft" } } });
     // Subidas: cada respuesta de uploadResponses se usa una vez; después, éxito.
-    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/files`) return route.fulfill(uploadResponses.shift() || { status: 201, json: { file: { id: 1 } } });
+    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/files`) {
+      const upload = uploadResponses.shift() || { status: 201, json: { file: { id: 1 } } };
+      return typeof upload === "function" ? upload(route) : route.fulfill(upload);
+    }
     // Detalle de consulta: cada respuesta de detailResponses se usa una vez; después, la última.
     // Una función decide la respuesta en cada lectura (StrictMode repite la primera en desarrollo).
     if (method === "GET" && path === `/api/project-requests/${REQUEST_ID}`) {
@@ -91,6 +94,7 @@ async function choose(page, fieldLabel, optionLabel) {
   await page.getByRole("menuitem", { name: optionLabel, exact: true }).click();
 }
 
+const UPLOADED_LABEL = "Subido · Pendiente de enviar solicitud";
 const pngFile = (name) => ({ name, mimeType: "image/png", buffer: Buffer.from(`fake-${name}`) });
 
 const LEGAL_HEADING = "Documentación legal del inmueble";
@@ -287,7 +291,7 @@ async function fillLegalSection(page) {
   await choose(page, OWNERS_LABEL, "No");
 }
 
-/** Envía con el código temporal y devuelve el cuerpo guardado al crear o editar el borrador. */
+/** Envía con el código temporal y devuelve el formulario completo guardado en el borrador (PATCH). */
 async function submitWithCode(page, calls) {
   const codeIssued = page.waitForResponse((response) => response.url().endsWith(`/project-requests/${REQUEST_ID}/verification-code`));
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
@@ -299,7 +303,7 @@ async function submitWithCode(page, calls) {
   await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
   await submitted;
   await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
-  return calls.find((call) => call.body && ["POST", "PATCH"].includes(call.method)).body;
+  return calls.filter((call) => call.body && call.method === "PATCH").at(-1).body;
 }
 
 test("Tipo histórico: se edita como Stand publicitario y se reenvía renombrado sobre la misma solicitud", async (context) => {
@@ -352,7 +356,9 @@ test("Solicitud: enviar sin datos muestra errores, enfoca el primer campo y no l
 });
 
 test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con archivos y confirmación", async (context) => {
-  const { calls, page } = await openRequestPage(context);
+  const { calls, page } = await openRequestPage(context, {
+    uploadResponses: [{ status: 201, json: { file: { id: 51 } } }, { status: 201, json: { file: { id: 52 } } }],
+  });
   await fillCommonFields(page);
   await chooseLand(page, "Sí, disponible");
   await legalSection(page).waitFor();
@@ -365,17 +371,18 @@ test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con a
 
   await fillLegalSection(page);
 
-  // Las selecciones se agregan; un adjunto pendiente se puede quitar (la tarjeta omite la extensión).
+  // Cada selección se sube al momento al mismo borrador; quitar un archivo subido lo elimina en el
+  // servidor y la tarjeta desaparece tras confirmarse (la tarjeta omite la extensión).
   const fileInput = page.locator('input[type="file"]');
   await fileInput.setInputFiles([pngFile("fachada.png")]);
   await fileInput.setInputFiles([pngFile("terraza.png")]);
-  await page.getByText("terraza", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "Eliminar archivo" }).count(), 2);
-  await page.getByRole("button", { name: "Eliminar archivo" }).last().click();
-  assert.equal(await page.getByText("terraza", { exact: true }).count(), 0);
+  await page.getByText(UPLOADED_LABEL, { exact: true }).nth(1).waitFor();
+  await page.getByRole("button", { name: "Eliminar archivo terraza.png" }).click();
+  await page.getByText("terraza", { exact: true }).waitFor({ state: "detached" });
+  assert.deepEqual(calls.filter((call) => call.method === "DELETE").map((call) => call.path), [`/api/project-requests/${REQUEST_ID}/files/52`]);
 
-  // Abrir el código guarda el borrador y pide el código al backend; cerrar no pierde datos ni
-  // sube archivos, y volver a abrirlo actualiza el mismo borrador en lugar de crear otro.
+  // Abrir el código guarda el formulario en el borrador y pide el código al backend; cerrar no
+  // pierde datos ni vuelve a subir archivos, y reabrirlo actualiza el mismo borrador.
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
   const codeDialog = page.getByRole("dialog");
   await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
@@ -384,7 +391,7 @@ test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con a
   assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago");
   assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1);
   assert.equal(calls.filter((call) => call.path.endsWith("/verification-code")).length, 1);
-  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 0);
+  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 2, "solo las subidas de la selección");
 
   const body = await submitWithCode(page, calls);
   await page.getByText("Excelente compatibilidad").first().waitFor();
@@ -396,9 +403,12 @@ test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con a
   assert.deepEqual(body.legalDocumentTypes, ["property_deed", "purchase_contract", "other"]);
   assert.equal(body.hasMultipleOwners, false);
   assert.equal(body.startTime, "immediate");
-  assert.match(body.submissionId, /^[0-9a-f-]{36}$/);
+  // El borrador se creó vacío (solo submissionId) al adjuntar; «Enviar» no vuelve a subir archivos.
+  const draftBody = calls.find((call) => call.method === "POST" && call.path === "/api/project-requests").body;
+  assert.deepEqual(Object.keys(draftBody), ["submissionId"]);
+  assert.match(draftBody.submissionId, /^[0-9a-f-]{36}$/);
   const uploads = calls.filter((call) => call.path === `/api/project-requests/${REQUEST_ID}/files`);
-  assert.deepEqual(uploads.map((call) => decodeURIComponent(call.fileName || "")), ["fachada.png"]);
+  assert.deepEqual(uploads.map((call) => decodeURIComponent(call.fileName || "")), ["fachada.png", "terraza.png"]);
 });
 
 test("Caso 2 · No tiene inmueble: la sección no aparece, no bloquea y no envía datos legales", async (context) => {
@@ -545,7 +555,10 @@ test("Adjuntos: un archivo no permitido lleva a su tarjeta, enfoca su «Eliminar
   assert.deepEqual(state.messages, ["notas.txt: formato no permitido."]);
   assert.equal(state.targetVisible && state.messagesVisible, true, "Control y motivo visibles");
   assert.equal(await page.getByRole("dialog").count(), 0, "No abre la verificación");
-  assert.equal(calls.filter((call) => call.method !== "GET").length, 0);
+  // El válido se subió al seleccionarlo; el no permitido nunca se transfiere y no se guarda el formulario.
+  const writes = calls.filter((call) => call.method !== "GET");
+  assert.deepEqual(writes.map((call) => call.path), ["/api/project-requests", `/api/project-requests/${REQUEST_ID}/files`]);
+  assert.deepEqual(writes.filter((call) => call.fileName).map((call) => call.fileName), ["fachada.png"]);
 
   // Quitarlo con el teclado resuelve el error, conserva el válido y el grupo deja de marcarse.
   await page.keyboard.press("Enter");
@@ -889,40 +902,158 @@ test("Desplegables · ubicación: elegir una sugerencia la aplica y Escape cierr
   assert.equal(await location.getAttribute("aria-expanded"), "false");
 });
 
-test("Adjuntos: una subida rechazada muestra el motivo, nunca «Completado», y el reintento solo reenvía la fallida", async (context) => {
+/** Promesa controlable para retener una transferencia simulada. */
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+/** Retiene una subida hasta `gate` y la confirma con `fileId` (o la rechaza con `response`). */
+const heldUpload = (gate, response) => async (route) => {
+  await gate.promise;
+  return route.fulfill(response).catch(() => {});
+};
+
+const attachments = (page) => page.getByRole("group", { name: "Subir imágenes / archivos (opcional)" });
+
+test("Subida automática: seleccionar sube al momento a un único borrador, con progreso y sin enviar la solicitud", async (context) => {
+  const gate = deferred();
   const { calls, page } = await openRequestPage(context, {
     uploadResponses: [
-      { status: 201, json: { file: { id: 41 } } },
+      heldUpload(gate, { status: 201, json: { file: { id: 61 } } }),
+      heldUpload(gate, { status: 201, json: { file: { id: 62 } } }),
+    ],
+  });
+  // Sin completar el formulario: los archivos se pueden adjuntar desde el principio.
+  await page.locator('input[type="file"]').setInputFiles([pngFile("fachada.png"), pngFile("plano.png")]);
+  await attachments(page).getByText("Subiendo...", { exact: true }).nth(1).waitFor();
+  assert.equal(await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).count(), 0, "no se confirma antes del backend");
+  assert.equal(await attachments(page).getByText("100%", { exact: true }).count(), 0, "el progreso no llega a 100 sin respuesta");
+
+  gate.resolve();
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).nth(1).waitFor();
+  assert.equal(await attachments(page).getByText("100%", { exact: true }).count(), 2, "100 % solo tras la confirmación");
+  const drafts = calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests");
+  assert.equal(drafts.length, 1, "un único borrador para varios archivos");
+  assert.deepEqual(Object.keys(drafts[0].body), ["submissionId"], "sin datos ficticios");
+  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 2, "cada archivo se sube una sola vez (StrictMode)");
+  for (const suffix of ["/verification-code", "/submit"]) {
+    assert.equal(calls.filter((call) => call.path.endsWith(suffix)).length, 0, `no llama a ${suffix}`);
+  }
+  assert.equal(calls.filter((call) => call.method === "PATCH").length, 0, "no guarda el formulario todavía");
+  assert.equal(await page.getByRole("heading", { name: "Solicitud de proyecto" }).count(), 1, "sigue en el formulario");
+});
+
+test("Enviar: no vuelve a subir los guardados, un código incorrecto conserva el borrador y sus adjuntos", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await page.locator('input[type="file"]').setInputFiles([pngFile("fachada.png")]);
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).waitFor();
+
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+  await codeDialog.getByRole("textbox", { name: "Código" }).fill("000000");
+  await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
+  await codeDialog.getByText("El código no es correcto. Te quedan 4 intentos.", { exact: true }).waitFor();
+  await codeDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await codeDialog.waitFor({ state: "detached" });
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).waitFor();
+
+  await submitWithCode(page, calls);
+  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 1, "el adjunto se subió una sola vez");
+  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1, "un solo borrador");
+  assert.equal(calls.filter((call) => call.path.endsWith("/submit")).length, 2, "reintento del envío sobre la misma solicitud");
+});
+
+test("Adjuntos: una subida fallida muestra el motivo y «Intenta de nuevo» reenvía solo ese archivo", async (context) => {
+  const { calls, page } = await openRequestPage(context, {
+    uploadResponses: [
+      { status: 201, json: { file: { id: 71 } } },
       // La plataforma rechaza el cuerpo antes de Express: 413 en texto plano, sin JSON.
       { status: 413, contentType: "text/plain", body: "Request Entity Too Large" },
-      { status: 201, json: { file: { id: 42 } } },
+      { status: 201, json: { file: { id: 72 } } },
     ],
   });
   await fillCommonFields(page);
   await chooseLand(page, "No todavía");
   await page.locator('input[type="file"]').setInputFiles([pngFile("fachada.png"), pngFile("plano.png")]);
+  await attachments(page).getByText("Fallido", { exact: true }).waitFor();
+  await attachments(page).getByText("El archivo supera el tamaño que el servidor admite en una sola subida.", { exact: true }).waitFor();
+  assert.equal(await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).count(), 1);
+  assert.equal(await attachments(page).getByRole("button", { name: "Eliminar archivo plano.png" }).count(), 1, "también se puede quitar");
+
+  // Con un archivo fallido no se abre la validación.
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.getByText("Reintenta o elimina los archivos que no se pudieron subir.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+
+  await attachments(page).getByRole("button", { name: "Intenta de nuevo" }).click();
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).nth(1).waitFor();
+  assert.deepEqual(calls.filter((call) => call.path.endsWith("/files")).map((call) => call.fileName), ["fachada.png", "plano.png", "plano.png"]);
+  await submitWithCode(page, calls);
+  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 3, "enviar no repite subidas");
+});
+
+test("Adjuntos: quitar uno en curso cancela la transferencia y no deja el envío bloqueado", async (context) => {
+  const gate = deferred();
+  const { calls, page } = await openRequestPage(context, { uploadResponses: [heldUpload(gate, { status: 201, json: { file: { id: 81 } } })] });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  const aborted = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/files"));
+  await page.locator('input[type="file"]').setInputFiles([pngFile("fachada.png")]);
+  await attachments(page).getByText("Subiendo...", { exact: true }).waitFor();
+
+  // Mientras sube, «Enviar» explica la espera y no abre la validación.
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await page.getByText("Espera a que terminen de subirse los archivos antes de enviar.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+
+  await attachments(page).getByRole("button", { name: "Eliminar archivo fachada.png" }).click();
+  await aborted;
+  await page.getByText("fachada", { exact: true }).waitFor({ state: "detached" });
+  gate.resolve();
+  assert.equal(calls.filter((call) => call.method === "DELETE").length, 0, "nada que eliminar en el servidor");
+  await submitWithCode(page, calls);
+});
+
+test("Recuperar un borrador muestra sus adjuntos como subidos sin transferirlos y añade otros al mismo", async (context) => {
+  const draft = {
+    capitalAvailability: "available_now", description: "Vivienda unifamiliar de dos plantas frente al lago, con terraza.",
+    developmentMode: "phased", id: REQUEST_ID, investmentRange: "10k_50k", landStatus: "unavailable", location: "Maracaibo, Estado Zulia",
+    projectName: "Casa Lago", projectType: "residential", startTime: "immediate", status: "draft",
+  };
+  const { calls, page } = await openRequestPage(context, {
+    detailResponses: [{ json: { projectRequest: { ...draft, files: [{ createdAt: "2026-11-01T10:00:00Z", fileType: "image/png", id: 91, name: "fachada.png", size: 2048 }] } } }],
+    initialRequest: draft,
+  });
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).waitFor();
+  assert.equal(calls.filter((call) => call.path.endsWith("/files")).length, 0, "los guardados no se vuelven a transferir");
+
+  await page.locator('input[type="file"]').setInputFiles([pngFile("terraza.png")]);
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).nth(1).waitFor();
+  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 0, "usa el borrador recuperado");
+  assert.deepEqual(calls.filter((call) => call.path.endsWith("/files")).map((call) => call.path), [`/api/project-requests/${REQUEST_ID}/files`]);
+});
+
+test("Validación de pruebas: con el modo informado por el backend no hay correo ni «Reenviar código»", async (context) => {
+  const { calls, page } = await openRequestPage(context, {
+    verificationResponses: [{ status: 201, json: { verification: { mode: "test" } } }],
+  });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
   await page.getByRole("button", { name: "Enviar", exact: true }).click();
   const codeDialog = page.getByRole("dialog");
-  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+  await codeDialog.getByText("Modo de pruebas: introduce cualquier código de 6 dígitos", { exact: true }).waitFor();
+  assert.equal(await codeDialog.getByRole("button", { name: "Reenviar código" }).count(), 0);
+  assert.equal(await codeDialog.getByText("No pudimos enviar el código. Puedes solicitar otro.", { exact: true }).count(), 0);
+  const send = codeDialog.getByRole("button", { name: "Enviar", exact: true });
+  assert.equal(await send.isDisabled(), true, "exige el formato de seis dígitos");
   await codeDialog.getByRole("textbox", { name: "Código" }).fill(VALID_CODE);
-  await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
-
-  const reason = "El archivo supera el tamaño que el servidor admite en una sola subida.";
-  await codeDialog.getByText(reason, { exact: true }).waitFor();
-  assert.equal(calls.filter((call) => call.path.endsWith("/submit")).length, 0, "sin adjuntos completos no se envía");
-  const uploadsBefore = calls.filter((call) => call.path.endsWith("/files")).map((call) => decodeURIComponent(call.fileName));
-  assert.deepEqual(uploadsBefore, ["fachada.png", "plano.png"]);
-
-  // La tarjeta fallida muestra «Fallido» y el motivo; solo la confirmada por el servidor está completa.
-  await codeDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
-  await codeDialog.waitFor({ state: "detached" });
-  const cards = page.getByRole("group", { name: "Subir imágenes / archivos (opcional)" });
-  await cards.getByText("Fallido", { exact: true }).waitFor();
-  assert.equal(await cards.getByText("Completado", { exact: true }).count(), 1);
-
-  // Reintentar con el mismo borrador: solo se reenvía el archivo fallido y la solicitud se envía.
-  await submitWithCode(page, calls);
-  const uploads = calls.filter((call) => call.path.endsWith("/files")).map((call) => decodeURIComponent(call.fileName));
-  assert.deepEqual(uploads, ["fachada.png", "plano.png", "plano.png"]);
-  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1, "un solo borrador");
+  await send.click();
+  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
+  assert.equal(calls.filter((call) => call.path.endsWith("/submit")).length, 1);
 });
+
