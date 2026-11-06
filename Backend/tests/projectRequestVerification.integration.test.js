@@ -25,6 +25,8 @@ before(async () => {
     DATABASE_URL: database.databaseUrl,
     MAIL_FROM: "ARCA <no-reply@example.test>",
     NODE_ENV: "test",
+    // Cubre la verificación real por correo (desactivada por defecto en desarrollo).
+    PROJECT_REQUEST_EMAIL_VERIFICATION: "enabled",
     RESEND_API_KEY: "test-key",
   });
   // Proveedor de correo simulado: registra el código enviado.

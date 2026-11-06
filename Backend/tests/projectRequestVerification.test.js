@@ -3,6 +3,9 @@ import test from "node:test";
 
 import { mockVerifiedSubmitTransaction, VALID_VERIFICATION_CODE } from "./helpers/projectRequestSubmitMock.js";
 
+// Estas pruebas cubren la verificación real por correo (desactivada por defecto en desarrollo).
+process.env.PROJECT_REQUEST_EMAIL_VERIFICATION = "enabled";
+
 process.env.DATABASE_URL ||= "postgres://localhost/arca-contract-test";
 const { pool } = await import("../src/config/db.js");
 const {
