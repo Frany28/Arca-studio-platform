@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 
 import Button from "../ui/Button/Button.jsx";
 import { api } from "../../api/http.js";
+import { useDialogKeyboard } from "../../hooks/useDialogKeyboard.js";
 import { useInvalidFieldFocus } from "../../hooks/useInvalidFieldFocus.js";
 import Modal from "../ui/Modal/Modal.jsx";
 import TextArea from "../ui/TextArea/TextArea.jsx";
@@ -29,6 +30,9 @@ function CloseIcon() {
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * `initialAction` solo preselecciona la opción al montar; el consumidor debe cambiar
  * la `key` del modal para reiniciar la selección entre aperturas.
+ * Teclado (`useDialogKeyboard`): enfoca el motivo, mantiene Tab dentro del diálogo, cierra con
+ * Escape salvo durante el guardado y devuelve el foco al disparador. Mientras el visor de PDF
+ * está abierto, el visor gestiona su propio teclado.
  *
  * @param {Object} props - Solicitud, modo, estado del envío y callbacks.
  * @param {string} [props.initialAction="approve"] - approve, reject o changes_requested.
@@ -57,6 +61,14 @@ function ProjectRequestWorkflowModal({
   // El contenido del Modal es el área desplazable (contentClassName); el diálogo es el contenedor.
   const dialogRef = useRef(null);
   const focusInvalidField = useInvalidFieldFocus({ getContainer: () => dialogRef.current });
+  useDialogKeyboard({
+    getContainer: () => dialogRef.current,
+    getInitialFocus: (elements) => elements.find((element) => element.tagName === "TEXTAREA"),
+    onEscape: () => {
+      if (!submitting) onClose?.();
+    },
+    open: Boolean(open && projectRequest) && !pdfViewer.open,
+  });
 
   if (!projectRequest) return null;
 

@@ -55,14 +55,20 @@ function toFailureState(error, requestId, revision) {
  * visible hasta recibir la nueva. Solo hay una revalidación activa; `reload`, cambiar de id o
  * desmontar la cancelan, y su respuesta se descarta si entretanto cambió la lectura vigente.
  * Si la solicitud ya no existe o dejó de estar autorizada, el error sustituye a lo mostrado.
+ * Tras una mutación propia, `revalidate({ fresh: true })` pide al lector no reutilizar una
+ * lectura equivalente iniciada antes del cambio.
+ *
+ * `applyConfirmedChange` refleja de inmediato la respuesta confirmada de una mutación sobre la
+ * solicitud mostrada (sin petición); solo actúa si sigue mostrándose la misma solicitud.
  *
  * @param {Object} params - Solicitud a consultar y activación.
  * @param {number|string|null} params.projectRequestId - Solicitud propia del cliente.
  * @param {boolean} params.enabled - Si la vista de consulta está visible.
- * @param {(id: number|string, options: {signal: AbortSignal}) => Promise<{projectRequest: Object}>} [params.fetchProjectRequest]
- *   Lector de la solicitud; por defecto, la solicitud propia del cliente.
+ * @param {(id: number|string, options: {signal: AbortSignal, fresh?: boolean}) => Promise<{projectRequest: Object}>} [params.fetchProjectRequest]
+ *   Lector de la solicitud; por defecto, la solicitud propia del cliente (`fresh` no le afecta).
  * @returns {{error: string, errorStatus: number|null, loading: boolean, projectRequest: Object|null, reload: Function,
- *   revalidate: () => Promise<{status: "updated"|"failed"|"discarded"|"skipped", previous?: Object, projectRequest?: Object|null,
+ *   applyConfirmedChange: (requestId: number|string, update: (request: Object) => Object) => void,
+ *   revalidate: (options?: {fresh?: boolean}) => Promise<{status: "updated"|"failed"|"discarded"|"skipped", previous?: Object, projectRequest?: Object|null,
  *   error?: Error, replaced?: boolean}>}} `replaced` indica que el error sustituyó a la solicitud mostrada.
  *   Solicitud con `files`, estado de carga, mensaje y estado HTTP del error (null si fue de red),
  *   reintento y revalidación en segundo plano.
@@ -118,7 +124,7 @@ export default function useProjectRequestDetail({ enabled, fetchProjectRequest =
 
   const reload = useCallback(() => setRevision((current) => current + 1), []);
 
-  const revalidate = useCallback(async () => {
+  const revalidate = useCallback(async ({ fresh = false } = {}) => {
     const snapshot = latestRef.current;
     const shown = snapshot.state;
     const matchesShown = String(shown.requestId) === String(snapshot.projectRequestId) && shown.revision === snapshot.revision;
@@ -138,7 +144,7 @@ export default function useProjectRequestDetail({ enabled, fetchProjectRequest =
     ));
 
     try {
-      const data = await snapshot.fetchProjectRequest(requestId, { signal: controller.signal });
+      const data = await snapshot.fetchProjectRequest(requestId, fresh ? { fresh, signal: controller.signal } : { signal: controller.signal });
       if (!isStillCurrent()) return { status: "discarded" };
       const projectRequest = data?.projectRequest || null;
       applyIfCurrent({ error: "", errorStatus: null, projectRequest, requestId, revision: requestRevision });
@@ -153,7 +159,16 @@ export default function useProjectRequestDetail({ enabled, fetchProjectRequest =
     }
   }, []);
 
+  const applyConfirmedChange = useCallback((requestId, update) => {
+    setState((current) => (
+      current.projectRequest && String(current.requestId) === String(requestId)
+        ? { ...current, projectRequest: update(current.projectRequest) }
+        : current
+    ));
+  }, []);
+
   return {
+    applyConfirmedChange,
     error: isSettled ? state.error : "",
     errorStatus: isSettled ? state.errorStatus : null,
     loading: enabled && hasId && !isSettled,

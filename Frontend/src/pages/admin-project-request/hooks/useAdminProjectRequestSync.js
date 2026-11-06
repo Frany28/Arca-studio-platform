@@ -18,15 +18,17 @@ import {
  *
  * @param {Object} params - Detalle leído y su revalidación.
  * @param {boolean} params.hasProjectRequest - Si hay una solicitud mostrada que revalidar.
- * @param {() => Promise<Object>} params.revalidate - Revalidación de `useProjectRequestDetail`.
+ * @param {(options?: {fresh?: boolean}) => Promise<Object>} params.revalidate - Revalidación de
+ *   `useProjectRequestDetail`; la revalidación con aviso acepta y reenvía las mismas opciones.
  * @returns {{feedback: Object|null, dismissFeedback: (id: number) => void, revalidate: Function}} Aviso
  *   vigente (con `id` nuevo para volver a mostrarse), su cierre por id y la revalidación con aviso.
  */
 export function useAdminProjectRequestSync({ hasProjectRequest, revalidate }) {
   const [feedback, setFeedback] = useState(null);
 
-  const revalidateWithFeedback = useCallback(async () => {
-    const result = await revalidate();
+  const revalidateWithFeedback = useCallback(async (options) => {
+    // Se reenvía solo `fresh`: como manejador de eventos o del listener recibe otros argumentos.
+    const result = await revalidate(options?.fresh === true ? { fresh: true } : undefined);
     if (result.status === "updated" && result.projectRequest && hasProjectRequestChanged(result.previous, result.projectRequest)) {
       setFeedback({ id: Date.now(), ...getExternalProjectRequestUpdateFeedback(result.previous, result.projectRequest) });
     } else if (result.status === "failed" && !result.replaced) {

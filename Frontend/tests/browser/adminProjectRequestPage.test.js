@@ -71,14 +71,17 @@ after(async () => { await browser?.close(); await server?.close(); });
  *
  * @param {Object} context - Contexto de node:test.
  * @param {Object} [options] - Ruta, tema, viewport, respuesta del detalle, otros detalles por ruta,
- *   rol de la sesión, reloj simulado y si una lectura no prevista debe fallar la prueba.
- * @returns {Promise<{page: import("playwright").Page, reads: Array<string>}>} Página y lecturas registradas.
+ *   rol de la sesión, reloj simulado, si una lectura no prevista debe fallar la prueba y el
+ *   manejador de mutaciones autorizadas (`mutation(route, call)`; sin él, toda mutación falla).
+ * @returns {Promise<{page: import("playwright").Page, reads: Array<string>, mutations: Array<Object>}>}
+ *   Página, lecturas y mutaciones registradas (método, ruta y cuerpo).
  */
-async function openPage(context, { clock = false, detail = { json: { projectRequest: REQUEST } }, extraDetails = {}, path = "/solicitudes-proyecto/9", role = "admin", state = null, strictReads = true, theme = "light", viewport = { height: 1000, width: 1440 }, waitFor = "Casa Prueba" } = {}) {
+async function openPage(context, { clock = false, detail = { json: { projectRequest: REQUEST } }, extraDetails = {}, mutation = null, path = "/solicitudes-proyecto/9", role = "admin", state = null, strictReads = true, theme = "light", viewport = { height: 1000, width: 1440 }, waitFor = "Casa Prueba" } = {}) {
   const session = await browser.newContext({ viewport });
   const page = applyBrowserTimeouts(await session.newPage());
   const errors = [];
   const reads = [];
+  const mutations = [];
   await page.addInitScript(({ theme, state }) => {
     localStorage.setItem("arca-theme", theme);
     if (state) history.replaceState({ usr: state, key: "test", idx: 0 }, "");
@@ -88,6 +91,9 @@ async function openPage(context, { clock = false, detail = { json: { projectRequ
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const { pathname } = new URL(route.request().url());
     if (route.request().method() !== "GET") {
+      const call = { body: route.request().postDataJSON(), method: route.request().method(), path: pathname };
+      mutations.push(call);
+      if (mutation) return mutation(route, call);
       errors.push(`Mutación no autorizada: ${pathname}`);
       return route.abort();
     }
@@ -96,7 +102,11 @@ async function openPage(context, { clock = false, detail = { json: { projectRequ
       const response = typeof detail === "function" ? await detail(reads.filter((read) => read === DETAIL_PATH).length) : detail;
       return response === "abort" ? route.abort() : route.fulfill(response);
     }
-    if (extraDetails[pathname]) return route.fulfill(extraDetails[pathname]);
+    if (extraDetails[pathname]) {
+      // Respuesta fija o función por intento ("abort" simula un fallo de red).
+      const response = typeof extraDetails[pathname] === "function" ? await extraDetails[pathname]() : extraDetails[pathname];
+      return response === "abort" ? route.abort() : route.fulfill(response);
+    }
     const payload = {
       "/api/auth/me": { user: { email: "admin@example.test", firstName: "Admin", id: 1, lastName: "Prueba", role, status: "active" } },
       "/api/admin/users/11": { user: { companyName: "Empresa Prueba", id: 11, name: "Cliente Prueba" } },
@@ -110,7 +120,7 @@ async function openPage(context, { clock = false, detail = { json: { projectRequ
   await page.goto(`${origin}${path}`);
   await page.getByText(waitFor, { exact: true }).first().waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   await page.evaluate(() => document.fonts.ready);
-  return { page, reads };
+  return { mutations, page, reads };
 }
 
 test("muestra la solicitud real con una única lectura y sin descargar adjuntos", async (context) => {
@@ -298,4 +308,281 @@ test("solo administradores: otro rol se redirige sin leer el detalle", async (co
   const { page, reads } = await openPage(context, { role: "architect", strictReads: false, waitFor: "Solicitudes asignadas" });
   assert.notEqual(new URL(page.url()).pathname, "/solicitudes-proyecto/9");
   assert.equal(detailReads(reads), 0);
+});
+
+// --- Fase 3: acciones administrativas ---
+
+const DECISION_PATH = "/api/admin/project-requests/9/decision";
+const CONVERTED = Object.freeze({ ...REQUEST, convertedProject: { id: 40, name: "Casa Prueba", publicSlug: "solicitud-9", status: "pending" }, status: "converted" });
+
+/** Nombres visibles de los botones de la barra inferior, en orden. */
+async function actionBarButtons(page) {
+  return page.getByRole("group", { name: "Acciones de la solicitud" }).getByRole("button").allInnerTexts();
+}
+
+/** Escribe el motivo, confirma la decisión y espera a que la API la reciba. */
+async function confirmDecision(page, mutations, note) {
+  const dialog = page.getByRole("dialog");
+  if (note !== undefined) await dialog.getByRole("textbox").fill(note);
+  const before = mutations.length;
+  await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  const deadline = Date.now() + NAVIGATION_TIMEOUT_MS;
+  while (mutations.length === before) {
+    if (Date.now() > deadline) throw new Error("La decisión no llegó a la API");
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+  }
+}
+
+test("la barra sigue el orden de Figma y cada estado ofrece solo sus acciones válidas", async (context) => {
+  const cases = [
+    ["pending_review", { ...REQUEST }, ["Ver resumen & recomendación", "Rechazar", "Solicitar más información", "Aprobar"], false],
+    ["pending_verification", { ...REQUEST, reviews: [], status: "pending_verification" }, ["Ver resumen & recomendación", "Rechazar", "Solicitar más información", "Aprobar"], true],
+    ["changes_requested", { ...REQUEST, status: "changes_requested" }, ["Ver resumen & recomendación"], null],
+    ["rejected", { ...REQUEST, status: "rejected" }, ["Ver resumen & recomendación"], null],
+    ["converted", CONVERTED, ["Ver resumen & recomendación", "Ver proyecto", "Crear cotización"], null],
+    // Convertida cuyo proyecto ya no existe: sin destino ni cotización posibles.
+    ["converted sin proyecto", { ...REQUEST, convertedProject: null, status: "converted" }, ["Ver resumen & recomendación"], null],
+  ];
+  for (const [label, projectRequest, expected, disabled] of cases) {
+    const { page, mutations } = await openPage(context, { detail: { json: { projectRequest } } });
+    assert.deepEqual(await actionBarButtons(page), expected, label);
+    if (disabled !== null) {
+      const approve = page.getByRole("button", { name: "Aprobar", exact: true });
+      assert.equal(await approve.isDisabled(), disabled, `${label}: Aprobar`);
+      if (disabled) {
+        // El motivo es visible y queda asociado a las acciones bloqueadas.
+        const notice = page.getByText("Para decidir, asigna un arquitecto y espera su revisión técnica.", { exact: true });
+        await notice.waitFor();
+        assert.equal(await approve.getAttribute("aria-describedby"), await notice.getAttribute("id"));
+      }
+    }
+    assert.deepEqual(mutations, [], label);
+  }
+});
+
+test("rechazar exige motivo, confirma contra la API y solo entonces avisa y actualiza el estado", async (context) => {
+  const held = deferred();
+  const rejected = { ...REQUEST, rejectionReason: "El presupuesto no cubre el alcance.", status: "rejected", updatedAt: "2026-10-05T12:00:00.000Z" };
+  const { page, mutations, reads } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : rejected } }),
+    mutation: async (route) => route.fulfill(await held.promise),
+  });
+
+  await page.getByRole("button", { name: "Rechazar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  // Reutiliza el modal de decisión con el rechazo preseleccionado (motivo obligatorio), sin releer el detalle.
+  await dialog.getByText("Motivo", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await dialog.getByText("Explica la recomendación o decisión con al menos 10 caracteres.", { exact: true }).waitFor();
+  assert.deepEqual(mutations, []);
+  assert.equal(detailReads(reads), 1);
+
+  await confirmDecision(page, mutations, "El presupuesto no cubre el alcance.");
+  assert.deepEqual(mutations, [{ body: { action: "reject", reason: "El presupuesto no cubre el alcance." }, method: "PATCH", path: DECISION_PATH }]);
+  // Nunca hay éxito antes de la confirmación del servidor.
+  assert.equal(await page.getByText("Solicitud rechazada", { exact: true }).count(), 0);
+  await dialog.getByRole("button", { name: "Guardando..." }).waitFor();
+
+  held.resolve({ json: { project: null, projectRequest: { id: 9, rejectionReason: "El presupuesto no cubre el alcance.", reviewedAt: "2026-10-05T12:00:00.000Z", status: "rejected" } } });
+  await page.getByText("Solicitud rechazada", { exact: true }).waitFor();
+  await page.getByText("El cliente recibirá el motivo del rechazo.", { exact: true }).waitFor();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación"]);
+  await page.getByText("Rechazada", { exact: true }).first().waitFor();
+  // Relectura en segundo plano del estado vigente, sin skeleton ni aviso de cambios externos.
+  await waitDetailReads(page, reads, 2);
+  await page.waitForLoadState("networkidle");
+  assert.equal(await page.getByLabel("Cargando solicitud").count(), 0);
+  assert.equal(await page.getByText("Solicitud actualizada", { exact: true }).count(), 0);
+  assert.equal(detailReads(reads), 2);
+});
+
+test("solicitar más información conserva la solicitud y refleja el estado confirmado", async (context) => {
+  const { page, mutations } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : { ...REQUEST, correctionReason: "Adjunta el plano del terreno.", status: "changes_requested" } } }),
+    mutation: (route) => route.fulfill({ json: { project: null, projectRequest: { correctionReason: "Adjunta el plano del terreno.", id: 9, reviewedAt: "2026-10-05T12:00:00.000Z", status: "changes_requested" } } }),
+  });
+
+  await page.getByRole("button", { name: "Solicitar más información", exact: true }).click();
+  await confirmDecision(page, mutations, "Adjunta el plano del terreno.");
+  assert.deepEqual(mutations[0].body, { action: "request_changes", reason: "Adjunta el plano del terreno." });
+  await page.getByText("Correcciones solicitadas", { exact: true }).first().waitFor();
+  await page.getByText("El cliente podrá editar la solicitud y volver a enviarla.", { exact: true }).waitFor();
+  assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación"]);
+  // Los datos de la solicitud se conservan.
+  for (const text of ["Casa Prueba", "plano.pdf", "Recomienda aprobar"]) await page.getByText(text, { exact: true }).first().waitFor();
+});
+
+test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cotización", async (context) => {
+  const held = deferred();
+  const { page, mutations, reads } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : CONVERTED } }),
+    mutation: async (route) => route.fulfill(await held.promise),
+  });
+
+  await page.getByRole("button", { name: "Aprobar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  // La nota interna es opcional al aprobar.
+  await dialog.getByText("Nota interna (opcional)", { exact: true }).waitFor();
+  await confirmDecision(page, mutations);
+  // Un segundo clic durante el envío no repite la decisión.
+  await dialog.getByRole("button", { name: "Guardando..." }).click({ force: true });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(mutations.length, 1);
+  assert.deepEqual(mutations[0].body, { action: "approve" });
+
+  held.resolve({ json: { project: { id: 40, name: "Casa Prueba", status: "pending" }, projectRequest: { convertedProjectId: 40, id: 9, reviewedAt: "2026-10-05T12:00:00.000Z", status: "converted" } } });
+  await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
+  await page.getByText("Proyecto creado correctamente.", { exact: true }).waitFor();
+  // La relectura incorpora el proyecto creado (con su slug real) y el historial se conserva.
+  await page.getByRole("button", { name: "Crear cotización", exact: true }).waitFor();
+  assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación", "Ver proyecto", "Crear cotización"]);
+  await page.getByText("Recomienda aprobar", { exact: true }).waitFor();
+  assert.equal(detailReads(reads), 2);
+  assert.equal(await page.getByRole("button", { name: "Aprobar", exact: true }).count(), 0);
+  assert.equal(mutations.length, 1);
+});
+
+test("un conflicto por otro administrador conserva el modal, relee y avisa del cambio externo", async (context) => {
+  const { page, mutations, reads } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : { ...CONVERTED, updatedAt: "2026-10-05T12:00:00.000Z" } } }),
+    mutation: (route) => route.fulfill({ json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes que están en revisión." }, status: 409 }),
+  });
+
+  await page.getByRole("button", { name: "Rechazar", exact: true }).click();
+  await confirmDecision(page, mutations, "Motivo escrito antes del conflicto.");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByText("Solo se pueden decidir solicitudes que están en revisión.", { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole("textbox").inputValue(), "Motivo escrito antes del conflicto.");
+  await page.getByText("Solicitud actualizada", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Solicitud rechazada", { exact: true }).count(), 0);
+  assert.equal(detailReads(reads), 2);
+
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación", "Ver proyecto", "Crear cotización"]);
+});
+
+test("una revisión técnica pendiente o un fallo de red se muestran en el modal sin éxito ni relectura", async (context) => {
+  const responses = [
+    { json: { code: "PROJECT_REQUEST_REVIEW_REQUIRED", message: "Se necesita al menos una revisión registrada por un arquitecto asignado." }, status: 409 },
+    "abort",
+  ];
+  const { page, mutations, reads } = await openPage(context, {
+    mutation: (route, call) => {
+      const response = responses[mutations.indexOf(call)];
+      return response === "abort" ? route.abort() : route.fulfill(response);
+    },
+  });
+
+  await page.getByRole("button", { name: "Aprobar", exact: true }).click();
+  await confirmDecision(page, mutations);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByText("Se necesita al menos una revisión registrada por un arquitecto asignado.", { exact: true }).waitFor();
+  await confirmDecision(page, mutations);
+  await dialog.getByText(/conexión/i).first().waitFor();
+  assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
+  assert.equal(detailReads(reads), 1);
+  assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación", "Rechazar", "Solicitar más información", "Aprobar"]);
+});
+
+test("una solicitud convertida abre su proyecto y la cotización precargada sin guardar nada", async (context) => {
+  const project = { client: { id: 3, name: "Cliente Comercial" }, files: [], id: 40, name: "Casa Prueba", publicSlug: "solicitud-9", status: "pending" };
+  const { page, mutations, reads } = await openPage(context, {
+    detail: { json: { projectRequest: CONVERTED } },
+    extraDetails: { "/api/projects/40": { json: { project } } },
+    strictReads: false,
+  });
+
+  // «Ver proyecto» abre el proyecto creado por su slug real.
+  await page.getByRole("button", { name: "Ver proyecto", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/proyectos/solicitud-9");
+  await page.goBack();
+  await page.getByRole("heading", { level: 1, name: "Casa Prueba" }).waitFor();
+
+  await page.getByRole("button", { name: "Crear cotización", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/servicios-cotizaciones/cotizaciones/nueva" && url.searchParams.get("proyecto") === "40");
+  await page.getByRole("button", { name: "Quitar Cliente Comercial" }).waitFor();
+  await page.getByRole("button", { name: "Quitar Casa Prueba" }).waitFor();
+  // Solo se lee el proyecto (StrictMode de desarrollo puede abortar y repetir la primera lectura);
+  // no se crea la cotización ni se decide nada.
+  assert.ok([1, 2].includes(reads.filter((read) => read === "/api/projects/40").length));
+  assert.deepEqual(mutations, []);
+
+  // Un enlace directo sin el parámetro abre el formulario vacío.
+  await page.goto(`${origin}/servicios-cotizaciones/cotizaciones/nueva`);
+  await page.getByText("Nombre del cliente", { exact: true }).first().waitFor();
+  assert.equal(await page.getByRole("button", { name: "Quitar Cliente Comercial" }).count(), 0);
+});
+
+test("la cotización ofrece reintentar o continuar vacía si el proyecto no se puede leer", async (context) => {
+  const project = { client: { id: 3, name: "Cliente Comercial" }, files: [], id: 40, name: "Casa Prueba", status: "pending" };
+  // Falla hasta pulsar «Reintentar», sin depender del número de montajes (StrictMode).
+  let available = false;
+  const retry = await openPage(context, {
+    extraDetails: { "/api/projects/40": () => (available ? { json: { project } } : "abort") },
+    path: "/servicios-cotizaciones/cotizaciones/nueva?proyecto=40",
+    strictReads: false,
+    waitFor: "No se pudo cargar el proyecto",
+  });
+  available = true;
+  await retry.page.getByRole("button", { name: "Reintentar" }).click();
+  await retry.page.getByRole("button", { name: "Quitar Cliente Comercial" }).waitFor();
+
+  const missing = await openPage(context, {
+    extraDetails: { "/api/projects/41": { json: { code: "PROJECT_NOT_FOUND", message: "Proyecto no encontrado." }, status: 404 } },
+    path: "/servicios-cotizaciones/cotizaciones/nueva?proyecto=41",
+    strictReads: false,
+    waitFor: "El proyecto no está disponible",
+  });
+  await missing.page.getByRole("button", { name: "Crear sin proyecto" }).click();
+  await missing.page.waitForURL((url) => url.pathname === "/servicios-cotizaciones/cotizaciones/nueva" && !url.searchParams.has("proyecto"));
+  await missing.page.getByText("Nombre del cliente", { exact: true }).first().waitFor();
+  assert.deepEqual([...retry.mutations, ...missing.mutations], []);
+});
+
+test("la barra es accesible por teclado y no desborda en tablet ni móvil, en claro y oscuro", async (context) => {
+  for (const theme of ["light", "dark"]) {
+    for (const width of [375, 768, 1024, 1440]) {
+      const { page } = await openPage(context, { theme, viewport: { height: 900, width } });
+      const bar = page.getByRole("group", { name: "Acciones de la solicitud" });
+      const boxes = await bar.getByRole("button").evaluateAll((buttons) => buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { bottom: rect.bottom, left: rect.left, right: rect.right, text: button.innerText, top: rect.top };
+      }));
+      const groupBox = await bar.boundingBox();
+      for (const box of boxes) {
+        assert.ok(box.left >= groupBox.x - 0.5 && box.right <= groupBox.x + groupBox.width + 0.5, `${theme} ${width}px: ${box.text} dentro de la barra`);
+      }
+      const [summary, reject, info, approve] = boxes;
+      if (width >= 1024) {
+        // Escritorio: una fila con el resumen a la izquierda y Aprobar al final.
+        assert.ok(Math.abs(summary.top - approve.top) < 1 && reject.left < info.left && info.left < approve.left, `${width}px en una fila`);
+      } else if (width >= 768) {
+        // Tablet: resumen en su fila y las tres decisiones juntas debajo.
+        assert.ok(reject.top > summary.bottom && Math.abs(reject.top - approve.top) < 1, `${width}px en dos filas`);
+      } else {
+        // Móvil: Rechazar y Solicitar juntas; Aprobar en su propia fila a ancho completo.
+        assert.ok(Math.abs(reject.top - info.top) < 1 && approve.top > info.bottom, `${width}px Aprobar en su fila`);
+        assert.ok(Math.abs((approve.right - approve.left) - (info.right - reject.left)) < 1, `${width}px Aprobar a ancho completo`);
+      }
+    }
+  }
+
+  // Teclado: Tab llega a las acciones en orden y Enter abre el modal con el foco en el motivo;
+  // Escape lo cierra y devuelve el foco a la acción.
+  const { page } = await openPage(context);
+  const focusedText = () => page.evaluate(() => document.activeElement?.innerText);
+  await page.getByRole("button", { name: "Ver resumen & recomendación" }).focus();
+  for (const label of ["Rechazar", "Solicitar más información", "Aprobar"]) {
+    await page.keyboard.press("Tab");
+    assert.equal(await focusedText(), label);
+  }
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Confirmar decisión" }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.tagName === "TEXTAREA");
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.innerText === "Aprobar");
 });

@@ -45,6 +45,33 @@ export function getQuoteCreatePath() {
   return `${getServicesQuotesTabPath(QUOTES_TAB_SLUG)}/${QUOTE_CREATE_SEGMENT}`;
 }
 
+// Parámetro de «Nueva cotización» que inicia el borrador con un proyecto existente y su cliente
+// (por ejemplo, el creado al aprobar una solicitud). Solo identifica el proyecto: nombre y
+// cliente se leen del backend, y un enlace sin el parámetro abre el formulario vacío.
+export const QUOTE_PROJECT_PARAM = "proyecto";
+
+/**
+ * Ruta absoluta de «Nueva cotización» precargada con un proyecto existente.
+ *
+ * @param {number|string} projectId - Proyecto de la cotización.
+ * @returns {string} `/servicios-cotizaciones/cotizaciones/nueva?proyecto=40`.
+ */
+export function getQuoteCreatePathForProject(projectId) {
+  return `${getQuoteCreatePath()}?${new URLSearchParams({ [QUOTE_PROJECT_PARAM]: String(projectId) })}`;
+}
+
+/**
+ * Lee el proyecto que precarga «Nueva cotización». Solo admite un ID entero positivo; cualquier
+ * otro valor se ignora y el formulario empieza vacío.
+ *
+ * @param {URLSearchParams} searchParams - Consulta de la URL.
+ * @returns {string|null} ID normalizado o null.
+ */
+export function parseQuoteProjectParam(searchParams) {
+  const value = searchParams?.get(QUOTE_PROJECT_PARAM)?.trim() ?? "";
+  return /^[1-9]\d{0,15}$/.test(value) ? value : null;
+}
+
 /**
  * Ruta absoluta de la edición de una cotización.
  *

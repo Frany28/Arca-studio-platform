@@ -9,8 +9,9 @@ import { useAdminRequestClient } from "./useAdminRequestClient.js";
  * el dashboard ya cargó, y delega la lectura del cliente en `useAdminRequestClient`.
  *
  * Conserva el ID seleccionado al cerrar para que el contenido no desaparezca durante la
- * animación de salida del drawer. Ver solicitud y las decisiones cierran el drawer y abren
- * el modal de workflow existente, evitando dos diálogos modales apilados.
+ * animación de salida del drawer. Las decisiones del menú cierran el drawer y abren el modal
+ * de workflow existente, evitando dos diálogos modales apilados; «Ver solicitud» navega a la
+ * consulta completa desde el dashboard.
  *
  * @param {Object} params - Fuentes ya cargadas y apertura del workflow.
  * @param {Array} params.newRequests - Solicitudes de `overview.newRequests`.

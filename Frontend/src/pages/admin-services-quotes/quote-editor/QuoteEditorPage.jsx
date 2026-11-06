@@ -1,12 +1,13 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import AdminPageTitle from "../../../components/AdminPageTitle.jsx";
 import Breadcrumb from "../../../components/ui/Breadcrumb/Breadcrumb.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import { useQuoteDetail } from "../hooks/useQuoteDetail.js";
-import { getQuotesListPath } from "../utils/servicesQuotesTabs.js";
+import { getQuoteCreatePath, getQuotesListPath, parseQuoteProjectParam } from "../utils/servicesQuotesTabs.js";
 import QuoteEditorForm from "./components/QuoteEditorForm.jsx";
+import { useQuoteProjectPrefill } from "./hooks/useQuoteProjectPrefill.js";
 import { EMPTY_QUOTE_DRAFT, draftFromQuote } from "./utils/quoteDraft.js";
 
 const QUOTES_LIST_PATH = getQuotesListPath();
@@ -16,6 +17,9 @@ const QUOTES_LIST_PATH = getQuotesListPath();
  * Variant5 de edición y estado vacío). Dentro del shell del módulo sustituye la cabecera con
  * indicadores y pestañas por la ruta de navegación y el título. La edición lee la cotización
  * vigente antes de mostrar el formulario; un 404 o un error ofrecen volver o reintentar.
+ * El alta admite `?proyecto=` para empezar con un proyecto existente y su cliente (por ejemplo,
+ * desde una solicitud convertida); si el proyecto no se puede leer, ofrece reintentar o
+ * continuar con el formulario vacío. Precargar no guarda nada.
  *
  * @param {Object} props - Modo, catálogo y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición (la cotización sale de la URL).
@@ -27,8 +31,11 @@ const QUOTES_LIST_PATH = getQuotesListPath();
 function QuoteEditorPage({ catalog, mode, onSaved }) {
   const navigate = useNavigate();
   const { quoteId } = useParams();
+  const [searchParams] = useSearchParams();
   const editing = mode === "edit";
   const detail = useQuoteDetail(editing ? quoteId : null);
+  const prefillProjectId = editing ? null : parseQuoteProjectParam(searchParams);
+  const prefill = useQuoteProjectPrefill(prefillProjectId);
   const quote = detail.quote;
   const currentLabel = editing ? (quote ? `N.° ${quote.code}` : "Cotización") : "Nueva cotización";
   const exitToList = () => navigate(QUOTES_LIST_PATH);
@@ -72,14 +79,37 @@ function QuoteEditorPage({ catalog, mode, onSaved }) {
         className="min-h-[320px]"
       />
     );
+  } else if (prefill.loading) {
+    body = <Loader preset="quoteEditor" label="Cargando proyecto de la cotización" />;
+  } else if (prefill.error) {
+    // Continuar sin el parámetro abre el alta vacía; no se elige otro proyecto en silencio.
+    const startEmpty = () => navigate(getQuoteCreatePath(), { replace: true });
+    body = (
+      <EmptyState
+        title={prefill.notFound ? "El proyecto no está disponible" : "No se pudo cargar el proyecto"}
+        description={prefill.error.message}
+        size="S"
+        showFeaturedIcon={false}
+        showActions
+        showSecondaryAction
+        primaryActionLabel={prefill.notFound ? "Crear sin proyecto" : "Reintentar"}
+        secondaryActionLabel={prefill.notFound ? "Volver a cotizaciones" : "Crear sin proyecto"}
+        onPrimaryAction={prefill.notFound ? startEmpty : prefill.reload}
+        onSecondaryAction={prefill.notFound ? exitToList : startEmpty}
+        className="min-h-[320px]"
+      />
+    );
   } else {
+    let formKey = "create";
+    if (quote) formKey = `${quote.id}:${quote.currentVersion}`;
+    else if (prefill.draft) formKey = `create:project-${prefillProjectId}`;
     body = (
       <QuoteEditorForm
         // Cada versión leída reinicia el borrador: un conflicto recargado parte del contenido vigente.
-        key={quote ? `${quote.id}:${quote.currentVersion}` : "create"}
+        key={formKey}
         mode={mode}
         quote={quote}
-        initialDraft={quote ? draftFromQuote(quote) : EMPTY_QUOTE_DRAFT}
+        initialDraft={quote ? draftFromQuote(quote) : prefill.draft ?? EMPTY_QUOTE_DRAFT}
         catalog={catalog}
         onSaved={handleSaved}
         onExit={exitToList}

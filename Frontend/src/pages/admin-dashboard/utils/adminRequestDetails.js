@@ -49,6 +49,7 @@ export function getReviewObservationsPresentation(observations, isPartial) {
  * reuniones anteriores. Completitud y viabilidad financiera son métricas propias de la API,
  * independientes de la compatibilidad; si faltan quedan en null para mostrar estados vacíos.
  * `clientUserId` procede de requestedBy; clientId conserva la identidad comercial del cliente.
+ * `statusCode` conserva el estado del backend para la disponibilidad de las decisiones.
  *
  * @param {Object} params - Fuentes ya cargadas por el dashboard.
  * @param {Object} params.summary - Solicitud de `overview.newRequests`.
@@ -79,6 +80,8 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     reviewObservations: getReviewObservationsPresentation(queueRequest?.reviewObservations, !queueRequest),
     reviewerName: latestReview?.reviewer?.name || null,
     status: { label: status.label, theme: status.badgeTheme },
+    // Estado del backend: decide qué decisiones ofrece el menú (`getAdminProjectRequestActions`).
+    statusCode: source.status ?? null,
   };
 }
 

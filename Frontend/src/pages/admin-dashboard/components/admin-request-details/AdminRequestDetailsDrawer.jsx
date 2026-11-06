@@ -1,33 +1,43 @@
-import { CloseCircle, DocumentText, InfoCircle, TickCircle } from "iconsax-react";
+import { CloseCircle, InfoCircle, TickCircle } from "iconsax-react";
 
 import ActionMenu from "../../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../../../components/ui/Loader/Loader.jsx";
 import SideOverlayDrawer from "../../../../components/ui/SideOverlayDrawer.jsx";
+import { getAdminProjectRequestActions } from "../../../../utils/projectRequestAdminActions.js";
 import AdminRequestDetailsContent from "./AdminRequestDetailsContent.jsx";
 
-// Los IDs coinciden con las acciones del modal de decisión (ProjectRequestWorkflowModal).
+// Menú de Figma (3727:677372): las tres decisiones. Los IDs coinciden con las acciones del modal
+// de decisión (ProjectRequestWorkflowModal).
 const REQUEST_DECISION_ITEMS = [
   { icon: TickCircle, id: "approve", label: "Aprobar" },
   { icon: InfoCircle, id: "changes_requested", label: "Solicitar más información" },
   { icon: CloseCircle, id: "reject", label: "Rechazar", separated: true, tone: "danger" },
 ];
-// Acción de consulta, separada de las decisiones: abre la vista completa de la solicitud.
-const OPEN_REQUEST_ITEM = { icon: DocumentText, id: "open_request", label: "Abrir vista completa" };
-const ITEMS_WITH_OPEN_REQUEST = [
-  OPEN_REQUEST_ITEM,
-  { ...REQUEST_DECISION_ITEMS[0], separated: true },
-  ...REQUEST_DECISION_ITEMS.slice(1),
-];
+
+/**
+ * Decisiones del menú para el estado de la solicitud: se deshabilitan cuando el estado no admite
+ * una decisión (por ejemplo, sin revisión técnica iniciada). El backend sigue siendo la autoridad.
+ *
+ * @param {string|null|undefined} statusCode - Estado del backend.
+ * @returns {Array<Object>} Elementos del menú.
+ */
+function getDecisionItems(statusCode) {
+  // Sin estado conocido (datos parciales) se conservan habilitadas: el backend responde al confirmar.
+  if (!statusCode) return REQUEST_DECISION_ITEMS;
+  const { decisions } = getAdminProjectRequestActions({ status: statusCode });
+  const disabled = !decisions || decisions.disabled;
+  return disabled ? REQUEST_DECISION_ITEMS.map((item) => ({ ...item, disabled: true })) : REQUEST_DECISION_ITEMS;
+}
 
 /**
  * Drawer lateral "Detalles de Solicitud" del dashboard administrativo (Figma 3727:677372).
- * Presenta la solicitud con sus estados de carga, inexistencia y contenido; "Ver solicitud"
- * y las decisiones del menú delegan en el modal de decisión existente, que conserva la
- * validación del motivo y la confirmación contra la API (no se ejecuta ninguna decisión desde
- * aquí). Con `onViewRequest`, el menú ofrece primero «Abrir vista completa». La consulta
- * administrativa lo reutiliza como «Ver resumen & recomendación» sin pie (`showActions={false}`).
+ * Presenta la solicitud con sus estados de carga, inexistencia y contenido. «Ver solicitud» abre
+ * la consulta completa (`/solicitudes-proyecto/:id`) y el menú conserva las tres decisiones de
+ * Figma, que delegan en el modal de decisión existente: este exige el motivo y la confirmación
+ * contra la API (no se ejecuta ninguna decisión desde aquí). La consulta administrativa lo
+ * reutiliza como «Ver resumen & recomendación» sin pie (`showActions={false}`).
  *
  * @param {Object} props - Estado expuesto por `useAdminRequestDetails`.
  * @param {boolean} props.open - Visibilidad del drawer.
@@ -37,7 +47,7 @@ const ITEMS_WITH_OPEN_REQUEST = [
  * @param {string} [props.queueError] - Error de la cola técnica.
  * @param {Function} props.onClose - Cierra el drawer.
  * @param {(action?: string) => void} [props.onOpenWorkflow] - Abre el modal con una acción opcional.
- * @param {Function} [props.onViewRequest] - Abre la vista completa de la solicitud desde el menú.
+ * @param {Function} [props.onViewRequest] - «Ver solicitud»: abre la consulta completa.
  * @param {boolean} [props.showActions=true] - Muestra el pie con «Ver solicitud» y el menú de acciones.
  * @param {Function} props.onRetryQueue - Reintenta la cola técnica.
  * @returns {import("react").ReactElement} Drawer de detalle.
@@ -104,8 +114,8 @@ function AdminRequestDetailsDrawer({
             fitContent
             showLeftIcon={false}
             showRightIcon={false}
-            disabled={!ready}
-            onClick={() => onOpenWorkflow?.()}
+            disabled={!ready || !onViewRequest}
+            onClick={() => onViewRequest?.()}
           >
             Ver solicitud
           </Button>
@@ -113,12 +123,12 @@ function AdminRequestDetailsDrawer({
             type="Solid"
             size="M"
             title="Acciones"
-            items={onViewRequest ? ITEMS_WITH_OPEN_REQUEST : REQUEST_DECISION_ITEMS}
+            items={getDecisionItems(details?.statusCode)}
             disabled={!ready}
             tooltip="Acciones"
             triggerLabel={`Acciones para ${projectName}`}
             menuLabel={`Acciones para ${projectName}`}
-            onSelect={(item) => (item.id === OPEN_REQUEST_ITEM.id ? onViewRequest() : onOpenWorkflow?.(item.id))}
+            onSelect={(item) => onOpenWorkflow?.(item.id)}
           />
         </footer> : null}
       </div>

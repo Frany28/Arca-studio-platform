@@ -5,23 +5,27 @@ import { loadAdminProjectRequest } from "../../api/adminProjectRequestDetail.js"
 import { useAuth } from "../../auth/AuthContext.jsx";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import NotificationsDrawer from "../../components/EnvironmentNotificationsDrawer.jsx";
+import ProjectRequestWorkflowModal from "../../components/project-requests/ProjectRequestWorkflowModal.jsx";
 import AlertToast from "../../components/ui/AlertToast/AlertToast.jsx";
 import Breadcrumb from "../../components/ui/Breadcrumb/Breadcrumb.jsx";
 import EmptyState from "../../components/ui/EmptyState/EmptyState.jsx";
 import Loader from "../../components/ui/Loader/Loader.jsx";
 import { useDashboardNavigation } from "../../hooks/useDashboardNavigation.js";
 import InternalDashboardLayout from "../../layouts/InternalDashboardLayout.jsx";
+import { getAdminProjectRequestActions } from "../../utils/projectRequestAdminActions.js";
 import { parseProjectRequestId } from "../../utils/projectRequestRoutes.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
 import AdminRequestDetailsDrawer from "../admin-dashboard/components/admin-request-details/index.js";
 import { useAdminRequestClient } from "../admin-dashboard/hooks/useAdminRequestClient.js";
 import { buildAdminRequestDetails } from "../admin-dashboard/utils/adminRequestDetails.js";
+import { getQuoteCreatePathForProject } from "../admin-services-quotes/utils/servicesQuotesTabs.js";
 import ProjectRequestSummaryContent from "../project-request/components/ProjectRequestSummaryContent.jsx";
 import useProjectRequestDetail from "../project-request/hooks/useProjectRequestDetail.js";
 import ProjectOverviewHeader from "../projects/components/ProjectOverviewHeader.jsx";
 import AdminProjectRequestActionBar from "./components/AdminProjectRequestActionBar.jsx";
 import AdminProjectRequestMetrics from "./components/AdminProjectRequestMetrics.jsx";
 import AdminProjectRequestTeam from "./components/AdminProjectRequestTeam.jsx";
+import { useAdminProjectRequestDecision } from "./hooks/useAdminProjectRequestDecision.js";
 import { useAdminProjectRequestSync } from "./hooks/useAdminProjectRequestSync.js";
 import {
   buildAdminProjectRequestHeader,
@@ -42,6 +46,11 @@ const NO_PROJECT_SHORTCUTS = [];
  * consultan los datos del cliente. Admite enlaces directos y vuelve al contexto de origen.
  * Cada visita lee el estado vigente; al volver a la pestaña o recuperar la conexión se
  * revalida en segundo plano y se avisa de los cambios hechos por otras personas.
+ *
+ * La barra inferior ofrece las acciones que permite el estado (`getAdminProjectRequestActions`):
+ * las decisiones abren el modal de decisión compartido con el dashboard, que exige el motivo y
+ * la confirmación antes de llamar a la API; una solicitud convertida ofrece su proyecto y
+ * «Crear cotización», que abre el editor de cotizaciones existente con el proyecto y su cliente.
  *
  * @returns {import("react").ReactElement} Página de la solicitud.
  */
@@ -69,6 +78,11 @@ function AdminProjectRequestPage() {
   });
   const projectRequest = detail.projectRequest;
   const sync = useAdminProjectRequestSync({ hasProjectRequest: Boolean(projectRequest), revalidate: detail.revalidate });
+  const decision = useAdminProjectRequestDecision({
+    applyConfirmedChange: detail.applyConfirmedChange,
+    revalidate: detail.revalidate,
+    revalidateWithFeedback: sync.revalidate,
+  });
   const drawerDetails = useMemo(
     () => (projectRequest ? buildAdminRequestDetails({ queueRequest: projectRequest, summary: projectRequest }) : null),
     [projectRequest],
@@ -102,7 +116,8 @@ function AdminProjectRequestPage() {
   } else {
     const header = buildAdminProjectRequestHeader(projectRequest);
     const team = buildAdminRequestTeam(projectRequest);
-    const convertedProject = projectRequest.status === "converted" ? projectRequest.convertedProject : null;
+    const actions = getAdminProjectRequestActions(projectRequest);
+    const { convertedProject } = actions;
 
     content = (
       <>
@@ -113,8 +128,11 @@ function AdminProjectRequestPage() {
           secondaryFooter={<AdminProjectRequestTeam assignees={team.assignees} reviews={team.reviews} />}
         />
         <AdminProjectRequestActionBar
+          decisions={actions.decisions}
+          onDecision={(action) => decision.open(projectRequest, { initialAction: action })}
           onOpenSummary={() => setSummaryOpen(true)}
           onOpenProject={convertedProject ? () => navigate(getProjectPath(convertedProject)) : null}
+          onCreateQuote={actions.canCreateQuote ? () => navigate(getQuoteCreatePathForProject(convertedProject.id)) : null}
         />
       </>
     );
@@ -149,6 +167,18 @@ function AdminProjectRequestPage() {
         onClose={() => setSummaryOpen(false)}
         onRetryQueue={detail.reload}
       />
+      <ProjectRequestWorkflowModal
+        // Cada apertura reinicia la acción preseleccionada y el borrador del modal.
+        key={decision.selectedRequest ? `${decision.selectedRequest.id}-${decision.initialAction}` : "closed-request-decision"}
+        error={decision.error}
+        initialAction={decision.initialAction}
+        mode="decision"
+        open={Boolean(decision.selectedRequest)}
+        projectRequest={decision.selectedRequest}
+        submitting={decision.submitting}
+        onClose={decision.close}
+        onSubmit={decision.submit}
+      />
       <NotificationsDrawer
         open={isNotificationsDrawerOpen}
         onClose={() => setIsNotificationsDrawerOpen(false)}
@@ -167,6 +197,17 @@ function AdminProjectRequestPage() {
           onPrimaryAction={sync.revalidate}
           onDismiss={() => sync.dismissFeedback(sync.feedback.id)}
           aria-label={sync.feedback.title}
+        />
+      ) : null}
+      {decision.feedback ? (
+        <AlertToast
+          trigger={decision.feedback.id}
+          theme={decision.feedback.theme}
+          title={decision.feedback.title}
+          content={decision.feedback.content}
+          description={decision.feedback.description}
+          onDismiss={() => decision.dismissFeedback(decision.feedback.id)}
+          aria-label={decision.feedback.title}
         />
       ) : null}
     </InternalDashboardLayout>

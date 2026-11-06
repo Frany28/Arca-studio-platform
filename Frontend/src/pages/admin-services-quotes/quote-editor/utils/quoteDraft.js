@@ -127,6 +127,24 @@ export function draftFromQuote(quote) {
 }
 
 /**
+ * Borrador de una cotización nueva para un proyecto existente: su cliente y el propio proyecto,
+ * sin conceptos ni observaciones. Usa solo los datos que devuelve `GET /projects/:id`; el
+ * backend vuelve a validar cliente y proyecto al guardar.
+ *
+ * @param {{id: number, name: string, client?: {id: number, name: string}}} project - Proyecto leído.
+ * @returns {Object|null} Borrador, o null si el proyecto no identifica a su cliente.
+ */
+export function draftFromProject(project) {
+  if (project?.id == null || project.client?.id == null) return null;
+  return {
+    ...EMPTY_QUOTE_DRAFT,
+    client: { id: project.client.id, name: project.client.name || "", profilePhotoUrl: "" },
+    lines: [],
+    project: { id: project.id, kind: PROJECT_KIND.EXISTING, name: project.name },
+  };
+}
+
+/**
  * Normaliza un decimal escrito para enviarlo a la API (coma decimal a punto, sin espacios). Un
  * valor inválido se envía tal cual: el servidor responde con el error en su campo.
  *

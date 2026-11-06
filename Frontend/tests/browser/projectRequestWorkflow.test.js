@@ -30,7 +30,7 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Intercepta HTTP del hook real y permite resolver lecturas y mutaciones de forma controlada.
  * Registra peticiones y errores; cada prueba dispone de sesión y transportes aislados.
  */
-async function openPage(context, { role = "architect", queue = [REQUEST], queuePages = {}, overviewRequests, assignees = [], holdQueue = false, realDashboard = false, clientResponse } = {}) {
+async function openPage(context, { role = "architect", queue = [REQUEST], queuePages = {}, overviewRequests, assignees = [], holdQueue = false, realDashboard = false, clientResponse, requestDetail } = {}) {
   const session = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await session.newPage();
   const calls = [];
@@ -77,7 +77,8 @@ async function openPage(context, { role = "architect", queue = [REQUEST], queueP
       "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: (typeof overviewRequests === "function" ? overviewRequests() : overviewRequests) || queue } },
       "/api/admin/assignees": { assignees },
       "/api/admin/users/41": { user: { id: 41, name: "Esteban Ruiz", companyName: "Nextj" } },
-      "/api/admin/project-requests/7": { projectRequest: { ...REQUEST, files: [], reviews: [] } },
+      // requestDetail puede ser una función para simular el detalle vigente tras una decisión.
+      "/api/admin/project-requests/7": { projectRequest: (typeof requestDetail === "function" ? requestDetail() : requestDetail) || { ...REQUEST, files: [], reviews: [] } },
     };
     if (realDashboard && fixtures[path]) { await route.fulfill({ json: fixtures[path] }); return; }
     errors.push(`HTTP inesperado: ${path}`);
@@ -296,10 +297,8 @@ test("Cola: empty y rol no habilitado no inician lecturas nuevas", async (contex
 test("Dashboard admin real: decidir refresca overview, métricas, proyectos y cola", async (context) => {
   const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true });
   await page.waitForLoadState("networkidle");
-  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
-  // El ojo abre primero el drawer de detalle; "Ver solicitud" lleva al modal de decisión.
-  await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Ver solicitud", exact: true }).click();
-  await page.getByRole("dialog", { name: "Detalles de solicitud" }).waitFor({ state: "detached" });
+  // El ojo abre el drawer de detalle; la decisión se abre desde su menú de acciones.
+  await openDrawerDecision(page, "Aprobar");
   const paths =["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/projects", "/api/project-requests/review-queue"];
   const before = paths.map((path) => calls.filter((call) => call.path === path).length);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
@@ -316,15 +315,16 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   }
 });
 
-test("Dashboard admin real: el menú del drawer abre la vista completa y conserva el regreso", async (context) => {
+test("Dashboard admin real: «Ver solicitud» abre la consulta completa y conserva el regreso", async (context) => {
   const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true });
   await page.waitForLoadState("networkidle");
   await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
-  await drawer.getByRole("button", { name: "Acciones para Casa Norte" }).click();
-  await page.getByRole("menuitem", { name: "Abrir vista completa" }).click();
+  await drawer.getByRole("button", { name: "Ver solicitud", exact: true }).click();
 
+  // Navega a la página (sin modal de decisión) y el drawer se cierra.
   await page.waitForURL("**/solicitudes-proyecto/7");
+  assert.equal(await page.getByRole("button", { name: "Confirmar decisión" }).count(), 0);
   await page.getByRole("heading", { level: 1, name: "Casa Norte" }).waitFor();
   await page.getByRole("link", { name: "Dashboard" }).click();
   await page.waitForURL("**/dashboard-arquitecto");
@@ -384,6 +384,18 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   // Abrir una acción no ejecuta la decisión: solo el modal confirma contra la API.
   assert.equal(mutations.length, 0);
 });
+
+/**
+ * Abre el drawer de «Casa Norte» y elige una decisión de su menú de acciones; espera a que el
+ * drawer se cierre y quede el modal de decisión.
+ */
+async function openDrawerDecision(page, label) {
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  await drawer.getByRole("button", { name: "Acciones para Casa Norte", exact: true }).click();
+  await page.getByRole("menuitem", { name: label, exact: true }).click();
+  await drawer.waitFor({ state: "detached" });
+}
 
 /** Abre el drawer desde el resumen real, conservando las cargas iniciales del dashboard. */
 async function openClientDetails(page) {
@@ -632,20 +644,18 @@ test("Dashboard admin real: menú de acciones del drawer — orden, teclado y pr
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "Acciones para Casa Norte" });
   await menu.waitFor();
-  // La consulta completa va primero y separada de las decisiones.
-  assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["Abrir vista completa", "Aprobar", "Solicitar más información", "Rechazar"]);
-  // Divisores interactivos: tras la consulta y antes de la acción destructiva (el del encabezado es decorativo).
-  assert.equal(await menu.getByRole("separator").count(), 2);
+  // Figma: solo las tres decisiones; la consulta completa se abre con «Ver solicitud».
+  assert.deepEqual(await menu.getByRole("menuitem").allTextContents(), ["Aprobar", "Solicitar más información", "Rechazar"]);
+  // Divisor interactivo antes de la acción destructiva (el del encabezado es decorativo).
+  assert.equal(await menu.getByRole("separator").count(), 1);
   const focused = () => page.evaluate(() => document.activeElement?.textContent);
-  await page.waitForFunction(() => document.activeElement?.textContent === "Abrir vista completa");
+  await page.waitForFunction(() => document.activeElement?.textContent === "Aprobar");
   await page.keyboard.press("ArrowUp");
   assert.equal(await focused(), "Rechazar");
   await page.keyboard.press("Home");
-  assert.equal(await focused(), "Abrir vista completa");
+  assert.equal(await focused(), "Aprobar");
   await page.keyboard.press("End");
   assert.equal(await focused(), "Rechazar");
-  await page.keyboard.press("ArrowDown");
-  assert.equal(await focused(), "Abrir vista completa");
   await page.keyboard.press("ArrowDown");
   assert.equal(await focused(), "Aprobar");
   await page.keyboard.press("ArrowDown");
@@ -817,8 +827,7 @@ test("Dashboard admin real: aprobar avisa del proyecto creado y retira la solici
 test("Dashboard admin real: un conflicto de estado relee overview, métricas y cola sin cerrar el modal", async (context) => {
   const { page, calls, mutations } = await openPage(context, { role: "admin", realDashboard: true });
   await page.waitForLoadState("networkidle");
-  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
-  await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  await openDrawerDecision(page, "Aprobar");
   const before = countReads(calls, SYNC_PATHS);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
   await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
@@ -869,4 +878,66 @@ test("Dashboard admin real: recuperar la conexión revalida overview, métricas 
   assert.deepEqual(countReads(calls, paths), [...before.slice(0, 3).map((count) => count + 1), before[3]]);
   // El contenido sigue visible durante y después de la revalidación.
   await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).waitFor();
+});
+
+// --- Fase 3: navegación definitiva y acciones desde la consulta completa ---
+
+test("Dashboard admin real: el menú bloquea las decisiones de una solicitud sin revisión técnica", async (context) => {
+  const pending = { ...REQUEST, assignees: [], status: "pending_verification" };
+  const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [pending] });
+  await page.waitForLoadState("networkidle");
+  await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+  // «Ver solicitud» sigue disponible para consultar; las decisiones, no.
+  assert.equal(await drawer.getByRole("button", { name: "Ver solicitud", exact: true }).isEnabled(), true);
+  await drawer.getByRole("button", { name: "Acciones para Casa Norte", exact: true }).click();
+  const menu = page.getByRole("menu", { name: "Acciones para Casa Norte" });
+  for (const label of ["Aprobar", "Solicitar más información", "Rechazar"]) {
+    assert.equal(await menu.getByRole("menuitem", { name: label, exact: true }).isDisabled(), true, label);
+  }
+  assert.equal(mutations.length, 0);
+});
+
+test("Dashboard admin real: decidir en la consulta completa sincroniza el dashboard al volver", async (context) => {
+  let decided = false;
+  const { page, calls, mutations } = await openPage(context, {
+    role: "admin",
+    realDashboard: true,
+    overviewRequests: () => (decided ? [] : [REQUEST]),
+    requestDetail: () => ({ ...REQUEST, files: [], reviews: [], status: decided ? "rejected" : "pending_review" }),
+  });
+  await page.waitForLoadState("networkidle");
+  const overviewReads = () => countReads(calls, ["/api/admin/dashboard-overview"])[0];
+  const initialOverviewReads = overviewReads();
+  const newRequests = page.locator('[data-admin-new-requests="true"]');
+  await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
+  await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Ver solicitud", exact: true }).click();
+  await page.waitForURL("**/solicitudes-proyecto/7");
+
+  await page.getByRole("button", { name: "Rechazar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox").fill("Fuera del alcance del estudio.");
+  const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
+  await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await decisionRequest;
+  assert.deepEqual(calls.find((call) => call.method === "PATCH"), {
+    body: { action: "reject", reason: "Fuera del alcance del estudio." },
+    method: "PATCH",
+    path: "/api/admin/project-requests/7/decision",
+  });
+  decided = true;
+  await mutations[0].fulfill({ json: { project: null, projectRequest: { id: 7, reviewedAt: "2026-11-05T12:00:00.000Z", status: "rejected" } } });
+  await page.getByText("Solicitud rechazada", { exact: true }).waitFor();
+
+  // Volver por el breadcrumb: el overview no reutiliza su caché anterior a la decisión, y la cola
+  // y las métricas se leen de nuevo, de modo que la solicitud decidida ya no aparece.
+  const reread = ["/api/admin/dashboard-overview", "/api/project-requests/review-queue", "/api/admin/dashboard-metrics"]
+    .map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
+  await page.getByRole("link", { name: "Dashboard" }).click();
+  await page.waitForURL("**/dashboard-arquitecto");
+  await Promise.all(reread);
+  await page.waitForLoadState("networkidle");
+  assert.ok(overviewReads() > initialOverviewReads);
+  assert.equal(await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).count(), 0);
+  assert.equal(mutations.length, 1);
 });

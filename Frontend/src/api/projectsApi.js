@@ -20,12 +20,12 @@ export const projectsApi = {
     return collectCursorPages((page) => projectsApi.list(page), "projects");
   },
 
-  getById({ filesCursor, filesLimit, projectId }) {
+  getById({ filesCursor, filesLimit, projectId, signal }) {
     const params = new URLSearchParams();
     if (filesCursor) params.set("filesCursor", filesCursor);
     if (filesLimit) params.set("filesLimit", String(filesLimit));
     const query = params.toString();
-    return apiRequest(`/projects/${encodeURIComponent(projectId)}${query ? `?${query}` : ""}`);
+    return apiRequest(`/projects/${encodeURIComponent(projectId)}${query ? `?${query}` : ""}`, signal ? { signal } : undefined);
   },
 
   async getByIdAllFiles({ projectId }) {
