@@ -11,6 +11,19 @@ import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserT
 const WIDTHS = [375, 768, 1024, 1440];
 const DETAIL_PATH = "/api/admin/project-requests/9";
 const SHELL_READS = new Set(["/api/auth/me", "/api/projects"]);
+// Vista previa de la imagen adjunta (fachada.png): se lee del endpoint autenticado al acercarse al
+// viewport. PNG real de 1 × 1 para que el navegador la decodifique.
+const IMAGE_PREVIEW_PATTERN = /^\/api\/project-requests\/\d+\/files\/32\/content$/;
+const PDF_CONTENT_PATH = "/api/project-requests/9/files/31/content";
+const PNG_PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+/**
+ * Lecturas ajenas a la consulta (shell y vistas previas de imagen), fuera de los contratos de
+ * lectura de cada prueba.
+ *
+ * @param {string} path - Ruta leída.
+ * @returns {boolean} true si es una lectura de fondo.
+ */
+const isBackgroundRead = (path) => SHELL_READS.has(path) || IMAGE_PREVIEW_PATTERN.test(path);
 // Detalle ficticio con la forma de GET /admin/project-requests/:id (datos aislados).
 const REQUEST = Object.freeze({
   assignees: [{ hasProfilePhoto: false, id: 5, name: "Ana Pérez", roleCode: "architect" }],
@@ -98,6 +111,7 @@ async function openPage(context, { clock = false, detail = { json: { projectRequ
       return route.abort();
     }
     reads.push(pathname);
+    if (IMAGE_PREVIEW_PATTERN.test(pathname)) return route.fulfill({ body: PNG_PIXEL, contentType: "image/png" });
     if (pathname === DETAIL_PATH) {
       const response = typeof detail === "function" ? await detail(reads.filter((read) => read === DETAIL_PATH).length) : detail;
       return response === "abort" ? route.abort() : route.fulfill(response);
@@ -123,7 +137,7 @@ async function openPage(context, { clock = false, detail = { json: { projectRequ
   return { mutations, page, reads };
 }
 
-test("muestra la solicitud real con una única lectura y sin descargar adjuntos", async (context) => {
+test("muestra la solicitud real con una única lectura, la vista previa de la imagen y sin descargar documentos", async (context) => {
   const { page, reads } = await openPage(context);
 
   await page.getByRole("heading", { level: 1, name: "Casa Prueba" }).waitFor();
@@ -139,7 +153,10 @@ test("muestra la solicitud real con una única lectura y sin descargar adjuntos"
     await page.getByText(text, { exact: true }).first().waitFor();
   }
   await page.getByRole("link", { name: "Dashboard" }).waitFor();
-  assert.deepEqual(reads.filter((read) => !SHELL_READS.has(read)), [DETAIL_PATH]);
+  assert.deepEqual(reads.filter((read) => !isBackgroundRead(read)), [DETAIL_PATH]);
+  // La imagen adjunta se ve como vista previa; el PDF conserva su icono y no se descarga.
+  await page.locator("[data-preview='image']").waitFor();
+  assert.equal(reads.includes(PDF_CONTENT_PATH), false);
 });
 
 test("el resumen reutiliza el drawer y solo entonces consulta al cliente", async (context) => {
@@ -150,7 +167,7 @@ test("el resumen reutiliza el drawer y solo entonces consulta al cliente", async
   await drawer.getByText("Cliente Prueba", { exact: true }).waitFor();
   await drawer.getByText("Agendar reunión", { exact: true }).waitFor();
   assert.equal(await drawer.getByRole("button", { name: "Ver solicitud" }).count(), 0);
-  assert.deepEqual(reads.filter((read) => !SHELL_READS.has(read)), [DETAIL_PATH, "/api/admin/users/11"]);
+  assert.deepEqual(reads.filter((read) => !isBackgroundRead(read)), [DETAIL_PATH, "/api/admin/users/11"]);
 });
 
 test("la viabilidad porcentual coincide en detalle y resumen, sin datos de prototipo", async (context) => {
@@ -212,7 +229,7 @@ test("estados de inexistencia, permisos, conexión y reintento", async (context)
   await openPage(context, { detail: { json: { code: "FORBIDDEN", message: "Sin permiso" }, status: 403 }, waitFor: "No tienes permisos para ver esta solicitud" });
 
   const invalid = await openPage(context, { path: "/solicitudes-proyecto/abc", waitFor: "La solicitud no existe" });
-  assert.deepEqual(invalid.reads.filter((read) => !SHELL_READS.has(read)), []);
+  assert.deepEqual(invalid.reads.filter((read) => !isBackgroundRead(read)), []);
 
   const retry = await openPage(context, {
     detail: (attempt) => (attempt === 1 ? "abort" : { json: { projectRequest: REQUEST } }),
@@ -731,7 +748,7 @@ test("cabecera por rango: móvil 24 px e indicador de 64; tablet cuatro etapas c
   }
 });
 
-test("un vídeo adjunto muestra un fotograma real solo al acercarse; imágenes y documentos no se leen", async (context) => {
+test("un vídeo adjunto muestra un fotograma real solo al acercarse; los documentos no se leen", async (context) => {
   const video = { createdAt: "2026-10-01T12:07:00.000Z", fileType: "video/mp4", id: 33, name: "recorrido.mp4", size: 1024 };
   const contentPath = "/api/project-requests/9/files/33/content";
   let videoReads = 0;
@@ -745,7 +762,9 @@ test("un vídeo adjunto muestra un fotograma real solo al acercarse; imágenes y
   const videoRequested = page.waitForRequest((request) => request.url().endsWith(contentPath));
   await page.getByText("recorrido.mp4", { exact: true }).scrollIntoViewIfNeeded();
   await videoRequested;
-  await page.waitForFunction(() => document.querySelectorAll("[data-preview='type']").length === 3);
+  // PDF y vídeo no decodificable con presentación por tipo; la imagen, con su vista previa.
+  await page.waitForFunction(() => document.querySelectorAll("[data-preview='type']").length === 2
+    && document.querySelectorAll("[data-preview='image']").length === 1);
   assert.ok(videoReads >= 1, "al acercarse se intenta leer el fotograma");
-  assert.equal(reads.some((path) => /\/files\/3[12]\/content$/.test(path)), false, "imágenes y PDF no se descargan");
+  assert.equal(reads.includes(PDF_CONTENT_PATH), false, "el PDF no se descarga");
 });

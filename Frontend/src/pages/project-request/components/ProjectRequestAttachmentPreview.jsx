@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
 import FileAttachmentIcons from "../../../components/ui/FileAttachmentIcons.jsx";
@@ -6,7 +6,7 @@ import PlayIcon from "../../../components/ui/Gallery/PlayIcon.jsx";
 import { useVideoThumbnailState } from "../../../components/ui/Gallery/useVideoThumbnail.js";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import useNearViewport from "../../../hooks/useNearViewport.js";
-import { isVideoAttachment } from "../../../utils/projectRequestAttachments.js";
+import { isImageAttachment, isVideoAttachment } from "../../../utils/projectRequestAttachments.js";
 
 // Figma «video item» (2282:37784, 150 × 90 en la solicitud): radio 4, elevación E2 y, en vídeos,
 // degradado inferior con el icono de reproducción centrado.
@@ -63,10 +63,43 @@ function VideoAttachmentPreview({ file, projectRequestId }) {
 }
 
 /**
- * Vista previa de un adjunto de solicitud en el área de 150 × 90 de Figma. Los vídeos muestran
- * un fotograma real (lectura diferida y parcial); imágenes y documentos usan la presentación por
- * tipo porque no existe una miniatura reducida en el backend y generarla exigiría descargar el
- * archivo completo.
+ * Vista previa de una imagen adjunta: la propia imagen desde el endpoint autenticado de contenido
+ * (que la sirve en línea), recortada al área de Figma. Solo se pide cuando la tarjeta se acerca al
+ * viewport; mientras tanto, o si no se puede cargar, se muestra la presentación por tipo.
+ *
+ * @param {Object} props - Adjunto y solicitud.
+ * @param {Object} props.file - Adjunto de imagen.
+ * @param {number|string} props.projectRequestId - Solicitud propietaria.
+ * @returns {import("react").ReactElement} Vista previa de la imagen.
+ */
+function ImageAttachmentPreview({ file, projectRequestId }) {
+  const frameRef = useRef(null);
+  const isNear = useNearViewport(frameRef);
+  const [status, setStatus] = useState("loading");
+  const showImage = isNear && status !== "error";
+
+  return (
+    <span ref={frameRef} className={FRAME_CLASS_NAME} data-preview={status === "loaded" ? "image" : "type"}>
+      {status !== "loaded" ? <FileAttachmentIcons type={getAttachmentExtension(file)} aria-hidden="true" /> : null}
+      {showImage ? (
+        <img
+          src={api.projectRequests.getFileContentUrl({ fileId: file.id, projectRequestId })}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className={`content-reveal-media absolute inset-0 size-full object-cover ${status === "loaded" ? "" : "invisible"}`}
+          onLoad={() => setStatus("loaded")}
+          onError={() => setStatus("error")}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Vista previa de un adjunto de solicitud en el área de 150 × 90 de Figma. Las imágenes se
+ * muestran tal cual y los vídeos con un fotograma real (lectura parcial), ambos de forma diferida
+ * al acercarse al viewport; los documentos usan la presentación por tipo.
  *
  * @param {Object} props - Adjunto y solicitud.
  * @param {Object} props.file - Adjunto persistido con `id`, `name` y `fileType`.
@@ -76,6 +109,9 @@ function VideoAttachmentPreview({ file, projectRequestId }) {
 export default function ProjectRequestAttachmentPreview({ file, projectRequestId }) {
   if (isVideoAttachment(file)) {
     return <VideoAttachmentPreview file={file} projectRequestId={projectRequestId} />;
+  }
+  if (isImageAttachment(file)) {
+    return <ImageAttachmentPreview file={file} projectRequestId={projectRequestId} />;
   }
 
   return (

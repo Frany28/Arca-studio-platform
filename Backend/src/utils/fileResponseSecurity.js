@@ -25,7 +25,7 @@ const SANDBOXED_INLINE_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
-const UNSANDBOXED_INLINE_TYPES = new Set(["video/mp4"]);
+const UNSANDBOXED_INLINE_TYPES = new Set(["video/mp4", "video/quicktime"]);
 const PDF_TYPE = "application/pdf";
 const FORCED_DOWNLOAD_TYPE = "application/octet-stream";
 

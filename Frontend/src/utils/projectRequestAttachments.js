@@ -14,6 +14,17 @@ export function isPdfAttachment(file) {
 }
 
 /**
+ * Indica si un adjunto de solicitud es una imagen (JPEG o PNG), por su MIME. El backend la sirve
+ * en línea, así que puede mostrarse como vista previa desde el endpoint autenticado de contenido.
+ *
+ * @param {{ fileType?: string|null }|null} file - Adjunto con `fileType` en formato MIME.
+ * @returns {boolean} true si el adjunto es una imagen.
+ */
+export function isImageAttachment(file) {
+  return String(file?.fileType || "").split(";")[0].trim().toLowerCase().startsWith("image/");
+}
+
+/**
  * Indica si un adjunto de solicitud es un vídeo (la solicitud solo admite MP4), por su MIME.
  * Su miniatura puede obtenerse leyendo un fotograma, sin descargar el archivo completo.
  *

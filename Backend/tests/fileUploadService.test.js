@@ -179,3 +179,26 @@ test("uploads without signature validation expose an already resolved ready", as
   const upload = prepareUpload(streamingRequest(Buffer.from("%PDF-1.7"), "application/pdf", "doc.pdf"), uploadPolicies.document);
   await upload.ready;
 });
+
+test("solicitudes: admiten MOV con su firma real y limitan los vídeos a 4,5 MB", async () => {
+  const quicktime = Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from("ftypqt  "), Buffer.alloc(32, 0)]);
+  const mov = prepareProjectRequestUpload(streamingRequest(quicktime, "video/quicktime", "recorrido.mov"));
+  await mov.ready;
+  const chunks = [];
+  for await (const chunk of mov.body) chunks.push(chunk);
+  assert.deepEqual(Buffer.concat(chunks), quicktime);
+
+  // Un .mov con el MIME de otro formato o con contenido ajeno se rechaza.
+  assert.throws(() => prepareProjectRequestUpload(streamingRequest(quicktime, "video/mp4", "recorrido.mov")), { code: "UNSUPPORTED_FILE_TYPE" });
+  const fake = prepareProjectRequestUpload(streamingRequest(Buffer.alloc(64, 1), "video/quicktime", "falso.mov"));
+  await assert.rejects(fake.ready, { code: "INVALID_FILE_SIGNATURE" });
+
+  // Vídeos (MP4 y MOV) hasta 4,5 MB; imágenes y PDF conservan el límite general.
+  const sized = (size, type, name) => ({ destroyed: false, headers: { "content-length": String(size), "content-type": type, "x-file-name": name } });
+  for (const [type, name] of [["video/mp4", "clip.mp4"], ["video/quicktime", "clip.mov"]]) {
+    assert.throws(() => prepareProjectRequestUpload(sized(4_500_001, type, name)), { code: "FILE_TOO_LARGE", status: 413 });
+  }
+  const image = Object.assign(new PassThrough(), sized(10_000_000, "image/png", "plano.png"));
+  assert.equal(prepareProjectRequestUpload(image).size, 10_000_000);
+  image.destroy();
+});

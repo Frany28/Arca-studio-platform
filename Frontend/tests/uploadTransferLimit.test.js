@@ -34,3 +34,14 @@ test("la validación distingue el límite funcional (50 MB) del límite temporal
     ["plano.pdf: supera 50 MB."],
   );
 });
+
+test("vídeos MP4 y MOV hasta 4,5 MB; imágenes y PDF conservan 50 MB", () => {
+  const item = (name, type, size) => ({ file: { name, size, type } });
+  assert.deepEqual(getProjectRequestFileErrors([item("recorrido.mov", "video/quicktime", 4_000_000)]), []);
+  assert.deepEqual(getProjectRequestFileErrors([item("recorrido.mov", "video/mp4", 1000)]), ["recorrido.mov: formato no permitido."]);
+  assert.deepEqual(getProjectRequestFileErrors([
+    item("clip.mp4", "video/mp4", 4_600_000),
+    item("clip.mov", "video/quicktime", 4_600_000),
+  ]), ["clip.mp4: los vídeos admiten hasta 4,5 MB.", "clip.mov: los vídeos admiten hasta 4,5 MB."]);
+  assert.deepEqual(getProjectRequestFileErrors([item("fachada.png", "image/png", 10_000_000)]), []);
+});

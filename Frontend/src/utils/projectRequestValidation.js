@@ -27,11 +27,14 @@ export const PROJECT_REQUEST_FILE_LIMITS = {
   maxFileBytes: 50 * 1024 * 1024,
   maxNameLength: 150,
   maxTotalBytes: 200 * 1024 * 1024,
+  // Vídeos (MP4 y MOV): 4,5 MB por ahora, igual que el backend (PROJECT_REQUEST_VIDEO_MAX_BYTES).
+  maxVideoBytes: 4_500_000,
 };
 
 const FILE_MIME_BY_EXTENSION = new Map([
   ["jpeg", "image/jpeg"],
   ["jpg", "image/jpeg"],
+  ["mov", "video/quicktime"],
   ["mp4", "video/mp4"],
   ["pdf", "application/pdf"],
   ["png", "image/png"],
@@ -186,7 +189,8 @@ export function getProjectRequestRequiredFieldErrors(values = {}, context = {}) 
 
 /**
  * Valida adjuntos locales como archivos directos o elementos con propiedad file y devuelve cada
- * problema con el adjunto al que pertenece. Admite JPEG/JPG, PNG, MP4 y PDF con MIME coincidente;
+ * problema con el adjunto al que pertenece. Admite JPEG/JPG, PNG, PDF, MP4 y MOV con MIME coincidente
+ * (vídeos hasta `maxVideoBytes`);
  * comprueba nombres de hasta 150 caracteres, duplicados sin distinguir mayúsculas (se señala la
  * repetición, no el primero), máximo diez archivos, 50 MiB por archivo y 200 MiB totales. Los
  * límites de cantidad y de tamaño total son de la sección (`index: null`). No lanza por validación.
@@ -224,6 +228,7 @@ export function getProjectRequestFileIssues(files = [], { transferLimitBytes = U
     names.add(name.toLowerCase());
     if (!expectedMime || expectedMime !== String(file?.type || "").toLowerCase()) add(`${name || "Un archivo"}: formato no permitido.`, index);
     if (!Number.isFinite(file?.size) || file.size <= 0) add(`${name || "Un archivo"}: está vacío.`, index);
+    else if (expectedMime?.startsWith("video/") && file.size > PROJECT_REQUEST_FILE_LIMITS.maxVideoBytes) add(`${name}: los vídeos admiten hasta ${formatTransferLimit(PROJECT_REQUEST_FILE_LIMITS.maxVideoBytes)}.`, index);
     else if (file.size > PROJECT_REQUEST_FILE_LIMITS.maxFileBytes) add(`${name}: supera 50 MB.`, index);
     else if (transferLimitBytes && file.size > transferLimitBytes) add(`${name}: supera ${formatTransferLimit(transferLimitBytes)}, el máximo por archivo que admite temporalmente este entorno.`, index);
   });

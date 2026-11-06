@@ -7,6 +7,8 @@ const FILE_ATTACHMENT_ICON_VARIANTS = {
   DOCX: { label: "DOCX", color: "bg-[#3873FF]", nodeId: "2061:24001" },
   GIF: { label: "GIF", color: "bg-[#6E45F0]", nodeId: "2061:24008" },
   JPG: { label: "JPG", color: "bg-[#3873FF]", nodeId: "2061:24015" },
+  // MOV comparte la presentación de vídeo de MP4 (Figma no tiene variante propia).
+  MOV: { label: "MOV", color: "bg-[#6E45F0]", nodeId: "2061:24022" },
   MP4: { label: "MP4", color: "bg-[#6E45F0]", nodeId: "2061:24022" },
   PDF: { label: "PDF", color: "bg-[#FF1607]", nodeId: "2061:24029" },
   PNG: { label: "PNG", color: "bg-[#3873FF]", nodeId: "2061:24036" },
@@ -28,6 +30,7 @@ function normalizeFileType(type) {
 
   const aliases = {
     JPEG: "JPG",
+    QUICKTIME: "MOV",
     TEXT: "TXT",
   };
 

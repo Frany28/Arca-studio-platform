@@ -5,11 +5,11 @@ import FileUploadSection from "../../../components/ui/FileUploadSection/FileUplo
 import { getFileUploadCardIds } from "../../../components/ui/FileUploadSection/fileUploadSectionConfig.js";
 import HintText from "../../../components/ui/HintText/HintText.jsx";
 import { UPLOAD_TRANSFER_LIMIT_BYTES } from "../../../config/uploadTransferLimit.js";
-import { formatTransferLimit } from "../../../utils/projectRequestValidation.js";
+import { formatTransferLimit, PROJECT_REQUEST_FILE_LIMITS } from "../../../utils/projectRequestValidation.js";
 import { splitProjectRequestFileErrors, toProjectRequestFileCards } from "../utils/projectRequestFilePresentation.js";
 import { FieldLabel } from "./ProjectRequestFormFields.jsx";
 
-const ACCEPTED_FILE_TYPES = ".jpeg,.jpg,.png,.pdf,.mp4";
+const ACCEPTED_FILE_TYPES = ".jpeg,.jpg,.png,.pdf,.mp4,.mov";
 const ATTACHMENTS_LABEL = "Subir imágenes / archivos (opcional)";
 // Con más de dos adjuntos, la lista se limita al alto de dos tarjetas (89 px cada una y 12 px de
 // separación) y se desplaza con el ScrollBar de FileUploadSection, para que el campo no crezca con
@@ -18,11 +18,12 @@ const MAX_VISIBLE_FILE_CARDS = 2;
 const FILE_CARD_HEIGHT = 89;
 const FILE_CARD_GAP = 12;
 const FILE_LIST_VIEWPORT_HEIGHT = MAX_VISIBLE_FILE_CARDS * FILE_CARD_HEIGHT + (MAX_VISIBLE_FILE_CARDS - 1) * FILE_CARD_GAP;
-// Texto de Figma con el límite funcional; si el despliegue impone uno menor por subida (temporal),
-// se indica para no anunciar que un archivo de hasta 50 MB se puede subir en este entorno.
+// Formatos y límites reales: imágenes y PDF hasta 50 MB y vídeos (MP4 y MOV) hasta su límite propio.
+// Si el despliegue impone uno menor por subida (temporal), se indica para no anunciar 50 MB.
+const VIDEO_LIMIT_LABEL = formatTransferLimit(PROJECT_REQUEST_FILE_LIMITS.maxVideoBytes);
 const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
-  ? `Formatos JPEG, PNG, PDF y MP4, hasta 50 MB (en este entorno de pruebas, hasta ${formatTransferLimit(UPLOAD_TRANSFER_LIMIT_BYTES)} por archivo).`
-  : undefined;
+  ? `Formatos JPEG, PNG, PDF, MP4 y MOV. Hasta 50 MB y vídeos hasta ${VIDEO_LIMIT_LABEL} (en este entorno de pruebas, hasta ${formatTransferLimit(UPLOAD_TRANSFER_LIMIT_BYTES)} por archivo).`
+  : `Formatos JPEG, PNG, PDF, MP4 y MOV. Hasta 50 MB y vídeos hasta ${VIDEO_LIMIT_LABEL}.`;
 
 /**
  * Campo "Referencias" del formulario: zona de carga del sistema (`FileUploadSection`) con una

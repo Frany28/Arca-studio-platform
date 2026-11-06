@@ -1172,3 +1172,16 @@ test("Adjuntos: con más de dos archivos la lista se limita a dos tarjetas y se 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(overflow <= 0, "sin desbordamiento horizontal");
 });
+
+test("Adjuntos: los vídeos MOV se suben y un vídeo de más de 4,5 MB se rechaza sin subirse", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  const video = (name, mimeType, size) => ({ buffer: Buffer.alloc(size, 1), mimeType, name });
+  await page.locator('input[type="file"]').setInputFiles([
+    video("recorrido.mov", "video/quicktime", 2048),
+    video("largo.mp4", "video/mp4", 4_600_000),
+  ]);
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).waitFor();
+  await attachments(page).getByText("largo.mp4: los vídeos admiten hasta 4,5 MB.", { exact: true }).waitFor();
+  assert.deepEqual(calls.filter((call) => call.path.endsWith("/files")).map((call) => call.fileName), ["recorrido.mov"]);
+  assert.match(await attachments(page).innerText(), /MP4 y MOV\. Hasta 50 MB y vídeos hasta 4,5 MB\./);
+});

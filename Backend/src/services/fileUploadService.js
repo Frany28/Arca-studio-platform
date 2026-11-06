@@ -30,20 +30,29 @@ const DOCUMENT_TYPE_BY_EXTENSION = new Map([
 ]);
 const AVATAR_EXTENSIONS = new Set(["jpeg", "jpg", "png", "webp"]);
 const AVATAR_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const PROJECT_REQUEST_EXTENSIONS = new Set(["jpeg", "jpg", "mp4", "pdf", "png"]);
+const PROJECT_REQUEST_EXTENSIONS = new Set(["jpeg", "jpg", "mov", "mp4", "pdf", "png"]);
 const PROJECT_REQUEST_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
   "image/png",
   "video/mp4",
+  "video/quicktime",
 ]);
+// Átomos con los que puede empezar un archivo QuickTime (.mov) válido.
+const QUICKTIME_LEADING_ATOMS = new Set(["ftyp", "moov", "mdat", "wide", "free", "skip", "pnot"]);
 const PROJECT_REQUEST_TYPE_BY_EXTENSION = new Map([
   ["jpeg", "image/jpeg"],
   ["jpg", "image/jpeg"],
+  ["mov", "video/quicktime"],
   ["mp4", "video/mp4"],
   ["pdf", "application/pdf"],
   ["png", "image/png"],
 ]);
+
+// Límite temporal de los vídeos de una solicitud (decisión del desarrollador): 4,5 MB, el cuerpo
+// máximo que acepta una función de Vercel en el staging actual. Imágenes y PDF conservan 50 MB.
+// Se ajusta con PROJECT_REQUEST_VIDEO_MAX_BYTES (p. ej. al implementar la subida directa).
+const PROJECT_REQUEST_VIDEO_MAX_BYTES = Number(process.env.PROJECT_REQUEST_VIDEO_MAX_BYTES || 4_500_000);
 
 export const uploadPolicies = {
   document: {
@@ -57,6 +66,10 @@ export const uploadPolicies = {
   projectRequest: {
     extensions: PROJECT_REQUEST_EXTENSIONS,
     maxBytes: Number(process.env.FILE_UPLOAD_MAX_BYTES || 50 * 1024 * 1024),
+    maxBytesByType: new Map([
+      ["video/mp4", PROJECT_REQUEST_VIDEO_MAX_BYTES],
+      ["video/quicktime", PROJECT_REQUEST_VIDEO_MAX_BYTES],
+    ]),
     maxNameLength: 150,
     typeByExtension: PROJECT_REQUEST_TYPE_BY_EXTENSION,
     types: PROJECT_REQUEST_TYPES,
@@ -84,6 +97,10 @@ function hasExpectedSignature(buffer, contentType) {
   }
   if (contentType === "video/mp4") {
     return buffer.length >= 12 && buffer.subarray(4, 8).toString("ascii") === "ftyp";
+  }
+  if (contentType === "video/quicktime") {
+    // QuickTime empieza por un átomo: «ftyp» en los archivos actuales; los antiguos, por otro átomo.
+    return buffer.length >= 12 && QUICKTIME_LEADING_ATOMS.has(buffer.subarray(4, 8).toString("ascii"));
   }
   return false;
 }
@@ -246,7 +263,8 @@ export function prepareUpload(req, policy, { fallbackName = "archivo" } = {}) {
   ) {
     throw new AppError({ code: "UNSUPPORTED_FILE_TYPE", message: "El tipo de archivo no está permitido.", status: 415 });
   }
-  const { body, size } = getUploadStream(req, policy.maxBytes);
+  // Una política puede limitar más algunos tipos (p. ej. los vídeos de una solicitud).
+  const { body, size } = getUploadStream(req, policy.maxBytesByType?.get(contentType) ?? policy.maxBytes);
   const validated = policy.validateSignature
     ? validateFileSignature(body, contentType)
     : { body, ready: Promise.resolve() };
