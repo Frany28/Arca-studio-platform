@@ -587,6 +587,40 @@ test("la barra es accesible por teclado y no desborda en tablet ni móvil, en cl
   await page.waitForFunction(() => document.activeElement?.innerText === "Aprobar");
 });
 
+test("Project Info coincide con Figma: 900 × 73 en 1024 px, botones de 41 y Outline transparente", async (context) => {
+  for (const theme of ["light", "dark"]) {
+    const { page } = await openPage(context, { theme, viewport: { height: 900, width: 1024 } });
+    const bar = page.getByRole("group", { name: "Acciones de la solicitud" });
+    const geometry = await bar.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const buttons = [...node.querySelectorAll("button")];
+      return {
+        width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height,
+        radius: style.borderRadius, padding: style.padding,
+        buttons: buttons.map((button) => ({ height: button.getBoundingClientRect().height, top: button.getBoundingClientRect().top, width: button.getBoundingClientRect().width })),
+        gaps: buttons.slice(2).map((button, index) => button.getBoundingClientRect().left - buttons[index + 1].getBoundingClientRect().right),
+      };
+    });
+    assert.equal(geometry.width, 900);
+    assert.equal(geometry.height, 73);
+    assert.equal(geometry.radius, "12px");
+    assert.equal(geometry.padding, "16px");
+    assert.ok(geometry.buttons.every((button) => button.height === 41 && button.top === geometry.buttons[0].top));
+    assert.ok(geometry.buttons.every((button, index) => Math.abs(button.width - [216, 84, 181, 76][index]) < 1));
+    assert.deepEqual(geometry.gaps, [16, 16]);
+
+    for (const label of ["Ver resumen & recomendación", "Rechazar", "Solicitar más información"]) {
+      const button = bar.getByRole("button", { name: label, exact: true });
+      assert.equal(await button.evaluate((node) => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
+      await button.hover();
+      assert.equal(await button.evaluate((node) => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)", `${theme}: ${label} transparente también en hover`);
+      await button.focus();
+      assert.equal(await button.evaluate((node) => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
+    }
+    assert.notEqual(await bar.getByRole("button", { name: "Aprobar", exact: true }).evaluate((node) => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
+  }
+});
+
 /**
  * Geometría de la barra inferior, su contenedor de scroll y la sección de gestión, tras desplazar
  * el contenido hasta el final.

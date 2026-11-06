@@ -2,7 +2,14 @@
 // El verde existente necesita más profundidad sobre blanco para texto pequeño; en oscuro
 // conserva el token original. La mezcla evita añadir otra paleta o cambiar los tokens globales.
 const SUCCESS_OUTLINE_COLORS = "border border-[color-mix(in_srgb,var(--color-success-200)_70%,var(--color-neutral-950-uniform))] text-[color-mix(in_srgb,var(--color-success-200)_70%,var(--color-neutral-950-uniform))] dark:border-[var(--color-success-200)] dark:text-[var(--color-success-200)]";
-const SUCCESS_OUTLINE_DEFAULT = `${SUCCESS_OUTLINE_COLORS} bg-[var(--color-neutral-100)]`;
+const SUCCESS_OUTLINE_DEFAULT = `${SUCCESS_OUTLINE_COLORS} bg-[var(--button-outline-surface,var(--color-neutral-100))]`;
+
+// Superficie opcional de Outline: el fallback mantiene los fondos existentes de cada tema.
+// La variable también se aplica a hover, foco y disabled para evitar parches por consumidor.
+export const BUTTON_OUTLINE_SURFACES = {
+  default: "",
+  transparent: "[--button-outline-surface:transparent]",
+};
 
 export const BUTTON_SIZE_STYLES = {
   S: {
@@ -42,6 +49,7 @@ export const BUTTON_DEFAULT_PROPS = {
   theme: "Primary",
   size: "S",
   type: "Solid",
+  surface: "default",
   state: "Default",
   showLeftIcon: true,
   showRightIcon: true,
@@ -110,14 +118,14 @@ export const BUTTON_VISUALS = {
     },
     Outline: {
       Default:
-        "border border-[var(--color-danger-100)] bg-[var(--color-neutral-100)] text-[var(--color-danger-100)]",
+        "border border-[var(--color-danger-100)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-danger-100)]",
       Hover:
-        "border border-[var(--color-danger-200)] bg-[var(--color-neutral-100)] text-[var(--color-danger-200)]",
+        "border border-[var(--color-danger-200)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-danger-200)]",
       FocusedInner:
-        "border border-[var(--color-danger-100)] bg-[var(--color-neutral-100)] text-[var(--color-danger-100)]",
+        "border border-[var(--color-danger-100)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-danger-100)]",
       FocusedOuter: "var(--color-danger-10)",
       Disabled:
-        "border border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]",
+        "border border-[var(--color-neutral-300)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-neutral-500)]",
     },
   },
   // Confirmaciones positivas: texto oscuro sobre verde y outline más profundo en claro
@@ -135,7 +143,7 @@ export const BUTTON_VISUALS = {
       Hover: `${SUCCESS_OUTLINE_COLORS} bg-[var(--color-success-10)]`,
       FocusedInner: SUCCESS_OUTLINE_DEFAULT,
       FocusedOuter: "var(--color-success-10)",
-      Disabled: "border border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]",
+      Disabled: "border border-[var(--color-neutral-300)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-neutral-500)]",
     },
   },
   Info: {
@@ -152,14 +160,14 @@ export const BUTTON_VISUALS = {
     },
     Outline: {
       Default:
-        "border border-[var(--color-info-100)] bg-[var(--color-neutral-100)] text-[var(--color-info-100)]",
+        "border border-[var(--color-info-100)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-info-100)]",
       Hover:
-        "border border-[var(--color-info-200)] bg-[var(--color-neutral-100)] text-[var(--color-info-100)]",
+        "border border-[var(--color-info-200)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-info-100)]",
       FocusedInner:
-        "border border-[var(--color-info-200)] bg-[var(--color-neutral-100)] text-[var(--color-info-100)]",
+        "border border-[var(--color-info-200)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-info-100)]",
       FocusedOuter: "var(--color-info-10)",
       Disabled:
-        "border border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]",
+        "border border-[var(--color-neutral-300)] bg-[var(--button-outline-surface,var(--color-neutral-100))] text-[var(--color-neutral-500)]",
     },
   },
 };
@@ -179,7 +187,7 @@ export const BUTTON_INTERACTIVE_STYLES = {
     Solid:
       "hover:border-[var(--color-danger-200)] hover:bg-[var(--color-danger-200)] active:border-[var(--color-danger-200)] active:bg-[var(--color-danger-200)] focus:outline-none focus-visible:border-[var(--color-danger-100)] focus-visible:bg-[var(--color-danger-100)] focus-visible:text-[var(--color-neutral-100-uniform)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-danger-10)]",
     Outline:
-      "hover:border-[var(--color-danger-200)] hover:bg-[var(--color-neutral-100)] hover:text-[var(--color-danger-200)] active:border-[var(--color-danger-200)] active:text-[var(--color-danger-200)] focus:outline-none focus-visible:border-[var(--color-danger-100)] focus-visible:bg-[var(--color-neutral-100)] focus-visible:text-[var(--color-danger-100)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-danger-10)]",
+      "hover:border-[var(--color-danger-200)] hover:bg-[var(--button-outline-surface,var(--color-neutral-100))] hover:text-[var(--color-danger-200)] active:border-[var(--color-danger-200)] active:text-[var(--color-danger-200)] focus:outline-none focus-visible:border-[var(--color-danger-100)] focus-visible:bg-[var(--button-outline-surface,var(--color-neutral-100))] focus-visible:text-[var(--color-danger-100)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-danger-10)]",
   },
   Success: {
     Solid: "hover:border-[var(--color-success-100)] hover:bg-[var(--color-success-100)] active:border-[var(--color-success-100)] active:bg-[var(--color-success-100)] focus:outline-none focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-success-10)]",
@@ -189,7 +197,7 @@ export const BUTTON_INTERACTIVE_STYLES = {
     Solid:
       "hover:border-[var(--color-info-200)] hover:bg-[var(--color-info-200)] active:border-[var(--color-info-200)] active:bg-[var(--color-info-200)] focus:outline-none focus-visible:border-[var(--color-info-200)] focus-visible:bg-[var(--color-info-100)] focus-visible:text-[var(--color-neutral-100-uniform)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-info-10)]",
     Outline:
-      "hover:border-[var(--color-info-200)] hover:bg-[var(--color-neutral-100)] hover:text-[var(--color-info-100)] active:border-[var(--color-info-200)] active:text-[var(--color-info-200)] focus:outline-none focus-visible:border-[var(--color-info-200)] focus-visible:bg-[var(--color-neutral-100)] focus-visible:text-[var(--color-info-100)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-info-10)]",
+      "hover:border-[var(--color-info-200)] hover:bg-[var(--button-outline-surface,var(--color-neutral-100))] hover:text-[var(--color-info-100)] active:border-[var(--color-info-200)] active:text-[var(--color-info-200)] focus:outline-none focus-visible:border-[var(--color-info-200)] focus-visible:bg-[var(--button-outline-surface,var(--color-neutral-100))] focus-visible:text-[var(--color-info-100)] focus-visible:shadow-[0_0_0_var(--stroke-2)_var(--color-info-10)]",
   },
 };
 

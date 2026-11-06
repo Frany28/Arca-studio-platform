@@ -13,13 +13,22 @@ import { ADMIN_REQUEST_DECISION_ACTIONS } from "../../../utils/projectRequestAdm
 // la superficie a 24 px del borde (16 en móvil). Por eso es hija directa del contenedor de scroll del
 // layout y usa `sticky bottom-0`: queda al pie del viewport mientras se desplaza el contenido y, al
 // final, ocupa su propio espacio, de modo que nunca tapa el último contenido.
-const WRAPPED_ACTION = "max-[1023px]:min-w-[84px] max-[1023px]:flex-1";
-const WRAPPED_FIXED_ACTION = "max-[1023px]:shrink-0";
+// Figma mide 41 px: el borde interior ya está incluido en el padding de 12 px del diseño.
+const ACTION_BUTTON_CLASS_NAME = "h-[41px]";
+const WRAPPED_ACTION = `${ACTION_BUTTON_CLASS_NAME} max-[1023px]:min-w-[84px] max-[1023px]:flex-1`;
+const WRAPPED_FIXED_ACTION = `${ACTION_BUTTON_CLASS_NAME} max-[1023px]:shrink-0`;
+const DECISION_BUTTON_CLASS_NAMES = {
+  reject: `${WRAPPED_ACTION} min-[1024px]:min-w-[84px]`,
+  changes_requested: WRAPPED_FIXED_ACTION,
+  approve: `${WRAPPED_ACTION} min-[1024px]:min-w-[76px]`,
+};
 
 /**
- * Barra inferior fija de la consulta administrativa (Figma 3727:687292; tablet 3727:687677;
+ * Barra inferior fija de la consulta administrativa (Figma 3727:687569 en 1024 px;
+ * escritorio 3727:687292; tablet 3727:687677;
  * móvil 3727:687788; con «Crear cotización», 5749:491810): superficie `primary-10` translúcida
- * con desenfoque, radio 12 y padding 16. A la izquierda, «Ver resumen & recomendación»; a la
+ * con desenfoque, radio 12 y padding 16. Botones de 41 px y Outline transparente.
+ * A la izquierda, «Ver resumen & recomendación»; a la
  * derecha, las acciones que permite el estado de la solicitud (`getAdminProjectRequestActions`):
  * Rechazar, Solicitar más información y Aprobar, o bien Ver proyecto y Crear cotización en una
  * solicitud convertida. Las decisiones solo abren el modal de confirmación del consumidor.
@@ -48,18 +57,19 @@ function AdminProjectRequestActionBar({
       <div
         role="group"
         aria-label="Acciones de la solicitud"
-        className="flex flex-wrap items-center justify-between gap-[16px] rounded-[var(--radius-3)] bg-[var(--color-primary-10)] p-[16px] backdrop-blur-[12px] max-[1023px]:items-start"
+        className="flex flex-wrap items-center justify-between gap-[16px] rounded-[var(--radius-3)] bg-[var(--color-primary-10)] p-[16px] backdrop-blur-[12px] max-[1023px]:items-start [&_button]:px-[11px]"
       >
         <div className="flex max-[1023px]:basis-full max-[1023px]:justify-center">
           <Button
             theme="Primary"
             type="Outline"
+            surface="transparent"
             size="M"
             fitContent
             showLeftIcon={false}
             showRightIcon={false}
             aria-haspopup="dialog"
-            className="max-[1023px]:!w-full max-[1023px]:max-w-[311px]"
+            className={`${ACTION_BUTTON_CLASS_NAME} max-[1023px]:!w-full max-[1023px]:max-w-[311px]`}
             onClick={onOpenSummary}
           >
             Ver resumen &amp; recomendación
@@ -74,6 +84,7 @@ function AdminProjectRequestActionBar({
                     key={action.id}
                     theme={action.theme}
                     type={action.type}
+                    surface="transparent"
                     size="M"
                     fitContent
                     showLeftIcon={false}
@@ -81,7 +92,7 @@ function AdminProjectRequestActionBar({
                     disabled={decisions.disabled}
                     aria-haspopup="dialog"
                     aria-describedby={notice ? noticeId : undefined}
-                    className={action.id === "changes_requested" ? WRAPPED_FIXED_ACTION : WRAPPED_ACTION}
+                    className={DECISION_BUTTON_CLASS_NAMES[action.id]}
                     onClick={() => onDecision?.(action.id)}
                   >
                     {action.label}
@@ -92,6 +103,7 @@ function AdminProjectRequestActionBar({
               <Button
                 theme="Primary"
                 type="Outline"
+                surface="transparent"
                 size="M"
                 fitContent
                 showLeftIcon={false}

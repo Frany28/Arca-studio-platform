@@ -4,6 +4,7 @@ import Tooltip from "../Tooltip/Tooltip.jsx";
 import { resolveIconButtonTooltip } from "./buttonTooltip.js";
 import {
   BUTTON_INTERACTIVE_STYLES,
+  BUTTON_OUTLINE_SURFACES,
   BUTTON_SIZE_STYLES,
   BUTTON_VISUALS,
 } from "./buttonConfig.js";
@@ -13,6 +14,8 @@ import {
  * que el consumidor controle la apertura para coordinarla con otras capas, sin cambiar el diseño.
  * @param {Object} props - Variantes, contenido y atributos nativos del botón.
  * @param {boolean} [props.tooltipOpen] - Apertura controlada de la ayuda opcional.
+ * @param {"default"|"transparent"} [props.surface="default"] - Superficie de los botones Outline;
+ *   transparent deja visible el fondo del contenedor sin alterar los colores ni el foco del tema.
  * @param {(open: boolean) => void} [props.onTooltipOpenChange] - Solicitudes de apertura y cierre.
  * @returns {import("react").ReactElement} Botón con su ayuda opcional en portal.
  */
@@ -29,6 +32,7 @@ function Button({
   state = "Default",
   theme = "Primary",
   type = "Solid",
+  surface = "default",
   htmlType = "button",
   disabled = false,
   style,
@@ -76,6 +80,7 @@ function Button({
     resolvedState === "Disabled" && visual.Disabled,
     resolvedState === "Focused" && visual.FocusedInner,
     resolvedState === "Default" && !disabled && interactiveClassName,
+    resolvedType === "Outline" && BUTTON_OUTLINE_SURFACES[surface],
     className,
   );
 
