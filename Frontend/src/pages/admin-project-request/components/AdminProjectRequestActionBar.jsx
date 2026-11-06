@@ -6,8 +6,13 @@ import { ADMIN_REQUEST_DECISION_ACTIONS } from "../../../utils/projectRequestAdm
 // Figma: en escritorio (≥1024) cada acción ajusta su ancho al texto en una sola fila. En tablet
 // (3727:687677) y móvil (3727:687788) el resumen ocupa su fila, centrado con un máximo de 311 px,
 // y debajo las acciones comparten el ancho (Rechazar ≥84 px, Aprobar ≥76 px); en móvil, Aprobar
-// pasa a su propia fila a ancho completo. En móvil la superficie se alinea con el contenido (16 px
-// del borde, como en Figma): la sección ya aporta ese margen, así que la barra no añade otro.
+// pasa a su propia fila a ancho completo.
+//
+// Ancho y posición: en todas las variantes la barra ocupa el contenedor principal completo (1364 px
+// en escritorio, 948 en 1024, 638 en tablet vertical y 375 en móvil), no la columna de 1200 px, con
+// la superficie a 24 px del borde (16 en móvil). Por eso es hija directa del contenedor de scroll del
+// layout y usa `sticky bottom-0`: queda al pie del viewport mientras se desplaza el contenido y, al
+// final, ocupa su propio espacio, de modo que nunca tapa el último contenido.
 const WRAPPED_ACTION = "max-[1023px]:min-w-[84px] max-[1023px]:flex-1";
 const WRAPPED_FIXED_ACTION = "max-[1023px]:shrink-0";
 
@@ -39,7 +44,7 @@ function AdminProjectRequestActionBar({
   const hasActions = Boolean(decisions || onOpenProject || onCreateQuote);
 
   return (
-    <div className="sticky bottom-0 z-[5] w-full max-w-[1200px] py-[16px] min-[768px]:p-[24px]">
+    <div className="sticky bottom-0 z-[5] w-full shrink-0 p-[16px] min-[768px]:p-[24px]">
       <div
         role="group"
         aria-label="Acciones de la solicitud"

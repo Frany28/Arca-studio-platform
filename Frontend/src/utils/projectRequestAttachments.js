@@ -14,6 +14,17 @@ export function isPdfAttachment(file) {
 }
 
 /**
+ * Indica si un adjunto de solicitud es un vídeo (la solicitud solo admite MP4), por su MIME.
+ * Su miniatura puede obtenerse leyendo un fotograma, sin descargar el archivo completo.
+ *
+ * @param {{ fileType?: string|null }|null} file - Adjunto con `fileType` en formato MIME.
+ * @returns {boolean} true si el adjunto es un vídeo.
+ */
+export function isVideoAttachment(file) {
+  return String(file?.fileType || "").split(";")[0].trim().toLowerCase().startsWith("video/");
+}
+
+/**
  * Adapta un adjunto de solicitud al documento que espera ProjectDocumentViewerModal.
  * El visor deduce el tipo por extensión (`fileType`) o MIME (`mimeType`) y descarga `fileUrl` con fetch.
  *

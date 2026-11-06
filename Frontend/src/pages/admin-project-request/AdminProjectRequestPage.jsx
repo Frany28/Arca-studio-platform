@@ -90,6 +90,7 @@ function AdminProjectRequestPage() {
   const client = useAdminRequestClient({ enabled: summaryOpen, userId: projectRequest?.requestedBy ?? null });
 
   let content;
+  let actionBar = null;
   if (detail.loading) {
     content = <Loader preset="adminProjectRequest" label="Cargando solicitud" />;
   } else if (!projectRequest) {
@@ -121,20 +122,27 @@ function AdminProjectRequestPage() {
 
     content = (
       <>
-        <ProjectOverviewHeader project={header.project} indicator={header.indicator} maxStages={5} focusActiveStageOnMobile />
+        <ProjectOverviewHeader
+          project={header.project}
+          indicator={header.indicator}
+          maxStages={5}
+          focusActiveStageOnMobile
+          variant="request"
+        />
         <AdminProjectRequestMetrics {...buildAdminProjectRequestMetrics(projectRequest)} />
-        <ProjectRequestSummaryContent
-          projectRequest={projectRequest}
-          secondaryFooter={<AdminProjectRequestTeam assignees={team.assignees} reviews={team.reviews} />}
-        />
-        <AdminProjectRequestActionBar
-          decisions={actions.decisions}
-          onDecision={(action) => decision.open(projectRequest, { initialAction: action })}
-          onOpenSummary={() => setSummaryOpen(true)}
-          onOpenProject={convertedProject ? () => navigate(getProjectPath(convertedProject)) : null}
-          onCreateQuote={actions.canCreateQuote ? () => navigate(getQuoteCreatePathForProject(convertedProject.id)) : null}
-        />
+        {/* Bloque de Figma (3727:687225) y, separada, la gestión administrativa con datos reales. */}
+        <ProjectRequestSummaryContent projectRequest={projectRequest} variant="admin" />
+        <AdminProjectRequestTeam assignees={team.assignees} reviews={team.reviews} status={team.status} />
       </>
+    );
+    actionBar = (
+      <AdminProjectRequestActionBar
+        decisions={actions.decisions}
+        onDecision={(action) => decision.open(projectRequest, { initialAction: action })}
+        onOpenSummary={() => setSummaryOpen(true)}
+        onOpenProject={convertedProject ? () => navigate(getProjectPath(convertedProject)) : null}
+        onCreateQuote={actions.canCreateQuote ? () => navigate(getQuoteCreatePathForProject(convertedProject.id)) : null}
+      />
     );
   }
 
@@ -157,6 +165,9 @@ function AdminProjectRequestPage() {
         />
         <div className="flex w-full flex-1 flex-col items-center gap-[48px]">{content}</div>
       </section>
+      {/* Hija directa del contenedor de scroll del layout: la barra ocupa todo su ancho, como la
+          superficie de Figma (3727:687292), y queda fija al pie mientras se desplaza el contenido. */}
+      {actionBar}
 
       <AdminRequestDetailsDrawer
         open={summaryOpen && Boolean(drawerDetails)}

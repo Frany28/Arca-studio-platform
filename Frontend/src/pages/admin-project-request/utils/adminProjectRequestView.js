@@ -3,6 +3,7 @@ import {
   getCompletenessPresentation,
   getFinancialViabilityPresentation,
 } from "../../../utils/projectRequestMetrics.js";
+import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
 import { getProjectTypeLabel } from "../../../utils/projectTypeDisplay.js";
 
 /**
@@ -100,11 +101,13 @@ const REVIEW_RECOMMENDATION_LABELS = Object.freeze({
 });
 
 /**
- * Responsables y revisiones técnicas para la consulta. Las revisiones se ordenan de la más
- * reciente a la más antigua sin depender del orden de la API; una fecha inválida va al final.
+ * Estado, responsables y revisiones técnicas para la sección de gestión de la consulta. Las
+ * revisiones se ordenan de la más reciente a la más antigua sin depender del orden de la API;
+ * una fecha inválida va al final. Sin estado en la respuesta, `status` es null.
  *
  * @param {Object} projectRequest - Detalle administrativo de la API.
- * @returns {{assignees: Array<Object>, reviews: Array<Object>}} Personas y revisiones presentables.
+ * @returns {{assignees: Array<Object>, reviews: Array<Object>, status: {label: string, badgeTheme: string}|null}}
+ *   Estado, personas y revisiones presentables.
  */
 export function buildAdminRequestTeam(projectRequest) {
   const assignees = (Array.isArray(projectRequest?.assignees) ? projectRequest.assignees : [])
@@ -130,7 +133,12 @@ export function buildAdminRequestTeam(projectRequest) {
       updatedAt: review?.updatedAt || null,
     }));
 
-  return { assignees, reviews };
+  const statusPresentation = projectRequest?.status ? getProjectRequestStatus(projectRequest.status) : null;
+  const status = statusPresentation
+    ? { badgeTheme: statusPresentation.badgeTheme, label: statusPresentation.label }
+    : null;
+
+  return { assignees, reviews, status };
 }
 
 /**

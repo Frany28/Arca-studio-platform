@@ -586,3 +586,105 @@ test("la barra es accesible por teclado y no desborda en tablet ni móvil, en cl
   await dialog.waitFor({ state: "detached" });
   await page.waitForFunction(() => document.activeElement?.innerText === "Aprobar");
 });
+
+/**
+ * Geometría de la barra inferior, su contenedor de scroll y la sección de gestión, tras desplazar
+ * el contenido hasta el final.
+ *
+ * @param {import("playwright").Page} page - Página abierta.
+ * @returns {Promise<Object>} Rectángulos redondeados.
+ */
+async function measureBottomLayout(page) {
+  return page.evaluate(async () => {
+    const rect = (element) => {
+      const box = element.getBoundingClientRect();
+      return { bottom: Math.round(box.bottom), left: Math.round(box.left), right: Math.round(box.right), top: Math.round(box.top), width: Math.round(box.width) };
+    };
+    const surface = document.querySelector("[aria-label='Acciones de la solicitud']");
+    const bar = surface.parentElement;
+    const scroller = bar.parentElement;
+    scroller.scrollTop = scroller.scrollHeight;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      bar: rect(bar),
+      management: rect(document.querySelector("[aria-label='Gestión de la solicitud']")),
+      scroller: rect(scroller),
+      surface: rect(surface),
+      viewportHeight: innerHeight,
+    };
+  });
+}
+
+test("la barra ocupa todo el contenedor de scroll, queda al pie y no tapa el último contenido", async (context) => {
+  // Figma: 3727:687292 (1364 px), 1024 px (948), tablet vertical 3727:687677 (638) y móvil 3727:687788 (375).
+  for (const [width, inset] of [[1440, 24], [1024, 24], [768, 24], [375, 16]]) {
+    const { page } = await openPage(context, { viewport: { height: 800, width } });
+    const layout = await measureBottomLayout(page);
+    assert.equal(layout.bar.left, layout.scroller.left, `${width}px: la barra empieza en el borde del contenedor`);
+    assert.equal(layout.bar.width, layout.scroller.width, `${width}px: la barra ocupa todo el contenedor`);
+    assert.equal(layout.surface.left - layout.bar.left, inset, `${width}px: superficie a ${inset} px del borde`);
+    assert.equal(layout.bar.bottom, layout.viewportHeight, `${width}px: la barra queda al pie del viewport`);
+    assert.ok(layout.management.bottom <= layout.bar.top, `${width}px: el último contenido queda por encima de la barra`);
+  }
+});
+
+test("la tarjeta sigue la composición de Figma y la gestión conserva estado, responsables y revisiones", async (context) => {
+  const { page } = await openPage(context);
+  const information = page.getByRole("region", { name: "Información de la solicitud" });
+  // La tarjeta del diseño no incluye el estado; sus valores usan text-100 como en Figma.
+  assert.equal(await information.getByText("Estado", { exact: true }).count(), 0);
+  const dateValue = information.locator("dd").first();
+  assert.equal(await dateValue.evaluate((node) => node.className.includes("--color-text-100")), true);
+
+  const management = page.getByRole("region", { name: "Gestión de la solicitud" });
+  await management.getByText("Estado de la solicitud", { exact: true }).waitFor();
+  await management.getByText("En revisión", { exact: true }).waitFor();
+  await management.getByText("Ana Pérez", { exact: true }).first().waitFor();
+  await management.getByText("Recomienda aprobar", { exact: true }).waitFor();
+  // La gestión se presenta después del bloque diseñado, no dentro de su segunda columna.
+  const order = await page.evaluate(() => {
+    const info = document.querySelector("[aria-label='Información de la solicitud']");
+    const team = document.querySelector("[aria-label='Gestión de la solicitud']");
+    return { nested: info.contains(team), after: Boolean(info.compareDocumentPosition(team) & Node.DOCUMENT_POSITION_FOLLOWING) };
+  });
+  assert.deepEqual(order, { after: true, nested: false });
+});
+
+test("cabecera por rango: móvil 24 px e indicador de 64; tablet cuatro etapas con la vigente; escritorio cinco", async (context) => {
+  const expectations = [
+    [375, { indicator: 64, stages: ["Revisión", "Primer contacto"], title: "24px" }],
+    [768, { indicator: 96, stages: ["Solicitud enviada", "Evaluación preliminar", "Revisión", "Primer contacto"], title: "48px" }],
+    [1440, { indicator: 96, stages: ["Solicitud enviada", "Evaluación preliminar", "Revisión", "Primer contacto", "Propuesta inicial"], title: "48px" }],
+  ];
+  for (const [width, expected] of expectations) {
+    const { page } = await openPage(context, { viewport: { height: 900, width } });
+    const header = await page.evaluate(() => {
+      const heading = document.querySelector("h1");
+      const indicator = document.querySelector("[role='progressbar'][aria-label^='Compatibilidad']");
+      const steps = [...heading.closest("section").querySelectorAll(":scope > div:last-child > div")]
+        .filter((step) => step.offsetParent)
+        .map((step) => step.querySelector("p").textContent);
+      return { indicator: Math.round(indicator.getBoundingClientRect().width), stages: steps, title: getComputedStyle(heading).fontSize };
+    });
+    assert.deepEqual(header, expected, `${width}px`);
+  }
+});
+
+test("un vídeo adjunto muestra un fotograma real solo al acercarse; imágenes y documentos no se leen", async (context) => {
+  const video = { createdAt: "2026-10-01T12:07:00.000Z", fileType: "video/mp4", id: 33, name: "recorrido.mp4", size: 1024 };
+  const contentPath = "/api/project-requests/9/files/33/content";
+  let videoReads = 0;
+  const { page, reads } = await openPage(context, {
+    detail: { json: { projectRequest: { ...REQUEST, files: [...REQUEST.files, video] } } },
+    // Contenido no decodificable: la miniatura no se obtiene y se usa la presentación por tipo.
+    extraDetails: { [contentPath]: () => { videoReads += 1; return { body: Buffer.from("no-video"), contentType: "video/mp4", status: 200 }; } },
+    viewport: { height: 700, width: 1440 },
+  });
+  assert.equal(videoReads, 0, "fuera del viewport no se lee el vídeo");
+  const videoRequested = page.waitForRequest((request) => request.url().endsWith(contentPath));
+  await page.getByText("recorrido.mp4", { exact: true }).scrollIntoViewIfNeeded();
+  await videoRequested;
+  await page.waitForFunction(() => document.querySelectorAll("[data-preview='type']").length === 3);
+  assert.ok(videoReads >= 1, "al acercarse se intenta leer el fotograma");
+  assert.equal(reads.some((path) => /\/files\/3[12]\/content$/.test(path)), false, "imágenes y PDF no se descargan");
+});

@@ -82,8 +82,11 @@ test("información completada es entera y la coherencia financiera es cualitativ
   assert.equal(missing.financialViability, null);
 });
 
-test("responsables con rol y revisiones de la más reciente a la más antigua", () => {
+test("gestión: estado vigente, responsables con rol y revisiones de la más reciente a la más antigua", () => {
   const team = buildAdminRequestTeam(REQUEST);
+
+  // El estado sale de la tarjeta del diseño y se presenta en la sección de gestión.
+  assert.deepEqual(team.status, { badgeTheme: "Brand 2", label: "En revisión" });
 
   assert.deepEqual(team.assignees, [
     { id: 5, name: "Ana Pérez", profilePhotoUrl: "/api/admin/assignees/5/profile-photo", roleLabel: "Arquitecto" },
@@ -91,7 +94,7 @@ test("responsables con rol y revisiones de la más reciente a la más antigua", 
   assert.deepEqual(team.reviews.map((review) => review.reviewerName), ["Luis Gómez", "Ana Pérez"]);
   assert.equal(team.reviews[0].recommendationLabel, "Recomienda aprobar");
   assert.equal(team.reviews[0].note, "Viable.");
-  assert.deepEqual(buildAdminRequestTeam({}), { assignees: [], reviews: [] });
+  assert.deepEqual(buildAdminRequestTeam({}), { assignees: [], reviews: [], status: null });
 });
 
 test("los fallos de lectura distinguen inexistencia, permisos, conexión y error recuperable", () => {
