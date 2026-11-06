@@ -160,9 +160,20 @@ export async function collectCursorPages(fetchPage, collectionKey, limit = 100, 
   return { [collectionKey]: items, nextCursor: null, syncCursor };
 }
 
+// Respuestas de subida sin JSON del backend: la plataforma de despliegue (o un proxy) puede
+// rechazar el cuerpo antes de que llegue a Express, por ejemplo con un 413 en texto plano.
+const UPLOAD_FALLBACK_ERRORS = Object.freeze({
+  413: Object.freeze({
+    code: "FILE_TOO_LARGE",
+    message: "El archivo supera el tamaño que el servidor admite en una sola subida.",
+  }),
+});
+
 /**
  * Sube el archivo sin envolverlo en JSON y env?a cookies de sesi?n.
- * Limita el progreso a 99 hasta recibir una respuesta HTTP exitosa.
+ * Limita el progreso a 99 hasta recibir una respuesta HTTP exitosa. Un error HTTP conserva el
+ * `code` y el `message` del backend; sin JSON usa un motivo según el estado (413) y un fallo de
+ * red se identifica con NETWORK_ERROR, para no reducir todo a «No se pudo subir el archivo».
  *
  * @param {Object} params - Archivo y opciones de subida.
  * @param {Object} params.file - Archivo con name, type y size.
@@ -217,11 +228,12 @@ export function uploadRawFile({ file, onUploadProgress, path, signal }) {
       }
 
       if (request.status < 200 || request.status >= 300) {
+        const fallback = UPLOAD_FALLBACK_ERRORS[request.status];
         const error = new Error(
-          data?.message || "No se pudo subir el archivo.",
+          data?.message || fallback?.message || "No se pudo subir el archivo.",
         );
         error.status = request.status;
-        error.code = data?.code || "FILE_UPLOAD_FAILED";
+        error.code = data?.code || fallback?.code || "FILE_UPLOAD_FAILED";
         reportSessionExpiration({ code: error.code, path, status: error.status });
         reject(error);
         return;
@@ -237,7 +249,9 @@ export function uploadRawFile({ file, onUploadProgress, path, signal }) {
 
     request.onerror = () => {
       signal?.removeEventListener("abort", abortUpload);
-      reject(new Error("No se pudo subir el archivo."));
+      const networkError = new Error(NETWORK_USER_ERROR_MESSAGE);
+      networkError.code = "NETWORK_ERROR";
+      reject(networkError);
     };
 
     request.onabort = () => {

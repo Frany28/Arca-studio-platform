@@ -142,6 +142,8 @@ Los errores de disponibilidad de PostgreSQL (pool agotado, cola de espera llena,
 - Si falla el almacenamiento, no confirmar la transacción.
 - Las cancelaciones deben liberar streams y conexiones.
 - Ninguna transferencia retiene una conexión ni un bloqueo: se reserva el id, se transfiere y se registra en una transacción corta que repite estado, acceso, duplicados y límites (`services/storedUpload.js`). La compensación solo elimina el objeto si su fila no existe.
+- Adjuntos de solicitudes (`uploadPolicies.projectRequest`): `prepareUpload` comprueba la firma real del contenido y devuelve `ready`, que el servicio espera antes de transferir para responder 415 `INVALID_FILE_SIGNATURE` sin enviar al almacenamiento un flujo fallido. El validador conserva sus errores (firma o cancelación del cliente) con un oyente propio: el contenido llega antes de que el servicio lo lea y el SDK de S3 lo transfiere con `pipe`, que no escucha errores, así que un error sin oyentes terminaría el proceso.
+- Un adjunto de solicitud con el mismo nombre (sin distinguir mayúsculas) solo se reutiliza si coincide su tamaño: es el reintento de una subida cuya respuesta se perdió y responde 201 con `reused: true`. Otro contenido con el mismo nombre recibe 409 `DUPLICATE_PROJECT_REQUEST_FILE`; el detalle muestra el nombre normalizado (`file_versions.original_name`) y el cliente no puede detectar ese repetido antes de enviarlo.
 - Las descargas usan `utils/streamResponse.js` (`pipeline`); S3, Resend y Geoapify tienen plazos explícitos (`STORAGE_*`, `EMAIL_REQUEST_TIMEOUT_MS`, `GEOAPIFY_REQUEST_TIMEOUT_MS`).
 
 ## Paginación

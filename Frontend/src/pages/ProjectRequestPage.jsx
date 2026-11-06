@@ -285,6 +285,13 @@ export default function ProjectRequestPage() {
                     window.setTimeout(() => setIsLocationInputFocused(false), 120);
                   }}
                   onChange={(event) => updateLocation(event, fileErrors)}
+                  onKeyDown={(event) => {
+                    // Escape cierra las sugerencias como los demás desplegables; el texto se conserva
+                    // y escribir de nuevo las vuelve a mostrar.
+                    if (event.key === "Escape" && isLocationInputFocused && locationSuggestions.length) {
+                      setIsLocationInputFocused(false);
+                    }
+                  }}
                   role="combobox"
                   aria-autocomplete="list"
                   aria-expanded={

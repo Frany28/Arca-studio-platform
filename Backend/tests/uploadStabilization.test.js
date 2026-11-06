@@ -82,7 +82,7 @@ function mockUploadBackend(context, {
       state.files.set(Number(params[0]), { title: params[3] });
       return { rows: [{ created_at: new Date(), file_extension: "pdf", file_size: "4", file_type: "application/pdf", id: String(params[0]), original_name: params[3], support_request_id: String(params[1]) }] };
     }
-    if (/lower\(title\)/.test(sql)) return { rows: findDuplicate(sql, params, state.files) };
+    if (/lower\((?:f\.)?title\)/.test(sql)) return { rows: findDuplicate(sql, params, state.files) };
     if (/from public\.project_requests/.test(sql)) {
       return { rows: ["draft", "changes_requested"].includes(state.requestStatus) ? [{ client_id: 7, id: 31, requested_by: 70, status: state.requestStatus }] : [] };
     }
@@ -138,7 +138,7 @@ function mockUploadBackend(context, {
         if (/as is_assignee/.test(text)) {
           return { rows: [{ assigned_architect_id: null, client_id: state.projectClientId, id: String(params[0]), is_assignee: false, is_public: false, status: state.projectStatus }] };
         }
-        if (/lower\(title\)/.test(text)) return { rows: findDuplicate(text, params, new Map([...state.files, ...staged])) };
+        if (/lower\((?:f\.)?title\)/.test(text)) return { rows: findDuplicate(text, params, new Map([...state.files, ...staged])) };
         if (/count\(\*\)::integer as file_count/.test(text)) return { rows: [usage(new Map([...state.files, ...staged]))] };
         if (/insert into public\.files/.test(text)) {
           const isRequest = /\(\s*id,\s*project_request_id,/.test(text);
@@ -201,7 +201,7 @@ function findDuplicate(sql, params, files) {
     const sameParent = isRequest
       ? file.project_request_id === Number(params[0]) && file.uploaded_by === Number(params[1])
       : file.project_id === Number(params[0]);
-    if (sameParent && String(file.title).toLowerCase() === title) return [{ id: String(id), title: file.title }];
+    if (sameParent && String(file.title).toLowerCase() === title) return [{ file_size: file.size === undefined ? null : String(file.size), id: String(id), title: file.title }];
   }
   return [];
 }

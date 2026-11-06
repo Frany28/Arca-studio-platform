@@ -241,7 +241,9 @@ export async function listProjectRequestFiles(projectRequestId, executor = poolE
  * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
  * @param {string} options.userId - Valor de `options.userId` requerido por esta operación.
  * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @returns {Promise<{ id: string, title: string, file_size: string|null }|null>} Adjunto activo con
+ *   el mismo título (sin distinguir mayúsculas) y el tamaño de su versión vigente, que permite
+ *   distinguir un reintento del mismo archivo de otro contenido con el mismo nombre.
  */
 export async function findExistingProjectRequestFile({
   originalName,
@@ -250,13 +252,15 @@ export async function findExistingProjectRequestFile({
 }, executor = poolExecutor) {
   const result = await executor.query(
     `
-      select id, title
-      from public.files
-      where project_request_id = $1
-        and uploaded_by = $2
-        and deleted_at is null
-        and status <> 'deleted'
-        and lower(title) = lower($3)
+      select f.id, f.title, fv.file_size
+      from public.files f
+      left join public.file_versions fv
+        on fv.file_id = f.id and fv.is_current = true and fv.deleted_at is null
+      where f.project_request_id = $1
+        and f.uploaded_by = $2
+        and f.deleted_at is null
+        and f.status <> 'deleted'
+        and lower(f.title) = lower($3)
       limit 1
     `,
     [projectRequestId, userId, String(originalName || "").trim()],

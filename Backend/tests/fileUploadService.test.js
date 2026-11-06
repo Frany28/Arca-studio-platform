@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { prepareProjectRequestUpload, prepareUpload, runUpload, uploadPolicies } from "../src/services/fileUploadService.js";
 
 function request(overrides = {}) {
@@ -112,4 +112,70 @@ test("project request uploads verify the real file signature", async () => {
       // Consume the stream so signature failures surface.
     }
   }, { code: "INVALID_FILE_SIGNATURE" });
+});
+
+/**
+ * Registra las excepciones no capturadas mientras dura la prueba: una firma inválida que llega
+ * antes de que alguien lea el flujo no debe terminar el proceso.
+ *
+ * @param {import("node:test").TestContext} context - Contexto que retira el oyente.
+ * @returns {Array<Error>} Excepciones registradas.
+ */
+function captureUncaught(context) {
+  const uncaught = [];
+  const listener = (error) => uncaught.push(error);
+  process.prependListener("uncaughtException", listener);
+  context.after(() => process.removeListener("uncaughtException", listener));
+  return uncaught;
+}
+
+test("project request signature: a failure before anyone reads the body is not an uncaught exception", async (context) => {
+  const uncaught = captureUncaught(context);
+  // El servicio consulta PostgreSQL antes de leer el cuerpo: el contenido ya llegó al validador.
+  const upload = prepareProjectRequestUpload(streamingRequest(Buffer.alloc(2048, 1), "application/pdf", "falso.pdf"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(uncaught.map((error) => error.code), []);
+
+  // La comprobación previa a la transferencia informa el motivo y el flujo sigue fallando al leerlo.
+  await assert.rejects(upload.ready, { code: "INVALID_FILE_SIGNATURE", status: 415 });
+  await assert.rejects(async () => {
+    for await (const _chunk of upload.body) {
+      // Consume the stream so the stored error surfaces.
+    }
+  }, { code: "INVALID_FILE_SIGNATURE" });
+});
+
+test("project request signature: ready resolves for valid content without consuming it", async () => {
+  const validPdf = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(4096, 0x20)]);
+  const upload = prepareProjectRequestUpload(streamingRequest(validPdf, "application/pdf", "plano.pdf"));
+  await upload.ready;
+  const chunks = [];
+  for await (const chunk of upload.body) chunks.push(chunk);
+  assert.deepEqual(Buffer.concat(chunks), validPdf);
+
+  const small = Buffer.from("89504e470d0a1a0a00000000", "hex");
+  const smallUpload = prepareProjectRequestUpload(streamingRequest(small, "image/png", "icono.png"));
+  await smallUpload.ready;
+  const smallChunks = [];
+  for await (const chunk of smallUpload.body) smallChunks.push(chunk);
+  assert.deepEqual(Buffer.concat(smallChunks), small);
+});
+
+test("project request signature: a source error after validation never becomes uncaught", async (context) => {
+  const uncaught = captureUncaught(context);
+  const source = new PassThrough();
+  source.headers = { "content-length": "4096", "content-type": "application/pdf", "x-file-name": "plano.pdf" };
+  const upload = prepareProjectRequestUpload(source);
+  source.write(Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(2048, 0x20)]));
+  await upload.ready;
+  // El cliente cancela la subida mientras el almacenamiento transfiere sin escuchar errores.
+  source.destroy(Object.assign(new Error("aborted"), { code: "ECONNRESET" }));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(uncaught.map((error) => error.code), []);
+  assert.equal(upload.body.errored?.code, "ECONNRESET");
+});
+
+test("uploads without signature validation expose an already resolved ready", async () => {
+  const upload = prepareUpload(streamingRequest(Buffer.from("%PDF-1.7"), "application/pdf", "doc.pdf"), uploadPolicies.document);
+  await upload.ready;
 });

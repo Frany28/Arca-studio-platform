@@ -33,8 +33,8 @@ after(async () => { await browser?.close(); await server?.close(); });
  * Abre la solicitud como cliente con la API simulada: registra cada llamada y responde
  * al borrador, la carga de archivos y el envío final como lo hace el backend real.
  */
-async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, initialRequest, viewRequest, detailResponses = [], deleteResponses = [], verificationResponses = [] } = {}) {
-  const session = await browser.newContext({ viewport });
+async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, touch = false, addressSuggestions = [], uploadResponses = [], initialRequest, viewRequest, detailResponses = [], deleteResponses = [], verificationResponses = [] } = {}) {
+  const session = await browser.newContext(touch ? { hasTouch: true, isMobile: true, viewport } : { viewport });
   const page = await session.newPage();
   const calls = [];
   const errors = [];
@@ -50,9 +50,10 @@ async function openRequestPage(context, { viewport = { width: 1440, height: 1000
     const method = request.method();
     calls.push({ body: (method === "POST" && path === "/api/project-requests") || (method === "PATCH" && path === `/api/project-requests/${REQUEST_ID}`) || path.endsWith("/submit") ? request.postDataJSON() : null, fileName: request.headers()["x-file-name"], method, path });
     if (path === "/api/auth/me") return route.fulfill({ json: { user: { id: 5, firstName: "Cliente", email: "cliente@example.test", role: { code: "client", name: "Cliente" }, status: "active" } } });
-    if (path === "/api/geoapify/address-suggestions") return route.fulfill({ json: { suggestions: [] } });
+    if (path === "/api/geoapify/address-suggestions") return route.fulfill({ json: { suggestions: addressSuggestions } });
     if (method === "POST" && path === "/api/project-requests") return route.fulfill({ status: 201, json: { projectRequest: { id: REQUEST_ID, status: "draft" } } });
-    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/files`) return route.fulfill({ status: 201, json: { file: { id: 1 } } });
+    // Subidas: cada respuesta de uploadResponses se usa una vez; después, éxito.
+    if (method === "POST" && path === `/api/project-requests/${REQUEST_ID}/files`) return route.fulfill(uploadResponses.shift() || { status: 201, json: { file: { id: 1 } } });
     // Detalle de consulta: cada respuesta de detailResponses se usa una vez; después, la última.
     // Una función decide la respuesta en cada lectura (StrictMode repite la primera en desarrollo).
     if (method === "GET" && path === `/api/project-requests/${REQUEST_ID}`) {
@@ -722,10 +723,13 @@ test("Validación: un código incorrecto mantiene el modal con el motivo y «Ree
   await codeDialog.getByText("El código no es correcto. Te quedan 4 intentos.", { exact: true }).waitFor();
   assert.equal(await page.getByRole("heading", { name: "Solicitud recibida" }).count(), 0);
 
-  // El reenvío respeta el plazo del backend y muestra su motivo.
+  // El reenvío respeta el plazo del backend y muestra su motivo; el código anterior sigue
+  // vigente, así que no se anuncia como un fallo del envío.
   await codeDialog.getByRole("button", { name: "Reenviar código", exact: true }).click();
   await codeDialog.getByText("Ya enviamos un código. Podrás solicitar otro en 42 segundos.", { exact: true }).waitFor();
   assert.equal(calls.filter((call) => call.path.endsWith("/verification-code")).length, 2);
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+  assert.equal(await codeDialog.getByText("No pudimos enviar el código. Puedes solicitar otro.", { exact: true }).count(), 0);
 
   await codeDialog.getByRole("textbox", { name: "Código" }).fill(VALID_CODE);
   await send.click();
@@ -745,4 +749,180 @@ test("Validación: si el código no se puede enviar, se informa y no se puede co
   await codeDialog.getByText("No pudimos enviar el código. Puedes solicitar otro.", { exact: true }).waitFor();
   await codeDialog.getByRole("button", { name: "Reenviar código", exact: true }).click();
   await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+});
+
+/** Disparadores de menú abiertos (excluye la navegación lateral, que también usa aria-expanded). */
+const openMenus = (page) => page.locator('[aria-haspopup="menu"][aria-expanded="true"]').evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label")));
+
+const SINGLE_SELECTS = [
+  ["Tipo de proyecto", "Residencial", "Comercial"],
+  ["¿Cómo desea desarrollar el proyecto?", "Por fases", "En su totalidad"],
+  ["Rango de inversión estimado", "$10,000 - $50,000 USD", "Menos de $10,000 USD"],
+  ["Disponibilidad del capital", "Disponible ahora", "En los próximos 3 meses"],
+];
+
+test("Desplegables · ratón: elegir cierra el menú, muestra la opción y permite reabrir y cambiarla", async (context) => {
+  const { calls, page } = await openRequestPage(context);
+  for (const [label, first, second] of SINGLE_SELECTS) {
+    const trigger = page.getByRole("button", { name: label, exact: true });
+    await trigger.click();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "true");
+    await page.getByRole("menuitem", { name: first, exact: true }).click();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "false", `${label}: se cierra al elegir`);
+    assert.equal(await page.getByRole("menu").count(), 0);
+    assert.equal((await trigger.textContent()).trim(), first);
+    await trigger.click();
+    await page.getByRole("menuitem", { name: second, exact: true }).click();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+    assert.equal((await trigger.textContent()).trim(), second);
+  }
+  // Abrir otro selector cierra el anterior: nunca quedan dos menús abiertos.
+  await page.getByRole("button", { name: "Tipo de proyecto", exact: true }).click();
+  await page.getByRole("button", { name: "Disponibilidad del capital", exact: true }).click();
+  assert.deepEqual(await openMenus(page), ["Disponibilidad del capital"]);
+  // Elegir opciones no llama a la API (sin borradores ni consultas por cambio).
+  assert.deepEqual(calls.filter((call) => call.path.startsWith("/api/project-requests")), []);
+});
+
+test("Desplegables · teclado: Enter abre y elige, Escape cierra y salir con Tab no deja menús abiertos", async (context) => {
+  const { page } = await openRequestPage(context);
+  const type = page.getByRole("button", { name: "Tipo de proyecto", exact: true });
+  await type.focus();
+  await page.keyboard.press("Enter");
+  assert.equal(await type.getAttribute("aria-expanded"), "true");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("role")), "menuitem");
+  await page.keyboard.press("Enter");
+  assert.equal(await type.getAttribute("aria-expanded"), "false");
+  assert.notEqual((await type.textContent()).trim(), "Selecciona una opción");
+
+  await type.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  assert.equal(await type.getAttribute("aria-expanded"), "false");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Tipo de proyecto", "Escape devuelve el foco al disparador");
+
+  // Recorrer las opciones y salir del campo con Tab cierra el menú (antes quedaba abierto y se
+  // acumulaba con el siguiente).
+  await page.keyboard.press("Enter");
+  const optionCount = await page.getByRole("menuitem").count();
+  for (let index = 0; index <= optionCount; index += 1) await page.keyboard.press("Tab");
+  assert.equal(await type.getAttribute("aria-expanded"), "false");
+  const development = page.getByRole("button", { name: "¿Cómo desea desarrollar el proyecto?", exact: true });
+  await development.focus();
+  await page.keyboard.press("Enter");
+  assert.deepEqual(await openMenus(page), ["¿Cómo desea desarrollar el proyecto?"]);
+  // Mayús+Tab desde la primera opción vuelve al disparador, que pertenece al campo: sigue abierto.
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  assert.equal(await development.getAttribute("aria-expanded"), "true");
+});
+
+test("Desplegables · táctil (375 × 667): tocar una opción la elige y cierra el menú", async (context) => {
+  const { page } = await openRequestPage(context, { touch: true, viewport: { width: 375, height: 667 } });
+  for (const [label, option] of SINGLE_SELECTS) {
+    const trigger = page.getByRole("button", { name: label, exact: true });
+    await trigger.tap();
+    await page.getByRole("menuitem", { name: option, exact: true }).tap();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "false", `${label}: se cierra al tocar la opción`);
+    assert.equal((await trigger.textContent()).trim(), option);
+  }
+  // Tocar fuera cierra un menú abierto sin elegir.
+  await page.getByRole("button", { name: "Tipo de proyecto", exact: true }).tap();
+  await page.getByRole("heading", { name: "Solicitud de proyecto" }).tap();
+  assert.deepEqual(await openMenus(page), []);
+});
+
+test("Desplegables · selección múltiple: varias opciones, Escape o clic exterior cierran y conservan la selección", async (context) => {
+  const { page } = await openRequestPage(context);
+  await choose(page, "Tipo de proyecto", "Stand publicitario");
+  await choose(page, STAND_STATUS_LABEL, "Sí, tengo los requisitos");
+  const documents = standSection(page).getByRole("button", { name: "Documentación disponible" });
+  await documents.click();
+  await page.getByRole("menuitemcheckbox", { name: "Manual del expositor", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Reglamento del evento", exact: true }).click();
+  assert.equal(await documents.getAttribute("aria-expanded"), "true", "la selección múltiple sigue abierta para marcar varias");
+  await page.keyboard.press("Escape");
+  assert.equal(await documents.getAttribute("aria-expanded"), "false");
+  assert.equal((await documents.textContent()).trim(), "Manual del expositor, Reglamento del evento");
+
+  await documents.click();
+  assert.equal(await page.getByRole("menuitemcheckbox", { name: "Reglamento del evento", exact: true }).getAttribute("aria-checked"), "true");
+  await page.getByRole("menuitemcheckbox", { name: "Reglamento del evento", exact: true }).click();
+  await page.getByRole("heading", { name: "Solicitud de proyecto" }).click();
+  assert.equal(await documents.getAttribute("aria-expanded"), "false");
+  assert.equal((await documents.textContent()).trim(), "Manual del expositor");
+
+  // Deshabilitar el campo con su menú abierto (cambiando la respuesta con teclado) no lo reabre
+  // después al volver a habilitarlo.
+  await documents.click();
+  const status = page.getByRole("button", { name: STAND_STATUS_LABEL, exact: true });
+  await status.focus();
+  assert.equal(await documents.getAttribute("aria-expanded"), "false", "salir del campo cierra el menú");
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "Aún no tengo los requisitos", exact: true }).click();
+  assert.equal(await documents.isDisabled(), true);
+  await choose(page, STAND_STATUS_LABEL, "Sí, tengo los requisitos");
+  assert.equal(await documents.isDisabled(), false);
+  assert.deepEqual(await openMenus(page), []);
+});
+
+test("Desplegables · ubicación: elegir una sugerencia la aplica y Escape cierra la lista", async (context) => {
+  const { page } = await openRequestPage(context, {
+    addressSuggestions: [
+      { formattedAddress: "Maracaibo, Zulia, Venezuela", latitude: 10.65, longitude: -71.64, placeId: "maracaibo" },
+      { formattedAddress: "Maracay, Aragua, Venezuela", latitude: 10.24, longitude: -67.59, placeId: "maracay" },
+    ],
+  });
+  const location = page.getByRole("combobox", { name: "Ubicación del proyecto" });
+  await location.fill("Mara");
+  await page.getByRole("listbox", { name: "Sugerencias de ubicación" }).waitFor();
+  assert.equal(await location.getAttribute("aria-expanded"), "true");
+  await page.keyboard.press("Escape");
+  await page.getByRole("listbox").waitFor({ state: "detached" });
+  assert.equal(await location.inputValue(), "Mara", "Escape conserva el texto");
+
+  await location.fill("Marac");
+  await page.getByRole("option", { name: "Maracaibo, Zulia, Venezuela" }).click();
+  await page.getByRole("listbox").waitFor({ state: "detached" });
+  assert.equal(await location.inputValue(), "Maracaibo, Zulia, Venezuela");
+  assert.equal(await location.getAttribute("aria-expanded"), "false");
+});
+
+test("Adjuntos: una subida rechazada muestra el motivo, nunca «Completado», y el reintento solo reenvía la fallida", async (context) => {
+  const { calls, page } = await openRequestPage(context, {
+    uploadResponses: [
+      { status: 201, json: { file: { id: 41 } } },
+      // La plataforma rechaza el cuerpo antes de Express: 413 en texto plano, sin JSON.
+      { status: 413, contentType: "text/plain", body: "Request Entity Too Large" },
+      { status: 201, json: { file: { id: 42 } } },
+    ],
+  });
+  await fillCommonFields(page);
+  await chooseLand(page, "No todavía");
+  await page.locator('input[type="file"]').setInputFiles([pngFile("fachada.png"), pngFile("plano.png")]);
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  const codeDialog = page.getByRole("dialog");
+  await codeDialog.getByText("Enviamos un código a tu correo", { exact: true }).waitFor();
+  await codeDialog.getByRole("textbox", { name: "Código" }).fill(VALID_CODE);
+  await codeDialog.getByRole("button", { name: "Enviar", exact: true }).click();
+
+  const reason = "El archivo supera el tamaño que el servidor admite en una sola subida.";
+  await codeDialog.getByText(reason, { exact: true }).waitFor();
+  assert.equal(calls.filter((call) => call.path.endsWith("/submit")).length, 0, "sin adjuntos completos no se envía");
+  const uploadsBefore = calls.filter((call) => call.path.endsWith("/files")).map((call) => decodeURIComponent(call.fileName));
+  assert.deepEqual(uploadsBefore, ["fachada.png", "plano.png"]);
+
+  // La tarjeta fallida muestra «Fallido» y el motivo; solo la confirmada por el servidor está completa.
+  await codeDialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await codeDialog.waitFor({ state: "detached" });
+  const cards = page.getByRole("group", { name: "Subir imágenes / archivos (opcional)" });
+  await cards.getByText("Fallido", { exact: true }).waitFor();
+  assert.equal(await cards.getByText("Completado", { exact: true }).count(), 1);
+
+  // Reintentar con el mismo borrador: solo se reenvía el archivo fallido y la solicitud se envía.
+  await submitWithCode(page, calls);
+  const uploads = calls.filter((call) => call.path.endsWith("/files")).map((call) => decodeURIComponent(call.fileName));
+  assert.deepEqual(uploads, ["fachada.png", "plano.png", "plano.png"]);
+  assert.equal(calls.filter((call) => call.method === "POST" && call.path === "/api/project-requests").length, 1, "un solo borrador");
 });

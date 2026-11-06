@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { InfoCircle } from "iconsax-react";
 import clsx from "clsx";
 
@@ -29,6 +29,33 @@ function FieldLabel({ asSpan = false, children, optional = false, info = false, 
 
 // Alto total del área de texto en Figma (130 px) menos su padding vertical de 12 + 12.
 const DESCRIPTION_TEXTAREA_MIN_HEIGHT = 106;
+
+/**
+ * Mientras el menú del campo está abierto, lo cierra cuando el foco entra en un control fuera
+ * del campo (Tab, Mayús+Tab o foco programático). DropdownMenu ya cierra con clic o toque
+ * exterior y con Escape, pero no con el foco: sin esto, recorrer el formulario con teclado dejaba
+ * el menú abierto sobre los campos siguientes y podían quedar varios abiertos a la vez.
+ *
+ * Se escucha `focusin` en el documento y no `blur` en el campo porque DropdownMenu quita el foco
+ * del disparador al abrirse: el foco queda en `body` y el siguiente Tab o Mayús+Tab no sale "desde"
+ * el campo. Mover el foco a `body` no emite `focusin`, así que abrir no cierra. Las opciones se
+ * montan dentro del contenedor (sin portal) y cuentan como parte del campo.
+ *
+ * @param {import("react").RefObject<HTMLElement>} fieldRef - Contenedor del campo.
+ * @param {boolean} open - Si el menú está abierto.
+ * @param {(open: boolean) => void} setOpen - Actualiza la apertura controlada del menú.
+ * @returns {void}
+ */
+function useCloseMenuOnOutsideFocus(fieldRef, open, setOpen) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutsideFocus = (event) => {
+      if (fieldRef.current && !fieldRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("focusin", closeOnOutsideFocus);
+    return () => document.removeEventListener("focusin", closeOnOutsideFocus);
+  }, [fieldRef, open, setOpen]);
+}
 
 /**
  * Campo de texto del formulario compuesto con los componentes compartidos `Input` y
@@ -96,6 +123,8 @@ function TextField({ children, containerClassName, error = "", icon: Icon, inval
  */
 function SelectField({ error = "", invalid = false, label, value, onChange, options, optional = false, info = false, placeholder = "Selecciona una opción", selectedLabel = "" }) {
   const [isOpen, setIsOpen] = useState(false);
+  const fieldRef = useRef(null);
+  useCloseMenuOnOutsideFocus(fieldRef, isOpen, setIsOpen);
   const items = options.map((option) => ({
     id: option.value,
     label: option.label,
@@ -104,7 +133,7 @@ function SelectField({ error = "", invalid = false, label, value, onChange, opti
   }));
 
   return (
-    <div className="flex w-full flex-col gap-[8px]">
+    <div ref={fieldRef} className="flex w-full flex-col gap-[8px]">
       <FieldLabel optional={optional} info={info}>{label}</FieldLabel>
       <DropdownMenu
         type="Text"
@@ -189,9 +218,15 @@ function CheckboxField({ label, value, onChange, className }) {
 function DocumentTypesField({ error = "", invalid = false, value, onChange, disabled, options, required = !disabled, truncateLabel = false, inlineMenu = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const labelId = useId();
+  // Deshabilitar el campo (p. ej., al cambiar la disponibilidad de la documentación) cierra el menú:
+  // DropdownMenu lo oculta mientras está deshabilitado, pero conservar `open` lo reabriría solo al
+  // volver a habilitarse. Ajuste durante el render, sin un efecto que pinte antes el estado previo.
+  if (disabled && isOpen) setIsOpen(false);
+  const fieldRef = useRef(null);
+  useCloseMenuOnOutsideFocus(fieldRef, isOpen, setIsOpen);
 
   return (
-    <div className="flex w-full flex-col gap-[8px]">
+    <div ref={fieldRef} className="flex w-full flex-col gap-[8px]">
       <FieldLabel asSpan id={labelId} optional={!required}>Documentación disponible</FieldLabel>
       <DropdownMenu
         type="Text"

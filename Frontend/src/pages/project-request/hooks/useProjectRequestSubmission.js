@@ -94,6 +94,9 @@ export default function useProjectRequestSubmission({
 
   /**
    * Pide al backend un código para el borrador; ignora la respuesta si otra emisión la reemplazó.
+   * VERIFICATION_CODE_RECENTLY_SENT (429) no es un fallo del envío: el código anterior sigue vigente
+   * (guardar el borrador no lo invalida), así que la emisión queda como enviada y se muestra el plazo
+   * del backend. Ocurre al reenviar o al cerrar y reabrir la validación antes del plazo.
    *
    * @param {Function} getDraftId - Devuelve (o guarda y devuelve) el borrador del código.
    * @returns {Promise<void>} Actualiza codeStatus y submitError.
@@ -109,7 +112,8 @@ export default function useProjectRequestSubmission({
       if (codeRequestRef.current === requestId) setCodeStatus(VERIFICATION_CODE_STATUS.sent);
     } catch (error) {
       if (codeRequestRef.current !== requestId) return;
-      setCodeStatus(VERIFICATION_CODE_STATUS.error);
+      const codeStillValid = error?.code === "VERIFICATION_CODE_RECENTLY_SENT";
+      setCodeStatus(codeStillValid ? VERIFICATION_CODE_STATUS.sent : VERIFICATION_CODE_STATUS.error);
       setSubmitError(error.message || "No se pudo enviar el código de validación.");
     }
   };

@@ -103,18 +103,34 @@ function signatureError() {
 }
 
 /**
- * Valida el valor de archivo signature y genera un error cuando no cumple el contrato.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Encadena al cuerpo un validador de la firma real del archivo (sus primeros bytes) y devuelve el
+ * flujo validado con una promesa `ready` que se resuelve al confirmarla. Conserva sus errores en
+ * `errored` con un oyente propio para que nunca terminen como excepción no capturada.
  *
- * @param {unknown} body - Valor de `body` requerido por esta operación.
- * @param {string} contentType - Valor de `contentType` requerido por esta operación.
- * @returns {boolean} Resultado producido por la operación.
+ * @param {import("node:stream").Readable} body - Cuerpo de la petición.
+ * @param {string} contentType - MIME declarado, que determina la firma esperada.
+ * @returns {{ body: import("node:stream").Transform, ready: Promise<void> }} Flujo validado y
+ *   confirmación de la firma; `ready` rechaza con INVALID_FILE_SIGNATURE (415) o con el error del
+ *   origen si falla antes de validarse, y está marcada como atendida si nadie la espera.
  */
 function validateFileSignature(body, contentType) {
+  // El contenido fluye al validador en cuanto llega, antes de que el servicio termine sus consultas
+  // a PostgreSQL y de que el almacenamiento lo lea; y el SDK de S3 lo transfiere con `pipe`, que no
+  // escucha errores. Un error emitido sin oyentes terminaría el proceso: por eso el servicio espera
+  // `ready` antes de transferir y responde 415 sin enviar al almacenamiento un flujo ya fallido.
   const inspectionBytes = 1024;
   let buffered = [];
   let bufferedLength = 0;
   let validated = false;
+  let confirmSignature;
+  let rejectSignature;
+  const ready = new Promise((resolve, reject) => {
+    confirmSignature = resolve;
+    rejectSignature = reject;
+  });
+  // Una ruta que responde sin esperar `ready` (404, límites, reutilización) no debe dejar un
+  // rechazo sin atender.
+  ready.catch(() => {});
   const validator = new Transform({
         /**
      * Inspecciona los primeros bytes del flujo antes de permitir que continúe la carga.
@@ -143,6 +159,7 @@ transform(chunk, _encoding, callback) {
       }
       validated = true;
       buffered = [];
+      confirmSignature();
       callback(null, combined);
     },
         /**
@@ -162,13 +179,20 @@ flush(callback) {
         callback(signatureError());
         return;
       }
+      validated = true;
+      confirmSignature();
       this.push(combined);
       callback();
     },
   });
+  // El error queda en `validator.errored` para quien lea el flujo después; sin este oyente, un
+  // error sin consumidor (o durante el `pipe` del SDK) terminaría el proceso.
+  validator.on("error", (error) => {
+    if (!validated) rejectSignature(error);
+  });
   body.on("error", (error) => validator.destroy(error));
   body.pipe(validator);
-  return validator;
+  return { body: validator, ready };
 }
 
 /**
@@ -204,7 +228,9 @@ function extension(name) {
  * @param {unknown} policy - Valor de `policy` requerido por esta operación.
  * @param {object} [options] - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} [options.fallbackName] - Valor de `options.fallbackName` requerido por esta operación.
- * @returns {object} Resultado producido por la operación.
+ * @returns {{ body: import("node:stream").Readable, contentType: string, originalName: string, size: number, ready: Promise<void> }}
+ *   Carga preparada. `ready` confirma la firma del contenido cuando la política la valida (el
+ *   consumidor debe esperarla antes de transferir); en otro caso ya está resuelta.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export function prepareUpload(req, policy, { fallbackName = "archivo" } = {}) {
@@ -221,10 +247,14 @@ export function prepareUpload(req, policy, { fallbackName = "archivo" } = {}) {
     throw new AppError({ code: "UNSUPPORTED_FILE_TYPE", message: "El tipo de archivo no está permitido.", status: 415 });
   }
   const { body, size } = getUploadStream(req, policy.maxBytes);
+  const validated = policy.validateSignature
+    ? validateFileSignature(body, contentType)
+    : { body, ready: Promise.resolve() };
   return {
-    body: policy.validateSignature ? validateFileSignature(body, contentType) : body,
+    body: validated.body,
     contentType,
     originalName: name,
+    ready: validated.ready,
     size,
   };
 }

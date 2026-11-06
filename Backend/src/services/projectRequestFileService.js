@@ -38,15 +38,18 @@ function assertUploadWithinLimits(usage, size) {
 }
 
 /**
- * Carga el adjunto de la solicitud de proyecto coordinando la persistencia y el almacenamiento.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Carga el adjunto de una solicitud editable: confirma la firma antes de transferirlo y lo registra
+ * en PostgreSQL. Un adjunto con el mismo nombre y tamaño es un reintento y se reutiliza sin
+ * duplicarlo; otro contenido con el mismo nombre se rechaza con 409.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
- * @param {unknown} options.upload - Valor de `options.upload` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<object>} Resultado producido por la operación.
- * @throws {Error} Cuando una validación o dependencia impide completar la operación.
+ * @param {string} options.projectRequestId - Solicitud editable (draft o changes_requested).
+ * @param {{ body: import("node:stream").Readable, originalName: string, ready: Promise<void>, size: number }} options.upload
+ *   Carga preparada por prepareProjectRequestUpload.
+ * @param {object} options.user - Usuario autenticado; propietario o administrador.
+ * @returns {Promise<object>} Adjunto registrado, o `{ id, originalName, reused: true }` en un reintento.
+ * @throws {Error} PROJECT_REQUEST_NOT_FOUND (404), DUPLICATE_PROJECT_REQUEST_FILE (409), límites
+ *   de cantidad o tamaño (409/413), INVALID_FILE_SIGNATURE (415) o fallos de almacenamiento.
  */
 export async function uploadProjectRequestAttachment({ projectRequestId, upload, user }) {
   const projectRequest = await findProjectRequestForFileUpload(projectRequestId, user);
@@ -63,6 +66,16 @@ export async function uploadProjectRequestAttachment({ projectRequestId, upload,
     userId: user.id,
   });
   if (existingFile) {
+    // El reintento de una subida cuya respuesta se perdió reenvía el mismo archivo. Otro tamaño es
+    // otro contenido: confirmarlo como subido conservaría en silencio los bytes anteriores (la
+    // consulta muestra el nombre normalizado y el cliente no puede detectar el repetido).
+    if (Number(existingFile.file_size) !== Number(upload.size)) {
+      throw new AppError({
+        code: "DUPLICATE_PROJECT_REQUEST_FILE",
+        message: "Ese archivo ya existe en esta solicitud.",
+        status: 409,
+      });
+    }
     for await (const _chunk of upload.body) {
       // Drain and validate the retried stream before returning the existing file.
     }
@@ -74,6 +87,8 @@ export async function uploadProjectRequestAttachment({ projectRequestId, upload,
   }
 
   assertUploadWithinLimits(await getProjectRequestFileUsage(projectRequestId), upload.size);
+  // Una firma inválida se informa (415) sin iniciar una transferencia que el SDK no podría completar.
+  await upload.ready;
 
   return uploadProjectRequestFile({
     ...upload,
