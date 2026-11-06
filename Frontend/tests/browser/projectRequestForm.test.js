@@ -597,6 +597,95 @@ const PERSISTED_REQUEST = {
 };
 const detailCalls = (calls) => calls.filter((call) => call.method === "GET" && call.path === `/api/project-requests/${REQUEST_ID}`);
 
+test("Solicitud recibida: cinco etapas de Figma, evaluación alineada y acciones responsive en ambos temas", async (context) => {
+  for (const theme of ["light", "dark"]) {
+    for (const width of [375, 768, 1024, 1440]) {
+      const { page, calls } = await openRequestPage(context, {
+        viewRequest: PERSISTED_REQUEST,
+        viewport: { width, height: 1000 },
+      });
+      await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+      const steps = page.getByLabel("Progreso de la solicitud");
+      assert.deepEqual(await steps.locator(":scope > div > div").evaluateAll((nodes) => nodes.map((node) => node.textContent)), [
+        "Solicitud enviadaCompletado", "Evaluación preliminarCompletado", "RevisiónPendiente",
+        "Primer contactoPendiente", "Propuesta inicialPendiente",
+      ]);
+      assert.equal(await steps.locator(".progress-line-reveal").count(), 5, "conserva los cinco revelados");
+      const evaluation = page.getByRole("region", { name: "Compatibilidad con nuestros servicios", exact: true });
+      assert.equal(await evaluation.getByRole("progressbar").getAttribute("aria-valuenow"), "84");
+      await evaluation.getByText(/^La información proporcionada indica una alta compatibilidad/).waitFor();
+      // Espera el revelado del contenedor antes de medir alineación y alturas.
+      await page.waitForFunction(() => !document.getAnimations().some((animation) =>
+        animation.animationName === "content-reveal" && animation.playState === "running"));
+      const geometry = await page.evaluate(() => {
+        const heading = document.querySelector("h1");
+        const view = heading.parentElement.parentElement;
+        const section = document.querySelector("[aria-labelledby='received-compatibility-title']");
+        const steps = document.querySelector("[aria-label='Progreso de la solicitud']");
+        const bounds = (node) => {
+          const box = node.getBoundingClientRect();
+          return { left: box.left, right: box.right, top: box.top, width: box.width };
+        };
+        return {
+          overflow: document.documentElement.scrollWidth > innerWidth,
+          headingSize: getComputedStyle(heading).fontSize,
+          subtitleSize: getComputedStyle(heading.nextElementSibling).fontSize,
+          section: bounds(section), fields: bounds(section.children[1]),
+          progress: bounds(section.querySelector("[role='progressbar']").parentElement.parentElement),
+          steps: [...steps.children].map(bounds), footer: bounds(view.querySelector("footer")),
+          stepTitleHeights: [...steps.querySelectorAll(":scope > div > div > span:first-child")].map((node) => node.getBoundingClientRect().height),
+          dividers: [...view.querySelectorAll("[aria-hidden='true'] > span")].map((node) => ({
+            height: node.getBoundingClientRect().height, mask: getComputedStyle(node).maskImage,
+          })),
+        };
+      });
+      assert.equal(geometry.overflow, false, `${theme} ${width}px sin desbordamiento`);
+      assert.equal(geometry.dividers.length, 3);
+      assert.ok(geometry.dividers.every((divider) => Math.abs(divider.height - 1) < 0.01 && divider.mask !== "none"), JSON.stringify(geometry.dividers));
+      for (const step of geometry.steps) {
+        assert.ok(step.left >= geometry.section.left - 1 && step.right <= geometry.section.right + 1);
+      }
+      if (width === 1440) {
+        assert.equal(geometry.headingSize, "48px");
+        assert.equal(geometry.subtitleSize, "18px");
+        assert.equal(geometry.section.width, 850);
+        assert.equal(geometry.fields.width, 445);
+        assert.equal(geometry.progress.width, 428);
+        assert.ok(geometry.steps.every((step) => step.top === geometry.steps[0].top));
+        assert.ok(geometry.stepTitleHeights.every((height) => height === 19), "los títulos de las cinco etapas caben en una línea");
+        assert.equal(geometry.footer.right, geometry.section.right);
+      }
+      assert.equal(detailCalls(calls).length, 0, "la confirmación no añade lecturas HTTP");
+    }
+  }
+});
+
+test("Solicitud recibida: conserva motivos, observaciones y estados reales sin completar hitos futuros", async (context) => {
+  for (const [status, expected] of [
+    ["pending_verification", "Pendiente"], ["changes_requested", "Correcciones solicitadas"],
+    ["rejected", "Rechazada"], ["converted", "Aprobada"],
+  ]) {
+    const { page } = await openRequestPage(context, {
+      viewRequest: {
+        ...PERSISTED_REQUEST, status, correctionReason: "Motivo comunicado por el equipo.",
+        compatibility: { level: "low", score: 32.6, observations: ["Completa la información del proyecto."] },
+      },
+    });
+    const stages = page.getByLabel("Progreso de la solicitud");
+    await stages.locator(":scope > div").nth(2).getByText(expected, { exact: true }).waitFor();
+    const completedSteps = await stages.locator(".progress-line-reveal").evaluateAll((nodes) =>
+      nodes.filter((node) => node.className.includes("--color-accent-300")).length);
+    assert.equal(completedSteps, status === "pending_verification" ? 1 : status === "changes_requested" ? 2 : 3);
+    await page.getByRole("status").getByText("Motivo comunicado por el equipo.").waitFor();
+    await page.getByText("Completa la información del proyecto.", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("progressbar").getAttribute("aria-valuenow"), "33");
+    assert.ok(await page.locator(".progress-fill-reveal").evaluate((node) => node.className.includes("--color-danger-200")));
+  }
+  const { page } = await openRequestPage(context, { viewRequest: { ...PERSISTED_REQUEST, compatibility: null } });
+  await page.getByText("Evaluación de compatibilidad pendiente.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("progressbar").count(), 0, "sin evaluación no inventa un 0 %");
+});
+
 test("Consulta: tras enviar, «Ver solicitud» muestra la solicitud en solo lectura con los adjuntos del backend", async (context) => {
   const { calls, page } = await openRequestPage(context, { detailResponses: [{ json: { projectRequest: PERSISTED_REQUEST } }] });
   await fillCommonFields(page);

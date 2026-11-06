@@ -1,51 +1,35 @@
+import receivedDivider from "../../../assets/project-requests/received-divider.svg";
 import Button from "../../../components/ui/Button/Button.jsx";
 import ProgressBarLabel from "../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
 import ProgressStepBase from "../../../components/ui/ProgressStepBase/ProgressStepBase.jsx";
-import { getCompatibilityLevelLabel } from "../../../utils/projectRequestCompatibility.js";
+import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
+import { buildProjectRequestStages } from "../../../utils/projectRequestStages.js";
 import { PROJECT_REQUEST_FOOTER_CLASS_NAME } from "../utils/projectRequestLayout.js";
 
-const REQUEST_STATUS_STEPS = [
-  {
-    id: "submitted",
-    title: "Solicitud enviada",
-    subtext: "Completado",
-    state: "Completed",
-  },
-  {
-    id: "preliminary-evaluation",
-    title: "Evaluación preliminar",
-    subtext: "Completado",
-    state: "Completed",
-  },
-  {
-    id: "review",
-    title: "Revisión",
-    subtext: "Pendiente",
-    state: "Active",
-  },
-  {
-    id: "first-contact",
-    title: "Primer contacto",
-    subtext: "Pendiente",
-    state: "Incomplete",
-  },
-  {
-    id: "initial-proposal",
-    title: "Propuesta inicial",
-    subtext: "Pendiente",
-    state: "Incomplete",
-  },
-];
+const STEP_STATE_BY_TONE = { completed: "Completed", current: "Active", upcoming: "Incomplete" };
+const COMPATIBILITY_FILL = {
+  Success: "bg-[var(--color-success-200)]",
+  Warning: "bg-[var(--color-warning-200)]",
+  Danger: "bg-[var(--color-danger-200)]",
+  Accent: "bg-[var(--color-accent-300)]",
+};
 
+/** Conserva el SVG de Figma como máscara para adaptar el divisor al ancho y al tema actuales. */
 function SectionDivider() {
   return (
     <div
       aria-hidden="true"
-      className="h-px w-full bg-[var(--color-neutral-200)]"
-    />
+      className="relative h-0 w-full"
+    >
+      <span
+        className="absolute inset-x-0 -top-px h-px bg-[var(--color-neutral-200)] [mask-repeat:no-repeat] [mask-size:100%_100%]"
+        style={{ maskImage: `url("${receivedDivider}")` }}
+      />
+    </div>
   );
 }
 
+/** Presenta una etapa con el revelado original y las variantes del componente compartido. */
 function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
   const lineColorClassName = state === "Completed"
     ? "bg-[var(--color-accent-300)]"
@@ -54,10 +38,10 @@ function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
       : "bg-[var(--color-neutral-200)]";
 
   return (
-    <div className="relative min-w-0">
+    <div className="relative min-w-[150px] flex-1">
       <span
         aria-hidden="true"
-        className={`progress-line-reveal absolute inset-x-0 top-0 h-[4px] rounded-full ${lineColorClassName}`}
+        className={`progress-line-reveal absolute inset-x-0 top-0 h-[4px] ${lineColorClassName}`}
         style={{ animationDelay: `${animationDelay}ms` }}
       />
       <ProgressStepBase
@@ -66,103 +50,69 @@ function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
         state={state}
         title={title}
         subtext={subtext}
-        className="!w-full !border-transparent"
+        className="!w-full !border-transparent [&>span]:font-sans min-[1024px]:[&>span]:whitespace-nowrap"
       />
     </div>
   );
 }
 
+/**
+ * Confirmación del cliente según Figma 3727:543692. Conserva los resultados y motivos reales
+ * de la API y comparte las etapas con la consulta administrativa, sin adelantar hitos futuros.
+ * @param {Object} props - Evaluación, solicitud vigente y acciones de consulta y regreso.
+ * @returns {import("react").ReactElement} Confirmación responsive de la solicitud.
+ */
 function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRequest, projectRequest }) {
-  const score = Number.isFinite(Number(compatibility?.score))
-    ? Math.max(0, Math.min(100, Number(compatibility.score)))
-    : 0;
-  const levelLabel = getCompatibilityLevelLabel(compatibility?.level);
+  const evaluation = getCompatibilityPresentation(compatibility);
   const observations = Array.isArray(compatibility?.observations)
     ? compatibility.observations.slice(0, 3)
     : [];
-  const currentStatus = projectRequest?.status;
-  const verificationCompleted = [
-    "pending_review",
-    "changes_requested",
-    "approved",
-    "rejected",
-    "converted",
-  ].includes(currentStatus);
-  const reviewCompleted = [
-    "changes_requested",
-    "approved",
-    "rejected",
-    "converted",
-  ].includes(currentStatus);
-  const requestSteps = REQUEST_STATUS_STEPS.map((step, index) => {
-    if (index === 0) return step;
-    if (index === 1) {
-      return {
-        ...step,
-        state: verificationCompleted ? "Completed" : "Active",
-        subtext: verificationCompleted ? "Completado" : "En proceso",
-        title: "Verificación administrativa",
-      };
-    }
-    if (index === 2) {
-      return {
-        ...step,
-        state: reviewCompleted ? "Completed" : verificationCompleted ? "Active" : "Incomplete",
-        subtext: reviewCompleted ? "Completado" : verificationCompleted ? "En proceso" : "Pendiente",
-        title: "Revisión técnica",
-      };
-    }
-    if (index === 3) {
-      return {
-        ...step,
-        state: reviewCompleted ? "Completed" : "Incomplete",
-        subtext: reviewCompleted ? "Completado" : "Pendiente",
-        title: currentStatus === "changes_requested"
-          ? "Correcciones solicitadas"
-          : currentStatus === "rejected"
-            ? "Solicitud rechazada"
-            : currentStatus === "converted"
-              ? "Proyecto creado"
-              : "Decisión final",
-      };
-    }
-    return null;
-  }).filter(Boolean);
+  const requestSteps = buildProjectRequestStages(projectRequest?.status);
   const decisionMessage = projectRequest?.correctionReason || projectRequest?.rejectionReason;
   return (
     <div className="content-reveal mx-auto flex w-full max-w-[1200px] flex-col items-center gap-[48px] px-[16px] pb-[48px] min-[768px]:px-[24px] min-[1024px]:px-[48px]">
       <header className="flex w-full max-w-[850px] flex-col gap-[4px]">
-        <h1 className="text-[32px] font-bold leading-[38px] tracking-[-1px] text-[var(--color-text-50)] min-[768px]:text-[48px] min-[768px]:leading-[58px]">
+        <h1 className="font-sans text-[32px] font-bold leading-[38px] tracking-[-1px] text-[var(--color-text-50)] min-[768px]:text-[48px] min-[768px]:leading-[58px]">
           Solicitud recibida
         </h1>
-        <p className="text-body-3 text-[var(--color-text-200)] min-[768px]:text-[18px] min-[768px]:leading-[21px]">
+        <p className="text-body-1 text-[var(--color-text-200)]">
           Hemos completado una evaluación preliminar de tu proyecto.
         </p>
       </header>
 
       <SectionDivider />
 
-      <section className="grid w-full max-w-[850px] gap-[32px] min-[768px]:grid-cols-[minmax(0,1fr)_minmax(343px,445px)] min-[768px]:gap-[48px]">
-        <h2 className="text-heading-7 text-[var(--color-text-200)]">
+      <section aria-labelledby="received-compatibility-title" className="flex w-full max-w-[850px] flex-wrap items-start justify-between gap-x-[24px] gap-y-[48px]">
+        <h2 id="received-compatibility-title" className="text-heading-7 text-[var(--color-text-200)]">
           Compatibilidad con nuestros servicios
         </h2>
 
-        <ProgressBarLabel
-          animated
-          title={levelLabel}
-          value={score}
-          position="side"
-          valueLabel={`${score}%`}
-          sublabel="Este resultado mide la preparación y coherencia inicial de la solicitud. Nuestro equipo realizará la revisión definitiva."
-          fillClassName="bg-[var(--color-success-200)]"
-          className="w-full max-w-[445px]"
-          aria-label={`Compatibilidad con nuestros servicios: ${score}%`}
-        />
-        {observations.length ? (
-          <ul className="min-[768px]:col-start-2 flex list-disc flex-col gap-[8px] pl-[20px] text-body-3 text-[var(--color-text-200)]">
-            {observations.map((observation) => <li key={observation}>{observation}</li>)}
-          </ul>
-        ) : null}
+        <div className="flex w-[445px] min-w-[min(100%,343px)] max-w-full flex-col gap-[16px]">
+          <div className="w-full max-w-[428px]">
+            {evaluation ? (
+              <ProgressBarLabel
+                animated
+                title={evaluation.label}
+                value={evaluation.score}
+                position="side"
+                valueLabel={`${evaluation.score}%`}
+                sublabel={evaluation.theme === "Success"
+                  ? "La información proporcionada indica una alta compatibilidad con los servicios de ARCAstudio. Nuestro equipo realizará una revisión detallada para preparar los siguientes pasos del proceso."
+                  : "Este resultado mide la preparación y coherencia inicial de la solicitud. Nuestro equipo realizará la revisión definitiva."}
+                fillClassName={COMPATIBILITY_FILL[evaluation.theme]}
+                className="min-w-full"
+                aria-label={`Compatibilidad con nuestros servicios: ${evaluation.score}%`}
+              />
+            ) : (
+              <p className="text-body-3 text-[var(--color-text-100)]">Evaluación de compatibilidad pendiente.</p>
+            )}
+          </div>
+          {observations.length ? (
+            <ul className="flex list-disc flex-col gap-[8px] pl-[20px] text-body-3 text-[var(--color-text-200)]">
+              {observations.map((observation) => <li key={observation}>{observation}</li>)}
+            </ul>
+          ) : null}
+        </div>
       </section>
 
       <SectionDivider />
@@ -173,13 +123,15 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
         </h2>
 
         <div
-          className="grid w-full grid-cols-2 gap-x-[24px] gap-y-[24px] min-[1024px]:grid-cols-5"
+          className="flex w-full flex-wrap items-start gap-[24px]"
           aria-label="Progreso de la solicitud"
         >
           {requestSteps.map((step, index) => (
             <AnimatedRequestStep
               key={step.id}
-              {...step}
+              title={step.title}
+              subtext={step.status}
+              state={STEP_STATE_BY_TONE[step.tone]}
               animationDelay={180 + index * 110}
             />
           ))}
