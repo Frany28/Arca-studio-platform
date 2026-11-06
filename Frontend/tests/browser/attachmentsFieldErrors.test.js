@@ -271,8 +271,10 @@ test("modal con scroll interno: enfoca el archivo afectado dentro del formulario
   assert.equal(state.label, "Eliminar archivo notas-7.txt");
   assert.equal(state.visible, true, "Visible en el área desplazable del modal");
   assert.equal(state.pageScroll, 0, "La página bajo el modal no se mueve");
+  // Con más de dos archivos la lista tiene su propio desplazamiento: primero se lleva la tarjeta a
+  // la vista de la lista y después el campo a la vista del formulario; nunca la página.
   const targets = await page.evaluate(() => window.__scrollCalls.map((call) => call.target));
-  assert.deepEqual(targets, ["attachments-form"]);
+  assert.deepEqual(targets, ["DIV", "attachments-form"]);
 });
 
 test("movimiento: suave por defecto e inmediato con prefers-reduced-motion", async (context) => {
@@ -280,7 +282,8 @@ test("movimiento: suave por defecto e inmediato con prefers-reduced-motion", asy
     const page = await openField(context, { reducedMotion });
     await attach(page, fileList(10, [9]));
     await submitAndWait(page, { viaKeyboardlessSubmit: true });
-    assert.deepEqual(await page.evaluate(() => window.__scrollCalls.map((call) => call.behavior)), [behavior]);
+    // Lista de adjuntos y formulario: ambos desplazamientos respetan la preferencia de movimiento.
+    assert.deepEqual(await page.evaluate(() => window.__scrollCalls.map((call) => call.behavior)), [behavior, behavior]);
     assert.equal((await focusState(page)).visible, true, `${reducedMotion}: botón y motivo visibles`);
   }
 });

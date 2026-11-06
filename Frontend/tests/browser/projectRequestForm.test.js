@@ -1057,3 +1057,28 @@ test("Validación de pruebas: con el modo informado por el backend no hay correo
   assert.equal(calls.filter((call) => call.path.endsWith("/submit")).length, 1);
 });
 
+
+test("Adjuntos: con más de dos archivos la lista se limita a dos tarjetas y se desplaza", async (context) => {
+  const { page } = await openRequestPage(context);
+  const input = page.locator('input[type="file"]');
+  const listHeight = () => attachments(page).evaluate((group) => {
+    const card = group.querySelector("[id*='-file-project-request-file-']:not([id$='-remove']):not([id$='-message'])");
+    const list = card.parentElement;
+    return { client: Math.round(list.clientHeight), scroll: Math.round(list.scrollHeight) };
+  });
+
+  // Con dos archivos la lista conserva su alto natural.
+  await input.setInputFiles([pngFile("vista-1.png"), pngFile("vista-2.png")]);
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).nth(1).waitFor();
+  const two = await listHeight();
+  assert.equal(two.client, two.scroll, "sin desplazamiento con dos archivos");
+
+  // Desde el tercero, el alto queda en dos tarjetas (190 px) y el resto se desplaza.
+  await input.setInputFiles([pngFile("vista-3.png")]);
+  await attachments(page).getByText(UPLOADED_LABEL, { exact: true }).nth(2).waitFor();
+  const three = await listHeight();
+  assert.equal(three.client, 190);
+  assert.ok(three.scroll > three.client, "la tercera tarjeta se alcanza desplazando");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(overflow <= 0, "sin desbordamiento horizontal");
+});

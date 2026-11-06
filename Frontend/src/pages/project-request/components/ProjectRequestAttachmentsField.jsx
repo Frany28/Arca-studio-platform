@@ -11,6 +11,13 @@ import { FieldLabel } from "./ProjectRequestFormFields.jsx";
 
 const ACCEPTED_FILE_TYPES = ".jpeg,.jpg,.png,.pdf,.mp4";
 const ATTACHMENTS_LABEL = "Subir imágenes / archivos (opcional)";
+// Con más de dos adjuntos, la lista se limita al alto de dos tarjetas (89 px cada una y 12 px de
+// separación) y se desplaza con el ScrollBar de FileUploadSection, para que el campo no crezca con
+// cada archivo. Con uno o dos, la lista conserva su alto natural.
+const MAX_VISIBLE_FILE_CARDS = 2;
+const FILE_CARD_HEIGHT = 89;
+const FILE_CARD_GAP = 12;
+const FILE_LIST_VIEWPORT_HEIGHT = MAX_VISIBLE_FILE_CARDS * FILE_CARD_HEIGHT + (MAX_VISIBLE_FILE_CARDS - 1) * FILE_CARD_GAP;
 // Texto de Figma con el límite funcional; si el despliegue impone uno menor por subida (temporal),
 // se indica para no anunciar que un archivo de hasta 50 MB se puede subir en este entorno.
 const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
@@ -122,6 +129,7 @@ function ProjectRequestAttachmentsField({
         files={fileCards}
         showUploadedFiles={fileCards.length > 0}
         viewportHeight={null}
+        fileListViewportHeight={fileCards.length > MAX_VISIBLE_FILE_CARDS ? FILE_LIST_VIEWPORT_HEIGHT : null}
         disabled={disabled}
         fileInputAccept={ACCEPTED_FILE_TYPES}
         formatsLabel={FORMATS_LABEL}
