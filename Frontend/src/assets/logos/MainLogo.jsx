@@ -2,25 +2,24 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 
 import logo20 from "./LOGO=20px (1).svg";
-import logo20Raw from "./LOGO=20px (1).svg?raw";
 import logo24 from "./LOGO=24px (1).svg";
-import logo24Raw from "./LOGO=24px (1).svg?raw";
 import logo32 from "./LOGO=32px (1).svg";
-import logo32Raw from "./LOGO=32px (1).svg?raw";
 import logo48 from "./LOGO=48px (1).svg";
-import logo48Raw from "./LOGO=48px (1).svg?raw";
 import logo64 from "./LOGO 64px.svg";
-import logo64Raw from "./LOGO 64px.svg?raw";
 import logo200 from "./LOGO 200px.svg";
-import logo200Raw from "./LOGO 200px.svg?raw";
+// Variantes oscuras como archivos estáticos: cada una es su variante clara con `#2A2929` sustituido
+// por `#FFFFFF` (los 30 rellenos del texto) y ningún otro byte cambiado. Antes se generaban en
+// tiempo de ejecución desde el SVG importado con `?raw`, lo que incluía los seis vectores (~238 KB)
+// en el JavaScript de cada vista con logo. Como URL, el navegador solo descarga la variante que
+// muestra. tests/mainLogoAssets.test.js comprueba que cada archivo sigue derivando de su variante clara.
+import logo20Dark from "./dark/LOGO=20px (1).svg";
+import logo24Dark from "./dark/LOGO=24px (1).svg";
+import logo32Dark from "./dark/LOGO=32px (1).svg";
+import logo48Dark from "./dark/LOGO=48px (1).svg";
+import logo64Dark from "./dark/LOGO 64px.svg";
+import logo200Dark from "./dark/LOGO 200px.svg";
 
 const APPEARANCES = new Set(["auto", "light", "dark"]);
-
-function createDarkLogoSource(svg) {
-  const darkSvg = svg.replaceAll("#2A2929", "#FFFFFF");
-
-  return `data:image/svg+xml,${encodeURIComponent(darkSvg)}`;
-}
 
 const LOGO_MAP = {
   light: {
@@ -32,12 +31,12 @@ const LOGO_MAP = {
     "200px": logo200,
   },
   dark: {
-    "20px": createDarkLogoSource(logo20Raw),
-    "24px": createDarkLogoSource(logo24Raw),
-    "32px": createDarkLogoSource(logo32Raw),
-    "48px": createDarkLogoSource(logo48Raw),
-    "64px": createDarkLogoSource(logo64Raw),
-    "200px": createDarkLogoSource(logo200Raw),
+    "20px": logo20Dark,
+    "24px": logo24Dark,
+    "32px": logo32Dark,
+    "48px": logo48Dark,
+    "64px": logo64Dark,
+    "200px": logo200Dark,
   },
 };
 

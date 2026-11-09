@@ -142,6 +142,7 @@ Antes de desarrollar un equivalente, revisar especialmente:
 - Capas: `Modal` y los modales compartidos ya existentes.
 - Identidad y contenido: `Avatar`, `AvatarGroup`, `Badge`, `Gallery`.
 - Progreso: `ProgressBarLabel`, `ProgressStepBase`, `ProgressStepGroup`, `CircleProgressBarLabel` (tema `Accent` por defecto; `Success`, `Warning` y `Danger` para valoraciones como la compatibilidad de solicitudes).
+- Logo: `assets/logos/MainLogo.jsx`, con seis tamaños (20, 24, 32, 48, 64 y 200 px) y `appearance` `auto`, `light` o `dark`. Cada tamaño tiene su SVG claro y su variante oscura en `assets/logos/dark/`, que es el mismo archivo con `#2A2929` sustituido por `#FFFFFF` y ningún otro cambio. Ambas se referencian por URL: no importar los SVG con `?raw` ni generarlos en tiempo de ejecución, porque incrustaría los vectores en el JavaScript de todas las vistas. Si cambia un SVG claro, regenerar su variante oscura con la misma sustitución; `tests/mainLogoAssets.test.js` lo comprueba.
 
 ### Botones
 
