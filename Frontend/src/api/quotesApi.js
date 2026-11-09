@@ -1,4 +1,4 @@
-import { apiRequest, apiRequestBlob, getApiUrl, toQueryString } from "./client.js";
+import { apiRequest, apiRequestBlob, apiRequestFile, getApiUrl, toQueryString } from "./client.js";
 
 // Cotizaciones administrativas (docs/API_CONTRACT.md, «Cotizaciones»). Los importes llegan como
 // texto decimal y no deben convertirse a Number; el servidor calcula y guarda los definitivos.
@@ -141,6 +141,19 @@ export const quotesApi = {
    */
   getQuotePdf({ quoteId, signal, version }) {
     return apiRequestBlob(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf${toQueryString({ version })}`, { signal });
+  },
+
+  /**
+   * Descarga el PDF almacenado de la versión vigente (sin `version`, el backend sirve la vigente)
+   * junto con el nombre de Content-Disposition, sin leer antes el detalle de la cotización.
+   *
+   * @param {Object} params - Cotización y cancelación.
+   * @param {number} params.quoteId - Cotización.
+   * @param {AbortSignal} [params.signal] - Cancela la descarga.
+   * @returns {Promise<{blob: Blob, fileName: string|null}>} Documento y nombre indicado por el servidor.
+   */
+  downloadCurrentQuotePdf({ quoteId, signal }) {
+    return apiRequestFile(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf`, { signal });
   },
 
   /**

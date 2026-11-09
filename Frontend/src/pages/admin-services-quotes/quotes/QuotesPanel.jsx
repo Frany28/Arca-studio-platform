@@ -41,8 +41,11 @@ function QuotesPanel({ notice = null, onNoticeDismiss }) {
   const alert = feedback.value ?? notice;
 
   /**
-   * Descarga el PDF persistido de la versión vigente, consultada antes de transferirlo.
-   * Una reserva inmediata impide clics duplicados y el desmontaje cancela la petición.
+   * Descarga el PDF persistido de la versión vigente en una sola petición: sin `version`, el
+   * backend resuelve la vigente en el momento de servirla (aunque la fila esté desactualizada) y
+   * su Content-Disposition da el nombre. Si la cabecera no llega, el respaldo usa solo el código,
+   * sin versión, porque la de la fila podría no ser la servida. Una reserva inmediata impide
+   * clics duplicados y el desmontaje cancela la petición.
    *
    * @param {Object} quote - Fila del listado.
    * @returns {Promise<void>}
@@ -53,9 +56,8 @@ function QuotesPanel({ notice = null, onNoticeDismiss }) {
     downloadRequest.current = controller;
     setDownloadingId(quote.id);
     try {
-      const { quote: current } = await api.quotes.getQuote({ quoteId: quote.id, signal: controller.signal });
-      const blob = await api.quotes.getQuotePdf({ quoteId: quote.id, version: current.currentVersion, signal: controller.signal });
-      if (!controller.signal.aborted) saveBlobAsFile(blob, current.pdf?.fileName || `${current.code}-v${current.currentVersion}.pdf`);
+      const { blob, fileName } = await api.quotes.downloadCurrentQuotePdf({ quoteId: quote.id, signal: controller.signal });
+      if (!controller.signal.aborted) saveBlobAsFile(blob, fileName || `${quote.code}.pdf`);
     } catch (downloadError) {
       if (controller.signal.aborted) return;
       feedback.notify("danger", "No se pudo descargar la cotización", downloadError?.message || "Inténtalo de nuevo.", quote.code);

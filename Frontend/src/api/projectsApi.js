@@ -7,17 +7,35 @@ import {
 
 // Endpoints de proyectos, archivos, comentarios, publicación y eventos en tiempo real.
 export const projectsApi = {
-  list({ cursor, limit, scope } = {}) {
+  /**
+   * Lee una página de proyectos accesibles para la sesión.
+   *
+   * @param {Object} [params] - Cursor, tamaño, ámbito y cancelación opcionales.
+   * @param {string} [params.cursor] - Cursor opaco de la página.
+   * @param {number} [params.limit] - Tamaño de página.
+   * @param {string} [params.scope] - Ámbito de lectura (`owned` o `accessible`).
+   * @param {AbortSignal} [params.signal] - Cancela la petición.
+   * @returns {Promise<Object>} Página con `projects` y `nextCursor`.
+   */
+  list({ cursor, limit, scope, signal } = {}) {
     const params = new URLSearchParams();
     if (cursor) params.set("cursor", cursor);
     if (limit) params.set("limit", String(limit));
     if (scope) params.set("scope", scope);
     const query = params.toString();
-    return apiRequest(`/projects${query ? `?${query}` : ""}`);
+    return apiRequest(`/projects${query ? `?${query}` : ""}`, signal ? { signal } : undefined);
   },
 
-  listAll() {
-    return collectCursorPages((page) => projectsApi.list(page), "projects");
+  /**
+   * Recorre todas las páginas de proyectos. La señal opcional cancela la página en curso y, con
+   * ella, el recorrido completo (la promesa rechaza con AbortError).
+   *
+   * @param {Object} [options] - Opciones de lectura.
+   * @param {AbortSignal} [options.signal] - Cancela el recorrido.
+   * @returns {Promise<Object>} Colección acumulada con `nextCursor` null.
+   */
+  listAll({ signal } = {}) {
+    return collectCursorPages((page) => projectsApi.list({ ...page, signal }), "projects");
   },
 
   getById({ filesCursor, filesLimit, projectId, signal }) {

@@ -42,8 +42,9 @@ function toProjectRow(project, user) {
  *
  * @param {Object} params - Contexto de lectura y refresco externo.
  * @param {boolean} params.empty - Omite la lectura en el escenario vacío.
- * @param {Object|null} params.user - Habilita la carga y participa en la derivación de permisos de edición.
- * @param {number} params.projectsRequestKey - Su cambio solicita una nueva carga completa.
+ * @param {Object|null} params.user - Habilita la carga y participa en la derivación de permisos de edición;
+ *   la lectura solo se repite si cambia su sesión (id y rol), no la referencia del objeto.
+ * @param {number} params.projectsRequestKey - Su cambio solicita una nueva carga completa; cancela la anterior.
  * @returns {Object} projects, projectsLoading, projectsError, projectRows, projectGroups y setProjects.
  * Los grupos omiten estados vacíos y reúnen estados no reconocidos en Otros, según el helper compartido.
  */
@@ -61,58 +62,58 @@ export function useDashboardProjects({ empty, user, projectsRequestKey }) {
     [projectRows],
   );
 
+  // La colección depende de la sesión (cuenta y rol), no de la identidad del objeto `user`:
+  // AuthContext publica un objeto nuevo al confirmar la misma sesión, y eso no debe repetir la
+  // lectura completa. Cambiar de cuenta o de rol sí la repite.
+  const sessionKey = user ? `${user.id ?? user.email}:${user.role}` : null;
+
   useEffect(() => {
-    // La guarda pertenece a esta ejecución del efecto: al cambiar usuario o clave,
-    // las respuestas anteriores dejan de actualizar estado. No cancela la petición HTTP.
-    let isMounted = true;
+    // Cambiar de sesión o de clave, o desmontar, cancela la lectura en curso (todas sus
+    // páginas); una respuesta abortada nunca actualiza el estado.
+    const controller = new AbortController();
+    const { signal } = controller;
 
     if (empty) {
-      return () => {
-        isMounted = false;
-      };
+      return () => controller.abort();
     }
 
     queueMicrotask(() => {
-      if (isMounted) {
+      if (!signal.aborted) {
         setProjectsLoading(true);
         setProjectsError("");
       }
     });
 
-    if (!user) {
+    if (!sessionKey) {
       queueMicrotask(() => {
-        if (isMounted) setProjectsLoading(false);
+        if (!signal.aborted) setProjectsLoading(false);
       });
-      return () => {
-        isMounted = false;
-      };
+      return () => controller.abort();
     }
 
     // Un fallo descarta la colección anterior y muestra un error genérico.
     // Sin usuario no se consulta y solo se finaliza loading; empty omite el flujo.
     api.projects
-      .listAll()
+      .listAll({ signal })
       .then((data) => {
-        if (isMounted) {
+        if (!signal.aborted) {
           setProjects(data.projects || []);
         }
       })
       .catch(() => {
-        if (isMounted) {
+        if (!signal.aborted) {
           setProjects([]);
           setProjectsError("No se pudieron cargar los proyectos.");
         }
       })
       .finally(() => {
-        if (isMounted) {
+        if (!signal.aborted) {
           setProjectsLoading(false);
         }
       });
 
-    return () => {
-      isMounted = false;
-    };
-  }, [empty, projectsRequestKey, user]);
+    return () => controller.abort();
+  }, [empty, projectsRequestKey, sessionKey]);
 
   return {
     projects,

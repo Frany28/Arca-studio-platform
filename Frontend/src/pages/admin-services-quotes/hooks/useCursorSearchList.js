@@ -4,6 +4,22 @@ const SEARCH_DEBOUNCE_MS = 300;
 const NO_FILTERS = Object.freeze({});
 
 /**
+ * Indica si aplicar `value` al filtro `name` cambia la consulta. Los valores vacíos (null,
+ * undefined o "") equivalen a no tener el filtro, igual que en `setFilter`.
+ *
+ * @param {Object} filters - Filtros activos.
+ * @param {string} name - Parámetro de la API.
+ * @param {string|number|null|undefined} value - Valor que se pretende aplicar.
+ * @returns {boolean} true si la consulta cambiaría y por tanto hay que volver a leer.
+ */
+export function isFilterChange(filters, name, value) {
+  const isEmpty = (candidate) => candidate === null || candidate === undefined || candidate === "";
+  const current = filters?.[name];
+  if (isEmpty(current) && isEmpty(value)) return false;
+  return !Object.is(current, value);
+}
+
+/**
  * Lista administrativa con búsqueda en la API, filtros y paginación por cursor (Anterior y
  * Siguiente, sin totales porque el contrato no los ofrece). La búsqueda escrita se aplica tras
  * una pausa; cambiar la búsqueda o un filtro descarta los cursores, que pertenecen a la consulta
@@ -94,12 +110,16 @@ export function useCursorSearchList({ collectionKey, errorMessage, fetchPage, in
 
   /**
    * Cambia un filtro y vuelve a la primera página. Un valor vacío (null, undefined o "") lo retira.
+   * Aplicar el mismo valor no hace nada: ni nueva lectura ni cambio de página.
    *
    * @param {string} name - Parámetro de la API.
    * @param {string|number|null|undefined} value - Valor del filtro.
    * @returns {void}
    */
   function setFilter(name, value) {
+    // Se compara con los filtros de este render: varias llamadas en el mismo evento (p. ej. las dos
+    // fechas de un intervalo) cambian claves distintas, y cada una se compara con su propio valor.
+    if (!isFilterChange(filters, name, value)) return;
     setFiltersState((current) => {
       const next = { ...current };
       if (value === null || value === undefined || value === "") delete next[name];

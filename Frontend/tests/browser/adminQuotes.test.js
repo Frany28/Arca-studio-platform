@@ -1377,3 +1377,101 @@ test("sin servicios: «Añade al menos un servicio» lleva al selector y enfoca 
   assert.equal(await page.getByRole("textbox", { name: "Buscar servicios por nombre o código" }).inputValue(), "zzz", "Conserva la búsqueda");
   assert.equal(backend.requests.some((request) => request.method === "POST"), false);
 });
+
+/**
+ * Abre el menú «Más opciones» de una fila del listado y elige «Descargar PDF».
+ *
+ * @param {import("playwright").Page} page - Página con el listado cargado.
+ * @param {string} code - Código de la cotización.
+ * @returns {Promise<void>}
+ */
+async function chooseRowDownload(page, code) {
+  await page.getByRole("button", { name: `Más opciones para ${code}`, exact: true }).click();
+  await page.getByRole("menu", { name: `Acciones para ${code}` }).getByRole("menuitem", { name: "Descargar PDF", exact: true }).click();
+}
+
+test("listado: descarga el PDF vigente en una sola petición, con el nombre de Content-Disposition", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  await page.getByRole("rowheader", { name: "COT-001" }).waitFor();
+  // Otro administrador versiona COT-001 después de cargar el listado: la fila sigue en v1, pero
+  // la descarga sin `version` recibe la vigente y su nombre llega en la cabecera.
+  backend.quotes[0] = buildQuote(1, { clientId: 3, items: [{ quantity: "5", serviceId: 1, unitRate: "14" }], projectId: 9 }, 2, "2026-03-23T15:00:00.000Z");
+  const before = backend.requests.length;
+
+  const downloadPromise = page.waitForEvent("download");
+  await chooseRowDownload(page, "COT-001");
+  const download = await downloadPromise;
+
+  assert.equal(download.suggestedFilename(), "COT-001-v2.pdf");
+  const issued = backend.requests.slice(before);
+  assert.deepEqual(issued.map((request) => `${request.method} ${request.path}`), ["GET /api/admin/quotes/1/pdf"], "Sin lectura previa del detalle");
+  assert.deepEqual(issued[0].search, {}, "Sin versión: el backend sirve la vigente");
+  await download.delete();
+});
+
+test("listado: sin Content-Disposition guarda el PDF con el código, y un fallo se informa sin descargar", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  await page.getByRole("rowheader", { name: "COT-002" }).waitFor();
+  await page.route("**/api/admin/quotes/2/pdf", (route) => {
+    backend.requests.push({ method: "GET", path: "/api/admin/quotes/2/pdf", search: {} });
+    return route.fulfill({ body: Buffer.from("%PDF-1.4\n%%EOF\n"), contentType: "application/pdf", status: 200 });
+  });
+
+  const downloadPromise = page.waitForEvent("download");
+  await chooseRowDownload(page, "COT-002");
+  const download = await downloadPromise;
+  assert.equal(download.suggestedFilename(), "COT-002.pdf", "Respaldo sin versión: la de la fila podría no ser la servida");
+  await download.delete();
+
+  await page.unroute("**/api/admin/quotes/2/pdf");
+  await page.route("**/api/admin/quotes/2/pdf", (route) => route.fulfill({
+    body: JSON.stringify({ code: "QUOTE_PDF_PENDING", message: "El PDF está pendiente. Reintenta su recuperación en unos momentos." }),
+    contentType: "application/json",
+    status: 409,
+  }));
+  const downloads = [];
+  page.on("download", (item) => downloads.push(item));
+  await chooseRowDownload(page, "COT-002");
+  await page.getByText("No se pudo descargar la cotización", { exact: true }).waitFor();
+  await page.getByText("El PDF está pendiente. Reintenta su recuperación en unos momentos.", { exact: false }).first().waitFor();
+  assert.equal(downloads.length, 0);
+  assert.equal(await page.getByRole("button", { name: "Más opciones para COT-002", exact: true }).isEnabled(), true, "Las acciones se liberan tras el fallo");
+});
+
+test("listado: volver a aplicar el mismo intervalo de fechas no repite la consulta", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend);
+  await page.getByRole("rowheader", { name: "COT-001" }).waitFor();
+
+  /**
+   * Abre el selector, marca los días 10 y 15 del primer mes y confirma.
+   *
+   * @returns {Promise<void>}
+   */
+  async function applyRange() {
+    await page.getByRole("button", { name: /^Filtrar cotizaciones por fecha/ }).click();
+    const picker = page.getByRole("dialog", { name: "Seleccionar intervalo de fechas" });
+    await picker.waitFor();
+    const firstMonth = picker.getByRole("grid").first();
+    await firstMonth.getByRole("button").nth(9).click();
+    await firstMonth.getByRole("button").nth(14).click();
+    await picker.getByRole("button", { name: "Seleccionar" }).click();
+    await picker.waitFor({ state: "detached" });
+  }
+
+  await applyRange();
+  await page.waitForTimeout(400);
+  assert.ok(listRequests(backend).at(-1).search.createdFrom, "El primer intervalo consulta a la API");
+  const afterFirst = listRequests(backend).length;
+
+  await applyRange();
+  await page.waitForTimeout(400);
+  assert.equal(listRequests(backend).length, afterFirst, "El mismo intervalo no vuelve a consultar");
+
+  await page.getByRole("button", { name: "Quitar filtros" }).click();
+  await page.waitForTimeout(400);
+  assert.equal(listRequests(backend).length, afterFirst + 1, "Quitar filtros sigue consultando");
+  assert.equal(listRequests(backend).at(-1).search.createdFrom, undefined);
+});

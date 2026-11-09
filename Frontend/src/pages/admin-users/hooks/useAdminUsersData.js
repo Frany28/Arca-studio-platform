@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
 
@@ -49,11 +49,17 @@ export function useAdminUsersData({ empty, setSelectedUserIds }) {
   })), [statusFilterIds]);
   const hasFilters = Boolean(query || roleFilterIds.length || statusFilterIds.length);
 
-  // La búsqueda se aplica sin espacios en los extremos tras 300 ms de pausa.
-  // Al aplicarla se descartan cursores y selección, incluso en la ejecución inicial.
+  // La búsqueda se aplica sin espacios en los extremos tras 300 ms de pausa y entonces descarta
+  // cursores y selección. La ref evita reiniciar (y volver a leer el listado) cuando el texto
+  // efectivo no cambió: en el montaje, sin ella, el nuevo historial de cursores repetía la primera
+  // lectura. Es el mismo criterio de useCursorSearchList.
+  const appliedQueryRef = useRef("");
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      setDebouncedQuery(query.trim());
+      const nextQuery = query.trim();
+      if (nextQuery === appliedQueryRef.current) return;
+      appliedQueryRef.current = nextQuery;
+      setDebouncedQuery(nextQuery);
       setCursorHistory([null]);
       setPageIndex(0);
       setSelectedUserIds(new Set());
@@ -114,12 +120,15 @@ export function useAdminUsersData({ empty, setSelectedUserIds }) {
 
   /**
    * Limpia búsqueda, roles y estados, y vuelve al cursor inicial sin selección.
-   * La búsqueda aplicada también se actualiza mediante el debounce del efecto.
+   * La búsqueda aplicada se vacía en el acto (como clearAll de useCursorSearchList): así una sola
+   * lectura consulta sin filtros, en lugar de una con la búsqueda anterior y otra tras el debounce.
    *
    * @returns {void} Actualiza filtros, historial, índice y selección.
    */
   function clearFilters() {
     setQuery("");
+    appliedQueryRef.current = "";
+    setDebouncedQuery("");
     setRoleFilterIds([]);
     setStatusFilterIds([]);
     setCursorHistory([null]);

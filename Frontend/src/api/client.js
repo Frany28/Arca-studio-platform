@@ -75,16 +75,15 @@ export async function apiRequest(path, options = {}) {
 }
 
 /**
- * Descarga un recurso binario de la API (por ejemplo, un PDF) con las cookies de la sesión y la
- * misma traducción de errores que apiRequest: un fallo HTTP lee el JSON de error si existe y un
- * 401 notifica la expiración de la sesión. La caché HTTP del navegador revalida con ETag.
+ * Solicita un recurso binario con las cookies de la sesión y la misma traducción de errores que
+ * apiRequest: un fallo HTTP lee el JSON de error si existe y un 401 notifica la expiración.
  *
  * @param {string} path - Ruta relativa a la base de API.
- * @param {Object} [options={}] - Opciones fetch; admite signal.
- * @returns {Promise<Blob>} Contenido recibido.
+ * @param {Object} options - Opciones fetch; admite signal.
+ * @returns {Promise<Response>} Respuesta correcta, con el cuerpo sin leer.
  * @throws {Error} Fallo HTTP con status/code, fallo de red o cancelación.
  */
-export async function apiRequestBlob(path, options = {}) {
+async function fetchBinary(path, options) {
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, { ...options, credentials: "include" });
@@ -106,7 +105,55 @@ export async function apiRequestBlob(path, options = {}) {
     throw error;
   }
 
-  return response.blob();
+  return response;
+}
+
+/**
+ * Descarga un recurso binario de la API (por ejemplo, un PDF) con las cookies de la sesión y la
+ * misma traducción de errores que apiRequest. La caché HTTP del navegador revalida con ETag.
+ *
+ * @param {string} path - Ruta relativa a la base de API.
+ * @param {Object} [options={}] - Opciones fetch; admite signal.
+ * @returns {Promise<Blob>} Contenido recibido.
+ * @throws {Error} Fallo HTTP con status/code, fallo de red o cancelación.
+ */
+export async function apiRequestBlob(path, options = {}) {
+  return (await fetchBinary(path, options)).blob();
+}
+
+/**
+ * Extrae el nombre de archivo de una cabecera Content-Disposition. Prefiere `filename*` (RFC 5987)
+ * y, si no existe, `filename`, decodificado porque el backend lo envía con encodeURIComponent.
+ *
+ * @param {string|null} header - Valor de la cabecera.
+ * @returns {string|null} Nombre de archivo, o null si la cabecera no lo incluye o es inválido.
+ */
+export function getContentDispositionFileName(header) {
+  if (!header) return null;
+  const extended = /filename\*\s*=\s*(?:[\w-]+)?'[^']*'([^;]+)/i.exec(header);
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
+  const raw = extended?.[1] ?? plain?.[1] ?? plain?.[2];
+  if (!raw?.trim()) return null;
+  try {
+    return decodeURIComponent(raw.trim()) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Descarga un archivo de la API junto con el nombre que el servidor indica en Content-Disposition
+ * (expuesta por CORS en `config/cors.js`). Evita una lectura previa solo para conocer el nombre.
+ *
+ * @param {string} path - Ruta relativa a la base de API.
+ * @param {Object} [options={}] - Opciones fetch; admite signal.
+ * @returns {Promise<{blob: Blob, fileName: string|null}>} Contenido y nombre (null si no llegó).
+ * @throws {Error} Fallo HTTP con status/code, fallo de red o cancelación.
+ */
+export async function apiRequestFile(path, options = {}) {
+  const response = await fetchBinary(path, options);
+  const fileName = getContentDispositionFileName(response.headers.get("content-disposition"));
+  return { blob: await response.blob(), fileName };
 }
 
 /**

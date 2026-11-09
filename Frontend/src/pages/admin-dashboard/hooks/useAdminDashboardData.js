@@ -61,6 +61,10 @@ export function useAdminDashboardData({
   const activeRef = useRef(true);
   // Revalidación vigente para ejecutar la pendiente al terminar una lectura explícita.
   const revalidateResourceRef = useRef(null);
+  // Ámbito de la caché del overview. Los efectos dependen de este valor y no del objeto `user`:
+  // AuthContext publica un objeto nuevo al confirmar la misma sesión (p. ej. tras un 401 que
+  // /auth/me desmiente), y eso no debe repetir lecturas. Otra cuenta cambia el id y sí relee.
+  const scopeKey = user?.id || user?.email;
 
   /**
    * Libera la marca de lectura explícita de un recurso si `read` es la última iniciada y, si
@@ -157,7 +161,7 @@ export function useAdminDashboardData({
         // Esta señal no se envía al helper: la limpieza impide aplicar su resultado exitoso.
         return loadAdminDashboardOverview({
           force: adminOverviewRequestKey > 0,
-          scopeKey: user?.id || user?.email,
+          scopeKey,
         });
       })
       .then((overview) => {
@@ -180,7 +184,7 @@ export function useAdminDashboardData({
       });
 
     return () => abortController.abort();
-  }, [adminOverviewRequestKey, roleCode, empty, user, loadOverview]);
+  }, [adminOverviewRequestKey, roleCode, empty, scopeKey, loadOverview]);
 
   useEffect(() => {
     if (roleCode !== "admin" || empty || !loadAssignees) {
@@ -215,7 +219,6 @@ export function useAdminDashboardData({
     return () => abortController.abort();
   }, [roleCode, empty, loadAssignees]);
 
-  const scopeKey = user?.id || user?.email;
   /**
    * Relee métricas y overview en segundo plano tras una mutación confirmada o al reanudar la
    * vista. Conserva lo mostrado: sin loading y, si falla, sin sustituir los datos por un error

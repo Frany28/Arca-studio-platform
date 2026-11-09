@@ -827,8 +827,10 @@ Validación, capturas y diferencias respecto a Figma:
     Unidades). La geometría vive en `src/config/quotesTable.js`; como el tabulador, el mínimo es
     1102 px y con el sidebar expandido la tabla se desplaza dentro de `HorizontalScrollViewport`.
     Estados: skeleton `Loader` `quotesTable`, vacío, sin resultados, error con reintento.
-  - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». El PDF lo genera y almacena
-    automáticamente el backend al guardar; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
+  - Acciones por fila: Ver (visor PDF), Editar y «…» con «Descargar PDF». La descarga de la fila es
+    una sola petición a `GET /admin/quotes/:id/pdf` sin `version` (el backend sirve la vigente) y toma
+    el nombre de `Content-Disposition`; sin esa cabecera guarda `COT-001.pdf`. No lee antes el detalle.
+    El PDF lo genera y almacena automáticamente el backend al guardar; el visor reutiliza `src/components/document-viewer` (`PdfViewerSurface`,
     `DocumentViewerControls`, `DocumentFileCard`), movidos desde Proyectos.
     La barra del visor añade «Descargar PDF» junto al zoom, solo para administración y cuando el
     PDF está listo. El pie conserva únicamente «Cerrar | Editar». La descarga usa el icono
