@@ -6,10 +6,19 @@ import {
 
 // Endpoints para crear, revisar, actualizar y adjuntar archivos a solicitudes de proyecto.
 export const projectRequestsApi = {
-  list({ cursor, limit = 25 } = {}) {
+  /**
+   * Lee una página de las solicitudes propias del cliente.
+   *
+   * @param {Object} [params] - Cursor, tamaño y cancelación opcionales.
+   * @param {string} [params.cursor] - Cursor opaco de la página.
+   * @param {number} [params.limit=25] - Tamaño de página.
+   * @param {AbortSignal} [params.signal] - Cancela la petición (rechaza con AbortError).
+   * @returns {Promise<Object>} Página con `projectRequests` y `nextCursor`.
+   */
+  list({ cursor, limit = 25, signal } = {}) {
     const params = new URLSearchParams({ limit: String(limit) });
     if (cursor) params.set("cursor", cursor);
-    return apiRequest(`/project-requests?${params.toString()}`);
+    return apiRequest(`/project-requests?${params.toString()}`, signal ? { signal } : undefined);
   },
 
   /**

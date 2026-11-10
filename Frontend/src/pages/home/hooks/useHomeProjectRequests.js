@@ -1,14 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
+import { getSessionDataScopeKey } from "../../../auth/sessionDataScope.js";
 
 /**
- * Carga solicitudes por cursor y permite reintentar la primera p?gina.
- * La carga inicial ignora respuestas despu?s de limpiar el efecto; las p?ginas
- * adicionales se combinan por id y conservan lo cargado si fallan.
+ * Carga solicitudes por cursor y permite reintentar la primera página.
+ * La primera página depende del ámbito de la sesión (cuenta, rol y cliente; ver
+ * getSessionDataScopeKey), no de la referencia de `user`: confirmar la misma sesión no la relee
+ * ni descarta las páginas ya cargadas. Releerla (reintento o cambio de ámbito) o desmontar aborta
+ * la lectura en curso y la página adicional pendiente, para que una respuesta de la lista anterior
+ * no se mezcle con la nueva. Las páginas adicionales se combinan por id y conservan lo cargado si
+ * fallan.
  *
  * @param {Object} params - Contexto de la consulta.
- * @param {Object|null} params.user - Usuario cuya presencia habilita la carga inicial.
+ * @param {Object|null} params.user - Usuario cuya sesión habilita la carga inicial.
  * @returns {Object} Solicitudes, cursor, errores como texto, estados de carga y acciones de carga/reintento.
  */
 export default function useHomeProjectRequests({ user }) {
@@ -20,53 +25,66 @@ export default function useHomeProjectRequests({ user }) {
   const [projectRequestsNextCursor, setProjectRequestsNextCursor] =
     useState(null);
   const [projectRequestsRevision, setProjectRequestsRevision] = useState(0);
+  // Página adicional en curso. La ref (y no el estado) bloquea clics repetidos en el mismo evento.
+  const loadMoreRequestRef = useRef(null);
+  const sessionScopeKey = getSessionDataScopeKey(user);
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!sessionScopeKey) return undefined;
 
-    let isMounted = true;
+    const controller = new AbortController();
+    const { signal } = controller;
     setProjectRequestsLoading(true);
+    setProjectRequestsLoadingMore(false);
     setProjectRequestsError("");
 
     api.projectRequests
-      .list()
+      .list({ signal })
       .then((data) => {
-        if (isMounted) {
+        if (!signal.aborted) {
           setProjectRequests(data.projectRequests || []);
           setProjectRequestsNextCursor(data.nextCursor || null);
         }
       })
       .catch(() => {
-        if (isMounted) {
+        if (!signal.aborted) {
           setProjectRequests([]);
           setProjectRequestsError("No se pudieron cargar tus solicitudes.");
         }
       })
       .finally(() => {
-        if (isMounted) setProjectRequestsLoading(false);
+        if (!signal.aborted) setProjectRequestsLoading(false);
       });
 
     return () => {
-      isMounted = false;
+      controller.abort();
+      loadMoreRequestRef.current?.abort();
+      loadMoreRequestRef.current = null;
     };
-  }, [projectRequestsRevision, user]);
+  }, [projectRequestsRevision, sessionScopeKey]);
 
   /**
-   * Carga el cursor disponible salvo que ya est? cargando otra p?gina.
-   * Sustituye las coincidencias por id con la versi?n recibida y actualiza el cursor.
+   * Carga el cursor disponible salvo que ya esté cargando otra página.
+   * Sustituye las coincidencias por id con la versión recibida y actualiza el cursor.
+   * Si la primera página se relee mientras tanto, la respuesta se descarta.
    *
    * @returns {Promise<void>} Actualiza solicitudes y estado; registra el error sin propagarlo.
    */
   const loadMoreProjectRequests = async () => {
-    if (!projectRequestsNextCursor || projectRequestsLoadingMore) return;
+    if (!projectRequestsNextCursor || loadMoreRequestRef.current) return;
 
+    const controller = new AbortController();
+    const { signal } = controller;
+    loadMoreRequestRef.current = controller;
     setProjectRequestsLoadingMore(true);
     setProjectRequestsError("");
 
     try {
       const data = await api.projectRequests.list({
         cursor: projectRequestsNextCursor,
+        signal,
       });
+      if (signal.aborted) return;
       setProjectRequests((current) => {
         const byId = new Map(current.map((item) => [String(item.id), item]));
         (data.projectRequests || []).forEach((item) => {
@@ -76,9 +94,15 @@ export default function useHomeProjectRequests({ user }) {
       });
       setProjectRequestsNextCursor(data.nextCursor || null);
     } catch {
-      setProjectRequestsError("No se pudieron cargar más solicitudes.");
+      if (!signal.aborted) {
+        setProjectRequestsError("No se pudieron cargar más solicitudes.");
+      }
     } finally {
-      setProjectRequestsLoadingMore(false);
+      // Una lectura abortada ya fue sustituida: la nueva primera página gestiona el estado.
+      if (loadMoreRequestRef.current === controller) {
+        loadMoreRequestRef.current = null;
+        setProjectRequestsLoadingMore(false);
+      }
     }
   };
 

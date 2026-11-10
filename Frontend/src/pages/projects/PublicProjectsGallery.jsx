@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/http.js";
 import { useAuth } from "../../auth/AuthContext.jsx";
+import { getSessionDataScopeKey } from "../../auth/sessionDataScope.js";
 import { getUserDisplay } from "../../auth/userDisplay.js";
 import MainLogo from "../../assets/logos/MainLogo.jsx";
 import AvatarGroup from "../../components/ui/AvatarGroup/AvatarGroup.jsx";
@@ -189,11 +190,28 @@ export default function PublicProjectsGallery() {
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
 
+  // Lectura vigente: una nueva (reintento o cambio de sesión) aborta la anterior.
+  const projectsRequestRef = useRef(null);
+  const sessionScopeKey = getSessionDataScopeKey(user);
+
+  /**
+   * Lee la colección completa de proyectos y aplica solo la respuesta de la lectura más reciente.
+   * Depende del ámbito de la sesión (cuenta, rol y cliente), no de la referencia de `user`:
+   * AuthContext publica un objeto nuevo al confirmar la misma sesión tras un 401 y, si esa lectura
+   * fue la rechazada, depender del objeto la repetía sin fin. Una lectura abortada no cambia el
+   * estado, así que la respuesta tardía de otra cuenta no sustituye a la vigente.
+   *
+   * @returns {void}
+   */
   const loadProjects = useCallback(() => {
+    projectsRequestRef.current?.abort();
+    const controller = new AbortController();
+    projectsRequestRef.current = controller;
+    const { signal } = controller;
     setLoading(true);
     setError("");
 
-    if (!user) {
+    if (!sessionScopeKey) {
       setProjects([]);
       setError("Vuelve a iniciar sesión para cargar los proyectos.");
       setLoading(false);
@@ -201,18 +219,28 @@ export default function PublicProjectsGallery() {
     }
 
     api.projects
-      .listAll()
-      .then((data) => setProjects(data.projects || []))
+      .listAll({ signal })
+      .then((data) => {
+        if (!signal.aborted) setProjects(data.projects || []);
+      })
       .catch(() => {
+        if (signal.aborted) return;
         setProjects([]);
         setError("No se pudieron cargar los proyectos públicos.");
       })
-      .finally(() => setLoading(false));
-  }, [user]);
+      .finally(() => {
+        if (!signal.aborted) setLoading(false);
+      });
+  }, [sessionScopeKey]);
 
+  // La lectura empieza en el siguiente frame; la limpieza cancela el frame y aborta la lectura
+  // en curso al cambiar de sesión o desmontar.
   useEffect(() => {
     const frameId = window.requestAnimationFrame(loadProjects);
-    return () => window.cancelAnimationFrame(frameId);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      projectsRequestRef.current?.abort();
+    };
   }, [loadProjects]);
 
   useEffect(() => {

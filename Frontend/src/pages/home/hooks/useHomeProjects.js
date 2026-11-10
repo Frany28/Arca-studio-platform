@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
+import { getSessionDataScopeKey } from "../../../auth/sessionDataScope.js";
 import { getProjectAssigneeAvatar } from "../../../utils/projectAssigneeDisplay.js";
 import { getProjectImageSource } from "../../../utils/projectImage.js";
 import { isProjectOperationallyReadOnly } from "../../../utils/projectReadOnly.js";
@@ -28,19 +29,23 @@ function toProjectRow(project) {
 }
 
 /**
- * Carga los proyectos mediante la API y deriva filas propias, p?blicas y grupos por estado.
- * Excluye proyectos de solo lectura del conjunto usado para observaciones; al cambiar
- * el usuario o desmontarse invalida respuestas pendientes mediante un contador.
+ * Carga los proyectos mediante la API y deriva filas propias, públicas y grupos por estado.
+ * Excluye proyectos de solo lectura del conjunto usado para observaciones. La lectura depende
+ * del ámbito de la sesión (cuenta, rol y cliente; ver getSessionDataScopeKey), no de la
+ * referencia de `user`: confirmar la misma sesión no la repite. Cambiar de ámbito, recargar o
+ * desmontar cancela la lectura en curso, cuya respuesta ya no actualiza el estado.
  *
  * @param {Object} params - Contexto de la carga.
  * @param {Object|null} params.user - Usuario; clientId identifica los proyectos propios.
- * @returns {Object} Filas derivadas, grupos, carga, error como texto y acci?n loadProjects.
+ * @returns {Object} Filas derivadas, grupos, carga, error como texto y acción loadProjects.
  */
 export default function useHomeProjects({ user }) {
   const [projects, setProjects] = useState([]);
   const [projectsError, setProjectsError] = useState("");
   const [projectsLoading, setProjectsLoading] = useState(true);
-  const projectsRequestIdRef = useRef(0);
+  // Lectura vigente: una nueva la sustituye y la anterior se aborta (todas sus páginas).
+  const projectsRequestRef = useRef(null);
+  const sessionScopeKey = getSessionDataScopeKey(user);
 
   const projectRows = useMemo(
     () => projects.map((project) => toProjectRow(project)),
@@ -75,46 +80,49 @@ export default function useHomeProjects({ user }) {
   );
 
   /**
-   * Recarga proyectos y aplica ?nicamente la respuesta de la solicitud m?s reciente.
-   * Conserva los datos durante la espera; si la carga vigente falla, los vac?a.
+   * Recarga proyectos (acción «Actualizar») y aplica únicamente la respuesta de la lectura más
+   * reciente: iniciar otra aborta la anterior. Conserva los datos durante la espera; si la carga
+   * vigente falla, los vacía. Una lectura abortada no modifica el estado.
    *
    * @returns {Promise<void>} Actualiza datos, carga y error; no devuelve los proyectos.
    */
   const loadProjects = useCallback(async () => {
-    const requestId = projectsRequestIdRef.current + 1;
-    projectsRequestIdRef.current = requestId;
+    projectsRequestRef.current?.abort();
+    const controller = new AbortController();
+    projectsRequestRef.current = controller;
+    const { signal } = controller;
     setProjectsLoading(true);
     setProjectsError("");
 
-    if (!user) {
+    if (!sessionScopeKey) {
       setProjects([]);
       setProjectsLoading(false);
       return;
     }
 
     try {
-      const data = await api.projects.listAll();
-      if (projectsRequestIdRef.current === requestId) {
+      const data = await api.projects.listAll({ signal });
+      if (!signal.aborted) {
         setProjects(data.projects || []);
       }
     } catch {
-      if (projectsRequestIdRef.current === requestId) {
+      if (!signal.aborted) {
         setProjects([]);
         setProjectsError("No se pudieron cargar los proyectos.");
       }
     } finally {
-      if (projectsRequestIdRef.current === requestId) {
+      if (!signal.aborted) {
         setProjectsLoading(false);
       }
     }
-  }, [user]);
+  }, [sessionScopeKey]);
 
+  // Lee al montar y al cambiar el ámbito de la sesión. La limpieza aborta la lectura vigente:
+  // el montaje doble del StrictMode de desarrollo no completa una lectura duplicada.
   useEffect(() => {
     loadProjects();
 
-    return () => {
-      projectsRequestIdRef.current += 1;
-    };
+    return () => projectsRequestRef.current?.abort();
   }, [loadProjects]);
 
   return {
