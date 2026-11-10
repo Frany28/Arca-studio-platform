@@ -475,3 +475,78 @@ test("PostgreSQL y HTTP: validación temporal por defecto, sin correo, para cual
   assert.equal((await api(`/project-requests/${normalId}/submit`, { body: { verificationCode: guess }, headers: owner, method: "POST" })).body.code, "VERIFICATION_CODE_INVALID");
   assert.equal((await requestRow(normalId)).status, "draft");
 });
+
+/**
+ * Lleva una solicitud nueva del cliente hasta pending_review con una revisión favorable del arquitecto.
+ *
+ * @param {Array<Object>} attachments - Archivos a adjuntar antes de enviar.
+ * @returns {Promise<{ id: number, fileIds: Array<number>, headers: Object }>} Solicitud lista para decidir.
+ */
+async function reviewedRequest(attachments) {
+  const headers = { admin: await authAs(seed.admin), architect: await authAs(seed.architect), owner: await authAs(seed.owner) };
+  const created = await api("/project-requests", { body: { ...draftPayload(), submissionId: randomUUID() }, headers: headers.owner, method: "POST" });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const id = created.body.projectRequest.id;
+  const fileIds = [];
+  for (const file of attachments) {
+    const uploaded = await upload(id, file, headers.owner);
+    assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body));
+    fileIds.push(uploaded.body.file.id);
+  }
+  assert.equal((await verifyAndSubmit(id, headers.owner)).status, 200);
+  assert.equal((await api(`/admin/project-requests/${id}/assignees`, { body: { assigneeIds: [seed.architect] }, headers: headers.admin, method: "PUT" })).status, 200);
+  const review = await api(`/project-requests/${id}/review`, { body: { note: "Proyecto viable para iniciar.", recommendation: "approve" }, headers: headers.architect, method: "PUT" });
+  assert.equal(review.status, 200, JSON.stringify(review.body));
+  return { fileIds, headers, id };
+}
+
+test("PostgreSQL y HTTP: aprobar con varios adjuntos los pasa al proyecto con trazabilidad y revoca al arquitecto retirado", { skip }, async () => {
+  // Regresión: chk_files_owner hacía fallar (500) la aprobación de solicitudes con adjuntos, y la
+  // ruta de la solicitud daba acceso permanente al arquitecto aunque se le retirara del proyecto.
+  // La ruta de archivos del proyecto exige projects.read (en staging lo concede un script de permisos).
+  await database.client.query(`
+    with permission as (
+      insert into public.permissions (code, name, description, module) values ('projects.read', 'Leer proyectos', null, 'projects')
+      on conflict (code) do update set name = excluded.name returning id
+    )
+    insert into public.role_permissions (role_id, permission_id, is_active)
+    select r.id, permission.id, true from public.roles r, permission where r.code in ('client', 'architect')
+    on conflict do nothing`);
+  const { fileIds, headers, id } = await reviewedRequest([png("planta.png"), pdf("escritura.pdf")]);
+  const versionsBefore = (await database.client.query("select file_id, file_name, file_size from public.file_versions where file_id = any($1) order by file_id", [fileIds])).rows;
+  const objectsBefore = storage.size;
+
+  const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  const projectId = Number((await database.client.query("select converted_project_id from public.project_requests where id = $1", [id])).rows[0].converted_project_id);
+
+  const moved = (await database.client.query("select id, project_id, project_request_id, origin_project_request_id from public.files where id = any($1) order by id", [fileIds])).rows;
+  assert.deepEqual(moved.map((row) => [Number(row.project_id), row.project_request_id, Number(row.origin_project_request_id)]), fileIds.map(() => [projectId, null, id]));
+  assert.deepEqual((await database.client.query("select file_id, file_name, file_size from public.file_versions where file_id = any($1) order by file_id", [fileIds])).rows, versionsBefore, "versiones y claves intactas");
+  assert.equal(storage.size, objectsBefore, "no se duplican objetos en el almacenamiento");
+
+  for (const fileId of fileIds) {
+    const projectContent = `${base}/projects/${projectId}/files/${fileId}/content`;
+    const requestContent = `${base}/project-requests/${id}/files/${fileId}/content`;
+    assert.equal((await fetch(projectContent, { headers: headers.owner })).status, 200, "el cliente lo ve desde el proyecto");
+    assert.equal((await fetch(projectContent, { headers: headers.architect })).status, 200, "el arquitecto asignado lo ve desde el proyecto");
+    assert.equal((await fetch(requestContent, { headers: headers.owner })).status, 200, "el detalle de la solicitud conserva su enlace");
+    assert.equal((await fetch(requestContent, { headers: headers.architect })).status, 404, "el arquitecto ya no usa la ruta de la solicitud");
+  }
+  const detail = await api(`/project-requests/${id}`, { headers: headers.owner });
+  assert.deepEqual(detail.body.projectRequest.files.map((file) => file.id).sort(), [...fileIds].sort(), "la solicitud sigue listando sus adjuntos de origen");
+
+  assert.equal((await api(`/admin/projects/${projectId}/assignees`, { body: { assigneeIds: [seed.admin] }, headers: headers.admin, method: "PUT" })).status, 200);
+  for (const fileId of fileIds) {
+    assert.equal((await fetch(`${base}/projects/${projectId}/files/${fileId}/content`, { headers: headers.architect })).status, 404, "retirado: sin acceso por el proyecto");
+    assert.equal((await fetch(`${base}/project-requests/${id}/files/${fileId}/content`, { headers: headers.architect })).status, 404, "retirado: sin acceso por la solicitud");
+    assert.equal((await fetch(`${base}/projects/${projectId}/files/${fileId}/content`, { headers: headers.owner })).status, 200);
+  }
+});
+
+test("PostgreSQL y HTTP: aprobar una solicitud sin adjuntos crea el proyecto", { skip }, async () => {
+  const { headers, id } = await reviewedRequest([]);
+  const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal((await requestRow(id)).status, "converted");
+});

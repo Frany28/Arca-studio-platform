@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
+import { enforceProductionCsp } from "../helpers/productionCsp.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -78,7 +79,8 @@ before(async () => {
 after(async () => { await browser?.close(); await server?.close(); });
 
 /**
- * Abre una página de prueba con la API simulada; registra cabeceras PDF recibidas, pestañas nuevas y errores.
+ * Abre una página de prueba con la API simulada y la CSP de producción; registra cabeceras PDF,
+ * pestañas nuevas, errores y violaciones de la política.
  *
  * @param {import("node:test").TestContext} context - Contexto que cierra la sesión.
  * @param {object} options - Escenario.
@@ -96,6 +98,8 @@ async function openFixture(context, { fixture, pdfStatus = 200, viewport = { hei
   const pdf = createPdf(PAGE_COUNT);
   session.on("page", (popup) => popups.push(popup.url()));
   page.on("pageerror", (error) => errors.push(error.message));
+  // pdf.js y su worker deben funcionar con la CSP publicada (sin 'unsafe-eval').
+  await enforceProductionCsp(page, errors);
   page.on("response", (response) => {
     if ([PROJECT_PDF_PATH, REQUEST_PDF_PATH].includes(new URL(response.url()).pathname)) pdfResponses.push(response.headers());
   });
