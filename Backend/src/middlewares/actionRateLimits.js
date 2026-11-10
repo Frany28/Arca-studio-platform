@@ -25,6 +25,12 @@ function positiveIntegerSetting(name, fallback) {
 }
 
 export const ACTION_RATE_LIMITS = Object.freeze({
+  // Cada consulta llama a Geoapify con la clave del operador (coste o cuota compartida). El buscador
+  // espera 180 ms entre teclas, así que 120 consultas cada 10 minutos cubren con holgura su uso normal.
+  addressSuggestions: Object.freeze({
+    max: positiveIntegerSetting("ADDRESS_SUGGESTION_RATE_LIMIT_MAX", 120),
+    windowMs: positiveIntegerSetting("ADDRESS_SUGGESTION_RATE_LIMIT_WINDOW_MS", 10 * MINUTE_MS),
+  }),
   adminProjectBulkAction: Object.freeze({ max: 60, windowMs: HOUR_MS }),
   adminProjectRequestDecision: Object.freeze({ max: 60, windowMs: HOUR_MS }),
   // Generar el PDF ocupa CPU del servidor: se limita igual que una escritura administrativa.
@@ -49,6 +55,11 @@ export const ACTION_RATE_LIMITS = Object.freeze({
   projectRequests: Object.freeze({
     max: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_MAX", 10),
     windowMs: positiveIntegerSetting("PROJECT_REQUEST_RATE_LIMIT_WINDOW_MS", MINUTE_MS),
+  }),
+  // Cada solicitud de soporte persiste una fila: se limita para que una cuenta no haga crecer la base.
+  supportRequests: Object.freeze({
+    max: positiveIntegerSetting("SUPPORT_REQUEST_RATE_LIMIT_MAX", 10),
+    windowMs: positiveIntegerSetting("SUPPORT_REQUEST_RATE_LIMIT_WINDOW_MS", HOUR_MS),
   }),
   uploads: Object.freeze({
     max: positiveIntegerSetting("UPLOAD_RATE_LIMIT_MAX", 60),
@@ -79,6 +90,8 @@ export const verificationCodeRateLimit = createUserActionRateLimit(
 );
 export const uploadRateLimit = createUserActionRateLimit("uploads", ACTION_RATE_LIMITS.uploads);
 export const ownSessionRevokeRateLimit = createUserActionRateLimit("own-session-revoke", ACTION_RATE_LIMITS.ownSessionRevoke);
+export const addressSuggestionRateLimit = createUserActionRateLimit("address-suggestions", ACTION_RATE_LIMITS.addressSuggestions);
+export const supportRequestRateLimit = createUserActionRateLimit("support-requests", ACTION_RATE_LIMITS.supportRequests);
 
 export const adminRateLimits = Object.freeze({
   projectBulkAction: createUserActionRateLimit("admin-project-bulk-action", ACTION_RATE_LIMITS.adminProjectBulkAction),

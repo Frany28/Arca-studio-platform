@@ -110,7 +110,9 @@ test("las rutas que envían correo aplican el límite por destinatario después 
   const handlers = (path) => authRouter.stack.find((layer) => layer.route?.path === path).route.stack.map((layer) => layer.handle.name || "validate");
   assert.deepEqual(handlers("/registration/start"), ["sharedRateLimit", "validate", "sharedRateLimit", "startRegistration"]);
   assert.deepEqual(handlers("/registration/resend"), ["sharedRateLimit", "validate", "sharedRateLimit", "resendRegistration"]);
-  assert.deepEqual(handlers("/forgot-password"), ["sharedRateLimit", "sharedRateLimit", "forgotPassword"]);
+  assert.deepEqual(handlers("/forgot-password"), ["sharedRateLimit", "validate", "sharedRateLimit", "forgotPassword"]);
+  assert.deepEqual(handlers("/verify-reset-token"), ["sharedRateLimit", "validate", "verifyResetToken"]);
+  assert.deepEqual(handlers("/reset-password"), ["sharedRateLimit", "validate", "resetPassword"]);
 });
 
 /**
@@ -148,6 +150,27 @@ test("recuperación: 5 correos por hora por destinatario (alias de Gmail incluid
   const queriesBeforeBlock = business.length;
   assert.equal((await request("POST", "/api/auth/forgot-password", { email: "anaperez@gmail.com" })).status, 429);
   assert.equal(business.length, queriesBeforeBlock, "una solicitud bloqueada no consulta la cuenta");
+});
+
+test("recuperación: un correo no textual (arreglo) se rechaza sin enviar correo ni eludir el límite", async (context) => {
+  // Regresión: el límite deriva la clave solo de cadenas y el controlador convertía el arreglo en texto,
+  // de modo que {"email":["x@y"]} enviaba correos ilimitados al destinatario.
+  const resend = mockResend(context);
+  const { business } = mockDatabase(context, { userExists: true });
+  const request = await serve(context, app);
+  const statuses = [];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    statuses.push((await request("POST", "/api/auth/forgot-password", { email: ["anaperez@gmail.com"] })).status);
+  }
+  assert.deepEqual(statuses, Array(8).fill(400));
+  assert.equal(resend.sent(), 0, "ningún correo para cuerpos no textuales");
+  assert.equal(business.length, 0, "no consulta la cuenta");
+  for (const body of [{ token: ["x"] }, { password: ["Abcdef1*"], token: "x" }]) {
+    const path = body.password ? "/api/auth/reset-password" : "/api/auth/verify-reset-token";
+    const response = await request("POST", path, body);
+    assert.equal(response.status, 400, path);
+    assert.equal((await response.json()).code, "VALIDATION_ERROR", path);
+  }
 });
 
 test("recuperación: la respuesta es idéntica para cuentas existentes e inexistentes (sin enumeración)", async (context) => {

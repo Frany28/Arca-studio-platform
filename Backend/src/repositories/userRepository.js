@@ -1,4 +1,5 @@
 import { pool, query } from "../config/db.js";
+import { invalidatePasswordResetTokens } from "./passwordResetRepository.js";
 import { createSession, revokeUserSessions } from "./sessionRepository.js";
 
 const USER_SELECT = `
@@ -222,7 +223,8 @@ export async function updateLastLoginAt(id) {
 }
 
 /**
- * Sustituye la contraseña y revoca todas las sesiones del usuario en una única transacción (B-3).
+ * Sustituye la contraseña y revoca todas las sesiones del usuario en una única transacción (B-3),
+ * invalidando también los enlaces de recuperación pendientes emitidos antes del cambio.
  * Opcionalmente crea en la misma transacción la sesión que conservará quien hizo el cambio, de modo
  * que nunca queda una contraseña nueva con sesiones antiguas activas ni un usuario sin sesión válida.
  *
@@ -259,6 +261,7 @@ export async function updateUserPasswordRevokingSessions({
     }
 
     await revokeUserSessions({ reason: revocationReason, userId }, client);
+    await invalidatePasswordResetTokens({ userId }, client);
     const newSession = newSessionExpiresInSeconds
       ? await createSession({ expiresInSeconds: newSessionExpiresInSeconds, userId }, client)
       : null;

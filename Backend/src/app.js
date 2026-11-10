@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { corsOptions } from "./config/cors.js";
+import { resolveTrustProxySetting } from "./config/trustProxy.js";
 import { loadSession } from "./middlewares/auth.js";
 import { requireTrustedOrigin } from "./middlewares/trustedOrigin.js";
 import { requestMetrics } from "./middlewares/requestMetrics.js";
@@ -22,7 +23,7 @@ import { normalizeError } from "./errors/appError.js";
 const app = express();
 
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+app.set("trust proxy", resolveTrustProxySetting());
 app.use(helmet());
 app.use(cors(corsOptions()));
 app.use(requestMetrics);

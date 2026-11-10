@@ -86,7 +86,9 @@ const WORKFLOW_REQUEST_RELATIONS = `
           on version.file_id = file.id
           and version.version_number = file.current_version
           and version.deleted_at is null
-        where file.project_request_id = request.id
+        -- Tras convertir la solicitud, sus adjuntos pertenecen al proyecto pero siguen listándose aquí
+        -- por su origen, para conservar la trazabilidad en el detalle de la solicitud.
+        where (file.project_request_id = request.id or file.origin_project_request_id = request.id)
           and file.deleted_at is null
           and file.status <> 'deleted'
       ) attachment on true`;
@@ -540,10 +542,16 @@ export async function decideProjectRequest({
         `,
         [project.id, reviewedBy, projectRequestId],
       );
+      // Los adjuntos pasan al proyecto en la misma transacción. chk_files_owner exige un único dueño:
+      // se libera project_request_id y origin_project_request_id conserva la trazabilidad. Es la misma
+      // fila (mismas versiones, objetos y comentarios); no se copia nada en el almacenamiento.
       await client.query(
         `
           update public.files
-          set project_id = $1, updated_at = now()
+          set project_id = $1,
+              origin_project_request_id = project_request_id,
+              project_request_id = null,
+              updated_at = now()
           where project_request_id = $2
             and deleted_at is null
             and status <> 'deleted'

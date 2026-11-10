@@ -232,3 +232,24 @@ test("el token de recuperación sigue siendo válido para su propio flujo", asyn
   });
   assert.equal(sessionAsReset.status, 400, "una sesión tampoco sirve como token de recuperación");
 });
+
+test("un enlace emitido para el correo anterior no sirve tras un cambio de correo", async (context) => {
+  // Regresión: un administrador cambia el correo de la cuenta; quien conserve el buzón anterior y un
+  // enlace aún vigente no debe poder restablecer la contraseña de la cuenta re-asignada.
+  const { calls } = mockDatabase(context);
+  const request = await startServer(context);
+  const staleToken = tokenFromResetUrl(createPasswordResetPayload({ email: "anterior@arca.test", id: 7 }).resetUrl);
+  const post = (path, body) => request(path, {
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+
+  const verified = await post("/api/auth/verify-reset-token", { token: staleToken });
+  assert.equal(verified.status, 404);
+  const reset = await post("/api/auth/reset-password", { password: "Nueva2026*", token: staleToken });
+  assert.equal(reset.status, 404);
+  assert.equal((await reset.json()).code, "USER_NOT_FOUND");
+  assert.equal(calls.some((sql) => sql.includes("set password_hash")), false, "no cambia la contraseña");
+  assert.equal(calls.some((sql) => sql.includes("password_recovery_tokens") && sql.includes("used_at = now()")), false, "no consume el enlace");
+});

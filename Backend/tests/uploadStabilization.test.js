@@ -44,6 +44,7 @@ function mockUploadBackend(context, {
   commitThenDisconnect = false,
   deleteFails = false,
   failVersionInsert = false,
+  failSupportInsert = false,
   projectStatus = "in_process",
   putGate = null,
   putFails = null,
@@ -129,6 +130,15 @@ function mockUploadBackend(context, {
         if (/from public\.projects/.test(text) && /for update/.test(text)) {
           heldLocks.push(await lockRow(`project:${params[0]}`));
           return { rows: state.projectStatus === "deleted" ? [] : [{ status: state.projectStatus }] };
+        }
+        if (/from public\.support_requests/.test(text) && /for update/.test(text)) {
+          heldLocks.push(await lockRow(`support:${params[0]}`));
+          return { rows: [{ id: String(params[0]) }] };
+        }
+        if (/insert into public\.support_request_files/.test(text)) {
+          if (failSupportInsert) throw Object.assign(new Error("fk"), { code: "23503" });
+          staged.set(Number(params[0]), { title: params[3] });
+          return { rows: [{ created_at: new Date(), file_extension: "pdf", file_size: "4", file_type: "application/pdf", id: String(params[0]), original_name: params[3], support_request_id: String(params[1]) }] };
         }
         if (/from public\.project_requests/.test(text) && /for update/.test(text)) {
           heldLocks.push(await lockRow(`request:${params[0]}`));
@@ -366,16 +376,11 @@ test("soporte: el adjunto se registra después de transferir y se compensa si fa
   const state = mockUploadBackend(context);
   const file = await uploadSupportRequestFile({ body: Readable.from([Buffer.from("%PDF")]), contentType: "application/pdf", originalName: "a.pdf", size: 4, supportRequestId: 11, user });
   assert.equal(file.id, 100);
-  assert.equal(state.connects, 0);
+  assert.ok(state.connectionsDuringPut.every((open) => open === 0), "ninguna conexión abierta durante la transferencia");
   assert.equal(state.stored.size, 1);
   context.mock.restoreAll();
 
-  const failing = mockUploadBackend(context);
-  context.mock.method(pool, "query", async (sql, params) => {
-    if (/insert into public\.support_request_files/.test(sql)) throw Object.assign(new Error("fk"), { code: "23503" });
-    if (/nextval/.test(sql)) return { rows: [{ id: "300" }] };
-    return { rows: [] };
-  });
+  const failing = mockUploadBackend(context, { failSupportInsert: true });
   await assert.rejects(uploadSupportRequestFile({ body: Readable.from([Buffer.from("%PDF")]), contentType: "application/pdf", originalName: "a.pdf", size: 4, supportRequestId: 11, user }), { code: "23503" });
   assert.equal(failing.stored.size, 0);
   assert.equal(failing.deleted.length, 1);

@@ -1,12 +1,15 @@
 import {
   createSupportRequestForUser,
   findSupportRequestForUpload,
-  uploadSupportRequestFile,
 } from "../repositories/supportRepository.js";
 import { runUpload, uploadPolicies } from "../services/fileUploadService.js";
+import { uploadSupportAttachment } from "../services/supportFileService.js";
 
 const MAX_SUPPORT_SUBJECT_LENGTH = 150;
 const MAX_SUPPORT_DESCRIPTION_LENGTH = 5000;
+// Tipos que ofrece el formulario de soporte (SupportPanel). Antes se aceptaba cualquier texto hasta el
+// límite del cuerpo JSON (100 KB) por solicitud; el valor vacío se sigue admitiendo por compatibilidad.
+const SUPPORT_ISSUE_TYPES = new Set(["platform-error", "access-account", "files-documents", "guarantees", "other"]);
 /**
  * Crea la solicitud de soporte con los datos validados recibidos.
  * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
@@ -34,6 +37,14 @@ export async function createSupportRequest(req, res, next) {
       res.status(400).json({
         code: "INVALID_SUPPORT_DESCRIPTION",
         message: `La descripcion es obligatoria y no puede superar ${MAX_SUPPORT_DESCRIPTION_LENGTH} caracteres.`,
+      });
+      return;
+    }
+
+    if (issueType && !SUPPORT_ISSUE_TYPES.has(issueType)) {
+      res.status(400).json({
+        code: "INVALID_SUPPORT_ISSUE_TYPE",
+        message: "El tipo de incidencia no es válido.",
       });
       return;
     }
@@ -92,7 +103,7 @@ export async function uploadSupportRequestAttachment(req, res, next) {
      * @param {unknown} upload - Valor de `upload` requerido por esta operación.
      * @returns {void} Finalización de la operación.
      */
-operation: (upload) => uploadSupportRequestFile({ ...upload, supportRequestId, user: req.user }) });
+operation: (upload) => uploadSupportAttachment({ supportRequestId, upload, user: req.user }) });
 
     res.status(201).json({ file });
   } catch (error) {

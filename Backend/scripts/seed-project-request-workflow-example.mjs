@@ -3,10 +3,12 @@ import "dotenv/config";
 import bcrypt from "bcrypt";
 
 import { pool, query } from "../src/config/db.js";
+import { databaseHost } from "./lib/maintenanceCommand.mjs";
 
 const DEMO_CLIENT_EMAIL = "showcase@arcastudio.com";
 const DEMO_REQUESTER_EMAIL = "solicitudes.showcase@arcastudio.com";
-const DEMO_REQUESTER_PASSWORD = "SolicitudDemo2026*";
+// La contraseña ya no se versiona: se toma del entorno al ejecutar el seed.
+const DEMO_REQUESTER_PASSWORD = process.env.DEMO_REQUESTER_PASSWORD || "";
 const DEMO_SUBMISSION_ID = "00000000-0000-4000-8000-000000000028";
 const DEMO_REQUEST_NAME = "Café Mirador Solicitud Demo";
 
@@ -132,10 +134,37 @@ async function ensureDemoRequest({ client_id: clientId, user_id: userId }) {
   return { action: "inserted", projectRequest: inserted.rows[0] };
 }
 
+// Protección del seed (auditoría): crea una cuenta de cliente activa, así que no debe ejecutarse por
+// accidente contra la base que carga dotenv (en este proyecto, la de staging). Exige confirmar la base
+// destino, igual que load-official-service-catalog.mjs, y no publica la contraseña en el repositorio.
+const target = databaseTarget();
+const confirmIndex = process.argv.indexOf("--confirm-target");
+const confirmedTarget = confirmIndex >= 0 ? process.argv[confirmIndex + 1] : undefined;
+if (confirmedTarget !== target) {
+  console.error(`Este seed crea una cuenta de cliente activa. Para ejecutarlo contra ${target} usa:\n  DEMO_REQUESTER_PASSWORD=<contraseña> node scripts/seed-project-request-workflow-example.mjs --confirm-target ${target}`);
+  await pool.end();
+  process.exit(1);
+}
+if (!DEMO_REQUESTER_PASSWORD || DEMO_REQUESTER_PASSWORD.length < 12) {
+  console.error("Define DEMO_REQUESTER_PASSWORD (12 caracteres o más) para la cuenta de demostración.");
+  await pool.end();
+  process.exit(1);
+}
+
 try {
   const requester = await findDemoRequester();
   const result = await ensureDemoRequest(requester);
   console.log(JSON.stringify(result, null, 2));
 } finally {
   await pool.end();
+}
+
+/**
+ * Identifica la base destino como `base@host[:puerto]`, sin credenciales, para confirmarla.
+ *
+ * @returns {string} Base y servidor de DATABASE_URL.
+ */
+function databaseTarget() {
+  const url = new URL(process.env.DATABASE_URL);
+  return `${url.pathname.replace(/^\//, "")}@${databaseHost()}`;
 }

@@ -238,6 +238,47 @@ test("cambiar la contraseña revoca todas las sesiones previas y emite una nueva
   assert.equal([...sessionStore.sessions.values()].filter((row) => row.revoked_reason === "password_changed").length, 2);
 });
 
+/**
+ * Registra las consultas que llegan a la base simulada sin alterar sus respuestas.
+ *
+ * @param {import("node:test").TestContext} context - Contexto que restaura el espía.
+ * @returns {Array<string>} SQL recibido, en orden.
+ */
+function spyQueries(context) {
+  const seen = [];
+  const simulated = pool.query;
+  context.mock.method(pool, "query", (sql, params) => { seen.push(sql); return simulated(sql, params); });
+  return seen;
+}
+
+const invalidatesRecoveryTokens = (seen) => seen.some((sql) => (
+  sql.includes("update public.password_recovery_tokens") && sql.includes("used_at = now()")
+));
+
+test("cambiar la contraseña invalida los enlaces de recuperación pendientes", async (context) => {
+  mockDatabase(context);
+  const seen = spyQueries(context);
+  const request = await startServer(context);
+  const device = await loginDevice(request, "cliente@arca.test");
+  const response = await post(request, "/api/auth/change-password", device, { currentPassword: PASSWORD, newPassword: "Nueva2026*x" });
+  assert.equal(response.status, 200);
+  assert.ok(invalidatesRecoveryTokens(seen), "un enlace emitido antes del cambio no debe seguir sirviendo");
+});
+
+test("desactivar una cuenta invalida sus enlaces de recuperación (no reviven al reactivarla)", async (context) => {
+  const { updateAdminUserStatusRecord } = await import("../src/repositories/adminUserRepository.js");
+  mockPoolTransactions(context, pool);
+  const seen = [];
+  context.mock.method(pool, "query", async (sql) => {
+    seen.push(sql);
+    return sql.includes("update public.users u")
+      ? { rowCount: 1, rows: [{ client_id: null, id: "7", status: "inactive" }] }
+      : { rowCount: 0, rows: [] };
+  });
+  await updateAdminUserStatusRecord({ status: "inactive", userId: 7 });
+  assert.ok(invalidatesRecoveryTokens(seen));
+});
+
 test("una contraseña actual incorrecta no revoca ninguna sesión", async (context) => {
   mockDatabase(context);
   const request = await startServer(context);

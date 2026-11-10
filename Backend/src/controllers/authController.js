@@ -93,6 +93,22 @@ function isValidPassword(password) {
 }
 
 /**
+ * Devuelve el usuario activo solo si el correo firmado en el enlace de recuperación coincide con su
+ * correo actual. Si un administrador cambió el correo después de emitir el enlace, quien controla el
+ * buzón anterior no puede usarlo; el resultado es el mismo que para un usuario inexistente.
+ *
+ * @param {object|null} userRecord - Usuario activo cargado por id, o null.
+ * @param {{ email?: unknown }} payload - Token de recuperación ya verificado.
+ * @returns {object|null} El usuario cuando el enlace le corresponde, o null.
+ */
+function resolveResetTokenUser(userRecord, payload) {
+  if (!userRecord || typeof payload.email !== "string") return null;
+  return payload.email.trim().toLowerCase() === String(userRecord.email || "").trim().toLowerCase()
+    ? userRecord
+    : null;
+}
+
+/**
  * Interpreta el token de restablecimiento y descarta los formatos que no sean válidos.
  * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
  *
@@ -512,8 +528,8 @@ export async function forgotPassword(req, res, next) {
 }
 
 /**
- * Verifica el token de restablecimiento y rechaza valores vencidos o inconsistentes.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Verifica el token de restablecimiento y rechaza valores vencidos o inconsistentes, incluido un
+ * enlace emitido para un correo que ya no es el de la cuenta. Coordina la solicitud HTTP.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
@@ -533,7 +549,7 @@ export async function verifyResetToken(req, res, next) {
       return;
     }
 
-    const userRecord = await findActiveUserById(payload.userId);
+    const userRecord = resolveResetTokenUser(await findActiveUserById(payload.userId), payload);
     const resetRecord = userRecord
       ? await findValidPasswordResetToken(payload.userId, payload.tokenHash)
       : null;
@@ -553,8 +569,8 @@ export async function verifyResetToken(req, res, next) {
 }
 
 /**
- * Restablece el valor de contraseña después de validar la credencial temporal.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Restablece la contraseña después de validar la credencial temporal, que además debe corresponder al
+ * correo actual de la cuenta. El cambio revoca sesiones e invalida otros enlaces pendientes.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
@@ -585,7 +601,7 @@ export async function resetPassword(req, res, next) {
       return;
     }
 
-    const userRecord = await findActiveUserById(payload.userId);
+    const userRecord = resolveResetTokenUser(await findActiveUserById(payload.userId), payload);
     const tokenConsumed = userRecord
       ? await consumePasswordResetToken(payload.userId, payload.tokenHash)
       : false;

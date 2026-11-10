@@ -1,5 +1,30 @@
 import { query } from "../config/db.js";
 
+const poolExecutor = { query };
+
+/**
+ * Invalida los enlaces de recuperación pendientes del usuario marcándolos como usados, igual que al
+ * emitir uno nuevo. Se ejecuta en la transacción de cada cambio de seguridad de la cuenta (contraseña,
+ * correo, rol o estado) para que un enlace emitido antes del cambio no pueda consumirse después.
+ *
+ * @param {object} options - Datos de la invalidación.
+ * @param {number|string} options.userId - Usuario cuyos enlaces pendientes se invalidan.
+ * @param {{ query: Function }} [executor] - Cliente transaccional; por defecto el pool compartido.
+ * @returns {Promise<number>} Número de enlaces invalidados.
+ */
+export async function invalidatePasswordResetTokens({ userId }, executor = poolExecutor) {
+  const result = await executor.query(
+    `
+      update public.password_recovery_tokens
+      set used_at = now()
+      where user_id = $1
+        and used_at is null
+    `,
+    [userId],
+  );
+  return result.rowCount;
+}
+
 /**
  * Crea el valor de contraseña restablecimiento token con los datos validados recibidos.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.

@@ -7,7 +7,33 @@ import {
   getFileExtension,
   getSupabaseStorageConfig,
 } from "../config/storage.js";
-import { query } from "../config/db.js";
+import { query, withTransaction } from "../config/db.js";
+import { NotFoundError } from "../errors/appError.js";
+
+const poolExecutor = { query };
+
+/**
+ * Obtiene el número de adjuntos y los bytes totales registrados en una solicitud de soporte, para
+ * aplicar su cuota. Acepta el cliente de una transacción para leer el uso bajo el bloqueo de la fila.
+ *
+ * @param {number} supportRequestId - Solicitud de soporte.
+ * @param {{ query: Function }} [executor] - Cliente transaccional; por defecto el pool compartido.
+ * @returns {Promise<{ count: number, totalBytes: number }>} Uso actual.
+ */
+export async function getSupportRequestFileUsage(supportRequestId, executor = poolExecutor) {
+  const result = await executor.query(
+    `
+      select count(*)::integer as file_count, coalesce(sum(file_size), 0)::bigint as total_bytes
+      from public.support_request_files
+      where support_request_id = $1
+    `,
+    [supportRequestId],
+  );
+  return {
+    count: Number(result.rows[0]?.file_count || 0),
+    totalBytes: Number(result.rows[0]?.total_bytes || 0),
+  };
+}
 
 // Las tablas support_requests y support_request_files se gestionan solo mediante
 // la migración 20261014120000_support_tables. Este repositorio no ejecuta DDL:
@@ -112,10 +138,13 @@ export async function findSupportRequestForUpload(supportRequestId, user) {
 
 /**
  * Carga el valor de soporte solicitud archivo coordinando la persistencia y el almacenamiento.
- * Transfiere el objeto sin conexiones abiertas y después lo registra con una única sentencia, de modo
- * que nunca existe una fila sin objeto ni con clave vacía (P0-1).
+ * Transfiere el objeto sin conexiones abiertas y después lo registra en una transacción corta que
+ * bloquea la solicitud y repite la comprobación de cuota, de modo que nunca existe una fila sin objeto
+ * (P0-1) y dos cargas simultáneas no superan juntas el límite. Si la cuota falla, el objeto subido se
+ * elimina por la compensación de storeThenRecord.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
+ * @param {(usage: { count: number, totalBytes: number }) => void} [options.assertWithinLimits] - Comprobación de cuota bajo bloqueo.
  * @param {unknown} options.body - Valor de `options.body` requerido por esta operación.
  * @param {string} options.contentType - Valor de `options.contentType` requerido por esta operación.
  * @param {string} options.originalName - Valor de `options.originalName` requerido por esta operación.
@@ -126,6 +155,7 @@ export async function findSupportRequestForUpload(supportRequestId, user) {
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function uploadSupportRequestFile({
+  assertWithinLimits,
   body,
   contentType,
   originalName,
@@ -192,13 +222,21 @@ export async function uploadSupportRequestFile({
       },
     }),
     /**
-     * Registra el adjunto con su clave definitiva en una sola sentencia.
-     * La clave foránea rechaza la fila si la solicitud dejó de existir durante la transferencia.
+     * Registra el adjunto con su clave definitiva en una transacción que bloquea la solicitud, rechaza
+     * la fila si la solicitud dejó de existir y repite la comprobación de cuota con el uso bloqueado.
      *
      * @returns {Promise<object>} Fila registrada.
      */
-    record: async () => {
-      const result = await query(
+    record: () => withTransaction(async (client) => {
+      const locked = await client.query(
+        "select id from public.support_requests where id = $1 and deleted_at is null for update",
+        [supportRequestId],
+      );
+      if (!locked.rows[0]) {
+        throw new NotFoundError("SUPPORT_REQUEST_NOT_FOUND", "No se encontro la solicitud de soporte.");
+      }
+      assertWithinLimits?.(await getSupportRequestFileUsage(supportRequestId, client));
+      const result = await client.query(
         `
           insert into public.support_request_files (
             id,
@@ -227,7 +265,7 @@ export async function uploadSupportRequestFile({
         [fileId, supportRequestId, user.id, safeOriginalName, fileType, fileExtension, size, storageKey, fileUrl],
       );
       return result.rows[0];
-    },
+    }),
   });
 
   return {

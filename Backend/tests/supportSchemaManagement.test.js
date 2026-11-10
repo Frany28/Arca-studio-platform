@@ -103,6 +103,7 @@ test("crear una solicitud de soporte no ejecuta DDL", async (context) => {
 
 test("buscar y adjuntar archivos de soporte no ejecuta DDL", async (context) => {
   const statements = recordSql(context);
+  context.mock.method(objectStorage, "put", async () => { statements.push("<<transferencia>>"); return {}; });
   assert.equal(Number((await findSupportRequestForUpload(11, user)).id), 11);
   const file = await uploadSupportRequestFile({
     body: Readable.from([Buffer.from("%PDF")]),
@@ -113,9 +114,14 @@ test("buscar y adjuntar archivos de soporte no ejecuta DDL", async (context) => 
     user,
   });
   assert.equal(file.id, 21);
-  // P0-1: el adjunto se registra con una sola sentencia tras transferir el objeto, sin transacción abierta.
-  assert.match(statements.at(-1), /insert into public\.support_request_files/i);
-  assert.equal(pool.connect.mock.callCount(), 0);
+  // P0-1: el adjunto se registra DESPUÉS de transferir el objeto, sin conexiones abiertas durante la
+  // transferencia. El registro usa una transacción corta (bloqueo de la solicitud y cuota, auditoría #13).
+  assert.equal(pool.connect.mock.callCount(), 1);
+  const transferIndex = statements.indexOf("<<transferencia>>");
+  const lockIndex = statements.findIndex((sql) => /for update/i.test(sql));
+  const insertIndex = statements.findIndex((sql) => /insert into public\.support_request_files/i.test(sql));
+  assert.ok(transferIndex >= 0 && transferIndex < lockIndex, "la transacción de registro empieza después de la transferencia");
+  assert.ok(insertIndex > lockIndex, "inserta con la solicitud bloqueada");
   assert.deepEqual(statements.filter((sql) => DDL_PATTERN.test(sql)), []);
 });
 

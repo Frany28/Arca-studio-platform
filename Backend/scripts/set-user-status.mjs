@@ -1,6 +1,8 @@
 import "dotenv/config";
 
 import { pool, query } from "../src/config/db.js";
+import { invalidatePasswordResetTokens } from "../src/repositories/passwordResetRepository.js";
+import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "../src/repositories/sessionRepository.js";
 
 const [identifier, nextStatus = "inactive"] = process.argv.slice(2);
 const allowedStatuses = new Set(["active", "inactive"]);
@@ -41,6 +43,13 @@ if (!identifier || !allowedStatuses.has(nextStatus)) {
         ),
       );
     } else {
+      // Igual que la desactivación desde el panel: cierra sesiones e invalida enlaces de recuperación
+      // pendientes, para que una reactivación posterior no los vuelva válidos.
+      if (nextStatus !== "active") {
+        const userId = result.rows[0].id;
+        await revokeUserSessions({ reason: SESSION_REVOCATION_REASONS.userDisabled, userId });
+        await invalidatePasswordResetTokens({ userId });
+      }
       console.log(
         JSON.stringify(
           {

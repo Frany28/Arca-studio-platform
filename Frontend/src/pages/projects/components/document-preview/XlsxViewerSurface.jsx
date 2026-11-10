@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 
 import EmptyState from "../../../../components/ui/EmptyState/EmptyState.jsx";
 import DocumentMarker from "../../../../components/document-viewer/DocumentMarker.jsx";
+import { buildSheetRows } from "./xlsxSheetRows.js";
 
 function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, onPointSelect, pendingSelection, title }) {
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
@@ -19,9 +20,11 @@ function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, o
 
   const safeSheetIndex = Math.min(activeSheetIndex, Math.max((workbook?.SheetNames?.length || 1) - 1, 0));
   const activeSheetName = workbook?.SheetNames?.[safeSheetIndex] || "";
-  const tableHtml = activeSheetName
-    ? XLSX.utils.sheet_to_html(workbook.Sheets[activeSheetName], { id: "project-document-workbook" })
-    : "";
+  // Filas como datos (no HTML): el contenido del archivo nunca se inyecta como marcado.
+  const sheetRows = useMemo(
+    () => (activeSheetName ? buildSheetRows(XLSX, workbook.Sheets[activeSheetName]) : []),
+    [activeSheetName, workbook],
+  );
 
   useEffect(() => {
     const root = tableRef.current;
@@ -36,7 +39,7 @@ function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, o
     });
     const frameId = window.requestAnimationFrame(() => setCellBoxes(boxes));
     return () => window.cancelAnimationFrame(frameId);
-  }, [activeSheetName, tableHtml]);
+  }, [activeSheetName, sheetRows]);
 
   useEffect(() => {
     const comment = annotations.find((item) => String(item.id) === String(focusedId));
@@ -105,7 +108,23 @@ function XlsxViewerSurface({ annotations = [], data, focusedId, onPointCreate, o
             normalizedX: (event.clientX - rect.left) / rect.width, normalizedY: (event.clientY - rect.top) / rect.height });
         }}
       >
-        <div dangerouslySetInnerHTML={{ __html: tableHtml }} />
+        <div>
+          <table>
+            <tbody>
+              {sheetRows.map((row) => (
+                <tr key={row.key}>
+                  {row.cells.map((cell) => (
+                    <td key={cell.key} colSpan={cell.colSpan} rowSpan={cell.rowSpan} className="whitespace-pre-line">
+                      {cell.href ? (
+                        <a href={cell.href} target="_blank" rel="noopener noreferrer">{cell.text}</a>
+                      ) : cell.text}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {[...annotations.filter((comment) => comment.selection?.kind === "document-cell-point" && comment.selection.sheetName === activeSheetName),
           ...(pendingSelection?.kind === "document-cell-point" && pendingSelection.sheetName === activeSheetName ? [{ id: "pending", pointNumber: "", selection: pendingSelection }] : [])].map((comment) => {
           const box = cellBoxes[comment.selection.cell];

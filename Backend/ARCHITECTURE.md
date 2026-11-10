@@ -397,6 +397,27 @@ La carga inicial (`prisma/seeds/measurement_units.sql`) define 48 unidades para 
 - **Ampliación**: añadir una unidad solo si no es expresable como denominación de una existente; elegir código, nombre y símbolo únicos (la carga falla ante equivalentes) y el siguiente `sort_order` libre de su bloque; añadirla al catálogo fuente y cargarla con una **migración de datos nueva** (las aplicadas no se modifican), actualizando las pruebas del catálogo.
 - Ninguna modalidad restringe la unidad: un servicio llave en mano puede usar m², m³, m.l., und., pt., hrs o cualquier otra base activa del catálogo.
 
+## Seguridad independiente de la plataforma y migración a VPS
+
+Los controles de acceso viven en el backend y no dependen de Supabase, Netlify ni Vercel:
+
+- **Archivos:** todo contenido protegido se sirve por la API (`objectStorage.get` tras comprobar acceso). Nunca se redirige a URLs del almacenamiento ni se devuelven claves (`sanitizePublicPayload`).
+- **SSE:** `subscribeToProjectEvents` acepta `reauthorize` y revalida sesión y acceso cada `SSE_REAUTHORIZE_INTERVAL_MS` (30 s). Al perderlos, o si la revalidación falla, cierra el stream. Imprescindible en un servidor de larga duración.
+- **Recuperación de contraseña:** los esquemas de `forgot-password`, `verify-reset-token` y `reset-password` exigen texto antes de los límites. Todo cambio de seguridad de la cuenta (contraseña, correo, rol, estado) invalida los enlaces pendientes (`invalidatePasswordResetTokens`), y el enlace debe corresponder al correo actual.
+- **Límites:** por usuario para Geoapify y creación de soporte. Cuota de adjuntos de soporte (10 archivos / 200 MB), comprobada otra vez bajo bloqueo.
+- **IP del cliente:** `CLIENT_IP_SOURCE=trusted-proxy` y `TRUST_PROXY` (`src/config/trustProxy.js`) permiten límites por IP detrás de Nginx sin cabeceras de Netlify.
+
+Dependencias de la infraestructura actual que deben revisarse al migrar:
+
+| Dependencia actual | Dónde | Al migrar al VPS |
+| --- | --- | --- |
+| IP verificada mediante la firma de Netlify (`X-Nf-Sign`) | `utils/verifiedClientIp.js` | Usar `CLIENT_IP_SOURCE=trusted-proxy` y `TRUST_PROXY=loopback`. Backend solo en `127.0.0.1`; Nginx debe sobrescribir `X-Forwarded-For` |
+| `maxDuration: 30` acota la vida de SSE y peticiones | `vercel.json` | La revalidación SSE ya no depende de ello. Definir timeouts de Nginx para streams |
+| Comprobación de privacidad solo para el bucket de PDF (`storage.buckets`, propio de Supabase) | `repositories/quotePdfRepository.js` | Con otro S3 o MinIO, garantizar buckets privados en la configuración del proveedor. La API no depende de que sean públicos |
+| `file_url` persiste la forma `/storage/v1/object/public/…` de Supabase; las claves se derivan de él | `config/storage.js` | Mantener `getStorageObjectKeyFromFileUrl` compatible o migrar a guardar solo la clave |
+| CSP, `frame-ancestors` y redirección `/api/*` definidos en Netlify | `netlify.toml` | Trasladar las cabeceras y el proxy a Nginx |
+| Bypass de autenticación para pruebas, que se desactiva ante marcadores de plataforma | `config/auth.js`, `config/environment.js` | En el VPS usar `NODE_ENV=production`; la guardia lo exige |
+
 ## Documentación de la lógica
 
 Toda función o método de `src` debe tener un JSDoc en español cuya descripción inicial ocupe dos o tres líneas. El texto debe permitir que una persona externa entienda el propósito, las reglas de negocio y los efectos secundarios relevantes sin tener que reconstruirlos únicamente desde la implementación.

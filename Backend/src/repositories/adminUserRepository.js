@@ -1,5 +1,6 @@
 import { pool, query } from "../config/db.js";
 import { mapAdminUserMetrics } from "../utils/adminUsers.js";
+import { invalidatePasswordResetTokens } from "./passwordResetRepository.js";
 import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "./sessionRepository.js";
 
 /**
@@ -99,8 +100,9 @@ export async function findAdminUserAccessRecord(userId) {
  * @param {unknown} options.secondaryPhone - Valor de `options.secondaryPhone` requerido por esta operación.
  * @param {unknown} options.status - Valor de `options.status` requerido por esta operación.
  * @param {string} options.userId - Valor de `options.userId` requerido por esta operación.
- * @returns {Promise<object>} Usuario actualizado y `revokedSessions`: las sesiones se revocan en la misma
- *   transacción cuando cambian contraseña, rol, correo o estado (B-3).
+ * @returns {Promise<object>} Usuario actualizado y `revokedSessions`: las sesiones se revocan y los enlaces
+ *   de recuperación pendientes se invalidan en la misma transacción cuando cambian contraseña, rol,
+ *   correo o estado (B-3).
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function updateAdminUserRecord({
@@ -188,6 +190,8 @@ export async function updateAdminUserRecord({
     const revokedSessions = revocationReason
       ? await revokeUserSessions({ reason: revocationReason, userId }, client)
       : 0;
+    // Un enlace de recuperación emitido antes del cambio (p. ej. al correo anterior) ya no debe valer.
+    if (revocationReason) await invalidatePasswordResetTokens({ userId }, client);
     await client.query("commit");
     return {
       reason: null,
@@ -579,7 +583,8 @@ export async function archiveAdminUserNoteRecord({ adminUserId, noteId, targetUs
 
 /**
  * Actualiza el estado persistido de un usuario administrado y de su cliente asociado. Si el estado
- * deja de ser activo revoca todas sus sesiones en la misma transacción (B-3).
+ * deja de ser activo revoca todas sus sesiones e invalida sus enlaces de recuperación pendientes en
+ * la misma transacción (B-3), para que una reactivación posterior no los vuelva válidos.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.status - Valor de `options.status` requerido por esta operación.
@@ -622,6 +627,8 @@ export async function updateAdminUserStatusRecord({ status, userId }) {
 
     if (updatedUser && status !== "active") {
       await revokeUserSessions({ reason: SESSION_REVOCATION_REASONS.userDisabled, userId }, client);
+      // Evita que un enlace pendiente vuelva a ser válido si la cuenta se reactiva antes de su vencimiento.
+      await invalidatePasswordResetTokens({ userId }, client);
     }
 
     await client.query("commit");

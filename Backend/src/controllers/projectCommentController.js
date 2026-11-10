@@ -4,6 +4,7 @@ import {
   listProjectComments,
 } from "../repositories/projectCommentRepository.js";
 import { getProjectCommentAuthorProfilePhoto } from "../services/profilePhotoService.js";
+import { loadSessionUser } from "../services/sessionService.js";
 import {
   publishProjectEvent,
   subscribeToProjectEvents,
@@ -336,8 +337,26 @@ export async function getProjectDocumentComments(req, res, next) {
 }
 
 /**
- * Transmite el valor de proyecto comentario events sin cargar el contenido completo en memoria.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Construye la revalidación periódica de una suscripción SSE: la sesión debe seguir activa (no
+ * revocada ni vencida, usuario activo, rol vigente) y el usuario actual debe conservar acceso al
+ * proyecto. Sin `sid` (bypass local de pruebas) solo se revalida el acceso con el usuario de la petición.
+ *
+ * @param {import("express").Request} req - Petición autenticada que abrió el stream.
+ * @param {number} projectId - Proyecto suscrito.
+ * @returns {() => Promise<boolean>} Comprobación que devuelve true mientras el acceso sea vigente.
+ */
+function createStreamReauthorization(req, projectId) {
+  const sessionPayload = req.session?.payload;
+  return async () => {
+    const currentUser = sessionPayload?.sid ? await loadSessionUser(sessionPayload) : req.user;
+    return Boolean(currentUser) && (await canAccessProjectComments(projectId, currentUser));
+  };
+}
+
+/**
+ * Transmite los eventos de comentarios de un proyecto por SSE. El acceso se comprueba al conectar y
+ * se revalida periódicamente mientras la conexión siga abierta, para que una revocación de sesión o de
+ * acceso al proyecto también cierre los streams existentes (relevante en servidores de larga duración).
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
  * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
@@ -387,7 +406,12 @@ export async function streamProjectCommentEvents(req, res, next) {
 
     let unsubscribe;
     try {
-      unsubscribe = subscribeToProjectEvents({ projectId, response: res, userId: req.user.id });
+      unsubscribe = subscribeToProjectEvents({
+        projectId,
+        reauthorize: createStreamReauthorization(req, projectId),
+        response: res,
+        userId: req.user.id,
+      });
     } catch (error) {
       if (error.code === "SSE_CONNECTION_LIMIT") {
         res.end();

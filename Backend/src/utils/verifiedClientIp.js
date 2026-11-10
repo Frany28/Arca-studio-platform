@@ -69,14 +69,31 @@ export function isValidNetlifySignature(token, secret, nowSeconds = Math.floor(D
 }
 
 /**
- * Obtiene la IP del cliente solo cuando llega por el proxy firmado de Netlify.
- * Ignora X-Forwarded-For y cualquier cabecera sin firma válida; devuelve null si no hay IP verificable.
+ * Obtiene la IP que Express calcula detrás de un proxy inverso de confianza (Nginx en el VPS) usando solo
+ * los saltos permitidos por `TRUST_PROXY`, de modo que el cliente no la elige si el backend no es
+ * accesible directamente. Normaliza IPv4 mapeadas en IPv6 para que compartan contador.
+ *
+ * @param {import("express").Request} req - Petición HTTP.
+ * @returns {string|null} IP del cliente, o null si no es una dirección válida.
+ */
+function getTrustedProxyClientIp(req) {
+  const ip = String(req.ip || "").replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, "");
+  return isIP(ip) ? ip : null;
+}
+
+/**
+ * Obtiene la IP del cliente para los límites por IP según `CLIENT_IP_SOURCE`: `trusted-proxy` usa la IP
+ * que Express resuelve detrás de un proxy inverso de confianza (VPS + Nginx); sin valor, la del proxy
+ * firmado de Netlify si su firma es válida. Sin fuente de confianza devuelve null (sin bloqueos colectivos).
  *
  * @param {import("express").Request} req - Petición HTTP.
  * @param {Record<string, string|undefined>} [environment] - Variables de entorno.
  * @returns {string|null} IP verificada, o null.
  */
 export function getVerifiedClientIp(req, environment = process.env) {
+  if (String(environment.CLIENT_IP_SOURCE ?? "").trim().toLowerCase() === "trusted-proxy") {
+    return getTrustedProxyClientIp(req);
+  }
   const secret = environment.NETLIFY_PROXY_SIGNATURE_SECRET;
   if (!secret || !isValidNetlifySignature(req.headers?.[SIGNATURE_HEADER], secret)) return null;
 

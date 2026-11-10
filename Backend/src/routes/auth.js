@@ -16,7 +16,12 @@ import { requireAuth } from "../middlewares/auth.js";
 import { ownSessionRevokeRateLimit } from "../middlewares/actionRateLimits.js";
 import { authRateLimits, emailRateLimits } from "../middlewares/authRateLimit.js";
 import { validate } from "../middlewares/validate.js";
-import { loginSchema } from "../validation/schemas.js";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  resetPasswordSchema,
+  verifyResetTokenSchema,
+} from "../validation/schemas.js";
 import {
   completeRegistrationSchema,
   resendRegistrationSchema,
@@ -43,9 +48,11 @@ router.post("/registration/start", authRateLimits.registration, validate(startRe
 router.post("/registration/resend", authRateLimits.registration, validate(resendRegistrationSchema), emailRateLimits.registration, resendRegistration);
 router.post("/registration/verify", authRateLimits.registration, validate(verifyRegistrationSchema), verifyRegistration);
 router.post("/registration/complete", authRateLimits.registration, validate(completeRegistrationSchema), completeRegistration);
-router.post("/forgot-password", authRateLimits.passwordReset, emailRateLimits.passwordReset, forgotPassword);
-router.post("/verify-reset-token", authRateLimits.passwordReset, verifyResetToken);
-router.post("/reset-password", authRateLimits.passwordReset, resetPassword);
+// La validación de tipo va antes del límite por destinatario (mismo orden que registro): un correo
+// no textual no genera clave de límite y no debe llegar al envío de correo.
+router.post("/forgot-password", authRateLimits.passwordReset, validate(forgotPasswordSchema), emailRateLimits.passwordReset, forgotPassword);
+router.post("/verify-reset-token", authRateLimits.passwordReset, validate(verifyResetTokenSchema), verifyResetToken);
+router.post("/reset-password", authRateLimits.passwordReset, validate(resetPasswordSchema), resetPassword);
 router.post("/change-password", requireAuth, authRateLimits.changePassword, changePassword);
 router.get("/profile-photo/image", requireAuth, getProfilePhotoImage);
 router.post(

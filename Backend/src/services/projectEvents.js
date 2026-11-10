@@ -32,17 +32,32 @@ function sendEvent(response, eventName, payload) {
 }
 
 /**
- * Suscribe el valor de to proyecto events y administra el ciclo de vida de la conexión.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Intervalo entre revalidaciones de una suscripción abierta. En un servidor de larga duración (VPS)
+ * una conexión SSE puede durar horas; este valor acota cuánto tarda en cerrarse tras revocarse la
+ * sesión o el acceso al proyecto.
  *
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
- * @param {unknown} options.response - Valor de `options.response` requerido por esta operación.
- * @param {string} options.userId - Valor de `options.userId` requerido por esta operación.
- * @returns {unknown} Resultado producido por la operación.
- * @throws {Error} Cuando una validación o dependencia impide completar la operación.
+ * @returns {number} Milisegundos entre revalidaciones (por defecto 30 s).
  */
-export function subscribeToProjectEvents({ projectId, response, userId }) {
+function getReauthorizeIntervalMs() {
+  const value = Number(process.env.SSE_REAUTHORIZE_INTERVAL_MS);
+  return Number.isInteger(value) && value > 0 ? value : 30000;
+}
+
+/**
+ * Suscribe una respuesta SSE a los eventos de un proyecto y administra el ciclo de vida de la conexión.
+ * Si se proporciona `reauthorize`, la vuelve a evaluar periódicamente y cierra el stream cuando deja
+ * de devolver true o falla (falla cerrado): así una revocación de sesión, una desactivación o la
+ * pérdida del acceso al proyecto también cortan las conexiones ya abiertas.
+ *
+ * @param {object} options - Datos de la suscripción.
+ * @param {string} options.projectId - Proyecto cuyos eventos se reciben.
+ * @param {import("express").Response} options.response - Respuesta SSE abierta.
+ * @param {string} options.userId - Usuario suscrito, para el límite de conexiones.
+ * @param {() => Promise<boolean>} [options.reauthorize] - Comprobación periódica de acceso vigente.
+ * @returns {() => void} Función que cancela la suscripción.
+ * @throws {Error} `SSE_CONNECTION_LIMIT` cuando se supera el límite por usuario o por proyecto.
+ */
+export function subscribeToProjectEvents({ projectId, response, userId, reauthorize }) {
   const projectKey = getProjectKey(projectId);
   const clients = projectClients.get(projectKey) || new Set();
   const userKey = String(userId);
@@ -69,6 +84,8 @@ export function subscribeToProjectEvents({ projectId, response, userId }) {
   }, 25000);
 
   let closed = false;
+  let reauthorizing = false;
+  let reauthorization = null;
     /**
    * Procesa el valor de unsubscribe para completar la responsabilidad asignada al módulo.
    * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
@@ -79,6 +96,7 @@ const unsubscribe = () => {
     if (closed) return;
     closed = true;
     clearInterval(heartbeat);
+    if (reauthorization) clearInterval(reauthorization);
     clients.delete(response);
     const remaining = Math.max(0, (userConnectionCounts.get(userKey) || 1) - 1);
     if (remaining) userConnectionCounts.set(userKey, remaining);
@@ -88,6 +106,32 @@ const unsubscribe = () => {
       projectClients.delete(projectKey);
     }
   };
+
+  /**
+   * Revalida la suscripción y, si el acceso ya no es vigente o la comprobación falla, la cancela y
+   * cierra el stream. Evita revalidaciones solapadas si una consulta tarda más que el intervalo.
+   *
+   * @returns {Promise<void>} Finalización de la revalidación.
+   */
+  const revalidateSubscription = async () => {
+    if (closed || reauthorizing) return;
+    reauthorizing = true;
+    let allowed = false;
+    try {
+      allowed = (await reauthorize()) === true;
+    } catch {
+      allowed = false;
+    } finally {
+      reauthorizing = false;
+    }
+    if (allowed || closed) return;
+    unsubscribe();
+    if (!response.writableEnded) response.end();
+  };
+
+  if (typeof reauthorize === "function") {
+    reauthorization = setInterval(revalidateSubscription, getReauthorizeIntervalMs());
+  }
   response.on("error", unsubscribe);
   return unsubscribe;
 }

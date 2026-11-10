@@ -195,9 +195,9 @@ export async function getProjectRequestFileUsage(projectRequestId, executor = po
 }
 
 /**
- * Lista los adjuntos vigentes de una solicitud con los metadatos de su versión actual.
- * Consulta PostgreSQL con parámetros; el llamador debe haber comprobado antes el acceso
- * a la solicitud, porque esta consulta no filtra por usuario.
+ * Lista los adjuntos vigentes de una solicitud (también los que pasaron a su proyecto al aprobarla,
+ * por su origen) con los metadatos de su versión actual. El llamador debe haber comprobado antes el
+ * acceso a la solicitud, porque esta consulta no filtra por usuario.
  *
  * @param {number|string} projectRequestId - Solicitud cuyos adjuntos se consultan.
  * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
@@ -216,7 +216,7 @@ export async function listProjectRequestFiles(projectRequestId, executor = poolE
       from public.files f
       left join public.file_versions fv
         on fv.file_id = f.id and fv.is_current = true and fv.deleted_at is null
-      where f.project_request_id = $1
+      where (f.project_request_id = $1 or f.origin_project_request_id = $1)
         and f.deleted_at is null
         and f.status <> 'deleted'
       order by f.created_at, f.id
@@ -1085,8 +1085,9 @@ export async function findProjectFileForDownload({ fileId, projectId, user }) {
 }
 
 /**
- * Busca el valor de proyecto solicitud archivo for download y devuelve null cuando no existe un registro accesible.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Busca un adjunto de solicitud (incluidos los que pasaron a su proyecto al aprobarla) para descargarlo.
+ * Admin y cliente dueño: siempre; arquitecto: solo asignado y mientras la solicitud no esté convertida,
+ * porque después su acceso lo decide el proyecto (que el admin puede revocar). Null si no es accesible.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {string} options.fileId - Valor de `options.fileId` requerido por esta operación.
@@ -1103,12 +1104,12 @@ export async function findProjectRequestFileForDownload({ fileId, projectRequest
     accessCondition = "true";
   } else if (roleCode === "architect") {
     params.push(user.id);
-    accessCondition = `exists (
+    accessCondition = `(request.status <> 'converted' and exists (
       select 1
       from public.project_request_assignees assignment
       where assignment.project_request_id = request.id
         and assignment.user_id = $3
-    )`;
+    ))`;
   } else if (roleCode === "client" && user.clientId) {
     params.push(user.id, user.clientId);
     accessCondition = `(request.requested_by = $3 or request.client_id = $4)`;
@@ -1126,12 +1127,12 @@ export async function findProjectRequestFileForDownload({ fileId, projectRequest
         version.file_size
       from public.files file
       inner join public.project_requests request
-        on request.id = file.project_request_id
+        on request.id = coalesce(file.project_request_id, file.origin_project_request_id)
       left join public.file_versions version
         on version.file_id = file.id
         and version.version_number = file.current_version
         and version.deleted_at is null
-      where file.project_request_id = $1
+      where (file.project_request_id = $1 or file.origin_project_request_id = $1)
         and file.id = $2
         and file.deleted_at is null
         and file.status <> 'deleted'

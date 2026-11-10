@@ -104,6 +104,7 @@ model files {
   id                 BigInt             @id @default(autoincrement())
   project_id         BigInt?
   project_request_id BigInt?
+  origin_project_request_id BigInt?
   uploaded_by        BigInt
   title              String             @db.VarChar(255)
   description        String?            @db.VarChar(255)
@@ -116,13 +117,15 @@ model files {
   deleted_at         DateTime?          @db.Timestamptz(6)
   file_versions      file_versions?
   projects           projects?          @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_project")
-  project_requests   project_requests?  @relation(fields: [project_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_project_request")
+  project_requests   project_requests?  @relation("files_project_request", fields: [project_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_project_request")
+  origin_project_requests project_requests? @relation("files_origin_project_request", fields: [origin_project_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_origin_project_request")
   users              users              @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_uploaded_by")
   project_comments   project_comments[]
 
   @@index([project_id, created_at(sort: Desc), id(sort: Desc)], map: "files_project_active_cursor_idx", where: raw("(deleted_at IS NULL)"))
   @@index([project_id], map: "idx_files_project_id", where: raw("((project_id IS NOT NULL) AND (deleted_at IS NULL))"))
   @@index([project_request_id], map: "idx_files_project_request_id", where: raw("((project_request_id IS NOT NULL) AND (deleted_at IS NULL))"))
+  @@index([origin_project_request_id], map: "idx_files_origin_project_request_id", where: raw("((origin_project_request_id IS NOT NULL) AND (deleted_at IS NULL))"))
 }
 
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
@@ -440,7 +443,8 @@ model project_requests {
   compatibility_level                        project_compatibility_level?
   compatibility_reason_codes                 Json?
   compatibility_scoring_version              String?                @db.VarChar(20)
-  files                                      files[]
+  files                                      files[]                @relation("files_project_request")
+  converted_files                            files[]                @relation("files_origin_project_request")
   project_request_assignees                  project_request_assignees[]
   project_request_reviews                    project_request_reviews[]
   clients                                    clients                @relation(fields: [client_id], references: [id], map: "fk_project_requests_client")

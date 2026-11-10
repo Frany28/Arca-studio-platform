@@ -5,7 +5,7 @@ import {
   uploadSupportRequestAttachment,
 } from "../controllers/supportController.js";
 import { requireAuth, requirePermissions } from "../middlewares/auth.js";
-import { uploadRateLimit } from "../middlewares/actionRateLimits.js";
+import { supportRequestRateLimit, uploadRateLimit } from "../middlewares/actionRateLimits.js";
 
 const router = Router();
 
@@ -13,6 +13,7 @@ router.post(
   "/requests",
   requireAuth,
   requirePermissions("support.requests.create"),
+  supportRequestRateLimit,
   createSupportRequest,
 );
 router.post(

@@ -1,4 +1,4 @@
-import { pool, query } from "../config/db.js";
+import { pool, query, withTransaction } from "../config/db.js";
 
 /**
  * Busca el valor de registro usuario conflict y devuelve null cuando no existe un registro accesible.
@@ -37,14 +37,40 @@ export async function findPendingRegistrationByEmail(email) {
 }
 
 /**
- * Procesa el valor de upsert pending registro para completar la responsabilidad asignada al módulo.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Crea o renueva el registro pendiente de un correo y, en la misma transacción, libera el teléfono si lo
+ * retiene un pendiente vencido y no completado de OTRO correo (el índice único no distingue vencidos y
+ * permitía bloquear un número ajeno indefinidamente). Los registros completados se conservan.
  *
- * @param {unknown} payload - Datos validados necesarios para completar la operación.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @param {object} payload - Datos validados del registro (nombre, correo, teléfono, token y vencimiento).
+ * @returns {Promise<{ id: number|string, email: string, expires_at: Date }>} Registro pendiente vigente.
+ * @throws {Error} Cuando PostgreSQL falla o el teléfono pertenece a un registro pendiente vigente.
  */
 export async function upsertPendingRegistration(payload) {
-  const result = await query(
+  return withTransaction(async (client) => {
+    await client.query(
+      `
+        delete from public.user_registrations
+        where phone = $1
+          and lower(email) <> lower($2)
+          and used_at is null
+          and expires_at <= now()
+      `,
+      [payload.phone, payload.email],
+    );
+    return insertPendingRegistration(client, payload);
+  });
+}
+
+/**
+ * Inserta o actualiza (por correo) el registro pendiente dentro de la transacción indicada.
+ * Un correo ya pendiente renueva sus datos, su token y su vencimiento.
+ *
+ * @param {{ query: Function }} client - Cliente transaccional.
+ * @param {object} payload - Datos validados del registro.
+ * @returns {Promise<{ id: number|string, email: string, expires_at: Date }>} Registro pendiente vigente.
+ */
+async function insertPendingRegistration(client, payload) {
+  const result = await client.query(
     `
       insert into public.user_registrations (
         first_name, last_name, email, phone, company_name, referral_source,

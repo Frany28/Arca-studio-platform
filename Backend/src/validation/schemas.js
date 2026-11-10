@@ -9,6 +9,22 @@ export const loginSchema = z.object({
   body: z.object({ email: z.string().trim().pipe(z.email("Correo inválido.")).transform((value) => value.toLowerCase()), password: z.string().min(8).max(256) }),
 });
 
+// Recuperación de contraseña: estos esquemas solo fijan el TIPO (cadena acotada). El formato del
+// correo, la firma del token y la fortaleza de la contraseña los sigue validando el controlador con
+// sus códigos actuales (INVALID_EMAIL, INVALID_RESET_TOKEN, INVALID_PASSWORD). Deben ejecutarse antes
+// de los límites por cuenta/destinatario: un valor no textual (p. ej. un arreglo) no produce clave de
+// límite y el controlador lo convertiría en texto con String(), saltándose el límite.
+const recoveryEmail = z.string().max(320);
+const recoveryToken = z.string().max(4096);
+
+export const forgotPasswordSchema = z.object({ body: z.object({ email: recoveryEmail }) });
+
+export const verifyResetTokenSchema = z.object({ body: z.object({ token: recoveryToken }) });
+
+export const resetPasswordSchema = z.object({
+  body: z.object({ password: z.string().max(256), token: recoveryToken }),
+});
+
 export const paginationSchema = z.object({
   query: z.object({ cursor, limit: z.coerce.number().int().min(1).max(100).optional() }).passthrough(),
 });
