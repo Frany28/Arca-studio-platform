@@ -7,6 +7,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
 import { applyBrowserTimeouts, NAVIGATION_TIMEOUT_MS } from "../helpers/browserTimeouts.js";
+import { SESSION_CONFIRMATION_WINDOW_MS } from "../../src/hooks/useRetryAfterSessionConfirmation.js";
 
 // Fase 3 de rendimiento: cuenta las lecturas reales del navegador en las vistas del cliente
 // (Home: useHomeProjects y useHomeProjectRequests; /proyectos: PublicProjectsGallery) sobre un
@@ -217,15 +218,16 @@ test("Home: confirmar la misma sesión no relee proyectos ni solicitudes y conse
 });
 
 test("Home: un 401 persistente en proyectos no provoca un bucle de lecturas", async (context) => {
-  // La lectura de proyectos responde 401 y /auth/me confirma la sesión. Si el efecto dependiera
-  // del objeto `user`, cada confirmación relanzaría la lectura rechazada sin fin y la red nunca
-  // quedaría inactiva.
+  // La lectura de proyectos responde siempre 401 y /auth/me confirma la sesión. Si el efecto
+  // dependiera del objeto `user`, cada confirmación relanzaría la lectura rechazada sin fin. Con el
+  // reintento acotado: lectura original + un único reintento, y una confirmación por cada 401.
   const respond = ({ path, search }) => (path === "/api/projects" && isFullListPage({ search }) ? UNAUTHENTICATED : null);
   const { calls, page } = await openClientPage(context, "/dashboard-clientes", "No pudimos cargar los proyectos", respond);
   await page.waitForTimeout(2000);
-  assert.equal(projectReads(calls), 1, `Lecturas de proyectos con 401 persistente: ${projectReads(calls)}`);
-  assert.ok(count(calls, "/api/auth/me") <= 2, `Confirmaciones /auth/me: ${count(calls, "/api/auth/me")}`);
+  assert.equal(projectReads(calls), 2, `Lecturas de proyectos con 401 persistente: ${projectReads(calls)}`);
+  assert.equal(count(calls, "/api/auth/me"), 3, `/auth/me: restauración inicial + una por cada 401 (${count(calls, "/api/auth/me")})`);
   assert.equal(requestReads(calls), 1, "Las solicitudes no se releen por la confirmación");
+  assert.equal(await page.getByText("No pudimos cargar los proyectos", { exact: true }).first().isVisible(), true, "Tras el reintento fallido se muestra el error");
 });
 
 test("Home: otra cuenta relee proyectos y solicitudes y descarta los datos anteriores", async (context) => {
@@ -371,8 +373,8 @@ test("Galería: un 401 persistente no provoca un bucle de lecturas", async (cont
   const respond = ({ path, search }) => (path === "/api/projects" && search.cursor === "p2" ? UNAUTHENTICATED : null);
   const { calls, page } = await openClientPage(context, "/proyectos", "No pudimos cargar los proyectos", respond);
   await page.waitForTimeout(2000);
-  assert.equal(projectReads(calls), 1, `Lecturas de proyectos con 401 persistente: ${projectReads(calls)}`);
-  assert.ok(count(calls, "/api/auth/me") <= 2, `Confirmaciones /auth/me: ${count(calls, "/api/auth/me")}`);
+  assert.equal(projectReads(calls), 2, `Lecturas de proyectos con 401 persistente: ${projectReads(calls)}`);
+  assert.equal(count(calls, "/api/auth/me"), 3, `/auth/me: restauración inicial + una por cada 401 (${count(calls, "/api/auth/me")})`);
 });
 
 test("Galería: un cambio de rol relee los proyectos", async (context) => {
@@ -425,4 +427,199 @@ test("Galería: salir de la vista cancela la lectura pendiente", async (context)
   await page.waitForTimeout(2000);
   assert.ok(pending.length > 0, "La galería inició su lectura");
   assert.deepEqual(pending.filter(isFinished).map((call) => call.path), [], "La lectura abandonada de la galería no se completa");
+});
+
+// --- Reintento acotado tras confirmar la sesión (validación final de Fase 3) ---------------------
+
+/**
+ * Responde 401 a las `times` primeras peticiones que cumplan `matches` y deja pasar el resto.
+ *
+ * @param {Function} matches - Recibe la petición (`path`, `search`, `backend`).
+ * @param {number} [times=1] - Número de rechazos.
+ * @returns {Function} Respuesta para openClientPage.
+ */
+const rejectFirst = (matches, times = 1) => {
+  let remaining = times;
+  return (call) => {
+    if (remaining > 0 && matches(call)) {
+      remaining -= 1;
+      return UNAUTHENTICATED;
+    }
+    return null;
+  };
+};
+/**
+ * Rechaza con 401 las lecturas que cumplan `matches` hasta que la aplicación pide la confirmación
+ * de sesión (/auth/me tras la restauración inicial). Así el rechazo no se gasta en la lectura que
+ * el StrictMode de desarrollo aborta al montar, cuyo 401 nunca llega a la aplicación.
+ *
+ * @param {Function} matches - Recibe la petición.
+ * @param {Function} [onReject] - Se ejecuta en cada rechazo (por ejemplo, para cambiar de cuenta).
+ * @returns {Function} Respuesta para openClientPage.
+ */
+const rejectUntilConfirmation = (matches, onReject = () => {}) => {
+  let meRequests = 0;
+  return (call) => {
+    if (call.path === "/api/auth/me") meRequests += 1;
+    if (meRequests < 2 && matches(call)) {
+      onReject(call);
+      return UNAUTHENTICATED;
+    }
+    return null;
+  };
+};
+const isFirstFullListPage = ({ path, search }) => path === "/api/projects" && isFullListPage({ search }) && !search.cursor;
+
+test("Home: un 401 transitorio confirmado se reintenta una vez y recupera los datos", async (context) => {
+  const { calls, page } = await openClientPage(context, "/dashboard-clientes", "Museo Público", rejectUntilConfirmation(isFirstFullListPage));
+  await settle(page);
+  assert.equal(projectReads(calls), 2, "Lectura rechazada + un reintento");
+  assert.equal(count(calls, "/api/auth/me"), 2, "Restauración + una confirmación, sin comprobaciones extra");
+  assert.equal(requestReads(calls), 1, "Las solicitudes no se releen");
+  assert.equal(await page.getByText("No pudimos cargar los proyectos", { exact: true }).count(), 0);
+});
+
+test("Home: un 401 transitorio en la primera página de solicitudes se recupera con un reintento", async (context) => {
+  const respond = rejectUntilConfirmation(({ path, search }) => path === "/api/project-requests" && !search.cursor);
+  const { calls, page } = await openClientPage(context, "/dashboard-clientes", "Solicitud Uno", respond);
+  await settle(page);
+  assert.equal(requestReads(calls), 2);
+  assert.equal(projectReads(calls), 1, "La confirmación no relee proyectos");
+});
+
+test("Home: un 401 transitorio en «Cargar más» reintenta esa página y conserva la paginación", async (context) => {
+  const scenario = { reject: false };
+  const respond = (call) => {
+    if (scenario.reject && call.path === "/api/project-requests" && call.search.cursor === "r2") {
+      scenario.reject = false;
+      return UNAUTHENTICATED;
+    }
+    return null;
+  };
+  const { calls, page } = await openClientPage(context, "/dashboard-clientes", "Solicitud Uno", respond);
+  scenario.reject = true;
+  await page.getByRole("button", { name: "Cargar más", exact: true }).click();
+  await page.getByText("Solicitud Dos", { exact: true }).waitFor();
+  await settle(page);
+  assert.equal(count(calls, "/api/project-requests", (call) => call.search.cursor === "r2"), 2, "Página adicional + un reintento");
+  assert.equal(requestReads(calls), 1, "La primera página no se relee");
+  assert.equal(projectReads(calls), 1);
+  assert.equal(await page.getByText("Solicitud Uno", { exact: true }).isVisible(), true, "Conserva la página ya cargada");
+  assert.equal(await page.getByText("No se pudieron cargar más solicitudes.", { exact: true }).count(), 0);
+});
+
+test("Home: una sesión realmente expirada lleva al login sin reintentar", async (context) => {
+  const scenario = { expired: false };
+  const respond = ({ path, search }) => {
+    if (!scenario.expired) return null;
+    if (path === "/api/auth/me" || (path === "/api/projects" && isFullListPage({ search }))) return UNAUTHENTICATED;
+    return null;
+  };
+  const { calls, page } = await openClientPage(context, "/proyectos", "Museo Público", respond);
+  scenario.expired = true;
+  const before = projectReads(calls);
+  await page.getByRole("button", { name: "Dashboard", exact: true }).first().click();
+  await page.waitForURL((url) => url.pathname === "/");
+  await settle(page);
+  assert.equal(projectReads(calls) - before, 1, "Solo la lectura rechazada: sin reintento con la sesión expirada");
+});
+
+test("Home: si la confirmación trae otra cuenta, no se reintenta la lectura de la anterior", async (context) => {
+  const respond = rejectUntilConfirmation(isFirstFullListPage, (call) => {
+    call.backend.state.account = "ana";
+  });
+  const { calls, page } = await openClientPage(context, "/dashboard-clientes", "Solicitud Ana", respond);
+  await page.getByText("Casa Ana 51", { exact: true }).first().waitFor();
+  await settle(page);
+  // La lectura rechazada (Diego) y la de Ana por el cambio de ámbito; ningún reintento adicional.
+  assert.equal(count(calls, "/api/auth/me"), 2);
+  assert.equal(projectReads(calls), 2, `Lecturas de proyectos: ${projectReads(calls)}`);
+  assert.equal(await page.getByText("Casa Diego 50", { exact: true }).count(), 0);
+});
+
+test("Galería: un 401 transitorio confirmado se reintenta una vez y recupera los datos", async (context) => {
+  const { calls, page } = await openClientPage(context, "/proyectos", "Museo Público", rejectFirst(isFirstFullListPage));
+  await settle(page);
+  assert.equal(projectReads(calls), 2);
+  assert.equal(count(calls, "/api/auth/me"), 2);
+});
+
+test("Galería: salir de la vista cancela el reintento en curso", async (context) => {
+  const scenario = { phase: "idle" };
+  const respond = (call) => {
+    if (!isFirstFullListPage(call) || scenario.phase === "idle") return null;
+    if (scenario.phase === "reject") {
+      scenario.phase = "hold";
+      return UNAUTHENTICATED;
+    }
+    return { delayMs: 1500 };
+  };
+  const { held, isFinished, page } = await openClientPage(context, "/dashboard-clientes", "Solicitud Uno", respond);
+  scenario.phase = "reject";
+  await page.getByRole("button", { name: "Ver más proyectos", exact: true }).first().click();
+  await waitUntil(page, () => held.length > 0);
+  const pending = [...held];
+  await page.getByRole("button", { name: "Configuraciones", exact: true }).first().click();
+  await page.waitForURL((url) => url.pathname === "/configuraciones");
+  await page.waitForTimeout(2000);
+  assert.equal(pending.length, 1, "Se inició exactamente un reintento");
+  assert.equal(isFinished(pending[0]), false, "El reintento abandonado no se completa");
+});
+
+test("Galería: salir antes de la confirmación descarta el reintento programado", async (context) => {
+  const scenario = { phase: "idle" };
+  const respond = (call) => {
+    if (scenario.phase === "idle") return null;
+    if (call.path === "/api/auth/me") return { delayMs: 1000 };
+    if (isFirstFullListPage(call) && scenario.phase === "reject") {
+      scenario.phase = "rejected";
+      return UNAUTHENTICATED;
+    }
+    return null;
+  };
+  const { calls, page } = await openClientPage(context, "/dashboard-clientes", "Solicitud Uno", respond);
+  const before = projectReads(calls);
+  scenario.phase = "reject";
+  await page.getByRole("button", { name: "Ver más proyectos", exact: true }).first().click();
+  await waitUntil(page, () => scenario.phase === "rejected");
+  await page.getByRole("button", { name: "Dashboard", exact: true }).first().click();
+  await page.waitForURL((url) => url.pathname === "/dashboard-clientes");
+  await page.waitForTimeout(2000);
+  // La galería hizo una lectura (rechazada) y Home, al montarse de nuevo, otra; la galería
+  // abandonada no reintenta aunque la confirmación llegue después.
+  assert.equal(projectReads(calls) - before, 2, `Lecturas tras salir: ${projectReads(calls) - before}`);
+});
+
+test("Galería: una confirmación ajena y tardía no ejecuta el reintento pendiente", async (context) => {
+  // La lectura recibe 401 y su confirmación falla (/auth/me 503 en todos los intentos), así que
+  // AuthContext no publica nada. Pasada la ventana de confirmación, otro 401 ajeno sí se confirma:
+  // ese objeto `user` nuevo no debe relanzar la lectura original.
+  const scenario = { phase: "idle" };
+  const respond = (call) => {
+    if (scenario.phase === "reject" && isFirstFullListPage(call)) {
+      scenario.phase = "unavailable";
+      return UNAUTHENTICATED;
+    }
+    if (scenario.phase === "unavailable" && call.path === "/api/auth/me") {
+      return { status: 503, json: { code: "SERVICE_UNAVAILABLE", message: "No disponible." } };
+    }
+    return rejectProbe(call);
+  };
+  const { calls, page } = await openClientPage(context, "/dashboard-clientes", "Solicitud Uno", respond);
+  scenario.phase = "reject";
+  await page.getByRole("button", { name: "Ver más proyectos", exact: true }).first().click();
+  await page.getByText("No pudimos cargar los proyectos", { exact: true }).first().waitFor();
+  await waitUntil(page, () => count(calls, "/api/auth/me", () => true) >= 4);
+  await settle(page);
+  const before = projectReads(calls);
+
+  scenario.phase = "available";
+  await page.waitForTimeout(SESSION_CONFIRMATION_WINDOW_MS + 500);
+  const meBefore = count(calls, "/api/auth/me");
+  await triggerSessionConfirmation(page);
+  await waitUntil(page, () => count(calls, "/api/auth/me") > meBefore);
+  await settle(page);
+
+  assert.equal(projectReads(calls), before, "La confirmación ajena no relanza la lectura fallida");
+  assert.equal(await page.getByText("No pudimos cargar los proyectos", { exact: true }).first().isVisible(), true);
 });

@@ -33,6 +33,7 @@ import {
   getDashboardPath,
 } from "../../utils/sideNavigationItems.js";
 import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
+import { useRetryAfterSessionConfirmation } from "../../hooks/useRetryAfterSessionConfirmation.js";
 
 function getCardHeight(index, columns, projectCount) {
   if (projectCount === 1) return 560;
@@ -193,45 +194,56 @@ export default function PublicProjectsGallery() {
   // Lectura vigente: una nueva (reintento o cambio de sesión) aborta la anterior.
   const projectsRequestRef = useRef(null);
   const sessionScopeKey = getSessionDataScopeKey(user);
+  const { clear: clearProjectsRetry, scheduleIfUnauthenticated: scheduleProjectsRetry } =
+    useRetryAfterSessionConfirmation(user);
 
   /**
    * Lee la colección completa de proyectos y aplica solo la respuesta de la lectura más reciente.
    * Depende del ámbito de la sesión (cuenta, rol y cliente), no de la referencia de `user`:
    * AuthContext publica un objeto nuevo al confirmar la misma sesión tras un 401 y, si esa lectura
    * fue la rechazada, depender del objeto la repetía sin fin. Una lectura abortada no cambia el
-   * estado, así que la respuesta tardía de otra cuenta no sustituye a la vigente.
+   * estado, así que la respuesta tardía de otra cuenta no sustituye a la vigente. Si el primer
+   * intento recibe 401 UNAUTHENTICATED y AuthContext confirma la misma sesión, se repite una sola
+   * vez (useRetryAfterSessionConfirmation); un segundo fallo deja el error y «Reintentar».
    *
    * @returns {void}
    */
   const loadProjects = useCallback(() => {
-    projectsRequestRef.current?.abort();
-    const controller = new AbortController();
-    projectsRequestRef.current = controller;
-    const { signal } = controller;
-    setLoading(true);
-    setError("");
+    clearProjectsRetry();
 
-    if (!sessionScopeKey) {
-      setProjects([]);
-      setError("Vuelve a iniciar sesión para cargar los proyectos.");
-      setLoading(false);
-      return;
-    }
+    const readProjects = (isRetry) => {
+      projectsRequestRef.current?.abort();
+      const controller = new AbortController();
+      projectsRequestRef.current = controller;
+      const { signal } = controller;
+      setLoading(true);
+      setError("");
 
-    api.projects
-      .listAll({ signal })
-      .then((data) => {
-        if (!signal.aborted) setProjects(data.projects || []);
-      })
-      .catch(() => {
-        if (signal.aborted) return;
+      if (!sessionScopeKey) {
         setProjects([]);
-        setError("No se pudieron cargar los proyectos públicos.");
-      })
-      .finally(() => {
-        if (!signal.aborted) setLoading(false);
-      });
-  }, [sessionScopeKey]);
+        setError("Vuelve a iniciar sesión para cargar los proyectos.");
+        setLoading(false);
+        return;
+      }
+
+      api.projects
+        .listAll({ signal })
+        .then((data) => {
+          if (!signal.aborted) setProjects(data.projects || []);
+        })
+        .catch((loadError) => {
+          if (signal.aborted) return;
+          setProjects([]);
+          setError("No se pudieron cargar los proyectos públicos.");
+          if (!isRetry) scheduleProjectsRetry(loadError, signal, () => readProjects(true));
+        })
+        .finally(() => {
+          if (!signal.aborted) setLoading(false);
+        });
+    };
+
+    readProjects(false);
+  }, [clearProjectsRetry, scheduleProjectsRetry, sessionScopeKey]);
 
   // La lectura empieza en el siguiente frame; la limpieza cancela el frame y aborta la lectura
   // en curso al cambiar de sesión o desmontar.

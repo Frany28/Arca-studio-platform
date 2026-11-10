@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
 import { getSessionDataScopeKey } from "../../../auth/sessionDataScope.js";
+import { useRetryAfterSessionConfirmation } from "../../../hooks/useRetryAfterSessionConfirmation.js";
 import { getProjectAssigneeAvatar } from "../../../utils/projectAssigneeDisplay.js";
 import { getProjectImageSource } from "../../../utils/projectImage.js";
 import { isProjectOperationallyReadOnly } from "../../../utils/projectReadOnly.js";
@@ -46,6 +47,8 @@ export default function useHomeProjects({ user }) {
   // Lectura vigente: una nueva la sustituye y la anterior se aborta (todas sus páginas).
   const projectsRequestRef = useRef(null);
   const sessionScopeKey = getSessionDataScopeKey(user);
+  const { clear: clearProjectsRetry, scheduleIfUnauthenticated: scheduleProjectsRetry } =
+    useRetryAfterSessionConfirmation(user);
 
   const projectRows = useMemo(
     () => projects.map((project) => toProjectRow(project)),
@@ -83,39 +86,48 @@ export default function useHomeProjects({ user }) {
    * Recarga proyectos (acción «Actualizar») y aplica únicamente la respuesta de la lectura más
    * reciente: iniciar otra aborta la anterior. Conserva los datos durante la espera; si la carga
    * vigente falla, los vacía. Una lectura abortada no modifica el estado.
+   * Si el primer intento recibe 401 UNAUTHENTICATED y AuthContext confirma la misma sesión, se
+   * repite una sola vez (useRetryAfterSessionConfirmation); un segundo fallo deja el error.
    *
    * @returns {Promise<void>} Actualiza datos, carga y error; no devuelve los proyectos.
    */
-  const loadProjects = useCallback(async () => {
-    projectsRequestRef.current?.abort();
-    const controller = new AbortController();
-    projectsRequestRef.current = controller;
-    const { signal } = controller;
-    setProjectsLoading(true);
-    setProjectsError("");
+  const loadProjects = useCallback(() => {
+    clearProjectsRetry();
 
-    if (!sessionScopeKey) {
-      setProjects([]);
-      setProjectsLoading(false);
-      return;
-    }
+    const readProjects = async (isRetry) => {
+      projectsRequestRef.current?.abort();
+      const controller = new AbortController();
+      projectsRequestRef.current = controller;
+      const { signal } = controller;
+      setProjectsLoading(true);
+      setProjectsError("");
 
-    try {
-      const data = await api.projects.listAll({ signal });
-      if (!signal.aborted) {
-        setProjects(data.projects || []);
-      }
-    } catch {
-      if (!signal.aborted) {
+      if (!sessionScopeKey) {
         setProjects([]);
-        setProjectsError("No se pudieron cargar los proyectos.");
-      }
-    } finally {
-      if (!signal.aborted) {
         setProjectsLoading(false);
+        return;
       }
-    }
-  }, [sessionScopeKey]);
+
+      try {
+        const data = await api.projects.listAll({ signal });
+        if (!signal.aborted) {
+          setProjects(data.projects || []);
+        }
+      } catch (error) {
+        if (!signal.aborted) {
+          setProjects([]);
+          setProjectsError("No se pudieron cargar los proyectos.");
+          if (!isRetry) scheduleProjectsRetry(error, signal, () => readProjects(true));
+        }
+      } finally {
+        if (!signal.aborted) {
+          setProjectsLoading(false);
+        }
+      }
+    };
+
+    return readProjects(false);
+  }, [clearProjectsRetry, scheduleProjectsRetry, sessionScopeKey]);
 
   // Lee al montar y al cambiar el ámbito de la sesión. La limpieza aborta la lectura vigente:
   // el montaje doble del StrictMode de desarrollo no completa una lectura duplicada.
