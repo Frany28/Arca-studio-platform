@@ -39,7 +39,7 @@ test("administrative rejection and corrections require a public reason", () => {
   }).success, true);
 });
 
-test("the request workflow enforces assignment, review and atomic conversion", async () => {
+test("the request workflow supports optional assignment and atomic direct conversion", async () => {
   const [assignmentSource, repositorySource, routesSource, migrationSource, fileSource, seedSource] = await Promise.all([
     readFile(new URL("../src/repositories/adminDashboardRepository.js", import.meta.url), "utf8"),
     readFile(new URL("../src/repositories/projectRequestWorkflowRepository.js", import.meta.url), "utf8"),
@@ -52,8 +52,11 @@ test("the request workflow enforces assignment, review and atomic conversion", a
   assert.match(assignmentSource, /status in \('pending_verification', 'pending_review'\)/);
   assert.match(assignmentSource, /role_code = 'architect'/);
   assert.match(assignmentSource, /then 'pending_review'/);
+  assert.match(assignmentSource, /else 'pending_verification'/);
+  assert.doesNotMatch(assignmentSource, /mutable_target\.status = 'pending_verification'\s+or/);
   assert.match(repositorySource, /for update/);
-  assert.match(repositorySource, /review_count/);
+  assert.doesNotMatch(repositorySource, /review_count|review_required/);
+  assert.match(repositorySource, /\["pending_verification", "pending_review"\]\.includes\(request\.status\)/);
   assert.match(repositorySource, /insert into public\.projects/);
   assert.match(repositorySource, /status = \$2::public\.project_request_status/);
   assert.match(repositorySource, /insert into public\.notifications/);
