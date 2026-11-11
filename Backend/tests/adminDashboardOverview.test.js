@@ -75,6 +75,7 @@ test("admin dashboard requests map database rows to the public contract", () => 
       id: "12",
       project_name: "Apto. Noventa y Uno",
       project_type: "residential",
+      requested_by: "41",
       status: "pending_review",
     }),
     {
@@ -83,6 +84,7 @@ test("admin dashboard requests map database rows to the public contract", () => 
       id: 12,
       projectName: "Apto. Noventa y Uno",
       projectType: "residential",
+      requestedBy: 41,
       status: "pending_review",
     },
   );
