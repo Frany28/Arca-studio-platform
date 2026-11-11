@@ -170,7 +170,7 @@ En los adjuntos de solicitudes, `frame-ancestors` solo admite `'self'`. Se manti
 | POST `/project-requests/:projectRequestId/files` | Binario | 201 `{file}`; posible `{id,originalName,reused:true}` | Sesión + borrador editable propio; 404, 409 límite/duplicado, 413 acumulado |
 | DELETE `/project-requests/:projectRequestId/files/:fileId` | — | 200 `{deleted:true,fileId}` | Sesión + borrador propio; 404 |
 | GET `/project-requests/:projectRequestId/files/:fileId/content` | Range opcional | 200/206 binario | Sesión + propiedad o acceso de revisión; 404 |
-| GET `/project-requests/review-queue` | P | 200 `{projectRequests:WorkflowRequest[],nextCursor}` | Sesión + admin/architect; arquitecto limitado a asignaciones |
+| GET `/project-requests/review-queue` | P | 200 `{projectRequests:WorkflowRequest[],nextCursor}`; cada solicitud incluye `clientName` (nombre de la ficha de cliente) solo para administradores, `null` para arquitectos. Gestión de proyectos la usa para mostrar las solicitudes abiertas en su tabla | Sesión + admin/architect; arquitecto limitado a asignaciones |
 | PUT `/project-requests/:projectRequestId/review` | `{recommendation:approve|reject|changes_requested,note,meetingRecommendation?:SCHEDULE_MEETING|DO_NOT_SCHEDULE_MEETING|null}`; nota 10–2000 | 200 `{review:{id,note,recommendation,meetingRecommendation,updatedAt}}` | Ruta admin/architect; conserva acceso del admin y del arquitecto asignado; 403 PROJECT_REQUEST_REVIEW_FORBIDDEN, 409 PROJECT_REQUEST_CLOSED |
 
 RequestPayload (JSON estricto, rechaza propiedades desconocidas):

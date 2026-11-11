@@ -17,10 +17,13 @@ import { isArchivedProject } from "../admin-dashboard/components/admin-active-pr
 import { useAdminDashboardData } from "../admin-dashboard/hooks/useAdminDashboardData.js";
 import { useAdminProjectMutations } from "../admin-dashboard/hooks/useAdminProjectMutations.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
+import { getAdminProjectRequestPath } from "../../utils/projectRequestRoutes.js";
 import ProjectArchiveModal from "./components/ProjectArchiveModal.jsx";
 import ProjectSettingsModal from "./components/ProjectSettingsModal.jsx";
+import { useAdminProjectRequestRows } from "./hooks/useAdminProjectRequestRows.js";
 import { useProjectRowActions } from "./hooks/useProjectRowActions.js";
 import { getAdminProjectMetrics } from "./utils/adminProjectMetrics.js";
+import { isProjectRequestRow } from "./utils/projectRequestRows.js";
 import { getProjectRowActions } from "./utils/projectRowActions.js";
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
@@ -30,6 +33,8 @@ const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
  * Asignación de responsables y acciones de fila (visibilidad, archivo) reutilizan los
  * contratos HTTP existentes mediante `useAdminProjectMutations`; la tabla solo cambia
  * tras la respuesta del servidor. Edición y acciones masivas permanecen fuera de esta fase.
+ * La tabla incluye las solicitudes abiertas (Figma 3727:686417) con el estado «Solicitud»: su ojo
+ * abre el detalle de la solicitud y sus responsables usan el contrato de solicitudes.
  * @returns {import("react").ReactElement} Página administrativa responsive con datos reales.
  */
 export default function AdminProjectsPage() {
@@ -50,6 +55,11 @@ export default function AdminProjectsPage() {
   // no depende de estas acciones, por eso no se refrescan métricas tras cada operación.
   const { updateProjectAssignees, runProjectAction } = useAdminProjectMutations({ setProjects });
   const rowActions = useProjectRowActions({ runProjectAction });
+  const { requestRows, requestsError, requestsLoading, updateRequestAssignees } = useAdminProjectRequestRows({
+    enabled: Boolean(user), requestKey,
+  });
+  // Solicitudes primero (Figma): las filas conservan su forma de proyecto con id prefijado.
+  const tableRows = useMemo(() => [...requestRows, ...projectRows], [projectRows, requestRows]);
   const metrics = useMemo(() => getAdminProjectMetrics(projects), [projects]);
   const display = (value) => value === null || value === undefined ? "—" : NUMBER_FORMATTER.format(value);
   const { dialog } = rowActions;
@@ -74,13 +84,14 @@ export default function AdminProjectsPage() {
           </div>
         )}
         {adminMetricsError ? <HintText state="Error" hintText={adminMetricsError} /> : null}
+        {requestsError && !projectsLoading ? <HintText state="Error" hintText={requestsError} /> : null}
       </section>
       <AdminActiveProjects
-        variant="management" projects={projectRows} loading={projectsLoading} error={projectsError}
+        variant="management" projects={tableRows} loading={projectsLoading || requestsLoading} error={projectsError}
         assignees={adminAssignees} assigneesLoading={adminAssigneesLoading}
-        onProjectAssigneesChange={updateProjectAssignees}
-        getProjectActions={getProjectRowActions} onProjectAction={rowActions.handleRowAction}
-        onOpenProject={(project) => navigate(getProjectPath(project))}
+        onProjectAssigneesChange={(row, assignees) => (isProjectRequestRow(row) ? updateRequestAssignees(row, assignees) : updateProjectAssignees(row, assignees))}
+        getProjectActions={(row) => (isProjectRequestRow(row) ? [] : getProjectRowActions(row))} onProjectAction={rowActions.handleRowAction}
+        onOpenProject={(row) => navigate(isProjectRequestRow(row) ? getAdminProjectRequestPath(row.requestId) : getProjectPath(row))}
         onRetry={() => setRequestKey((key) => key + 1)}
       />
       <ProjectSettingsModal

@@ -170,6 +170,21 @@ export const adminApi = {
       : payload;
   },
 
+  /**
+   * Lee una página de solicitudes abiertas (pendientes de verificación o de revisión) para
+   * Gestión de proyectos, con la foto administrativa de cada responsable y el cliente.
+   *
+   * @param {{cursor?: string|null, limit?: number, signal?: AbortSignal}} [options] - Página y cancelación.
+   * @returns {Promise<{projectRequests: Array<Object>, nextCursor: string|null}>} Página de solicitudes.
+   */
+  async listOpenProjectRequests({ cursor, limit = 100, signal } = {}) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set("cursor", cursor);
+    const payload = await apiRequest(`/project-requests/review-queue?${params.toString()}`, { signal });
+    const projectRequests = (payload?.projectRequests || []).map((request) => ({ ...request, ...withAdminAssigneeAvatars(request) }));
+    return { ...payload, projectRequests };
+  },
+
   async updateProjectRequestAssignees({ assigneeIds, projectRequestId }) {
     const payload = await apiRequest(
       `/admin/project-requests/${encodeURIComponent(projectRequestId)}/assignees`,

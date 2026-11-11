@@ -25,7 +25,9 @@ test("selected admin project rows use the Figma neutral selection surface", asyn
   );
   assert.doesNotMatch(source, /import Tooltip/);
   assert.doesNotMatch(source, /<Tooltip/);
-  assert.match(source, /tooltip="Ver proyecto"/);
+  // Las solicitudes de Gestión de proyectos se abren con «Ver solicitud»; los proyectos, con «Ver proyecto».
+  assert.match(source, /const viewLabel = project\.kind === "request" \? "Ver solicitud" : "Ver proyecto";/);
+  assert.match(source, /tooltip=\{viewLabel\}/);
   assert.match(source, /tooltip="Editar proyecto"/);
   assert.match(source, /tooltip="Más opciones"/);
 });

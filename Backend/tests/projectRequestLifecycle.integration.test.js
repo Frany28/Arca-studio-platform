@@ -317,6 +317,8 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   const queue = await api("/project-requests/review-queue?limit=100", { headers: admin });
   assert.equal(queue.status, 200);
   assert.ok(queue.body.projectRequests.some((item) => item.id === id));
+  // Gestión de proyectos muestra el cliente de cada solicitud abierta (solo en la cola del administrador).
+  assert.equal(queue.body.projectRequests.find((item) => item.id === id).clientName, "Cliente prueba");
   const adminDetail = await api(`/admin/project-requests/${id}`, { headers: admin });
   assert.equal(adminDetail.status, 200, JSON.stringify(adminDetail.body));
   assert.deepEqual(adminDetail.body.projectRequest.files.map((file) => file.id), [persisted.id]);
@@ -325,6 +327,9 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   assert.equal(adminContent.status, 200);
   const assigned = await api(`/admin/project-requests/${id}/assignees`, { body: { assigneeIds: [seed.architect] }, headers: admin, method: "PUT" });
   assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
+  const architectQueue = await api("/project-requests/review-queue?limit=100", { headers: architect });
+  assert.equal(architectQueue.status, 200);
+  assert.equal(architectQueue.body.projectRequests.find((item) => item.id === id).clientName, null, "el arquitecto no recibe el cliente en su cola");
   const review = await api(`/project-requests/${id}/review`, {
     body: { note: "Faltan fotografías actuales del terreno.", recommendation: "changes_requested" },
     headers: architect,

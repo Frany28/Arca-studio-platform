@@ -432,6 +432,9 @@ function AdminActiveProjects({
                 const assignees = getAssignees(project);
                 const progress = Math.min(100, Math.max(0, Number(project.progress) || 0));
                 const projectName = project.title || project.name || "Proyecto";
+                // Una fila sin acciones (p. ej. una solicitud) muestra el botón «Más opciones» deshabilitado.
+                const rowMenuItems = getProjectActions && onProjectAction ? getProjectActions(project) : [];
+                const viewLabel = project.kind === "request" ? "Ver solicitud" : "Ver proyecto";
                 const isSelected = selectedProjectIds.has(String(project.id));
                 const assignmentDisabled = isProjectOperationallyReadOnly(project)
                   || (isManagement && !onProjectAssigneesChange);
@@ -502,12 +505,12 @@ function AdminActiveProjects({
                     <td className="px-[24px] py-[16px]"><Badge label={`${progress}%`} theme="Neutral" variation="Simple" size="S" /></td>
                     <td className="px-[24px] py-[16px]">
                       <div className="flex items-center gap-[8px]">
-                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} tooltip="Ver proyecto" aria-label={`Ver ${projectName}`} onClick={() => onOpenProject(project)} />
+                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} tooltip={viewLabel} aria-label={`Ver ${projectName}`} onClick={() => onOpenProject(project)} />
                         <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Edit2 size="20" color="currentColor" />} showRightIcon={false} tooltip="Editar proyecto" aria-label={`Editar ${projectName}`} disabled={!project.editable || (isManagement && !onEditProject)} onClick={() => (onEditProject || onOpenProject)(project)} />
-                        {getProjectActions && onProjectAction ? (
+                        {rowMenuItems.length ? (
                           // Figma 3727:686867: el "Dropdown button" de la fila mide 183 px.
                           <ActionMenu
-                            items={getProjectActions(project)}
+                            items={rowMenuItems}
                             tooltip="Más opciones"
                             triggerLabel={`Más opciones de ${projectName}`}
                             menuLabel={`Acciones de ${projectName}`}

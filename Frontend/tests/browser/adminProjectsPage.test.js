@@ -39,7 +39,7 @@ after(async () => { await browser?.close(); await server?.close(); });
  * @param {Object} [options] - Tema, datos y manejador de mutaciones.
  * @returns {Promise<import("playwright").Page>} Página lista con la tabla cargada.
  */
-async function openPage(context, { theme = "light", projects = PROJECTS, fail = false, hold = false, assignees = [], onMutation, viewport = { width: 1440, height: 1200 } } = {}) {
+async function openPage(context, { theme = "light", projects = PROJECTS, requests = [], fail = false, hold = false, assignees = [], onMutation, viewport = { width: 1440, height: 1200 } } = {}) {
   const session = await browser.newContext({ viewport });
   const page = applyBrowserTimeouts(await session.newPage());
   const errors = [];
@@ -63,7 +63,7 @@ async function openPage(context, { theme = "light", projects = PROJECTS, fail = 
       "/api/auth/me": { user: { id: 1, firstName: "Admin", lastName: "Prueba", email: "admin@example.test", role: "admin", status: "active" } },
       "/api/admin/dashboard-metrics": { metrics: { requests: { total: 18 } } },
       "/api/admin/dashboard-overview": { overview: { recentActivity: [], newRequests: [] } },
-      "/api/project-requests/review-queue": { projectRequests: [], nextCursor: null },
+      "/api/project-requests/review-queue": { projectRequests: requests, nextCursor: null },
       "/api/admin/assignees": { assignees },
     }[pathname];
     if (!payload) errors.push(`Lectura no prevista: ${pathname}`);
@@ -428,6 +428,55 @@ test("Gestión: responsables reutilizan selector, confirmación y avisos del Das
   await removal.waitFor();
   await removal.getByRole("button", { name: "Cancelar", exact: true }).click();
   assert.equal(calls.length, 1, "cancelar la baja no persiste");
+});
+
+// Solicitudes abiertas de la cola administrativa (Figma 3727:686417): la primera sin responsables.
+const REQUESTS = [
+  { assignees: [], clientId: 50, clientName: "Diego Jiménez", id: 30, projectName: "Stand Aurea", status: "pending_review", updatedAt: "2026-11-10T12:00:00Z" },
+  { assignees: [{ hasProfilePhoto: false, id: 9, name: "Laura Rivas", roleCode: "architect" }], clientId: 51, clientName: "Ana María Ruiz", id: 31, projectName: "Stand Nexar 2026", status: "pending_verification", updatedAt: "2026-11-09T12:00:00Z" },
+];
+
+test("Gestión: las solicitudes abiertas aparecen en la tabla con su cliente, estado Solicitud y responsables", async (context) => {
+  const calls = [];
+  const carmen = { id: 12, name: "Carmen Díaz", roleCode: "architect", roleName: "Arquitecta" };
+  const laura = { id: 9, name: "Laura Rivas", roleCode: "architect", roleName: "Arquitecta" };
+  const page = await openPage(context, { assignees: [laura, carmen], requests: REQUESTS, onMutation: (request) => {
+    calls.push(request);
+    return { json: { assignees: [carmen] } };
+  } });
+  const rows = page.locator("tbody tr");
+  // Solicitudes primero; el id de una solicitud (30) no se confunde con el del proyecto 30.
+  assert.deepEqual(await rows.nth(0).locator("td").allInnerTexts().then((cells) => cells.slice(1, 3)), ["Stand Aurea", "Diego Jiménez"]);
+  const request = rows.nth(0);
+  await request.getByText("Solicitud", { exact: true }).waitFor();
+  await request.getByText("0%", { exact: true }).waitFor();
+  assert.equal(await rows.nth(1).getByText("Laura Rivas", { exact: true }).count(), 1);
+  assert.equal(await page.getByText("Proyecto 1", { exact: true }).count(), 1, "los proyectos siguen en la tabla");
+  // Indicadores: proyectos solo cuenta proyectos; Solicitudes viene de las métricas.
+  const kpis = page.getByLabel("Indicadores de proyectos");
+  assert.match(await kpis.innerText(), /Proyectos totales\s*12/);
+  assert.match(await kpis.innerText(), /Solicitudes\s*18/);
+  // Sin acciones de proyecto: el menú se muestra deshabilitado.
+  assert.equal(await request.getByRole("button", { name: "Más opciones de Stand Aurea" }).isDisabled(), true);
+  if (process.env.ARCA_PROJECT_REQUEST_CAPTURE_DIR) await page.screenshot({ path: join(process.env.ARCA_PROJECT_REQUEST_CAPTURE_DIR, "management-requests.png") });
+
+  // Responsables: se guardan con el contrato de solicitudes, no con el de proyectos.
+  const input = page.getByRole("textbox", { name: "Responsables de Stand Aurea", exact: true });
+  await input.fill("Carmen");
+  await input.press("Enter");
+  await request.getByText("Carmen Díaz", { exact: true }).waitFor();
+  assert.deepEqual(calls, [{ method: "PUT", pathname: "/api/admin/project-requests/30/assignees", body: { assigneeIds: [12] } }]);
+
+  // Filtro de estado «Solicitud»: solo quedan las solicitudes.
+  await page.getByRole("button", { name: /Filtrar proyectos por status/ }).click();
+  await page.locator(".admin-active-projects__filter-menu button").filter({ hasText: "Solicitud" }).click();
+  await page.getByRole("heading", { name: "Gestión de proyectos", exact: true }).click();
+  assert.equal(await rows.count(), 2);
+
+  // El ojo abre el detalle administrativo de la solicitud (su lectura queda fuera de esta prueba).
+  await page.route((url) => url.pathname.startsWith("/api/admin/project-requests/30"), (route) => route.fulfill({ json: { code: "PROJECT_REQUEST_NOT_FOUND", message: "Fuera de la prueba" }, status: 404 }));
+  await request.getByRole("button", { name: "Ver Stand Aurea" }).click();
+  await page.waitForURL((url) => url.pathname === "/solicitudes-proyecto/30");
 });
 
 test("Gestión: menú y modal dentro del viewport en todos los anchos, con sidebar y scroll interno", async (context) => {

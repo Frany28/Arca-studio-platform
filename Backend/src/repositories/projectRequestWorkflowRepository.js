@@ -7,6 +7,7 @@ import { pageResult } from "../utils/pagination.js";
 const WORKFLOW_REQUEST_COLUMNS = `
         request.id,
         request.client_id,
+        request_client.name as client_name,
         request.requested_by,
         request.project_name,
         request.project_type,
@@ -38,6 +39,7 @@ const WORKFLOW_REQUEST_COLUMNS = `
         coalesce(attachment.files, '[]'::json) as files`;
 
 const WORKFLOW_REQUEST_RELATIONS = `
+      left join public.clients request_client on request_client.id = request.client_id
       left join lateral (
         select json_agg(
           json_build_object(
@@ -157,6 +159,7 @@ function toWorkflowRequest(row) {
       ? row.assignees.map(toPerson).filter(Boolean)
       : [],
     clientId: Number(row.client_id),
+    clientName: row.client_name || null,
     compatibility: row.compatibility_score == null
       ? null
       : {
@@ -262,10 +265,11 @@ ${WORKFLOW_REQUEST_RELATIONS}
     params,
   );
 
+  // Gestión de proyectos muestra el cliente de cada solicitud; la cola del arquitecto no lo recibe.
   return pageResult(
     result.rows,
     limit,
-    toWorkflowRequest,
+    (row) => (isAdmin ? toWorkflowRequest(row) : { ...toWorkflowRequest(row), clientName: null }),
     (row) => [row.updated_at, Number(row.id)],
   );
 }
