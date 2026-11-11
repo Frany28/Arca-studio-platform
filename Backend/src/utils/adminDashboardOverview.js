@@ -51,6 +51,7 @@ export function mapAdminDashboardRequest(row = {}) {
     id: toNumber(row.id),
     projectName: row.project_name || "Solicitud de proyecto",
     projectType: row.project_type || null,
+    requestedBy: toNumber(row.requested_by),
     status: row.status || null,
   };
 }
