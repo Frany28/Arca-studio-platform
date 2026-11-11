@@ -481,6 +481,28 @@ test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cot
   assert.equal(mutations.length, 1);
 });
 
+test("el administrador aprueba directamente una solicitud sin arquitectos ni revisiones", async (context) => {
+  const pending = { ...REQUEST, assignees: [], reviews: [], status: "pending_verification" };
+  const converted = { ...CONVERTED, assignees: [], reviews: [] };
+  const { page, mutations } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? pending : converted } }),
+    mutation: (route) => route.fulfill({
+      json: {
+        project: { id: 40, name: pending.projectName, status: "pending" },
+        projectRequest: { convertedProjectId: 40, id: pending.id, status: "converted" },
+      },
+    }),
+  });
+
+  await page.getByRole("button", { name: "Aprobar", exact: true }).click();
+  await confirmDecision(page, mutations);
+  assert.deepEqual(mutations[0].body, { action: "approve" });
+  assert.equal(mutations.length, 1);
+  await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Crear cotización", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Aprobar", exact: true }).count(), 0);
+});
+
 test("un conflicto por otro administrador conserva el modal, relee y avisa del cambio externo", async (context) => {
   const { page, mutations, reads } = await openPage(context, {
     detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : { ...CONVERTED, updatedAt: "2026-10-05T12:00:00.000Z" } } }),
