@@ -380,7 +380,7 @@ async function confirmDecision(page, mutations, note) {
 test("la barra sigue el orden de Figma y cada estado ofrece solo sus acciones válidas", async (context) => {
   const cases = [
     ["pending_review", { ...REQUEST }, ["Ver resumen & recomendación", "Rechazar", "Solicitar más información", "Aprobar"], false],
-    ["pending_verification", { ...REQUEST, reviews: [], status: "pending_verification" }, ["Ver resumen & recomendación", "Rechazar", "Solicitar más información", "Aprobar"], true],
+    ["pending_verification", { ...REQUEST, assignees: [], reviews: [], status: "pending_verification" }, ["Ver resumen & recomendación", "Rechazar", "Solicitar más información", "Aprobar"], false],
     ["changes_requested", { ...REQUEST, status: "changes_requested" }, ["Ver resumen & recomendación"], null],
     ["rejected", { ...REQUEST, status: "rejected" }, ["Ver resumen & recomendación"], null],
     ["converted", CONVERTED, ["Ver resumen & recomendación", "Ver proyecto", "Crear cotización"], null],
@@ -393,12 +393,6 @@ test("la barra sigue el orden de Figma y cada estado ofrece solo sus acciones v�
     if (disabled !== null) {
       const approve = page.getByRole("button", { name: "Aprobar", exact: true });
       assert.equal(await approve.isDisabled(), disabled, `${label}: Aprobar`);
-      if (disabled) {
-        // El motivo es visible y queda asociado a las acciones bloqueadas.
-        const notice = page.getByText("Para decidir, asigna un arquitecto y espera su revisión técnica.", { exact: true });
-        await notice.waitFor();
-        assert.equal(await approve.getAttribute("aria-describedby"), await notice.getAttribute("id"));
-      }
     }
     assert.deepEqual(mutations, [], label);
   }
@@ -490,13 +484,13 @@ test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cot
 test("un conflicto por otro administrador conserva el modal, relee y avisa del cambio externo", async (context) => {
   const { page, mutations, reads } = await openPage(context, {
     detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : { ...CONVERTED, updatedAt: "2026-10-05T12:00:00.000Z" } } }),
-    mutation: (route) => route.fulfill({ json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes que están en revisión." }, status: 409 }),
+    mutation: (route) => route.fulfill({ json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes pendientes de evaluación o revisión." }, status: 409 }),
   });
 
   await page.getByRole("button", { name: "Rechazar", exact: true }).click();
   await confirmDecision(page, mutations, "Motivo escrito antes del conflicto.");
   const dialog = page.getByRole("dialog");
-  await dialog.getByText("Solo se pueden decidir solicitudes que están en revisión.", { exact: true }).waitFor();
+  await dialog.getByText("Solo se pueden decidir solicitudes pendientes de evaluación o revisión.", { exact: true }).waitFor();
   assert.equal(await dialog.getByRole("textbox").inputValue(), "Motivo escrito antes del conflicto.");
   await page.getByText("Solicitud actualizada", { exact: true }).waitFor();
   assert.equal(await page.getByText("Solicitud rechazada", { exact: true }).count(), 0);
@@ -507,9 +501,9 @@ test("un conflicto por otro administrador conserva el modal, relee y avisa del c
   assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación", "Ver proyecto", "Crear cotización"]);
 });
 
-test("una revisión técnica pendiente o un fallo de red se muestran en el modal sin éxito ni relectura", async (context) => {
+test("un fallo de red y un conflicto de nombre se muestran en el modal sin éxito ni relectura", async (context) => {
   const responses = [
-    { json: { code: "PROJECT_REQUEST_REVIEW_REQUIRED", message: "Se necesita al menos una revisión registrada por un arquitecto asignado." }, status: 409 },
+    { json: { code: "PROJECT_NAME_ALREADY_EXISTS", message: "El cliente ya tiene un proyecto con el nombre de esta solicitud." }, status: 409 },
     "abort",
   ];
   const { page, mutations, reads } = await openPage(context, {
@@ -522,7 +516,7 @@ test("una revisión técnica pendiente o un fallo de red se muestran en el modal
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
   await confirmDecision(page, mutations);
   const dialog = page.getByRole("dialog");
-  await dialog.getByText("Se necesita al menos una revisión registrada por un arquitecto asignado.", { exact: true }).waitFor();
+  await dialog.getByText("El cliente ya tiene un proyecto con el nombre de esta solicitud.", { exact: true }).waitFor();
   await confirmDecision(page, mutations);
   await dialog.getByText(/conexión/i).first().waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
