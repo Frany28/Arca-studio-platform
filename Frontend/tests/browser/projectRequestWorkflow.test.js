@@ -189,8 +189,11 @@ for (const [action, label, expected] of [
     const dialog = page.getByRole("dialog");
     assert.equal(await dialog.getByRole("group", { name: "Recomendación de reunión" }).count(), 0);
     await dialog.getByRole("button", { name: label, exact: true }).click();
+    if (action === "changes_requested") {
+      await dialog.getByRole("heading", { name: "Solicitar información adicional" }).waitFor();
+    }
     await dialog.getByRole("textbox").fill("Nota de decisión");
-    await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+    await dialog.getByRole("button", { name: action === "changes_requested" ? "Finalizar" : "Confirmar decisión", exact: true }).click();
     await waitMutation(page, mutations);
     assert.deepEqual(calls.find((call) => call.method === "PATCH"), { method: "PATCH", path: "/api/admin/project-requests/7/decision", body: expected });
     assert.deepEqual(await page.evaluate(() => window.workflowHarness.events), []);
@@ -679,10 +682,11 @@ test("Dashboard admin real: menú de acciones del drawer — orden, teclado y pr
   await page.keyboard.press("Space");
   await drawer.waitFor({ state: "detached" });
   const decisionDialog = page.getByRole("dialog");
+  await decisionDialog.getByRole("heading", { name: "Solicitar información adicional" }).waitFor();
   await decisionDialog.getByRole("textbox").fill("Falta adjuntar los planos del terreno.");
   assert.equal(mutations.length, 0);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await decisionDialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await decisionDialog.getByRole("button", { name: "Finalizar", exact: true }).click();
   await decisionRequest;
   assert.deepEqual(calls.find((call) => call.method === "PATCH").body, {
     action: "request_changes",

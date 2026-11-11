@@ -10,6 +10,7 @@ import { ProjectDocumentViewerModal } from "../../pages/projects/components/Proj
 import { isPdfAttachment, toAttachmentViewerDocument } from "../../utils/projectRequestAttachments.js";
 import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
 import MeetingRecommendationField from "./MeetingRecommendationField.jsx";
+import ProjectRequestAdditionalInfoContent from "./ProjectRequestAdditionalInfoContent.jsx";
 
 const OPTIONS = [
   { id: "changes_requested", label: "Solicitar correcciones" },
@@ -27,6 +28,8 @@ function CloseIcon() {
 
 /**
  * Modal de revisión técnica o decisión administrativa de una solicitud.
+ * «Solicitar más información» muestra el contenido de Figma 3727:677375
+ * con contacto real del cliente y motivo requerido, sin alterar el contrato HTTP.
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * `initialAction` solo preselecciona la opción al montar; el consumidor debe cambiar
  * la `key` del modal para reiniciar la selección entre aperturas.
@@ -109,6 +112,22 @@ function ProjectRequestWorkflowModal({
       onClose={submitting ? undefined : onClose}
       contentClassName="max-h-dvh overflow-y-auto"
     >
+      {mode === "decision" && action === "changes_requested" ? (
+        <ProjectRequestAdditionalInfoContent
+          dialogRef={dialogRef}
+          error={localError || error}
+          note={note}
+          onCancel={onClose}
+          onFinalize={submit}
+          onNoteChange={(value) => {
+            setNote(value);
+            setLocalError("");
+          }}
+          open={open}
+          projectRequest={projectRequest}
+          submitting={submitting}
+        />
+      ) : (
       <section
         ref={dialogRef}
         className="relative flex w-full max-w-[620px] flex-col gap-[20px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[24px] shadow-[var(--shadow-e2)]"
@@ -252,6 +271,7 @@ function ProjectRequestWorkflowModal({
           />
         ) : null}
       </section>
+      )}
     </Modal>
   );
 }

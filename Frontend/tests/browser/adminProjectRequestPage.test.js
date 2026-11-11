@@ -365,11 +365,11 @@ async function actionBarButtons(page) {
 }
 
 /** Escribe el motivo, confirma la decisión y espera a que la API la reciba. */
-async function confirmDecision(page, mutations, note) {
+async function confirmDecision(page, mutations, note, actionLabel = "Confirmar decisión") {
   const dialog = page.getByRole("dialog");
   if (note !== undefined) await dialog.getByRole("textbox").fill(note);
   const before = mutations.length;
-  await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await dialog.getByRole("button", { name: actionLabel, exact: true }).click();
   const deadline = Date.now() + NAVIGATION_TIMEOUT_MS;
   while (mutations.length === before) {
     if (Date.now() > deadline) throw new Error("La decisión no llegó a la API");
@@ -435,20 +435,56 @@ test("rechazar exige motivo, confirma contra la API y solo entonces avisa y actu
   assert.equal(detailReads(reads), 2);
 });
 
-test("solicitar más información conserva la solicitud y refleja el estado confirmado", async (context) => {
+test("solicitar más información muestra el modal de Figma, el contacto real y conserva el flujo de correcciones", async (context) => {
   const { page, mutations } = await openPage(context, {
     detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : { ...REQUEST, correctionReason: "Adjunta el plano del terreno.", status: "changes_requested" } } }),
+    extraDetails: {
+      "/api/admin/users/11": { json: { user: { id: 11, name: "Cliente Prueba", email: "cliente@example.com", phone: "+58 414 1234567" } } },
+    },
     mutation: (route) => route.fulfill({ json: { project: null, projectRequest: { correctionReason: "Adjunta el plano del terreno.", id: 9, reviewedAt: "2026-10-05T12:00:00.000Z", status: "changes_requested" } } }),
   });
 
   await page.getByRole("button", { name: "Solicitar más información", exact: true }).click();
-  await confirmDecision(page, mutations, "Adjunta el plano del terreno.");
+  const dialog = page.getByRole("dialog", { name: "Solicitar información adicional" });
+  await dialog.getByText("cliente@example.com", { exact: true }).waitFor();
+  await dialog.getByText("+58 414 1234567", { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Enviar correo" }).isDisabled(), false);
+  assert.equal(await dialog.getByRole("button", { name: "Abrir WhatsApp" }).isDisabled(), false);
+  await dialog.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await dialog.getByText("Explica la recomendación o decisión con al menos 10 caracteres.").waitFor();
+  assert.deepEqual(mutations, [], "no se guarda sin especificar información faltante");
+
+  await page.evaluate(() => {
+    window.__contactsCopied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value) => window.__contactsCopied.push(value) },
+    });
+  });
+  await dialog.getByRole("button", { name: "Copiar correo" }).click();
+  await dialog.getByRole("button", { name: "Copiar teléfono" }).click();
+  assert.deepEqual(await page.evaluate(() => window.__contactsCopied), ["cliente@example.com", "+58 414 1234567"]);
+
+  await confirmDecision(page, mutations, "Adjunta el plano del terreno.", "Finalizar");
   assert.deepEqual(mutations[0].body, { action: "request_changes", reason: "Adjunta el plano del terreno." });
   await page.getByText("Correcciones solicitadas", { exact: true }).first().waitFor();
   await page.getByText("El cliente podrá editar la solicitud y volver a enviarla.", { exact: true }).waitFor();
   assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación"]);
   // Los datos de la solicitud se conservan.
   for (const text of ["Casa Prueba", "plano.pdf", "Recomienda aprobar"]) await page.getByText(text, { exact: true }).first().waitFor();
+});
+
+test("el contacto faltante no se inventa y Cancelar no envía la solicitud", async (context) => {
+  const { page, mutations } = await openPage(context);
+  await page.getByRole("button", { name: "Solicitar más información", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Solicitar información adicional" });
+  await dialog.getByText("No registrado", { exact: true }).first().waitFor();
+  assert.equal(await dialog.getByText("No registrado", { exact: true }).count(), 2);
+  assert.equal(await dialog.getByRole("button", { name: "Enviar correo" }).isDisabled(), true);
+  assert.equal(await dialog.getByRole("button", { name: "Abrir WhatsApp" }).isDisabled(), true);
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(mutations, []);
 });
 
 test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cotización", async (context) => {

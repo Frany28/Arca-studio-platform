@@ -651,6 +651,7 @@ export async function getAdminDashboardOverview() {
     query(`
       select
         request.id,
+        request.requested_by,
         request.project_name,
         request.project_type,
         request.status,
