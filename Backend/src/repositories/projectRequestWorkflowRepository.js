@@ -460,30 +460,13 @@ export async function decideProjectRequest({
       await client.query("rollback");
       return { outcome: "not_found" };
     }
-    if (request.status !== "pending_review") {
+    if (!["pending_verification", "pending_review"].includes(request.status)) {
       await client.query("rollback");
       return { outcome: "invalid_state", status: request.status };
     }
 
-    const reviewerResult = await client.query(
-      `
-        select count(*)::integer as review_count
-        from public.project_request_reviews review
-        inner join public.project_request_assignees active_assignment
-          on active_assignment.project_request_id = review.project_request_id
-          and active_assignment.user_id = review.reviewer_id
-        inner join public.users reviewer on reviewer.id = review.reviewer_id
-        inner join public.roles role on role.id = reviewer.role_id
-        where review.project_request_id = $1
-          and role.code = 'architect'
-      `,
-      [projectRequestId],
-    );
-    if (Number(reviewerResult.rows[0]?.review_count || 0) < 1) {
-      await client.query("rollback");
-      return { outcome: "review_required" };
-    }
-
+    // La revisión técnica es opcional: el administrador puede decidir sin asignaciones.
+    // El bloqueo FOR UPDATE de la solicitud impide decisiones/conversiones simultáneas.
     let project = null;
     let nextStatus;
     if (action === "request_changes") {
