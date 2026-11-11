@@ -179,8 +179,8 @@ export async function assignEmployeesToProjectRequest({
   }
   if (!result.assignmentAllowed) {
     throw new ValidationError(
-      "Una solicitud en revisión debe conservar al menos un arquitecto asignado.",
-      { assigneeIds: "Selecciona al menos un arquitecto." },
+      "No fue posible actualizar los responsables de la solicitud.",
+      { assigneeIds: "Comprueba la selección e inténtalo nuevamente." },
     );
   }
 
