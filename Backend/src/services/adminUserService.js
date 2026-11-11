@@ -209,22 +209,23 @@ export async function createAdminUser(payload) {
 }
 
 /**
- * Error de un cambio de estado que asignaría o retiraría `pending`: una cuenta pendiente solo se
- * activa cuando su titular usa el enlace de activación enviado a su correo.
+ * Error de un cambio que devolvería una cuenta a `pending` o la sacaría de ese estado por la vía
+ * de estados (sin correo ni contraseña). Una cuenta pendiente se activa desde «Editar usuario»
+ * (correo y contraseña) o con el enlace de activación enviado a su correo.
  *
  * @returns {ConflictError} 409 PENDING_ACCOUNT_STATUS_LOCKED.
  */
 function pendingStatusLockedError() {
   return new ConflictError(
     "PENDING_ACCOUNT_STATUS_LOCKED",
-    "Una cuenta pendiente solo se activa con el enlace de activación enviado a su correo.",
+    "Una cuenta pendiente se activa desde «Editar usuario», con su correo y su contraseña, o con el enlace de activación. Ninguna cuenta vuelve a quedar pendiente.",
   );
 }
 
 /**
- * Comprueba las reglas de una edición respecto al estado pendiente: una cuenta pendiente conserva
- * estado y rol cliente y no recibe contraseña; ninguna otra pasa a pendiente ni queda sin correo.
- * Un nombre de una sola palabra solo se acepta si la cuenta ya no tenía apellido.
+ * Comprueba las reglas de una edición respecto al estado pendiente. Una cuenta pendiente conserva
+ * el rol cliente; sale de `pending` solo con correo, y para quedar activa necesita contraseña.
+ * Ninguna otra cuenta vuelve a `pending` ni queda sin correo; un nombre de una palabra solo vale si ya no tenía apellido.
  *
  * @param {{ status: string, last_name: string }} current - Estado actual de la cuenta.
  * @param {object} payload - Edición validada por adminUserUpdateSchema.
@@ -233,12 +234,17 @@ function pendingStatusLockedError() {
  */
 function assertPendingAccountEdit(current, payload) {
   if (current.status === "pending") {
-    if (payload.status !== "pending") throw pendingStatusLockedError();
     if (payload.roleCode !== "client") {
       throw new ConflictError("PENDING_ACCOUNT_ROLE_LOCKED", "Una cuenta pendiente conserva el rol de cliente hasta su activación.");
     }
-    if (payload.password) {
-      throw new ConflictError("PENDING_ACCOUNT_PASSWORD_LOCKED", "La contraseña la define el titular al activar su cuenta.");
+    if (payload.status === "pending" && payload.password) {
+      throw new ConflictError("PENDING_ACCOUNT_PASSWORD_LOCKED", "Al definir la contraseña, la cuenta debe pasar a Activo.");
+    }
+    if (payload.status !== "pending" && !payload.email) {
+      throw new ValidationError(undefined, { email: "Ingresa el correo electrónico para activar la cuenta." });
+    }
+    if (payload.status === "active" && !payload.password) {
+      throw new ValidationError(undefined, { password: "Define una contraseña para activar la cuenta." });
     }
   } else {
     if (payload.status === "pending") throw pendingStatusLockedError();
@@ -350,11 +356,17 @@ export async function updateAdminUser({ actorUserId, payload, userId }) {
 
   let updated;
   try {
+    // Una cuenta que sale de `pending` como suspendida o deshabilitada sin contraseña recibe una
+    // aleatoria e inutilizable (como el alta administrativa): la base exige hash fuera de `pending`.
+    const leavesPendingWithoutPassword = current.status === "pending" && payload.status !== "pending" && !payload.password;
     const passwordHash = payload.password
       ? await bcrypt.hash(payload.password, 10)
-      : null;
+      : leavesPendingWithoutPassword
+        ? await bcrypt.hash(crypto.randomBytes(32).toString("base64url"), 10)
+        : null;
     updated = await updateAdminUserRecord({
       ...payload,
+      actorUserId,
       firstName: payload.fullName.firstName,
       lastName: payload.fullName.lastName,
       passwordHash,

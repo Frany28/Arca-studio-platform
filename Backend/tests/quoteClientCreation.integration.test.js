@@ -324,7 +324,7 @@ test("10. edición: muestra el cliente creado, no crea otra cuenta y permite cam
   assert.equal(schemas.quoteUpdateSchema.safeParse({ body: { ...validEdit, newClient: { name: "Otro" } }, params: { quoteId: "1" } }).success, false);
 });
 
-test("8. cuenta pendiente: sin acceso, sin recuperación y sin cambios de estado manuales", { skip }, async () => {
+test("8. cuenta pendiente: sin acceso ni recuperación; solo sale de pendiente con correo y, activa, con contraseña", { skip }, async () => {
   const { quote } = await createQuote(newClientBody("Paula Ortiz"));
   const [{ id: userId }] = (await accountOf(quote.client.id)).users;
   await editUser(userId, { email: "paula@arca.test", fullName: "Paula Ortiz", roleCode: "client", status: "pending" });
@@ -333,7 +333,9 @@ test("8. cuenta pendiente: sin acceso, sin recuperación y sin cambios de estado
   const userRepository = await import("../src/repositories/userRepository.js");
   assert.equal(await userRepository.findActiveUserById(userId), null);
   await rejectsWith(adminUsers.updateAdminUserStatus({ actorUserId: ids.admin, status: "active", userId }), "PENDING_ACCOUNT_STATUS_LOCKED");
-  await rejectsWith(editUser(userId, { email: "paula@arca.test", fullName: "Paula Ortiz", roleCode: "client", status: "active" }), "PENDING_ACCOUNT_STATUS_LOCKED");
+  // Activa sin contraseña o con otro estado sin correo: se rechaza sin escribir.
+  await rejectsWith(editUser(userId, { email: "paula@arca.test", fullName: "Paula Ortiz", roleCode: "client", status: "active" }), "VALIDATION_ERROR");
+  await rejectsWith(editUser(userId, { email: "", fullName: "Paula Ortiz", roleCode: "client", status: "inactive" }), "VALIDATION_ERROR");
   await rejectsWith(editUser(userId, { email: "paula@arca.test", fullName: "Paula Ortiz", roleCode: "admin", status: "pending" }), "PENDING_ACCOUNT_ROLE_LOCKED");
   await rejectsWith(
     editUser(userId, { email: "paula@arca.test", fullName: "Paula Ortiz", password: STRONG_PASSWORD, roleCode: "client", status: "pending" }),
@@ -343,6 +345,33 @@ test("8. cuenta pendiente: sin acceso, sin recuperación y sin cambios de estado
   assert.deepEqual(stored, { is_client: true, password_hash: null, status: "pending" });
   // La ficha comercial sigue activa (se puede seguir cotizando) y con el correo completado.
   assert.deepEqual((await accountOf(quote.client.id)).client.status, "active");
+});
+
+test("8. administrador: activa una cuenta pendiente con contraseña o la cambia a otro estado sin acceso", { skip }, async () => {
+  const { quote } = await createQuote(newClientBody("Rocío Paz"));
+  const [{ id: userId }] = (await accountOf(quote.client.id)).users;
+  await editUser(userId, { email: "rocio@arca.test", fullName: "Rocío Paz", roleCode: "client", status: "pending" });
+  sentEmails.length = 0;
+  await activation.sendAccountActivationLink({ actorUserId: ids.admin, userId });
+  const token = new URL(sentEmails[0].text.match(/https:\/\/app\.arca\.test\/activar-cuenta\?token=\S+/)[0]).searchParams.get("token");
+
+  const activated = await editUser(userId, { email: "rocio@arca.test", fullName: "Rocío Paz", password: STRONG_PASSWORD, roleCode: "client", status: "active" });
+  assert.equal(activated.status, "active");
+  assert.equal((await credentials.verifyUserCredentials({ email: "rocio@arca.test", password: STRONG_PASSWORD })).status, "valid");
+  assert.equal(await activation.isActivationTokenValid(token), false, "el enlace pendiente deja de servir");
+  const [audit] = await rows("select user_id::int, new_values from public.audit_logs where action = 'user.activate_by_admin' and entity_id = $1", [userId]);
+  assert.deepEqual(audit, { new_values: { status: "active" }, user_id: ids.admin });
+  // Una cuenta activa ya no vuelve a pendiente.
+  await rejectsWith(editUser(userId, { email: "rocio@arca.test", fullName: "Rocío Paz", roleCode: "client", status: "pending" }), "PENDING_ACCOUNT_STATUS_LOCKED");
+
+  // Deshabilitar una pendiente sin contraseña: deja de estar pendiente, pero nadie conoce su contraseña.
+  const { quote: other } = await createQuote(newClientBody("Iván Sosa"));
+  const [{ id: otherId }] = (await accountOf(other.client.id)).users;
+  await editUser(otherId, { email: "ivan@arca.test", fullName: "Iván Sosa", roleCode: "client", status: "inactive" });
+  const [stored] = await rows("select status::text, password_hash is not null as has_hash from public.users where id = $1", [otherId]);
+  assert.deepEqual(stored, { has_hash: true, status: "inactive" });
+  assert.equal((await credentials.verifyUserCredentials({ email: "ivan@arca.test", password: STRONG_PASSWORD })).status, "invalid");
+  assert.equal((await accountOf(other.client.id)).client.status, "inactive");
 });
 
 test("13. cuentas activas: siguen exigiendo correo, apellido y no pueden pasar a pendientes", { skip }, async () => {

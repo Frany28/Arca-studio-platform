@@ -1,5 +1,6 @@
 import { pool, query } from "../config/db.js";
 import { mapAdminUserMetrics } from "../utils/adminUsers.js";
+import { insertAuditLog } from "./auditLogRepository.js";
 import { invalidatePasswordResetTokens } from "./passwordResetRepository.js";
 import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "./sessionRepository.js";
 
@@ -107,6 +108,7 @@ export async function findAdminUserAccessRecord(userId) {
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
+ * @param {number|null} [options.actorUserId] - Administrador que edita; responsable en la auditoría al salir de `pending`.
  * @param {string} options.companyName - Valor de `options.companyName` requerido por esta operación.
  * @param {string} options.email - Valor de `options.email` requerido por esta operación.
  * @param {string} options.firstName - Valor de `options.firstName` requerido por esta operación.
@@ -123,6 +125,7 @@ export async function findAdminUserAccessRecord(userId) {
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function updateAdminUserRecord({
+  actorUserId = null,
   companyName,
   email,
   firstName,
@@ -146,8 +149,10 @@ export async function updateAdminUserRecord({
       await client.query("rollback");
       return { reason: "user", user: null };
     }
-    // La cuenta pudo activarse tras la comprobación del servicio: `pending` nunca se asigna ni se retira aquí.
-    if ((current.status === "pending") !== (status === "pending")) {
+    // Repite bajo bloqueo las reglas del servicio: ninguna cuenta vuelve a `pending` y una cuenta
+    // que sale de `pending` necesita hash de contraseña (chk_users_identity_unless_pending).
+    const leavesPending = current.status === "pending" && status !== "pending";
+    if ((status === "pending" && current.status !== "pending") || (leavesPending && !passwordHash)) {
       await client.query("rollback");
       return { reason: "pending", user: null };
     }
@@ -214,6 +219,19 @@ export async function updateAdminUserRecord({
       : 0;
     // Un enlace de recuperación emitido antes del cambio (p. ej. al correo anterior) ya no debe valer.
     if (revocationReason) await invalidatePasswordResetTokens({ userId }, client);
+    if (leavesPending) {
+      await insertAuditLog({
+        action: status === "active" ? "user.activate_by_admin" : "user.leave_pending_by_admin",
+        description: status === "active"
+          ? "Cuenta pendiente activada por un administrador con correo y contraseña."
+          : "Cuenta pendiente cambiada de estado por un administrador.",
+        entityId: Number(userId),
+        entityType: "user",
+        newValues: { status },
+        oldValues: { status: "pending" },
+        userId: actorUserId ?? Number(userId),
+      }, client);
+    }
     await client.query("commit");
     return {
       reason: null,

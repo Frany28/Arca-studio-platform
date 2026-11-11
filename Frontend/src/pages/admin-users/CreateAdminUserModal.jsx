@@ -29,9 +29,9 @@ const STATUS_ITEMS = [
   { id: "blocked", label: "Suspendido", type: "Text" },
   { id: "inactive", label: "Deshabilitado", type: "Text" },
 ];
-// Una cuenta pendiente (cliente creado desde una cotización) conserva su estado y su rol cliente:
-// solo su titular la activa con el enlace enviado a su correo.
-const PENDING_STATUS_ITEMS = [{ id: "pending", label: "Pendiente de activación", type: "Text" }];
+// Una cuenta pendiente (cliente creado desde una cotización) puede seguir pendiente o pasar a otro
+// estado; al definir su contraseña queda Activa. Conserva el rol cliente mientras está pendiente.
+const PENDING_STATUS_ITEMS = [{ id: "pending", label: "Pendiente de activación", type: "Text" }, ...STATUS_ITEMS];
 
 function splitPhone(value) {
   const normalized = String(value || "").replace(/\D/g, "");
@@ -70,8 +70,8 @@ function getInitialValues(user, roles) {
 }
 
 /**
- * Valida el formulario con las reglas del backend. Una cuenta pendiente admite el correo vacío
- * (se completa antes de enviar la activación) y un nombre de una sola palabra (persona o empresa
+ * Valida el formulario con las reglas del backend. Una cuenta que sigue pendiente admite el correo
+ * vacío; al cambiarla de estado lo exige. Admite un nombre de una sola palabra (persona o empresa
  * registrada con su nombre completo), igual que una cuenta cuyo nombre ya era de una palabra.
  *
  * @param {Object} values - Valores del formulario.
@@ -85,7 +85,7 @@ function validate(values, { pending = false, singleNameAllowed = false } = {}) {
     errors.fullName = pending || singleNameAllowed ? "Ingresa el nombre." : "Ingresa nombre y apellido.";
   }
   const email = values.email.trim();
-  if ((email || !pending) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if ((email || !pending || values.status !== "pending") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = "Ingresa un correo electrónico válido.";
   }
   if (!values.roleCode) errors.roleCode = "Selecciona un rol.";
@@ -215,8 +215,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
       return;
     }
 
-    // La contraseña de una cuenta pendiente la define su titular al activarla: no hay paso de contraseña.
-    if (editing && !pending) {
+    if (editing) {
       setSubmitError("");
       setEditStep("password");
       return;
@@ -248,9 +247,18 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
       focusInvalidField();
       return;
     }
+    // Activar una cuenta pendiente exige su contraseña.
+    if (pending && values.status === "active" && !password) {
+      setPasswordError("Define una contraseña para activar la cuenta.");
+      focusInvalidField();
+      return;
+    }
 
+    const payload = buildPayload();
     await submitPayload({
-      ...buildPayload(),
+      ...payload,
+      // Una cuenta pendiente que recibe contraseña pasa a Activo.
+      ...(pending && password && payload.status === "pending" ? { status: "active" } : {}),
       ...(password ? { password } : {}),
     });
   };
@@ -315,7 +323,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
 
             <footer className="flex flex-col-reverse gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px] sm:flex-row sm:items-center">
               <Button theme="Primary" type="Outline" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting} className="!h-[41px] !w-full sm:min-w-0 sm:flex-1" onClick={onClose}>Cancelar</Button>
-              <Button theme="Primary" type="Solid" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting || roles.length === 0} className="!h-[41px] !w-full sm:min-w-0 sm:flex-1" htmlType="submit" form={`${mode}-admin-user-form`}>{submitting ? (editing ? "Guardando..." : "Creando...") : (pending ? "Guardar" : editing ? "Siguiente" : "Enviar código de activación")}</Button>
+              <Button theme="Primary" type="Solid" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting || roles.length === 0} className="!h-[41px] !w-full sm:min-w-0 sm:flex-1" htmlType="submit" form={`${mode}-admin-user-form`}>{submitting ? (editing ? "Guardando..." : "Creando...") : (editing ? "Siguiente" : "Enviar código de activación")}</Button>
             </footer>
           </>
         ) : (
@@ -328,7 +336,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
                   size="S"
                   value={password}
                   state={passwordState}
-                  hintText={passwordError || "Ingresa una nueva contraseña"}
+                  hintText={passwordError || (pending ? "Al definir una contraseña, la cuenta pasará a Activo." : "Ingresa una nueva contraseña")}
                   showHint
                   showLabelInfo={false}
                   required={false}

@@ -112,7 +112,7 @@ test("usuarios: una cuenta pendiente se identifica, no cambia de estado a mano y
   }
 });
 
-test("usuarios: editar una cuenta pendiente admite correo vacío, conserva estado y rol y guarda sin contraseña", async (context) => {
+test("usuarios: editar una cuenta pendiente ofrece todos los estados y, sin contraseña, la conserva pendiente", async (context) => {
   const details = { ...PENDING_NO_EMAIL, companyName: null, notes: [], notesTotal: 0, phone: null, projects: [], secondaryPhone: null };
   const { page, requests } = await openApp(context, "/usuarios", {
     responses: {
@@ -130,15 +130,41 @@ test("usuarios: editar una cuenta pendiente admite correo vacío, conserva estad
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${process.env.ARCA_PENDING_CAPTURE_DIR}/pending-user-edit.png` });
   }
+  // El selector de estado incluye Pendiente y los demás estados.
+  await dialog.getByText("Pendiente de activación").first().click();
+  for (const label of ["Activo", "Suspendido", "Deshabilitado"]) await dialog.getByText(label, { exact: true }).first().waitFor();
+  await dialog.getByText("Pendiente de activación").last().click();
   // El nombre comercial completo es válido aunque no tenga apellido; el correo puede quedar vacío.
   await dialog.getByLabel("Email").fill("ANDES@example.test");
-  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog.getByText("Al definir una contraseña, la cuenta pasará a Activo.").waitFor();
+  await dialog.getByRole("button", { name: "Confirmar cambios", exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   const patch = requests.find((request) => request.key === "PATCH /api/admin/users/201");
   assert.deepEqual(
     { email: patch.body.email, fullName: patch.body.fullName, password: patch.body.password, roleCode: patch.body.roleCode, status: patch.body.status },
     { email: "andes@example.test", fullName: "Constructora Los Andes", password: undefined, roleCode: "client", status: "pending" },
   );
+});
+
+test("usuarios: al definir la contraseña de una cuenta pendiente, se guarda como Activo", async (context) => {
+  const details = { ...PENDING_WITH_EMAIL, companyName: null, notes: [], notesTotal: 0, phone: null, projects: [], secondaryPhone: null };
+  const { page, requests } = await openApp(context, "/usuarios", {
+    responses: {
+      ...USERS_RESPONSES,
+      "GET /api/admin/users/202": { json: { user: details } },
+      "PATCH /api/admin/users/202": { json: { message: "Usuario actualizado.", user: { ...PENDING_WITH_EMAIL, status: "active" } } },
+    },
+  });
+  await page.getByRole("button", { name: "Editar Ana Ruiz" }).click();
+  const dialog = page.getByRole("dialog", { name: "Editar usuario" });
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog.getByLabel("Cambiar contraseña", { exact: true }).fill("Activa2026*");
+  await dialog.getByLabel("Confirmar contraseña").fill("Activa2026*");
+  await dialog.getByRole("button", { name: "Confirmar cambios", exact: true }).click();
+  await dialog.waitFor({ state: "hidden" });
+  const patch = requests.find((request) => request.key === "PATCH /api/admin/users/202");
+  assert.deepEqual({ password: patch.body.password, status: patch.body.status }, { password: "Activa2026*", status: "active" });
 });
 
 test("activación: el titular define su contraseña con el enlace y vuelve al inicio de sesión con la cuenta activa", async (context) => {
