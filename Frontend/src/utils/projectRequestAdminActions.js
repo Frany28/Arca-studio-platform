@@ -2,13 +2,12 @@
  * Disponibilidad de las acciones de la barra inferior de la consulta administrativa (Figma
  * 3727:687292; «Crear cotización», variantes 5749:491810 y 5749:492214) según el estado real de
  * la solicitud. Es una ayuda de interfaz: el backend sigue siendo la autoridad y rechaza con 409
- * cualquier decisión inválida (`PROJECT_REQUEST_INVALID_STATE`, `PROJECT_REQUEST_REVIEW_REQUIRED`).
+ * cualquier decisión inválida (`PROJECT_REQUEST_INVALID_STATE`).
  *
  * Política (ver `decideProjectRequest` en el backend y «Solicitudes de proyecto» en DESIGN_SYSTEM):
  * - `pending_review`: Rechazar, Solicitar más información y Aprobar habilitadas. Que exista una
- *   revisión válida de un arquitecto asignado lo comprueba el backend al confirmar.
- * - `pending_verification`: las decisiones se muestran deshabilitadas con el motivo; la revisión
- *   técnica empieza al asignar el primer arquitecto.
+ *   la revisión técnica es opcional y el administrador puede decidir sin ella.
+ * - `pending_verification`: ofrece las mismas decisiones, incluso sin responsables asignados.
  * - `changes_requested`, `rejected` y `converted`: ya decididas; no se ofrecen decisiones.
  * - `converted` con proyecto vigente: «Ver proyecto» y «Crear cotización» (la cotización necesita
  *   cliente y proyecto, y el proyecto solo existe tras la aprobación).
@@ -20,9 +19,6 @@ export const ADMIN_REQUEST_DECISION_ACTIONS = Object.freeze([
   { id: "changes_requested", label: "Solicitar más información", theme: "Info", type: "Outline" },
   { id: "approve", label: "Aprobar", theme: "Primary", type: "Solid" },
 ]);
-
-const PENDING_VERIFICATION_NOTICE =
-  "Para decidir, asigna un arquitecto y espera su revisión técnica.";
 
 /**
  * Acciones disponibles para la solicitud mostrada.
@@ -38,8 +34,9 @@ export function getAdminProjectRequestActions(projectRequest) {
     : null;
 
   let decisions = null;
-  if (status === "pending_review") decisions = { disabled: false, notice: "" };
-  else if (status === "pending_verification") decisions = { disabled: true, notice: PENDING_VERIFICATION_NOTICE };
+  if (status === "pending_review" || status === "pending_verification") {
+    decisions = { disabled: false, notice: "" };
+  }
 
   return { canCreateQuote: Boolean(convertedProject), convertedProject, decisions };
 }
