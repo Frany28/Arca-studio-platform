@@ -53,6 +53,7 @@ function AdminRequestAssignmentModal({
               <p className="text-body-3 text-[var(--color-text-200)]">
                 La persona a la que asignes se encargará de analizar la solicitud
                 de proyecto y enviarte un resumen y recomendación de acciones.
+                Esta revisión es opcional: también puedes aprobarla directamente.
               </p>
             </div>
 

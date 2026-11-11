@@ -24,7 +24,7 @@ test("las decisiones siguen el orden de Figma con la acción principal al final"
 test("cada estado ofrece solo las acciones que el backend acepta", () => {
   const cases = [
     ["pending_review", { disabled: false, notice: "" }, false],
-    ["pending_verification", { disabled: true, notice: "Para decidir, asigna un arquitecto y espera su revisión técnica." }, false],
+    ["pending_verification", { disabled: false, notice: "" }, false],
     ["changes_requested", null, false],
     ["rejected", null, false],
     ["draft", null, false],

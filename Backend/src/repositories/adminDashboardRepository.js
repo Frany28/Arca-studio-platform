@@ -451,11 +451,7 @@ export async function replaceProjectRequestAssignees({
       ),
       permission as (
         select
-          (select all_eligible from validation)
-          and (
-            mutable_target.status = 'pending_verification'
-            or (select has_architect from validation)
-          ) as assignment_allowed
+          (select all_eligible from validation) as assignment_allowed
         from mutable_target
       ),
       upserted as (
@@ -486,7 +482,7 @@ export async function replaceProjectRequestAssignees({
           status = case
             when (select has_architect from validation)
               then 'pending_review'::public.project_request_status
-            else request.status
+            else 'pending_verification'::public.project_request_status
           end,
           updated_at = now()
         from mutable_target

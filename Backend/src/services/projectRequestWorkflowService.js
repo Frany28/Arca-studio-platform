@@ -166,13 +166,7 @@ export async function applyProjectRequestDecision({
   if (result.outcome === "invalid_state") {
     throw new ConflictError(
       "PROJECT_REQUEST_INVALID_STATE",
-      "Solo se pueden decidir solicitudes que están en revisión.",
-    );
-  }
-  if (result.outcome === "review_required") {
-    throw new ConflictError(
-      "PROJECT_REQUEST_REVIEW_REQUIRED",
-      "Se necesita al menos una revisión registrada por un arquitecto asignado.",
+      "Solo se pueden decidir solicitudes pendientes de evaluación o revisión.",
     );
   }
   return result;
