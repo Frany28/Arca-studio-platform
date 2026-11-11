@@ -198,42 +198,6 @@ export function useAdminUsersActions({
   }
 
   /**
-   * Envía el enlace de activación a una cuenta pendiente. Sin correo no hay petición: se pide
-   * completarlo desde «Editar usuario». El resultado se publica en el feedback de la página.
-   *
-   * @param {{id: number, name: string, email: string|null}} listedUser - Cuenta pendiente.
-   * @returns {Promise<void>} Finaliza con el feedback publicado; captura los errores de la API.
-   */
-  async function sendActivationLink(listedUser) {
-    setStatusFeedback(null);
-    if (!listedUser.email) {
-      setStatusFeedback({
-        tone: "danger",
-        title: "Falta el correo de la cuenta",
-        message: `Completa el correo de ${listedUser.name} desde «Editar usuario» y vuelve a enviar el enlace de activación.`,
-      });
-      return;
-    }
-    setUpdatingUserId(String(listedUser.id));
-    try {
-      const response = await api.admin.sendUserActivationLink({ userId: listedUser.id });
-      setStatusFeedback({
-        tone: "success",
-        title: "Enlace de activación enviado",
-        message: `Enviamos el enlace a ${response?.email || listedUser.email}. La cuenta se activará cuando su titular defina la contraseña.`,
-      });
-    } catch (requestError) {
-      setStatusFeedback({
-        tone: "danger",
-        title: "No se pudo enviar el enlace de activación",
-        message: requestError?.message || "Inténtalo de nuevo en unos minutos.",
-      });
-    } finally {
-      setUpdatingUserId(null);
-    }
-  }
-
-  /**
    * Prepara la confirmación con los targets ya filtrados por la política de la página.
    * Sin targets o durante otra actualización de estado no abre una nueva confirmación.
    *
@@ -400,7 +364,6 @@ export function useAdminUsersActions({
       pendingChange: pendingStatusChange,
       requestIndividual,
       requestBulk: requestBulkStatusChange,
-      sendActivation: sendActivationLink,
       cancel: cancelStatusChange,
       confirm: confirmStatusChange,
     },

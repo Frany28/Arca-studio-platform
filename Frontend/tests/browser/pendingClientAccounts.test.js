@@ -80,30 +80,16 @@ const USERS_RESPONSES = {
   "GET /api/admin/users": { json: { metrics: { active: 1, disabled: 0, pending: 2, suspended: 0, total: 3 }, nextCursor: null, users: USERS } },
 };
 
-test("usuarios: una cuenta pendiente se identifica, no cambia de estado a mano y recibe el enlace de activación", async (context) => {
-  const { page, requests } = await openApp(context, "/usuarios", {
-    responses: {
-      ...USERS_RESPONSES,
-      "POST /api/admin/users/202/activation-link": { json: { email: "ana@example.test", expiresAt: "2026-11-14T12:00:00Z", message: "Enviamos el enlace." }, status: 202 },
-    },
-  });
+test("usuarios: una cuenta pendiente se identifica y no cambia de estado desde el menú ni en bloque", async (context) => {
+  const { page } = await openApp(context, "/usuarios", { responses: USERS_RESPONSES });
   const row = page.locator("tr", { hasText: "Constructora Los Andes" });
   await row.getByText("Pendiente", { exact: true }).waitFor();
   await row.getByText("Sin correo", { exact: true }).waitFor();
   if (process.env.ARCA_PENDING_CAPTURE_DIR) await page.screenshot({ path: `${process.env.ARCA_PENDING_CAPTURE_DIR}/pending-users-table.png` });
 
-  // Sin correo: la acción explica qué falta y no envía nada.
-  await row.getByRole("button", { name: "Más opciones para Constructora Los Andes" }).click();
-  const menu = page.getByRole("menu", { name: "Acciones para Constructora Los Andes" });
-  assert.deepEqual(await menu.getByRole("menuitem").allInnerTexts(), ["Enviar activación"]);
-  await menu.getByRole("menuitem", { name: "Enviar activación" }).click();
-  await page.getByText("Falta el correo de la cuenta").waitFor();
-  assert.equal(requests.some((request) => request.key.includes("activation-link")), false);
-
-  await page.locator("tr", { hasText: "Ana Ruiz" }).getByRole("button", { name: "Más opciones para Ana Ruiz" }).click();
-  await page.getByRole("menu", { name: "Acciones para Ana Ruiz" }).getByRole("menuitem", { name: "Enviar activación" }).click();
-  await page.getByText("Enlace de activación enviado").waitFor();
-  assert.equal(requests.filter((request) => request.key === "POST /api/admin/users/202/activation-link").length, 1);
+  // Sin acciones de estado en el menú: una cuenta pendiente se activa desde «Editar usuario».
+  assert.equal(await row.getByRole("button", { name: "Más opciones para Constructora Los Andes" }).isDisabled(), true);
+  assert.equal(await page.locator("tr", { hasText: "José Pérez" }).getByRole("button", { name: "Más opciones para José Pérez" }).isEnabled(), true);
   // Las acciones masivas de estado no incluyen cuentas pendientes.
   await page.getByRole("checkbox", { name: "Seleccionar Ana Ruiz", exact: true }).click();
   const bulk = page.getByRole("group", { name: "Acciones para usuarios seleccionados" });

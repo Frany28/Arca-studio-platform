@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LockCircle, MinusCirlce, More, Send2, TickCircle, UserTick } from "iconsax-react";
+import { LockCircle, MinusCirlce, More, TickCircle, UserTick } from "iconsax-react";
 
 import Button from "../../components/ui/Button/Button.jsx";
 
@@ -27,8 +27,9 @@ function getMenuPosition(anchor, itemCount) {
 }
 
 function getStatusActions(status) {
-  // Una cuenta pendiente no cambia de estado a mano: solo su titular la activa con el enlace.
-  if (status === "pending") return [{ activation: true, icon: Send2, label: "Enviar activación" }];
+  // Una cuenta pendiente no cambia de estado desde este menú: se activa desde «Editar usuario»
+  // (correo y contraseña), así que su botón queda deshabilitado.
+  if (status === "pending") return [];
 
   if (status === "blocked") {
     return [
@@ -47,7 +48,7 @@ function getStatusActions(status) {
   ];
 }
 
-function AdminUserActionsMenu({ disabled = false, onSendActivation, onStatusChange, user }) {
+function AdminUserActionsMenu({ disabled = false, onStatusChange, user }) {
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
   const focusFirstItemOnOpenRef = useRef(false);
@@ -110,10 +111,6 @@ function AdminUserActionsMenu({ disabled = false, onSendActivation, onStatusChan
     onStatusChange(user, status);
   }
 
-  function selectActivation() {
-    setOpen(false);
-    onSendActivation?.(user);
-  }
 
   function handleMenuKeyDown(event) {
     if (event.key === "Tab") {
@@ -147,7 +144,7 @@ function AdminUserActionsMenu({ disabled = false, onSendActivation, onStatusChan
           showLeftIcon
           iconLeft={<More size="20" color="currentColor" />}
           showRightIcon={false}
-          disabled={disabled}
+          disabled={disabled || actions.length === 0}
           tooltip="Más opciones"
           aria-label={`Más opciones para ${user.name}`}
           aria-haspopup="menu"
@@ -174,7 +171,7 @@ function AdminUserActionsMenu({ disabled = false, onSendActivation, onStatusChan
                   type="button"
                   role="menuitem"
                   className="text-heading-8 flex h-[36px] w-full items-center gap-[12px] rounded-[var(--radius-2)] px-[8px] text-left text-[var(--color-text-200)] transition-colors hover:bg-[var(--color-neutral-200)] focus:bg-[var(--color-neutral-200)] focus:outline-none"
-                  onClick={() => (action.activation ? selectActivation() : selectStatus(action.status))}
+                  onClick={() => selectStatus(action.status)}
                 >
                   <ActionIcon size="20" color="currentColor" aria-hidden="true" />
                   <span>{action.label}</span>

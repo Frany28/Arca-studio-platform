@@ -131,7 +131,6 @@ function AdminUsersPage({ empty = false }) {
   const { user: editingUser, loadingUserId: loadingEditUserId, open: openUserEditor, submit: updateEditedUser } = editing;
   const { updatingUserId, isBulkUpdating, pendingChange: pendingStatusChange, requestBulk: requestBulkStatusChange } = status;
   const requestIndividualStatusChange = status.requestIndividual;
-  const sendActivation = status.sendActivation;
   const statusFeedback = feedback.value;
 
   function toggleAll() {
@@ -319,7 +318,6 @@ function AdminUsersPage({ empty = false }) {
                                 || String(user?.id) === String(listedUser.id)
                               }
                               onStatusChange={requestIndividualStatusChange}
-                              onSendActivation={sendActivation}
                             />
                           </div></td>
                         </tr>
