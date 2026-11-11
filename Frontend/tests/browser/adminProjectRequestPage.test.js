@@ -474,6 +474,19 @@ test("solicitar más información muestra el modal de Figma, el contacto real y 
   for (const text of ["Casa Prueba", "plano.pdf", "Recomienda aprobar"]) await page.getByText(text, { exact: true }).first().waitFor();
 });
 
+test("el contacto faltante no se inventa y Cancelar no envía la solicitud", async (context) => {
+  const { page, mutations } = await openPage(context);
+  await page.getByRole("button", { name: "Solicitar más información", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Solicitar información adicional" });
+  await dialog.getByText("No registrado", { exact: true }).first().waitFor();
+  assert.equal(await dialog.getByText("No registrado", { exact: true }).count(), 2);
+  assert.equal(await dialog.getByRole("button", { name: "Enviar correo" }).isDisabled(), true);
+  assert.equal(await dialog.getByRole("button", { name: "Abrir WhatsApp" }).isDisabled(), true);
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  assert.deepEqual(mutations, []);
+});
+
 test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cotización", async (context) => {
   const held = deferred();
   const { page, mutations, reads } = await openPage(context, {
