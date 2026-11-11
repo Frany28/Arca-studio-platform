@@ -115,6 +115,26 @@ export const authApi = {
   },
 
   /**
+   * Comprueba sin consumirlo el enlace de activacion de una cuenta pendiente.
+   *
+   * @param {{token: string}} params - Enlace recibido por correo.
+   * @returns {Promise<{valid: boolean}>} Respuesta del backend.
+   */
+  verifyActivationToken({ token }) {
+    return apiRequest("/auth/activation/verify", { body: JSON.stringify({ token }), method: "POST" });
+  },
+
+  /**
+   * Activa la cuenta pendiente con la contrasena elegida por su titular (enlace de un solo uso).
+   *
+   * @param {{token: string, password: string}} params - Enlace y contrasena.
+   * @returns {Promise<{message: string}>} Respuesta del backend.
+   */
+  completeActivation({ token, password }) {
+    return apiRequest("/auth/activation/complete", { body: JSON.stringify({ password, token }), method: "POST" });
+  },
+
+  /**
    * Solicita el cambio de contrase?a de la sesi?n actual.
    *
    * @param {Object} params - Contrase?as para validar el cambio.

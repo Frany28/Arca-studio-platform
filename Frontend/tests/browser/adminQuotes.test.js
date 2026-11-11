@@ -6,6 +6,7 @@ import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+import { clientNameKey } from "../../../Backend/src/domain/clientName.js";
 import { buildQuoteDocument } from "../../../Backend/src/domain/quoteDocument.js";
 import { QUOTE_REFERENCE_VAT, REFERENCE_VAT_NOT_APPLIED, resolveQuoteReferenceVat } from "../../../Backend/src/domain/quoteReferenceVat.js";
 import { calculateQuoteTotals } from "../../../Backend/src/domain/quoteTotals.js";
@@ -32,6 +33,27 @@ const CLIENTS = [
   { companyName: "Arca", contactUser: null, email: "jane@example.test", id: 4, name: "Jane Smith" },
 ];
 const PROJECTS = { 3: [{ id: 9, name: "Apto. 910", status: "pending" }], 4: [{ id: 10, name: "Casa Jane", status: "pending" }] };
+// Clientes creados por altas con `newClient` (ids desde 1000, únicos durante la ejecución).
+const CREATED_CLIENTS = [];
+
+/**
+ * Coincidencias de un nombre de cliente nuevo con la regla del backend (person_name_key): misma
+ * clave sin mayúsculas, acentos ni espacios repetidos, o todas las palabras de un nombre empiezan
+ * alguna del otro.
+ *
+ * @param {string} name - Nombre escrito.
+ * @returns {Array<Object>} Coincidencias con la forma de `GET /admin/quotes/clients/matches`.
+ */
+function findClientMatches(name) {
+  const key = clientNameKey(name);
+  const covers = (words, other) => words.split(" ").every((word) => ` ${other}`.includes(` ${word}`));
+  return [...CLIENTS, ...CREATED_CLIENTS]
+    .map((client) => ({ client, clientKey: clientNameKey(client.name) }))
+    .filter(({ clientKey }) => key && (clientKey === key || covers(key, clientKey) || covers(clientKey, key)))
+    .map(({ client, clientKey }) => ({
+      companyName: client.companyName, email: client.email, exact: clientKey === key, id: client.id, kind: "client", name: client.name, status: "active",
+    }));
+}
 
 before(async () => {
   server = await createServer({
@@ -68,7 +90,7 @@ after(async () => {
  */
 function buildQuote(id, payload, version, createdAt, services = SERVICES, referenceVat = QUOTE_REFERENCE_VAT) {
   const totals = calculateQuoteTotals({ items: payload.items, referenceVat });
-  const client = CLIENTS.find((candidate) => candidate.id === payload.clientId);
+  const client = [...CLIENTS, ...CREATED_CLIENTS].find((candidate) => candidate.id === payload.clientId);
   // Un alta con newProjectName crea el proyecto Draft (como el backend): id ficticio de la prueba.
   const project = payload.newProjectName
     ? { id: 900, name: payload.newProjectName }
@@ -144,6 +166,7 @@ function createBackend({ failures = {}, services = SERVICES } = {}) {
       const search = (url.searchParams.get("search") || "").toLowerCase();
       return json(route, 200, { clients: CLIENTS.filter((client) => client.name.toLowerCase().includes(search)), nextCursor: null });
     }
+    if (path === "/api/admin/quotes/clients/matches") return json(route, 200, { matches: findClientMatches(url.searchParams.get("name") || "") });
     const projectsMatch = /^\/api\/admin\/quotes\/clients\/(\d+)\/projects$/.exec(path);
     if (projectsMatch) return json(route, 200, { nextCursor: null, projects: PROJECTS[projectsMatch[1]] || [] });
     if (path === "/api/admin/quotes" && method === "GET") {
@@ -156,7 +179,18 @@ function createBackend({ failures = {}, services = SERVICES } = {}) {
     }
     if (path === "/api/admin/quotes" && method === "POST") {
       const vat = resolveQuoteReferenceVat({ stored: null });
-      const quote = buildQuote(state.quotes.length + 1, body, 1, new Date().toISOString(), services, vat);
+      let payload = body;
+      if (body.newClient) {
+        // Como el backend: coincidencias sin confirmar → 409 con la lista; confirmadas → cliente nuevo.
+        const matches = findClientMatches(body.newClient.name);
+        if (matches.some((match) => !body.newClient.acknowledgedClientIds.includes(match.id))) {
+          return json(route, 409, { code: "CLIENT_NAME_MATCHES", details: { matches }, message: "Hay personas registradas con un nombre igual o parecido." });
+        }
+        const created = { companyName: null, contactUser: null, email: null, id: 1000 + CREATED_CLIENTS.length, name: body.newClient.name };
+        CREATED_CLIENTS.push(created);
+        payload = { ...body, clientId: created.id };
+      }
+      const quote = buildQuote(state.quotes.length + 1, payload, 1, new Date().toISOString(), services, vat);
       state.quotes.push(quote);
       return json(route, 201, { message: "Cotización creada correctamente.", quote });
     }
@@ -1075,6 +1109,115 @@ test("proyecto nuevo: el nombre escrito se guarda como Draft; Enter y las coinci
     notes: null,
   });
   assert.equal(backend.quotes.at(-1).project.name, "Casa del Lago");
+});
+
+/**
+ * Añade el primer servicio del tabulador desde el selector de servicios.
+ *
+ * @param {import("playwright").Page} page - Página del editor.
+ * @returns {Promise<void>}
+ */
+async function addFirstService(page) {
+  const picker = page.getByRole("region", { name: "Seleccionar servicios" });
+  await picker.getByRole("checkbox", { name: "Seleccionar Anteproyecto arquitectónico" }).click();
+  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+}
+
+/**
+ * Cuerpos de los POST de alta, sin el identificador de envío.
+ *
+ * @param {{requests: Array<Object>}} backend - Backend simulado.
+ * @returns {Array<Object>} Cuerpos enviados.
+ */
+function createdBodies(backend) {
+  return backend.requests
+    .filter((request) => request.method === "POST" && request.path === "/api/admin/quotes")
+    .map(({ body: { submissionId, ...body } }) => {
+      assert.match(submissionId, /^[0-9a-f-]{36}$/);
+      return body;
+    });
+}
+
+test("cliente nuevo: el nombre escrito se guarda con su proyecto Draft; las coincidencias piden confirmación", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  const client = page.locator("#quote-client");
+  // Mayúsculas, acentos y espacios no cuentan: «leonel  PEREZ» coincide con «Leonel Pérez».
+  await client.fill("leonel  PEREZ");
+  await page.getByText("Hay 1 persona registrada con un nombre igual o parecido. Selecciónala en las sugerencias o confirma al guardar que es otra persona.").waitFor();
+  assert.equal(backend.requests.some((request) => request.method === "POST"), false, "Escribir nunca crea registros");
+  const project = page.locator("#quote-project");
+  assert.equal(await project.isDisabled(), false, "Un cliente nuevo admite el nombre de un proyecto nuevo");
+  await project.fill("Casa Nueva");
+  await page.getByText("Se creará como proyecto Draft al guardar la cotización.").waitFor();
+  assert.equal(backend.requests.some((request) => /\/clients\/\d+\/projects$/.test(request.path)), false, "Un cliente nuevo no tiene proyectos");
+  await addFirstService(page);
+
+  await page.getByRole("button", { name: "Guardar" }).click();
+  const dialog = page.getByRole("dialog", { name: "Revisa las personas con un nombre parecido" });
+  await dialog.waitFor();
+  await dialog.getByText("Mismo nombre · leonel@example.test").waitFor();
+  assert.deepEqual(createdBodies(backend), [], "No se guarda sin decidir");
+  if (process.env.ARCA_QUOTE_CLIENT_CAPTURE_DIR) {
+    // La captura espera al final de la animación de entrada del Modal.
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${process.env.ARCA_QUOTE_CLIENT_CAPTURE_DIR}/quote-client-matches-dialog.png` });
+  }
+
+  await dialog.getByRole("button", { name: "Crear cliente nuevo" }).click();
+  await page.getByText("Has creado la cotización exitosamente").waitFor();
+  assert.deepEqual(createdBodies(backend), [{
+    items: [{ quantity: "1", serviceId: 1, unitRate: "14" }],
+    newClient: { acknowledgedClientIds: [3], acknowledgedUserIds: [], name: "leonel PEREZ" },
+    newProjectName: "Casa Nueva",
+    notes: null,
+  }]);
+  assert.deepEqual(backend.quotes.at(-1).client.name, "leonel PEREZ");
+});
+
+test("cliente nuevo: «Usar este cliente» elige el existente y conserva el proyecto nuevo escrito", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva" });
+  await page.locator("#quote-client").fill("Jane");
+  await page.getByText(/persona registrada con un nombre igual o parecido/).waitFor();
+  await page.locator("#quote-project").fill("Casa Nueva");
+  await addFirstService(page);
+  await page.getByRole("button", { name: "Guardar" }).click();
+  const dialog = page.getByRole("dialog", { name: "Revisa las personas con un nombre parecido" });
+  await dialog.getByRole("button", { name: "Usar el cliente Jane Smith" }).click();
+  await dialog.waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "Quitar Jane Smith" }).waitFor();
+  assert.equal(await page.locator("#quote-project").inputValue(), "Casa Nueva");
+  assert.deepEqual(createdBodies(backend), []);
+
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await page.getByText("Has creado la cotización exitosamente").waitFor();
+  assert.deepEqual(createdBodies(backend), [{
+    clientId: 4,
+    items: [{ quantity: "1", serviceId: 1, unitRate: "14" }],
+    newProjectName: "Casa Nueva",
+    notes: null,
+  }]);
+});
+
+test("cliente nuevo sin coincidencias: se guarda sin diálogo; un 409 del servidor (alta paralela) pide la decisión", async (context) => {
+  const backend = createBackend();
+  const page = await openQuotes(context, backend, { path: "/servicios-cotizaciones/cotizaciones/nueva", viewport: { height: 900, width: 390 } });
+  await page.locator("#quote-client").fill("Constructora Los Andes");
+  await page.getByText("Se creará como cliente nuevo, con una cuenta pendiente de activación, al guardar la cotización.").waitFor();
+  if (process.env.ARCA_QUOTE_CLIENT_CAPTURE_DIR) await page.screenshot({ path: `${process.env.ARCA_QUOTE_CLIENT_CAPTURE_DIR}/quote-client-new-mobile.png` });
+  await page.locator("#quote-project").fill("Torre Norte");
+  await addFirstService(page);
+  // Otro administrador registra el mismo nombre justo antes del guardado.
+  CREATED_CLIENTS.push({ companyName: null, contactUser: null, email: null, id: 1000 + CREATED_CLIENTS.length, name: "Constructora los Andes" });
+  backend.requests.length = 0;
+  await page.getByRole("button", { name: "Guardar" }).click();
+  const dialog = page.getByRole("dialog", { name: "Revisa las personas con un nombre parecido" });
+  await dialog.waitFor();
+  await dialog.getByRole("button", { name: "Volver" }).click();
+  await dialog.waitFor({ state: "hidden" });
+  assert.equal(await page.locator("#quote-client").inputValue(), "Constructora Los Andes", "Volver conserva lo escrito");
+  assert.deepEqual(createdBodies(backend), []);
 });
 
 test("edición: el proyecto solo se elige entre los existentes; el texto escrito no crea proyectos", async (context) => {

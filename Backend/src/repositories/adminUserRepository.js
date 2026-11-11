@@ -4,6 +4,17 @@ import { invalidatePasswordResetTokens } from "./passwordResetRepository.js";
 import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "./sessionRepository.js";
 
 /**
+ * Estado de la ficha comercial según el de la cuenta. Una cuenta pendiente conserva su ficha
+ * activa para que pueda seguir cotizándose; inactiva o bloqueada la desactivan, como hasta ahora.
+ *
+ * @param {string} status - Estado de la cuenta.
+ * @returns {"active"|"inactive"} Estado del cliente.
+ */
+function toClientStatus(status) {
+  return status === "active" || status === "pending" ? "active" : "inactive";
+}
+
+/**
  * Decide si una edición administrativa cambia la seguridad de la cuenta y con qué motivo deben
  * revocarse sus sesiones (B-3). Cambiar nombre, teléfonos o empresa no cierra sesiones; sí lo hacen
  * una contraseña nueva, otro rol, otro correo o cualquier cambio de estado.
@@ -17,6 +28,12 @@ import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "./sessionReposit
  * @returns {string|null} Motivo de revocación, o null si no hay cambio de seguridad.
  */
 export function resolveAdminEditRevocationReason({ current, email, passwordHash, roleId, status }) {
+  // Cuenta pendiente (sin sesiones ni contraseña): solo otro correo invalida el enlace de activación enviado.
+  if (status === "pending") {
+    return String(current.email ?? "").toLowerCase() === String(email ?? "").toLowerCase()
+      ? null
+      : SESSION_REVOCATION_REASONS.securityProfileChanged;
+  }
   if (status !== "active") return SESSION_REVOCATION_REASONS.userDisabled;
   if (passwordHash) return SESSION_REVOCATION_REASONS.passwordChanged;
   if (
@@ -74,7 +91,7 @@ export async function findAdminUserConflict({ email, excludeUserId = null, phone
 export async function findAdminUserAccessRecord(userId) {
   const result = await query(
     `
-      select u.status, r.code as role_code
+      select u.status, u.email, u.last_name, r.code as role_code
       from public.users u
       inner join public.roles r on r.id = u.role_id
       where u.id = $1 and u.deleted_at is null
@@ -129,6 +146,11 @@ export async function updateAdminUserRecord({
       await client.query("rollback");
       return { reason: "user", user: null };
     }
+    // La cuenta pudo activarse tras la comprobación del servicio: `pending` nunca se asigna ni se retira aquí.
+    if ((current.status === "pending") !== (status === "pending")) {
+      await client.query("rollback");
+      return { reason: "pending", user: null };
+    }
 
     const roleResult = await client.query(
       `select id, code, name from public.roles where code = $1 and is_active = true limit 1`,
@@ -150,7 +172,7 @@ export async function updateAdminUserRecord({
           where id = $1 and deleted_at is null
           returning id
         `,
-        [clientId, `${firstName} ${lastName}`, companyName, email, phone, status === "active" ? "active" : "inactive"],
+        [clientId, `${firstName} ${lastName}`.trim(), companyName, email, phone, toClientStatus(status)],
       );
       clientId = clientResult.rows[0]?.id || null;
     }
@@ -161,7 +183,7 @@ export async function updateAdminUserRecord({
           values ($1, $2, $3, $4, $5::public.client_status)
           returning id
         `,
-        [`${firstName} ${lastName}`, companyName, email, phone, status === "active" ? "active" : "inactive"],
+        [`${firstName} ${lastName}`.trim(), companyName, email, phone, toClientStatus(status)],
       );
       clientId = clientResult.rows[0].id;
     }
@@ -288,6 +310,41 @@ export async function createAdminUserRecord({
 }
 
 /**
+ * Crea, dentro de la transacción de quien llama, la ficha comercial y la cuenta pendiente de un
+ * cliente nuevo registrado solo con su nombre. La cuenta tiene rol `client`, estado `pending`,
+ * sin correo ni contraseña (chk_users_pending_without_password): no puede iniciar sesión.
+ *
+ * El nombre se guarda completo en `clients.name` y en `users.first_name`, con `last_name` vacío:
+ * puede ser una persona o una empresa y no se divide ni se inventan apellidos.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {{ name: string }} options - Nombre normalizado.
+ * @returns {Promise<{ clientId: number, userId: number }|null>} Identificadores, o null si el rol cliente no está activo.
+ */
+export async function insertPendingClientAccount(client, { name }) {
+  const roleResult = await client.query(
+    "select id from public.roles where code = 'client' and is_active = true limit 1",
+  );
+  const roleId = roleResult.rows[0]?.id;
+  if (!roleId) return null;
+
+  const clientResult = await client.query(
+    `insert into public.clients (name, email, status)
+     values ($1, null, 'active'::public.client_status)
+     returning id`,
+    [name],
+  );
+  const clientId = clientResult.rows[0].id;
+  const userResult = await client.query(
+    `insert into public.users (client_id, role_id, email, first_name, last_name, password_hash, status)
+     values ($1, $2, null, $3, '', null, 'pending'::public.user_status)
+     returning id`,
+    [clientId, roleId, name],
+  );
+  return { clientId: Number(clientId), userId: Number(userResult.rows[0].id) };
+}
+
+/**
  * Elimina el valor de created administrativo usuario después de comprobar acceso y existencia.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
@@ -324,7 +381,8 @@ export async function getAdminUserMetrics() {
       count(*)::int as total,
       count(*) filter (where status = 'active')::int as active,
       count(*) filter (where status = 'blocked')::int as suspended,
-      count(*) filter (where status = 'inactive')::int as disabled
+      count(*) filter (where status = 'inactive')::int as disabled,
+      count(*) filter (where status = 'pending')::int as pending
     from public.users
     where deleted_at is null
   `);
@@ -603,6 +661,7 @@ export async function updateAdminUserStatusRecord({ status, userId }) {
         from public.roles r
         where u.id = $1
           and u.deleted_at is null
+          and u.status <> 'pending'
           and r.id = u.role_id
         returning u.id, u.client_id, u.email, u.first_name, u.last_name,
           u.status,

@@ -5,6 +5,7 @@ import {
   createQuote,
   getClientProjectOptions,
   getQuote,
+  getQuoteClientNameMatches,
   getQuoteClientOptions,
   getQuoteSummary,
   getQuotesPage,
@@ -107,6 +108,23 @@ export async function patchQuote(req, res, next) {
       message: result.changed ? "Cotización actualizada correctamente." : "No había cambios para guardar.",
       quote: result.quote,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Lista las personas registradas con un nombre igual o parecido al de un cliente nuevo.
+ * Responde `{ matches }` sin caché; no crea ni modifica registros.
+ *
+ * @param {import("express").Request} req - Solicitud con la consulta validada.
+ * @param {import("express").Response} res - Respuesta HTTP.
+ * @param {Function} next - Continúa con el middleware de errores.
+ * @returns {Promise<void>}
+ */
+export async function getQuoteClientMatches(req, res, next) {
+  try {
+    res.set("Cache-Control", NO_STORE).status(200).json(await getQuoteClientNameMatches(req.validatedQuery));
   } catch (error) {
     next(error);
   }

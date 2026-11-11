@@ -38,6 +38,8 @@ export const ACTION_RATE_LIMITS = Object.freeze({
   adminQuoteWrite: Object.freeze({ max: 120, windowMs: HOUR_MS }),
   adminMeasurementUnitWrite: Object.freeze({ max: 120, windowMs: HOUR_MS }),
   adminServiceCatalogWrite: Object.freeze({ max: 120, windowMs: HOUR_MS }),
+  // Cada envío manda un correo de activación a una cuenta pendiente.
+  adminUserActivationLink: Object.freeze({ max: 20, windowMs: HOUR_MS }),
   adminUserCreate: Object.freeze({ max: 20, windowMs: HOUR_MS }),
   adminUserNote: Object.freeze({ max: 120, windowMs: HOUR_MS }),
   adminUserSessionRevoke: Object.freeze({ max: 60, windowMs: HOUR_MS }),
@@ -100,6 +102,7 @@ export const adminRateLimits = Object.freeze({
   quoteWrite: createUserActionRateLimit("admin-quote-write", ACTION_RATE_LIMITS.adminQuoteWrite),
   measurementUnitWrite: createUserActionRateLimit("admin-measurement-unit-write", ACTION_RATE_LIMITS.adminMeasurementUnitWrite),
   serviceCatalogWrite: createUserActionRateLimit("admin-service-catalog-write", ACTION_RATE_LIMITS.adminServiceCatalogWrite),
+  userActivationLink: createUserActionRateLimit("admin-user-activation-link", ACTION_RATE_LIMITS.adminUserActivationLink),
   userCreate: createUserActionRateLimit("admin-user-create", ACTION_RATE_LIMITS.adminUserCreate),
   userNote: createUserActionRateLimit("admin-user-note", ACTION_RATE_LIMITS.adminUserNote),
   userSessionRevoke: createUserActionRateLimit("admin-user-session-revoke", ACTION_RATE_LIMITS.adminUserSessionRevoke),

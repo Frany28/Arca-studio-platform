@@ -94,7 +94,8 @@ test("admin user body rows follow the Figma typography hierarchy", async () => {
   );
 
   assert.match(source, /text-body-4 truncate text-\[var\(--color-text-300\)\]">\{listedUser\.name\}/);
-  assert.match(source, /text-heading-8 truncate px-\[24px\] py-\[16px\] text-\[var\(--color-text-300\)\]">\{listedUser\.email\}/);
+  // Una cuenta pendiente (cliente creado desde una cotización) puede no tener correo todavía.
+  assert.match(source, /text-heading-8 truncate px-\[24px\] py-\[16px\] text-\[var\(--color-text-300\)\]">\{listedUser\.email \|\| "Sin correo"\}/);
   assert.match(source, /text-heading-8 px-\[24px\] py-\[16px\] text-\[var\(--color-text-300\)\]">\{formatHumanDate/);
 });
 

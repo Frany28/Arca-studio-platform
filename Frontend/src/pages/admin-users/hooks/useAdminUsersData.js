@@ -7,6 +7,7 @@ const STATUS_FILTER_ITEMS = [
   { id: "active", label: "Activo", type: "Checkbox" },
   { id: "blocked", label: "Suspendido", type: "Checkbox" },
   { id: "inactive", label: "Deshabilitado", type: "Checkbox" },
+  { id: "pending", label: "Pendiente", type: "Checkbox" },
 ];
 
 /**

@@ -72,5 +72,6 @@ export function mapAdminUserMetrics(row = {}) {
     active: Number(row.active || 0),
     suspended: Number(row.suspended || 0),
     disabled: Number(row.disabled || 0),
+    pending: Number(row.pending || 0),
   };
 }

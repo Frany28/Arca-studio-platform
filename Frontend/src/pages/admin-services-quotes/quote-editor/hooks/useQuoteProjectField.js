@@ -21,7 +21,8 @@ async function loadClientProjects(clientId, query) {
  * (`{kind: "new", name}`), que el backend crea como Draft al guardar. En la edición el texto es
  * solo una búsqueda local. Las sugerencias son siempre del cliente elegido (cambiarlo relee y
  * aborta la lectura anterior) y la coincidencia exacta con un proyecto existente se expone para
- * pedir que se seleccione, sin vincularlo en silencio.
+ * pedir que se seleccione, sin vincularlo en silencio. Un cliente nuevo todavía no tiene proyectos:
+ * no se consultan sugerencias y solo cabe escribir el nombre de un proyecto nuevo.
  *
  * @param {Object} params - Borrador y modo.
  * @param {boolean} params.allowNewProject - Permite escribir un proyecto nuevo (solo en el alta).
@@ -37,7 +38,7 @@ export function useQuoteProjectField({ allowNewProject, client, onProjectChange,
   const newProjectName = project?.kind === PROJECT_KIND.NEW ? project.name : "";
   const query = allowNewProject ? newProjectName : search;
   const remote = useRemoteOptions({
-    enabled: Boolean(client) && !selectedProject,
+    enabled: client?.id != null && !selectedProject,
     load: (options) => loadClientProjects(client.id, options),
     query,
     scope: String(client?.id ?? ""),

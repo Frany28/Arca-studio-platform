@@ -1,17 +1,28 @@
 import { useMemo, useRef, useState } from "react";
 
+import { api } from "../../../../api/http.js";
+import { normalizeClientName } from "../../../../../../Backend/src/domain/clientName.js";
 import Alert from "../../../../components/ui/Alert/Alert.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import TextArea from "../../../../components/ui/TextArea/TextArea.jsx";
 import { useInvalidFieldFocus } from "../../../../hooks/useInvalidFieldFocus.js";
 import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard.js";
+import { useQuoteClientField } from "../hooks/useQuoteClientField.js";
 import { useQuoteDraft } from "../hooks/useQuoteDraft.js";
 import { useQuoteProjectField } from "../hooks/useQuoteProjectField.js";
 import { useQuoteSubmit } from "../hooks/useQuoteSubmit.js";
 import { resolveQuoteReferenceVat } from "../../../../../../Backend/src/domain/quoteReferenceVat.js";
 import { calculateQuotePreview } from "../utils/quoteAmounts.js";
-import { QUOTE_NOTES_MAX_LENGTH, isQuoteDraftDirty, validateQuoteDraft } from "../utils/quoteDraft.js";
-import { QuoteCreatedDialog, QuoteDiscardDialog } from "./QuoteEditorDialogs.jsx";
+import {
+  PROJECT_KIND,
+  QUOTE_NOTES_MAX_LENGTH,
+  acknowledgeClientMatches,
+  isNewClient,
+  isQuoteDraftDirty,
+  pendingClientMatches,
+  validateQuoteDraft,
+} from "../utils/quoteDraft.js";
+import { QuoteClientMatchesDialog, QuoteCreatedDialog, QuoteDiscardDialog } from "./QuoteEditorDialogs.jsx";
 import QuoteGeneralDataSection from "./QuoteGeneralDataSection.jsx";
 import QuoteItemsTable from "./QuoteItemsTable.jsx";
 import QuoteServicePicker from "./QuoteServicePicker.jsx";
@@ -32,6 +43,8 @@ function SectionDivider() {
  * campo. Las validaciones del cliente reproducen las del backend, que sigue siendo la autoridad.
  * Con cambios sin guardar, toda salida (Cancelar, sidebar, breadcrumb, Atrás, recarga o cierre)
  * pasa por useUnsavedChangesGuard: dentro de la aplicación se confirma con QuoteDiscardDialog.
+ * En el alta, un cliente nuevo con coincidencias de nombre sin confirmar abre
+ * QuoteClientMatchesDialog antes de enviar: se elige una persona existente o se confirma otra.
  *
  * @param {Object} props - Modo, datos iniciales, catálogo y callbacks.
  * @param {"create"|"edit"} props.mode - Alta o edición.
@@ -49,6 +62,9 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   const [attempted, setAttempted] = useState(false);
   // Respuesta del alta confirmada mientras se muestra «Has creado la cotización»; null si no.
   const [createdResponse, setCreatedResponse] = useState(null);
+  // Coincidencias del cliente nuevo pendientes de decisión antes de guardar (vacío: sin diálogo).
+  const [clientMatches, setClientMatches] = useState([]);
+  const [checkingMatches, setCheckingMatches] = useState(false);
   // Misma regla que el backend: 16 % fijo al crear; al editar, el IVA de la versión guardada.
   const referenceVat = resolveQuoteReferenceVat({ stored: quote?.referenceVat });
   // La tasa es texto: depender de ella (no del objeto) evita recalcular en cada render.
@@ -70,31 +86,59 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
     submission.clearFieldError("newProjectName");
     actions.setProject(project);
   }
+  /**
+   * Cambia el cliente del borrador (existente o nombre nuevo) y retira los errores anteriores del campo.
+   *
+   * @param {Object|null} client - Cliente existente, nombre nuevo o null.
+   * @returns {void}
+   */
+  function changeClient(client) {
+    submission.clearFieldError("clientId");
+    submission.clearFieldError("newClient.name");
+    actions.setClient(client);
+  }
+  // Solo el alta crea clientes nuevos (con cuenta pendiente); la edición elige clientes existentes.
+  const clientField = useQuoteClientField({ allowNewClient: mode === "create", client: draft.client, onClientChange: changeClient });
   // Solo el alta crea proyectos nuevos (Draft); la edición elige proyectos existentes, incluidos Drafts.
   const projectField = useQuoteProjectField({ allowNewProject: mode === "create", client: draft.client, onProjectChange: changeProject, project: draft.project });
   const localErrors = validateQuoteDraft(draft, preview, { existingProjectMatch: projectField.exactMatch });
   // Los errores locales se muestran tras el primer intento de guardar; los del servidor, siempre.
   const errors = { ...(attempted ? localErrors : {}), ...submission.result.fieldErrors };
-  const { submitting } = submission;
+  const submitting = submission.submitting || checkingMatches;
+  const dialogMatches = clientMatches.length ? clientMatches : submission.result.clientMatches;
   const guard = useUnsavedChangesGuard({ when: isQuoteDraftDirty(initialDraft, draft) });
   const formRef = useRef(null);
   const focusInvalidField = useInvalidFieldFocus({ getContainer: () => formRef.current });
 
   /**
-   * Valida y guarda el borrador. Con errores locales no se envía nada y se señalan los campos.
+   * Comprueba, justo antes de guardar un cliente nuevo, si hay personas con un nombre igual o
+   * parecido que el administrador no confirmó. Un fallo de la consulta no bloquea: el backend vuelve
+   * a comprobarlo y responde 409 CLIENT_NAME_MATCHES.
    *
-   * @param {import("react").FormEvent<HTMLFormElement>} event - Envío del formulario.
+   * @param {Object} client - Cliente nuevo del borrador.
+   * @returns {Promise<Array<Object>>} Coincidencias que requieren decisión (vacío si ninguna).
+   */
+  async function findUnconfirmedMatches(client) {
+    setCheckingMatches(true);
+    try {
+      const { matches } = await api.quotes.listClientMatches({ name: normalizeClientName(client.name) });
+      return pendingClientMatches(matches, client.acknowledged).length ? matches : [];
+    } catch {
+      return [];
+    } finally {
+      setCheckingMatches(false);
+    }
+  }
+
+  /**
+   * Envía el borrador y resuelve el resultado: errores junto a sus campos, coincidencias que pide el
+   * servidor (abren el diálogo) o el guardado confirmado.
+   *
+   * @param {Object} nextDraft - Borrador que se guarda.
    * @returns {Promise<void>}
    */
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setAttempted(true);
-    if (submitting) return;
-    if (Object.keys(localErrors).length) {
-      focusInvalidField();
-      return;
-    }
-    const response = await submission.submit(draft);
+  async function save(nextDraft) {
+    const response = await submission.submit(nextDraft);
     if (!response) {
       // Los errores del servidor por campo se señalan igual que los locales; uno general (Alert)
       // no marca campos y la navegación no hace nada.
@@ -107,18 +151,76 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
     else onSaved(response);
   }
 
+  /**
+   * Valida y guarda el borrador. Con errores locales no se envía nada y se señalan los campos; un
+   * cliente nuevo con coincidencias sin confirmar abre antes el diálogo de coincidencias.
+   *
+   * @param {import("react").FormEvent<HTMLFormElement>} event - Envío del formulario.
+   * @returns {Promise<void>}
+   */
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setAttempted(true);
+    if (submitting) return;
+    if (Object.keys(localErrors).length) {
+      focusInvalidField();
+      return;
+    }
+    if (isNewClient(draft.client)) {
+      const matches = await findUnconfirmedMatches(draft.client);
+      if (matches.length) {
+        setClientMatches(matches);
+        return;
+      }
+    }
+    await save(draft);
+  }
+
+  /**
+   * Cierra el diálogo de coincidencias sin guardar.
+   *
+   * @returns {void}
+   */
+  function closeClientMatches() {
+    setClientMatches([]);
+    submission.clearClientMatches();
+  }
+
+  /**
+   * Confirma que todas las coincidencias mostradas son otras personas y guarda el cliente nuevo.
+   *
+   * @returns {Promise<void>}
+   */
+  async function confirmNewClient() {
+    const client = { ...draft.client, acknowledged: acknowledgeClientMatches(dialogMatches) };
+    closeClientMatches();
+    actions.setClient(client);
+    await save({ ...draft, client });
+  }
+
+  /**
+   * Usa un cliente existente en lugar de crear otro y conserva el nombre de proyecto nuevo escrito.
+   *
+   * @param {{id: number, name: string}} match - Cliente existente elegido en el diálogo.
+   * @returns {void}
+   */
+  function selectExistingClient(match) {
+    const project = draft.project?.kind === PROJECT_KIND.NEW ? draft.project : null;
+    closeClientMatches();
+    changeClient({ id: match.id, name: match.name, profilePhotoUrl: "" });
+    if (project) actions.setProject(project);
+  }
+
   return (
     <form ref={formRef} className="flex flex-col gap-[48px]" noValidate onSubmit={handleSubmit} aria-busy={submitting || undefined}>
       <SectionDivider />
       <QuoteGeneralDataSection
         client={draft.client}
+        clientField={clientField}
         projectField={projectField}
         errors={errors}
         disabled={submitting}
-        onClientChange={(client) => {
-          submission.clearFieldError("clientId");
-          actions.setClient(client ? { id: client.id, name: client.name, profilePhotoUrl: client.profilePhotoUrl || "" } : null);
-        }}
+        onClientChange={(client) => changeClient(client ? { id: client.id, name: client.name, profilePhotoUrl: client.profilePhotoUrl || "" } : null)}
         onProjectChange={changeProject}
       />
       <SectionDivider />
@@ -203,6 +305,14 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
         </Button>
       </div>
 
+      <QuoteClientMatchesDialog
+        clientName={isNewClient(draft.client) ? draft.client.name : ""}
+        matches={isNewClient(draft.client) ? dialogMatches : []}
+        busy={submitting}
+        onCancel={closeClientMatches}
+        onConfirmNew={confirmNewClient}
+        onUseExisting={selectExistingClient}
+      />
       <QuoteCreatedDialog open={createdResponse !== null} onAccept={() => onSaved(createdResponse)} />
       {/* Cancelar navega al listado: con cambios, el bloqueo lo detiene y aquí se confirma. */}
       <QuoteDiscardDialog open={guard.blocked} onStay={guard.reset} onDiscard={guard.proceed} />

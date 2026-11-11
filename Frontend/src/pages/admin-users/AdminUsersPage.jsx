@@ -54,6 +54,8 @@ const STATUS_DETAILS = {
   active: { label: "Activo", theme: "Success" },
   blocked: { label: "Suspendido", theme: "Danger" },
   inactive: { label: "Deshabilitado", theme: "Disabled" },
+  // Cliente creado desde una cotización: sin acceso hasta que active su cuenta con el enlace.
+  pending: { label: "Pendiente", theme: "Info" },
 };
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
 const BULK_STATUS_ACTIONS = [
@@ -129,6 +131,7 @@ function AdminUsersPage({ empty = false }) {
   const { user: editingUser, loadingUserId: loadingEditUserId, open: openUserEditor, submit: updateEditedUser } = editing;
   const { updatingUserId, isBulkUpdating, pendingChange: pendingStatusChange, requestBulk: requestBulkStatusChange } = status;
   const requestIndividualStatusChange = status.requestIndividual;
+  const sendActivation = status.sendActivation;
   const statusFeedback = feedback.value;
 
   function toggleAll() {
@@ -275,7 +278,7 @@ function AdminUsersPage({ empty = false }) {
                           <td className="p-[16px]"><Checkbox size="S" checked={isSelected ? "Yes" : "No"} interactive={!isBulkUpdating} aria-label={`Seleccionar ${listedUser.name}`} onCheckedChange={() => toggleUser(listedUser.id)} /></td>
                           <td className="px-[24px] py-[16px]"><Badge label={listedUser.role?.name || "Sin rol"} theme="Brand 1" variation="Simple" size="S" /></td>
                           <td className="px-[24px] py-[16px]"><div className="flex min-w-0 items-center gap-[8px]"><Avatar size="S" name={listedUser.name} {...avatar} /><span className="text-body-4 truncate text-[var(--color-text-300)]">{listedUser.name}</span></div></td>
-                          <td className="text-heading-8 truncate px-[24px] py-[16px] text-[var(--color-text-300)]">{listedUser.email}</td>
+                          <td className="text-heading-8 truncate px-[24px] py-[16px] text-[var(--color-text-300)]">{listedUser.email || "Sin correo"}</td>
                           <td className="text-heading-8 px-[24px] py-[16px] text-[var(--color-text-300)]">{formatHumanDate(listedUser.lastLoginAt, undefined, "Sin acceso")}</td>
                           <td className="px-[24px] py-[16px]"><Badge label={status.label} theme={status.theme} variation="Simple" size="S" /></td>
                           <td className="px-[24px] py-[16px]"><div className="flex items-center gap-[8px]">
@@ -316,6 +319,7 @@ function AdminUsersPage({ empty = false }) {
                                 || String(user?.id) === String(listedUser.id)
                               }
                               onStatusChange={requestIndividualStatusChange}
+                              onSendActivation={sendActivation}
                             />
                           </div></td>
                         </tr>

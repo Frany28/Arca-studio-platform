@@ -72,6 +72,7 @@ app.use((error, _req, res, next) => {
     code: normalized.code,
     message: normalized.message,
     ...(normalized.fields ? { fields: normalized.fields } : {}),
+    ...(normalized.details ? { details: normalized.details } : {}),
     ...(normalized.retryAfter ? { retryAfter: normalized.retryAfter } : {}),
   });
 });

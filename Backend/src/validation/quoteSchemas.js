@@ -6,6 +6,7 @@ import {
   QUOTE_SORT_DIRECTIONS,
   QUOTE_SORT_FIELDS,
 } from "../domain/quote.js";
+import { describeClientNameError, normalizeClientName } from "../domain/clientName.js";
 import { describeProjectNameError, normalizeProjectName } from "../domain/projectName.js";
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
 import { decodeCursor } from "../utils/pagination.js";
@@ -47,6 +48,45 @@ const newProjectName = z.string({ error: "Escribe el nombre del proyecto." })
     const message = describeProjectNameError(value);
     if (message) context.addIssue({ code: "custom", message });
   });
+
+// Coincidencias que el administrador revisó y descartó: confirma que se trata de otra persona.
+const acknowledgedIds = z.array(bodyId).max(50, "Demasiadas coincidencias confirmadas.").optional()
+  .transform((ids) => [...new Set(ids ?? [])]);
+
+// Cliente que todavía no existe: se crea con su cuenta pendiente al guardar (nunca al escribir).
+const newClient = z.object({
+  acknowledgedClientIds: acknowledgedIds,
+  acknowledgedUserIds: acknowledgedIds,
+  name: z.string({ error: "Escribe el nombre del cliente." })
+    .transform(normalizeClientName)
+    .superRefine((value, context) => {
+      const message = describeClientNameError(value);
+      if (message) context.addIssue({ code: "custom", message });
+    }),
+}).strict();
+
+/**
+ * Exige exactamente uno de `clientId` (cliente existente) o `newClient` (cliente que se crea al
+ * guardar). Un cliente nuevo todavía no tiene proyectos, así que requiere `newProjectName`, y
+ * `submissionId` para que un reintento nunca cree otra cuenta. Solo aplica al alta.
+ *
+ * @param {{ clientId?: number, newClient?: object, projectId?: number, submissionId?: string }} body - Cuerpo del alta.
+ * @param {import("zod").RefinementCtx} context - Contexto de Zod para registrar el error.
+ * @returns {void}
+ */
+function assertSingleClientSelection(body, context) {
+  const hasClient = body.clientId !== undefined;
+  const hasNewClient = body.newClient !== undefined;
+  if (hasClient && hasNewClient) {
+    context.addIssue({ code: "custom", message: "Elige un cliente existente o escribe uno nuevo, no ambos.", path: ["newClient", "name"] });
+  } else if (!hasClient && !hasNewClient) {
+    context.addIssue({ code: "custom", message: "Selecciona el cliente o escribe el nombre de uno nuevo.", path: ["clientId"] });
+  } else if (hasNewClient && body.projectId !== undefined) {
+    context.addIssue({ code: "custom", message: "Un cliente nuevo no tiene proyectos: escribe el nombre del proyecto.", path: ["projectId"] });
+  } else if (hasNewClient && body.submissionId === undefined) {
+    context.addIssue({ code: "custom", message: "Un cliente nuevo requiere el identificador de envío.", path: ["submissionId"] });
+  }
+}
 
 /**
  * Exige exactamente uno de `projectId` (proyecto existente) o `newProjectName` (proyecto draft
@@ -129,15 +169,27 @@ export const quotePdfSchema = z.object({
   query: z.object({ timeZone: z.string().trim().max(64).optional(), version: positiveId.max(2147483647).optional() }).passthrough(),
 });
 
-// El alta admite un proyecto nuevo por nombre y un identificador de envío opcional: con él es
-// idempotente; sin él (clientes anteriores a la idempotencia) se comporta como antes.
+// El alta admite un cliente nuevo y un proyecto nuevo por nombre, y un identificador de envío
+// opcional: con él es idempotente; sin él (clientes anteriores a la idempotencia) se comporta como antes.
 export const quoteCreateSchema = z.object({
   body: z.object({
     ...quoteContent,
+    clientId: bodyId.optional(),
+    newClient: newClient.optional(),
     newProjectName: newProjectName.optional(),
     projectId: bodyId.optional(),
     submissionId: z.uuid({ error: "Identificador de envío inválido." }).optional(),
-  }).strict().superRefine(assertSingleProjectSelection),
+  }).strict().superRefine((body, context) => {
+    assertSingleProjectSelection(body, context);
+    assertSingleClientSelection(body, context);
+  }),
+});
+
+// Coincidencias de un nombre de cliente nuevo antes de guardar (solo lectura).
+export const quoteClientMatchesSchema = z.object({
+  query: z.object({
+    name: z.string().transform(normalizeClientName).pipe(z.string().min(2).max(150)),
+  }).passthrough(),
 });
 
 export const quoteUpdateSchema = z.object({

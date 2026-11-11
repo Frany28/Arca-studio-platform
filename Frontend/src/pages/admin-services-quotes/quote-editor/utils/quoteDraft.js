@@ -1,3 +1,4 @@
+import { describeClientNameError, normalizeClientName } from "../../../../../../Backend/src/domain/clientName.js";
 import { describeProjectNameError, normalizeProjectName, projectNameKey } from "../../../../../../Backend/src/domain/projectName.js";
 import { QUOTE_INPUT_FORMATS, parseDecimalInput } from "./quoteAmounts.js";
 
@@ -10,6 +11,46 @@ export const EMPTY_QUOTE_DRAFT = Object.freeze({ client: null, lines: [], notes:
 // Proyecto del borrador: uno existente elegido en las sugerencias o, solo en el alta, el nombre de
 // uno nuevo que el backend crea como Draft al guardar la cotización.
 export const PROJECT_KIND = Object.freeze({ EXISTING: "existing", NEW: "new" });
+
+// Cliente del borrador: uno existente (opción del selector, con id) o, solo en el alta, el nombre
+// de uno nuevo (`{kind: "new", name, acknowledged}`) cuya ficha y cuenta pendiente crea el backend
+// al guardar. `acknowledged` guarda las coincidencias que el administrador confirmó como otras personas.
+export const CLIENT_KIND = Object.freeze({ NEW: "new" });
+export const NO_ACKNOWLEDGED_MATCHES = Object.freeze({ clientIds: [], userIds: [] });
+
+/**
+ * Indica si el cliente del borrador es uno nuevo (escrito, todavía sin registrar).
+ *
+ * @param {Object|null} client - Cliente del borrador.
+ * @returns {boolean} true si se creará al guardar.
+ */
+export function isNewClient(client) {
+  return client?.kind === CLIENT_KIND.NEW;
+}
+
+/**
+ * Coincidencias que el administrador aún no confirmó como personas distintas.
+ *
+ * @param {Array<{kind: "client"|"user", id: number}>} matches - Coincidencias de la API.
+ * @param {{clientIds: Array<number>, userIds: Array<number>}} [acknowledged] - Confirmadas.
+ * @returns {Array<Object>} Coincidencias pendientes de decisión.
+ */
+export function pendingClientMatches(matches, acknowledged = NO_ACKNOWLEDGED_MATCHES) {
+  return (matches || []).filter((match) => !(match.kind === "client" ? acknowledged.clientIds : acknowledged.userIds).includes(match.id));
+}
+
+/**
+ * Confirma que todas las coincidencias mostradas son personas distintas del cliente nuevo.
+ *
+ * @param {Array<{kind: "client"|"user", id: number}>} matches - Coincidencias revisadas.
+ * @returns {{clientIds: Array<number>, userIds: Array<number>}} Confirmaciones para la API.
+ */
+export function acknowledgeClientMatches(matches) {
+  return {
+    clientIds: matches.filter((match) => match.kind === "client").map((match) => match.id),
+    userIds: matches.filter((match) => match.kind === "user").map((match) => match.id),
+  };
+}
 
 /**
  * Busca entre las sugerencias del cliente un proyecto con exactamente el nombre escrito, con la
@@ -158,20 +199,24 @@ function toPayloadDecimal(value, format) {
 }
 
 /**
- * Traduce el borrador al cuerpo de `POST/PATCH /admin/quotes`: id del cliente, id del proyecto
- * existente o nombre normalizado del proyecto nuevo (`newProjectName`, solo en el alta),
- * observaciones (vacías → null) y conceptos con cantidad y tarifa como texto decimal.
+ * Traduce el borrador al cuerpo de `POST/PATCH /admin/quotes`: id del cliente o, solo en el alta,
+ * `newClient` con el nombre normalizado y las coincidencias confirmadas; id del proyecto existente o
+ * nombre del proyecto nuevo (`newProjectName`), observaciones (vacías → null) y conceptos.
  *
  * @param {Object} draft - Borrador.
- * @returns {{clientId: number|null, projectId?: number|null, newProjectName?: string, notes: string|null,
- *   items: Array<Object>}} Cuerpo.
+ * @returns {{clientId?: number|null, newClient?: Object, projectId?: number|null, newProjectName?: string,
+ *   notes: string|null, items: Array<Object>}} Cuerpo.
  */
 export function toQuotePayload(draft) {
   const project = draft.project?.kind === PROJECT_KIND.NEW
     ? { newProjectName: normalizeProjectName(draft.project.name) }
     : { projectId: draft.project?.id ?? null };
+  const acknowledged = draft.client?.acknowledged ?? NO_ACKNOWLEDGED_MATCHES;
+  const client = isNewClient(draft.client)
+    ? { newClient: { acknowledgedClientIds: acknowledged.clientIds, acknowledgedUserIds: acknowledged.userIds, name: normalizeClientName(draft.client.name) } }
+    : { clientId: draft.client?.id ?? null };
   return {
-    clientId: draft.client?.id ?? null,
+    ...client,
     items: draft.lines.map((line) => ({
       quantity: toPayloadDecimal(line.quantity, QUOTE_INPUT_FORMATS.quantity),
       serviceId: line.serviceId,
@@ -184,8 +229,8 @@ export function toQuotePayload(draft) {
 
 /**
  * Valida el borrador antes de enviarlo con las mismas reglas que el backend, para señalar los
- * campos sin una petición. Devuelve los errores por ruta (`clientId`, `newProjectName`,
- * `items.0.quantity`...). Un proyecto nuevo con el nombre exacto de uno existente se rechaza para
+ * campos sin una petición. Devuelve los errores por ruta (`clientId`, `newClient.name`,
+ * `newProjectName`, `items.0.quantity`...). Un proyecto nuevo con el nombre exacto de uno existente se rechaza para
  * que se seleccione el existente.
  *
  * @param {Object} draft - Borrador.
@@ -196,6 +241,10 @@ export function toQuotePayload(draft) {
 export function validateQuoteDraft(draft, preview, { existingProjectMatch = null } = {}) {
   const fields = {};
   if (!draft.client) fields.clientId = "Selecciona el cliente de la cotización.";
+  else if (isNewClient(draft.client)) {
+    const clientError = describeClientNameError(draft.client.name);
+    if (clientError) fields["newClient.name"] = clientError;
+  }
   if (!draft.project) {
     fields.projectId = draft.client ? "Selecciona o escribe el proyecto del cliente." : "Selecciona primero el cliente.";
   } else if (draft.project.kind === PROJECT_KIND.NEW) {

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcrypt";
 
 import { ADMIN_USERS_PAGE_SIZE } from "../config/adminUsers.js";
-import { ConflictError, NotFoundError } from "../errors/appError.js";
+import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
   createAdminUserRecord,
   createAdminUserNoteRecord,
@@ -209,6 +209,47 @@ export async function createAdminUser(payload) {
 }
 
 /**
+ * Error de un cambio de estado que asignaría o retiraría `pending`: una cuenta pendiente solo se
+ * activa cuando su titular usa el enlace de activación enviado a su correo.
+ *
+ * @returns {ConflictError} 409 PENDING_ACCOUNT_STATUS_LOCKED.
+ */
+function pendingStatusLockedError() {
+  return new ConflictError(
+    "PENDING_ACCOUNT_STATUS_LOCKED",
+    "Una cuenta pendiente solo se activa con el enlace de activación enviado a su correo.",
+  );
+}
+
+/**
+ * Comprueba las reglas de una edición respecto al estado pendiente: una cuenta pendiente conserva
+ * estado y rol cliente y no recibe contraseña; ninguna otra pasa a pendiente ni queda sin correo.
+ * Un nombre de una sola palabra solo se acepta si la cuenta ya no tenía apellido.
+ *
+ * @param {{ status: string, last_name: string }} current - Estado actual de la cuenta.
+ * @param {object} payload - Edición validada por adminUserUpdateSchema.
+ * @returns {void}
+ * @throws {ConflictError|ValidationError} Si la edición rompe alguna de esas reglas.
+ */
+function assertPendingAccountEdit(current, payload) {
+  if (current.status === "pending") {
+    if (payload.status !== "pending") throw pendingStatusLockedError();
+    if (payload.roleCode !== "client") {
+      throw new ConflictError("PENDING_ACCOUNT_ROLE_LOCKED", "Una cuenta pendiente conserva el rol de cliente hasta su activación.");
+    }
+    if (payload.password) {
+      throw new ConflictError("PENDING_ACCOUNT_PASSWORD_LOCKED", "La contraseña la define el titular al activar su cuenta.");
+    }
+  } else {
+    if (payload.status === "pending") throw pendingStatusLockedError();
+    if (!payload.email) throw new ValidationError(undefined, { email: "Ingresa el correo electrónico." });
+  }
+  if (!payload.fullName.lastName && current.last_name) {
+    throw new ValidationError(undefined, { fullName: "Ingresa nombre y apellido." });
+  }
+}
+
+/**
  * Actualiza el valor de administrativo usuario estado conservando las reglas de acceso e integridad.
  * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
  *
@@ -227,6 +268,8 @@ export async function updateAdminUserStatus({ actorUserId, status, userId }) {
     );
   }
 
+  const current = await findAdminUserAccessRecord(userId);
+  if (current?.status === "pending") throw pendingStatusLockedError();
   const updatedUser = await updateAdminUserStatusRecord({ status, userId });
   if (!updatedUser) {
     throw new NotFoundError("USER_NOT_FOUND", "El usuario seleccionado no existe.");
@@ -290,6 +333,7 @@ export async function updateAdminUser({ actorUserId, payload, userId }) {
       "No puedes cambiar tu propio rol o estado.",
     );
   }
+  assertPendingAccountEdit(current, payload);
 
   const conflict = await findAdminUserConflict({
     email: payload.email,
@@ -327,6 +371,7 @@ export async function updateAdminUser({ actorUserId, payload, userId }) {
     }
     throw error;
   }
+  if (updated?.reason === "pending") throw pendingStatusLockedError();
   if (updated?.reason === "role") {
     throw new NotFoundError("ROLE_NOT_FOUND", "El rol seleccionado no está disponible.");
   }

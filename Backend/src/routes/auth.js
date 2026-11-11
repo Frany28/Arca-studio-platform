@@ -12,14 +12,17 @@ import {
   uploadProfilePhoto,
   verifyResetToken,
 } from "../controllers/authController.js";
+import { completeAccountActivation, verifyActivationToken } from "../controllers/accountActivationController.js";
 import { requireAuth } from "../middlewares/auth.js";
 import { ownSessionRevokeRateLimit } from "../middlewares/actionRateLimits.js";
 import { authRateLimits, emailRateLimits } from "../middlewares/authRateLimit.js";
 import { validate } from "../middlewares/validate.js";
 import {
+  activateAccountSchema,
   forgotPasswordSchema,
   loginSchema,
   resetPasswordSchema,
+  verifyActivationTokenSchema,
   verifyResetTokenSchema,
 } from "../validation/schemas.js";
 import {
@@ -53,6 +56,9 @@ router.post("/registration/complete", authRateLimits.registration, validate(comp
 router.post("/forgot-password", authRateLimits.passwordReset, validate(forgotPasswordSchema), emailRateLimits.passwordReset, forgotPassword);
 router.post("/verify-reset-token", authRateLimits.passwordReset, validate(verifyResetTokenSchema), verifyResetToken);
 router.post("/reset-password", authRateLimits.passwordReset, validate(resetPasswordSchema), resetPassword);
+// Activación de cuentas pendientes: mismo límite por IP que la recuperación de contraseña.
+router.post("/activation/verify", authRateLimits.passwordReset, validate(verifyActivationTokenSchema), verifyActivationToken);
+router.post("/activation/complete", authRateLimits.passwordReset, validate(activateAccountSchema), completeAccountActivation);
 router.post("/change-password", requireAuth, authRateLimits.changePassword, changePassword);
 router.get("/profile-photo/image", requireAuth, getProfilePhotoImage);
 router.post(

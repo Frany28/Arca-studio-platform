@@ -29,6 +29,9 @@ const STATUS_ITEMS = [
   { id: "blocked", label: "Suspendido", type: "Text" },
   { id: "inactive", label: "Deshabilitado", type: "Text" },
 ];
+// Una cuenta pendiente (cliente creado desde una cotización) conserva su estado y su rol cliente:
+// solo su titular la activa con el enlace enviado a su correo.
+const PENDING_STATUS_ITEMS = [{ id: "pending", label: "Pendiente de activación", type: "Text" }];
 
 function splitPhone(value) {
   const normalized = String(value || "").replace(/\D/g, "");
@@ -66,12 +69,23 @@ function getInitialValues(user, roles) {
   };
 }
 
-function validate(values) {
+/**
+ * Valida el formulario con las reglas del backend. Una cuenta pendiente admite el correo vacío
+ * (se completa antes de enviar la activación) y un nombre de una sola palabra (persona o empresa
+ * registrada con su nombre completo), igual que una cuenta cuyo nombre ya era de una palabra.
+ *
+ * @param {Object} values - Valores del formulario.
+ * @param {{pending?: boolean, singleNameAllowed?: boolean}} [rules] - Reglas de la cuenta editada.
+ * @returns {Record<string, string>} Errores por campo.
+ */
+function validate(values, { pending = false, singleNameAllowed = false } = {}) {
   const errors = {};
-  if (values.fullName.trim().split(/\s+/).filter(Boolean).length < 2) {
-    errors.fullName = "Ingresa nombre y apellido.";
+  const nameWords = values.fullName.trim().split(/\s+/).filter(Boolean).length;
+  if (nameWords < (pending || singleNameAllowed ? 1 : 2)) {
+    errors.fullName = pending || singleNameAllowed ? "Ingresa el nombre." : "Ingresa nombre y apellido.";
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
+  const email = values.email.trim();
+  if ((email || !pending) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = "Ingresa un correo electrónico válido.";
   }
   if (!values.roleCode) errors.roleCode = "Selecciona un rol.";
@@ -125,6 +139,8 @@ function SelectField({ error, items, label, onSelect, selectedItemId }) {
 
 function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = [], user = null }) {
   const editing = mode === "edit";
+  const pending = editing && user?.status === "pending";
+  const rules = { pending, singleNameAllowed: editing && !String(user?.name || "").trim().includes(" ") };
   const [values, setValues] = useState(() => getInitialValues(user, roles));
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
@@ -135,8 +151,10 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
   const [passwordTouched, setPasswordTouched] = useState({ password: false, confirmPassword: false });
   const [passwordError, setPasswordError] = useState("");
   const roleItems = useMemo(
-    () => roles.map((role) => ({ id: role.code, label: role.name, type: "Text" })),
-    [roles],
+    () => roles
+      .filter((role) => !pending || role.code === "client")
+      .map((role) => ({ id: role.code, label: role.name, type: "Text" })),
+    [pending, roles],
   );
   // El diálogo contiene el paso visible (datos o contraseña); cada formulario desplaza su contenido.
   const dialogRef = useRef(null);
@@ -149,7 +167,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
   };
 
   const validateField = (field) => {
-    const nextErrors = validate(values);
+    const nextErrors = validate(values, rules);
     setErrors((current) => ({ ...current, [field]: nextErrors[field] || "" }));
   };
 
@@ -190,14 +208,15 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
 
   const handleDetailsSubmit = async (event) => {
     event.preventDefault();
-    const nextErrors = validate(values);
+    const nextErrors = validate(values, rules);
     if (Object.keys(nextErrors).length) {
       setErrors(nextErrors);
       focusInvalidField();
       return;
     }
 
-    if (editing) {
+    // La contraseña de una cuenta pendiente la define su titular al activarla: no hay paso de contraseña.
+    if (editing && !pending) {
       setSubmitError("");
       setEditStep("password");
       return;
@@ -277,7 +296,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
                 </div>
 
                 <div className="grid grid-cols-1 gap-[16px] border-b border-[var(--color-neutral-200)] py-[16px] sm:grid-cols-2 sm:gap-[24px]">
-                  <Input {...textInputProps("email")} label="Email" placeholder="usuario@gmail.com" type="Default input" required showLabel showLabelInfo={false} showLeftIcon leftIcon={<Sms size="20" color="currentColor" />} showRightIcon={false} className="max-w-none" autoComplete="email" inputMode="email" />
+                  <Input {...textInputProps("email")} label="Email" placeholder="usuario@gmail.com" type="Default input" required={!pending} showLabel showLabelInfo={false} showLeftIcon leftIcon={<Sms size="20" color="currentColor" />} showRightIcon={false} className="max-w-none" autoComplete="email" inputMode="email" />
                   <SelectField error={errors.roleCode} items={roleItems} label="Rol" selectedItemId={values.roleCode} onSelect={(item) => updateValue("roleCode", item.id)} />
                 </div>
 
@@ -287,7 +306,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
                 </div>
 
                 <div className="grid grid-cols-1 gap-[16px] pt-[16px] sm:grid-cols-2 sm:gap-[24px]">
-                  <SelectField error={errors.status} items={STATUS_ITEMS} label="Status" selectedItemId={values.status} onSelect={(item) => updateValue("status", item.id)} />
+                  <SelectField error={errors.status} items={pending ? PENDING_STATUS_ITEMS : STATUS_ITEMS} label="Status" selectedItemId={values.status} onSelect={(item) => updateValue("status", item.id)} />
                 </div>
 
                 {submitError ? <p className="mt-[16px] text-body-3 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}
@@ -296,7 +315,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
 
             <footer className="flex flex-col-reverse gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px] sm:flex-row sm:items-center">
               <Button theme="Primary" type="Outline" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting} className="!h-[41px] !w-full sm:min-w-0 sm:flex-1" onClick={onClose}>Cancelar</Button>
-              <Button theme="Primary" type="Solid" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting || roles.length === 0} className="!h-[41px] !w-full sm:min-w-0 sm:flex-1" htmlType="submit" form={`${mode}-admin-user-form`}>{submitting ? (editing ? "Guardando..." : "Creando...") : (editing ? "Siguiente" : "Enviar código de activación")}</Button>
+              <Button theme="Primary" type="Solid" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting || roles.length === 0} className="!h-[41px] !w-full sm:min-w-0 sm:flex-1" htmlType="submit" form={`${mode}-admin-user-form`}>{submitting ? (editing ? "Guardando..." : "Creando...") : (pending ? "Guardar" : editing ? "Siguiente" : "Enviar código de activación")}</Button>
             </footer>
           </>
         ) : (

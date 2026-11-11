@@ -31,7 +31,8 @@ model clients {
   name             String             @db.VarChar(150)
   company_name     String?            @db.VarChar(150)
   document_number  String?            @db.VarChar(150)
-  email            String             @db.VarChar(150)
+  /// Contacto comercial opcional: un cliente creado desde una cotización todavía no lo tiene.
+  email            String?            @db.VarChar(150)
   phone            String?            @db.VarChar(30)
   address          String?            @db.VarChar(255)
   city             String?            @db.VarChar(100)
@@ -51,6 +52,8 @@ model clients {
   @@index([document_number], map: "idx_clients_document_number")
   @@index([email], map: "idx_clients_email")
   @@index([status], map: "idx_clients_status")
+  // idx_clients_name_key (person_name_key(name), parcial y no único) vive en la migración
+  // 20261110131000_pending_client_accounts: Prisma no representa índices de expresión.
 }
 
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
@@ -631,10 +634,12 @@ model users {
   id                                                    BigInt                     @id @default(autoincrement())
   client_id                                             BigInt?
   role_id                                               BigInt
-  email                                                 String                     @unique @db.VarChar(150)
+  /// NULL solo en una cuenta pending (chk_users_identity_unless_pending).
+  email                                                 String?                    @unique @db.VarChar(150)
   first_name                                            String                     @db.VarChar(150)
   last_name                                             String                     @db.VarChar(150)
-  password_hash                                         String                     @db.VarChar(255)
+  /// NULL solo y siempre en una cuenta pending (chk_users_pending_without_password).
+  password_hash                                         String?                    @db.VarChar(255)
   profile_photo_url                                     String?                    @db.VarChar(255)
   signature_url                                         String?                    @db.VarChar(255)
   phone                                                 String?                    @db.VarChar(30)
@@ -1170,4 +1175,6 @@ enum user_status {
   active
   inactive
   blocked
+  /// Cliente creado desde una cotización: sin correo verificado ni contraseña hasta su activación.
+  pending
 }

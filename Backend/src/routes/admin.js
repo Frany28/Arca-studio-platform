@@ -34,9 +34,11 @@ import {
   postAdminUserNote,
   streamAdminUserProfilePhoto,
 } from "../controllers/adminUserController.js";
+import { postAdminUserActivationLink } from "../controllers/accountActivationController.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
 import { adminRateLimits } from "../middlewares/actionRateLimits.js";
 import { validate } from "../middlewares/validate.js";
+import { adminUserActivationLinkSchema } from "../validation/schemas.js";
 import {
   adminAssigneePhotoSchema,
   adminProjectBulkActionSchema,
@@ -115,6 +117,12 @@ router.patch(
   adminRateLimits.userStatus,
   validate(adminUserStatusSchema),
   patchAdminUserStatus,
+);
+router.post(
+  "/users/:userId/activation-link",
+  adminRateLimits.userActivationLink,
+  validate(adminUserActivationLinkSchema),
+  postAdminUserActivationLink,
 );
 router.post(
   "/users/:userId/sessions/revoke",

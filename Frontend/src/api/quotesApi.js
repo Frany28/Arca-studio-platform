@@ -115,6 +115,20 @@ export const quotesApi = {
   },
 
   /**
+   * Busca personas registradas con un nombre igual o parecido al de un cliente nuevo (sin
+   * distinguir mayúsculas, acentos ni espacios). Solo lectura: no crea ni modifica registros.
+   *
+   * @param {Object} params - Nombre y cancelación.
+   * @param {string} params.name - Nombre escrito del cliente nuevo.
+   * @param {AbortSignal} [params.signal] - Cancela la petición.
+   * @returns {Promise<{matches: Array<{kind: "client"|"user", id: number, name: string, email: string|null,
+   *   companyName: string|null, status: string, exact: boolean}>}>} Coincidencias, exactas primero.
+   */
+  listClientMatches({ name, signal }) {
+    return apiRequest(`/admin/quotes/clients/matches${toQueryString({ name })}`, { signal });
+  },
+
+  /**
    * Busca proyectos no eliminados de un cliente para asociarlos a la cotización.
    *
    * @param {Object} params - Cliente, búsqueda, paginación y cancelación.

@@ -67,6 +67,8 @@ export async function apiRequest(path, options = {}) {
     error.status = response.status;
     error.code = data?.code || "API_ROUTE_UNAVAILABLE";
     error.fields = data?.fields || null;
+    // Datos para resolver el error (p. ej. coincidencias de un cliente nuevo en un 409).
+    error.details = data?.details || null;
     reportSessionExpiration({ code: error.code, path, status: error.status });
     throw error;
   }

@@ -92,8 +92,12 @@ test("validación local con las reglas del backend y errores del servidor sin pr
 
   assert.deepEqual(normalizeServerFields({ "body.items.0.quantity": "A", clientId: "B" }), { clientId: "B", "items.0.quantity": "A" });
   assert.deepEqual(describeQuoteSubmitError({ fields: { "body.notes": "Larga" }, message: "Datos inválidos", status: 400 }), {
-    conflict: false, fieldErrors: { notes: "Larga" }, formError: "", notFound: false,
+    clientMatches: [], conflict: false, fieldErrors: { notes: "Larga" }, formError: "", notFound: false,
   });
+  // Otra persona con el mismo nombre (quizá creada en paralelo): se pide la decisión, no es un error general.
+  const matches = [{ exact: true, id: 4, kind: "client", name: "Ana Ruiz" }];
+  const duplicate = describeQuoteSubmitError({ code: "CLIENT_NAME_MATCHES", details: { matches }, message: "Hay personas…", status: 409 });
+  assert.deepEqual([duplicate.clientMatches, duplicate.formError], [matches, ""]);
   assert.equal(describeQuoteSubmitError({ code: "QUOTE_VERSION_CONFLICT", message: "Otro administrador…", status: 409 }).conflict, true);
   assert.equal(describeQuoteSubmitError({ code: "NETWORK_ERROR", message: "Sin conexión" }).formError, "Sin conexión");
 });

@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import {
   getQuoteById,
+  getQuoteClientMatches,
   getQuoteClientProjects,
   getQuoteClients,
   getQuotePdfDocument,
@@ -15,6 +16,7 @@ import { adminRateLimits } from "../middlewares/actionRateLimits.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
 import { validate } from "../middlewares/validate.js";
 import {
+  quoteClientMatchesSchema,
   quoteClientOptionsSchema,
   quoteCreateSchema,
   quoteDetailSchema,
@@ -34,6 +36,7 @@ router.get("/", validate(quoteListSchema), getQuotes);
 router.post("/", adminRateLimits.quoteWrite, validate(quoteCreateSchema), postQuote);
 router.get("/summary", getQuotesSummary);
 router.get("/clients", validate(quoteClientOptionsSchema), getQuoteClients);
+router.get("/clients/matches", validate(quoteClientMatchesSchema), getQuoteClientMatches);
 router.get("/clients/:clientId/projects", validate(quoteProjectOptionsSchema), getQuoteClientProjects);
 router.get("/:quoteId", validate(quoteDetailSchema), getQuoteById);
 router.patch("/:quoteId", adminRateLimits.quoteWrite, validate(quoteUpdateSchema), patchQuote);

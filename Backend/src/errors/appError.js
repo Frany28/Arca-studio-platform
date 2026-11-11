@@ -11,11 +11,13 @@ export class AppError extends Error {
    * @param {unknown} options.message - Valor de `options.message` requerido por esta operación.
    * @param {unknown} [options.status] - Valor de `options.status` requerido por esta operación.
    * @param {unknown} options.cause - Valor de `options.cause` requerido por esta operación.
+   * @param {object} [options.details] - Datos públicos adicionales para resolver el error (p. ej. coincidencias).
    */
-constructor({ code, fields, message, status = 500, cause }) {
+constructor({ code, details, fields, message, status = 500, cause }) {
     super(message, { cause });
     this.name = this.constructor.name;
     this.code = code;
+    this.details = details;
     this.fields = fields;
     this.status = status;
     this.publicMessage = message;

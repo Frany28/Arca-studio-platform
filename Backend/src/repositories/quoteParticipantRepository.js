@@ -27,7 +27,8 @@ function toClientOption(row) {
 
 /**
  * Lista clientes activos y no eliminados en orden alfabético estable (nombre, id) con cursor.
- * Busca en nombre, empresa y correo. Pide un elemento adicional para detectar otra página.
+ * Busca en el nombre sin distinguir mayúsculas, acentos ni espacios (`person_name_key`), y en
+ * empresa y correo. Pide un elemento adicional para detectar otra página.
  *
  * @param {object} options - Búsqueda y paginación validadas.
  * @param {string} [options.search] - Texto a buscar.
@@ -48,13 +49,81 @@ export async function listQuoteClientOptions({ cursor, limit, search }) {
        limit 1
      ) contact on true
      where c.deleted_at is null and c.status = 'active'
-       and ($1::text is null or c.name ilike $1 escape '\\' or c.company_name ilike $1 escape '\\' or c.email ilike $1 escape '\\')
+       and ($1::text is null
+         or position(public.person_name_key($5::text) in public.person_name_key(c.name)) > 0
+         or c.company_name ilike $1 escape '\\' or c.email ilike $1 escape '\\')
        and ($2::text is null or (c.name, c.id) > ($2::text, $3::bigint))
      order by c.name, c.id
      limit $4`,
-    [search ? toContainsPattern(search) : null, cursor?.[0] ?? null, cursor?.[1] ?? null, limit + 1],
+    [search ? toContainsPattern(search) : null, cursor?.[0] ?? null, cursor?.[1] ?? null, limit + 1, search ?? null],
   );
   return result.rows.map(toClientOption);
+}
+
+// Clave fija del bloqueo consultivo que serializa la creación de clientes desde cotizaciones.
+const CLIENT_CREATION_LOCK_KEY = "quote-client-creation";
+
+/**
+ * Serializa hasta el COMMIT la creación de clientes desde cotizaciones. Dos altas simultáneas con
+ * nombres iguales o parecidos no pueden comprobar coincidencias a la vez: la segunda espera y ve el
+ * cliente que creó la primera. Es una operación administrativa poco frecuente y la espera es corta.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @returns {Promise<void>}
+ */
+export async function lockQuoteClientCreation(client) {
+  await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [CLIENT_CREATION_LOCK_KEY]);
+}
+
+/**
+ * Busca personas registradas con un nombre igual o parecido al de un cliente nuevo, sin distinguir
+ * mayúsculas, acentos ni espacios. Devuelve fichas de cliente no eliminadas (activas o no) y
+ * usuarios con rol cliente sin ficha comercial. Parecido: todas las palabras de un nombre
+ * empiezan alguna palabra del otro. Nunca fusiona ni decide: el administrador confirma.
+ *
+ * @param {string} name - Nombre normalizado del cliente nuevo.
+ * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto el pool.
+ * @param {number} [limit=20] - Máximo de coincidencias.
+ * @returns {Promise<Array<{ kind: "client"|"user", id: number, name: string, companyName: string|null,
+ *   email: string|null, status: string, exact: boolean }>>} Coincidencias, exactas primero.
+ */
+export async function findQuoteClientNameMatches(name, executor = { query }, limit = 20) {
+  const result = await executor.query(
+    `with input as (select public.person_name_key($1::text) as key),
+     candidates as (
+       select 'client' as kind, c.id, c.name, c.company_name, c.email, c.status::text as status,
+         public.person_name_key(c.name) as key
+       from public.clients c
+       where c.deleted_at is null
+       union all
+       select 'user', u.id, btrim(u.first_name || ' ' || u.last_name), u.company_name, u.email, u.status::text,
+         public.person_name_key(u.first_name || ' ' || u.last_name)
+       from public.users u
+       join public.roles r on r.id = u.role_id
+       where r.code = 'client' and u.client_id is null and u.deleted_at is null
+     )
+     select c.kind, c.id, c.name, c.company_name, c.email, c.status, c.key = input.key as exact
+     from candidates c, input
+     where c.key <> '' and input.key <> '' and (c.key = input.key
+       or not exists (
+         select 1 from unnest(string_to_array(input.key, ' ')) word where position(' ' || word in ' ' || c.key) = 0
+       )
+       or not exists (
+         select 1 from unnest(string_to_array(c.key, ' ')) word where position(' ' || word in ' ' || input.key) = 0
+       ))
+     order by (c.key = input.key) desc, c.name, c.kind, c.id
+     limit $2`,
+    [name, limit],
+  );
+  return result.rows.map((row) => ({
+    companyName: row.company_name,
+    email: row.email,
+    exact: row.exact,
+    id: Number(row.id),
+    kind: row.kind,
+    name: row.name,
+    status: row.status,
+  }));
 }
 
 /**

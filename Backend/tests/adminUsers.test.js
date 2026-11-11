@@ -60,11 +60,12 @@ test("admin users expose the public management fields and normalized metrics", (
     lastLoginAt: null,
     createdAt: "2026-08-19T12:00:00.000Z",
   });
-  assert.deepEqual(mapAdminUserMetrics({ total: "20", active: "10", suspended: "5", disabled: "5" }), {
+  assert.deepEqual(mapAdminUserMetrics({ total: "20", active: "10", suspended: "5", disabled: "3", pending: "2" }), {
     total: 20,
     active: 10,
     suspended: 5,
-    disabled: 5,
+    disabled: 3,
+    pending: 2,
   });
 });
 

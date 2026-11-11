@@ -25,6 +25,25 @@ export const resetPasswordSchema = z.object({
   body: z.object({ password: z.string().max(256), token: recoveryToken }),
 });
 
+// Activación de una cuenta pendiente: misma política que la recuperación (8+ caracteres, mayúscula,
+// número y carácter especial) con el máximo de 72 que bcrypt procesa completo.
+const activationPassword = z.string()
+  .min(8, "La contraseña debe tener al menos 8 caracteres.")
+  .max(72, "La contraseña no puede superar 72 caracteres.")
+  .regex(/[A-Z]/, "La contraseña debe incluir una mayúscula.")
+  .regex(/\d/, "La contraseña debe incluir un número.")
+  .regex(/[^A-Za-z0-9]/, "La contraseña debe incluir un carácter especial.");
+
+export const verifyActivationTokenSchema = z.object({ body: z.object({ token: recoveryToken.min(1) }).strict() });
+
+export const activateAccountSchema = z.object({
+  body: z.object({ password: activationPassword, token: recoveryToken.min(1) }).strict(),
+});
+
+export const adminUserActivationLinkSchema = z.object({
+  params: z.object({ userId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+});
+
 export const paginationSchema = z.object({
   query: z.object({ cursor, limit: z.coerce.number().int().min(1).max(100).optional() }).passthrough(),
 });

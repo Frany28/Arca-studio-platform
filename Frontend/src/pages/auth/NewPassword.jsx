@@ -27,17 +27,76 @@ const PASSWORD_REQUIREMENTS = [
   },
 ];
 
-function getPasswordState(value, touched) {
+// La activación guarda la contraseña con bcrypt, que procesa como máximo 72 caracteres.
+const ACTIVATION_PASSWORD_REQUIREMENTS = [
+  ...PASSWORD_REQUIREMENTS,
+  { label: "Máximo 72 caracteres", test: (value) => String(value).length <= 72 },
+];
+
+// Textos y llamadas de cada uso de la página: recuperar la contraseña o activar una cuenta pendiente
+// (cliente creado desde una cotización). Ambos usan un enlace de un solo uso enviado al correo.
+const VARIANTS = {
+  activation: {
+    complete: ({ password, token }) => api.auth.completeActivation({ password, token }),
+    expiredDescription: "Por motivos de seguridad, el enlace para activar tu cuenta ya no es válido o ya se usó.",
+    expiredHint: "Pide a ARCA Studio que te envíe un nuevo enlace de activación.",
+    invalidMessage: "El enlace de activación no es válido o expiró.",
+    missingMessage: "No se encontró un enlace válido para activar la cuenta.",
+    passwordHint: "Crea la contraseña de tu cuenta",
+    requirements: ACTIVATION_PASSWORD_REQUIREMENTS,
+    submitLabel: "Activar cuenta",
+    submittingLabel: "Activando cuenta...",
+    submitError: "No se pudo activar la cuenta. Intenta nuevamente.",
+    title: "Activa tu cuenta",
+    toast: {
+      description: "Tu correo quedó confirmado y tu cuenta está activa. Ya puedes iniciar sesión con tu nueva contraseña.",
+      icon: "lock",
+      title: "Cuenta activada",
+    },
+    validating: "Validando enlace de activación...",
+    verify: ({ token }) => api.auth.verifyActivationToken({ token }),
+  },
+  reset: {
+    complete: ({ password, token }) => api.auth.resetPassword({ password, token }),
+    expiredDescription: "Por motivos de seguridad, el enlace para restablecer tu contraseña ya no es válido.",
+    invalidMessage: "El enlace de recuperación no es válido o expiró.",
+    missingMessage: "No se encontró un enlace válido para recuperar la contraseña.",
+    passwordHint: "Ingresa una nueva contraseña",
+    requestNewLinkPath: "/recuperar-cuenta",
+    requirements: PASSWORD_REQUIREMENTS,
+    submitLabel: "Actualizar contraseña",
+    submittingLabel: "Actualizando contraseña...",
+    submitError: "No se pudo restablecer la contraseña. Intenta nuevamente.",
+    title: "Recupera tu acceso",
+    toast: {
+      description: "Tu contraseña ha sido actualizada con éxito. Por razones de seguridad, por favor verifica la actividad reciente.",
+      icon: "lock",
+      title: "Contraseña restablecida",
+    },
+    validating: "Validando enlace de recuperación...",
+    verify: ({ token }) => api.auth.verifyResetToken({ token }),
+  },
+};
+
+function getPasswordState(value, touched, requirements) {
   if (!touched) {
     return value.trim() ? "Filled" : "Default";
   }
 
-  return PASSWORD_REQUIREMENTS.every((requirement) => requirement.test(value))
+  return requirements.every((requirement) => requirement.test(value))
     ? "Filled"
     : "Error";
 }
 
-function NewPassword() {
+/**
+ * Define una contraseña desde un enlace de un solo uso: restablecer (`reset`, por defecto) o activar
+ * una cuenta pendiente (`activation`). Valida el enlace al abrir la página y no inicia sesión.
+ *
+ * @param {{variant?: "reset"|"activation"}} props - Uso de la página.
+ * @returns {import("react").ReactElement} Página.
+ */
+function NewPassword({ variant = "reset" }) {
+  const copy = VARIANTS[variant] || VARIANTS.reset;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
@@ -55,9 +114,7 @@ function NewPassword() {
 
   useEffect(() => {
     if (!token) {
-      setValidationError(
-        "No se encontró un enlace válido para recuperar la contraseña.",
-      );
+      setValidationError(copy.missingMessage);
       setIsTokenValid(false);
       setIsValidatingToken(false);
       return;
@@ -67,8 +124,8 @@ function NewPassword() {
     setValidationError("");
     setIsValidatingToken(true);
 
-    api.auth
-      .verifyResetToken({ token })
+    copy
+      .verify({ token })
       .then(() => {
         if (!active) return;
         setIsTokenValid(true);
@@ -76,9 +133,7 @@ function NewPassword() {
       .catch((error) => {
         if (!active) return;
         setIsTokenValid(false);
-        setValidationError(
-          error?.message || "El enlace de recuperación no es válido o expiró.",
-        );
+        setValidationError(error?.message || copy.invalidMessage);
       })
       .finally(() => {
         if (!active) return;
@@ -88,11 +143,11 @@ function NewPassword() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [copy, token]);
 
   const passwordState = useMemo(
-    () => getPasswordState(password, touched.password),
-    [password, touched.password],
+    () => getPasswordState(password, touched.password, copy.requirements),
+    [copy.requirements, password, touched.password],
   );
 
   const confirmPasswordState = useMemo(() => {
@@ -111,7 +166,7 @@ function NewPassword() {
     touched.confirmPassword &&
     confirmPassword.trim().length > 0 &&
     confirmPassword !== password;
-  const passwordIsValid = PASSWORD_REQUIREMENTS.every((requirement) =>
+  const passwordIsValid = copy.requirements.every((requirement) =>
     requirement.test(password),
   );
   const passwordsMatch =
@@ -132,7 +187,7 @@ function NewPassword() {
     setSubmitting(true);
 
     try {
-      await api.auth.resetPassword({ token, password });
+      await copy.complete({ password, token });
       try {
         window.localStorage.setItem("arca_auth_logout", Date.now().toString());
       } catch {
@@ -141,20 +196,11 @@ function NewPassword() {
 
       navigate("/", {
         state: {
-          authToast: {
-            id: Date.now(),
-            title: "Contraseña restablecida",
-            description:
-              "Tu contraseña ha sido actualizada con éxito. Por razones de seguridad, por favor verifica la actividad reciente.",
-            icon: "lock",
-          },
+          authToast: { ...copy.toast, id: Date.now() },
         },
       });
     } catch (error) {
-      setFormError(
-        error?.message ||
-          "No se pudo restablecer la contraseña. Intenta nuevamente.",
-      );
+      setFormError(error?.message || copy.submitError);
     } finally {
       setSubmitting(false);
     }
@@ -164,9 +210,10 @@ function NewPassword() {
     return (
       <AuthLayout>
         <ExpiredLinkCard
-          description="Por motivos de seguridad, el enlace para restablecer tu contraseña ya no es válido."
+          description={copy.expiredDescription}
           onReturnToLogin={() => navigate("/")}
-          onRequestNewLink={() => navigate("/recuperar-cuenta")}
+          onRequestNewLink={copy.requestNewLinkPath ? () => navigate(copy.requestNewLinkPath) : undefined}
+          {...(copy.expiredHint ? { requestHint: copy.expiredHint } : {})}
         />
       </AuthLayout>
     );
@@ -194,7 +241,7 @@ function NewPassword() {
                   lineHeight: 1.05,
                 }}
               >
-                Recupera tu acceso
+                {copy.title}
               </h1>
             </div>
 
@@ -202,10 +249,10 @@ function NewPassword() {
               <div className="w-full rounded-[var(--radius-4)] border border-[var(--color-neutral-200)] bg-white p-[16px] text-[var(--color-text-300)]">
                 <p className="m-0 text-sm text-[var(--color-text-300)]">
                   {isValidatingToken
-                    ? "Validando enlace de recuperación..."
+                    ? copy.validating
                     : validationError}
                 </p>
-                {!isValidatingToken && validationError && (
+                {!isValidatingToken && validationError && copy.requestNewLinkPath && (
                   <p className="mt-[8px] text-sm">
                     <a
                       href="/recuperar-cuenta"
@@ -224,12 +271,12 @@ function NewPassword() {
               size="S"
               value={password}
               state={passwordState}
-              hintText="Ingresa una nueva contraseña"
+              hintText={copy.passwordHint}
               showHint
               showLabelInfo={false}
               required={false}
               showPasswordStrength
-              passwordRequirements={PASSWORD_REQUIREMENTS}
+              passwordRequirements={copy.requirements}
               passwordHintTitle="Debe contener al menos:"
               className="w-full max-w-none"
               onChange={(event) => setPassword(event.target.value)}
@@ -285,9 +332,7 @@ function NewPassword() {
                 !passwordsMatch
               }
             >
-              {submitting
-                ? "Actualizando contraseña..."
-                : "Actualizar contraseña"}
+              {submitting ? copy.submittingLabel : copy.submitLabel}
             </Button>
           </form>
         </div>

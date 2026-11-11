@@ -103,6 +103,7 @@ const router = createBrowserRouter(
             <Route path="/cuenta-inactiva" element={<InactiveAccount />} />
             <Route path="/recuperar-cuenta" element={<RecoverAccount />} />
             <Route path="/nueva-contraseña" element={<NewPassword />} />
+            <Route path="/activar-cuenta" element={<NewPassword variant="activation" />} />
 
             <Route element={<ProtectedRoute allowedRoles={["client"]} />}>
               <Route path="/dashboard-clientes" element={<Home />} />

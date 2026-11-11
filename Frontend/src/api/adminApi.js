@@ -116,6 +116,17 @@ export const adminApi = {
     return { ...response, user: withAdminUserAvatar(response?.user) };
   },
 
+  /**
+   * Envía el enlace de activación al correo de una cuenta pendiente (cliente creado desde una
+   * cotización). El titular confirma su correo y define su contraseña desde ese enlace.
+   *
+   * @param {{userId: number}} params - Cuenta pendiente.
+   * @returns {Promise<{email: string, expiresAt: string, message: string}>} Destinatario y vencimiento.
+   */
+  sendUserActivationLink({ userId }) {
+    return apiRequest(`/admin/users/${encodeURIComponent(userId)}/activation-link`, { method: "POST" });
+  },
+
   async updateUserStatus({ status, userId }) {
     const payload = await apiRequest(`/admin/users/${encodeURIComponent(userId)}/status`, {
       body: JSON.stringify({ status }),

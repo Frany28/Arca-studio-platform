@@ -160,21 +160,22 @@ export function hasQuoteContentChanged(current, next) {
 
 /**
  * Representa el contenido enviado en un alta como texto estable, para comprobar que un reintento
- * con el mismo `submissionId` es la misma operación: cliente, proyecto elegido o nombre del
- * proyecto nuevo (normalizado), observaciones y, en orden, cada concepto con su cantidad y tarifa
- * aplicada comparadas por valor. El servicio guarda su SHA-256 con la cotización.
+ * con el mismo `submissionId` es la misma operación: cliente (o nombre del cliente nuevo), proyecto
+ * elegido o nombre del proyecto nuevo, observaciones y cada concepto con cantidad y tarifa comparadas
+ * por valor. Con un cliente existente el texto no cambia respecto a versiones anteriores.
  *
  * @param {object} payload - Cuerpo validado por quoteCreateSchema.
- * @param {number} payload.clientId - Cliente.
+ * @param {number} [payload.clientId] - Cliente existente.
+ * @param {{ name: string }} [payload.newClient] - Cliente nuevo; las coincidencias confirmadas no forman parte de la huella.
  * @param {number} [payload.projectId] - Proyecto existente.
  * @param {string} [payload.newProjectName] - Nombre normalizado del proyecto nuevo.
  * @param {string|null} payload.notes - Observaciones.
  * @param {Array<{ serviceId: number, quantity: string, unitRate: string }>} payload.items - Conceptos.
  * @returns {string} Contenido canónico del alta.
  */
-export function buildQuoteSubmissionContent({ clientId, items, newProjectName, notes, projectId }) {
+export function buildQuoteSubmissionContent({ clientId, items, newClient, newProjectName, notes, projectId }) {
   return JSON.stringify([
-    Number(clientId),
+    newClient ? ["newClient", newClient.name] : Number(clientId),
     projectId ? ["project", Number(projectId)] : ["newProject", newProjectName],
     notes ?? null,
     items.map((item) => [

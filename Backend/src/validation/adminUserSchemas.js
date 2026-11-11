@@ -42,6 +42,20 @@ const fullName = z.string().trim().min(3, "Ingresa nombre y apellido.").max(300)
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 });
 
+// Edición: admite un nombre de una sola palabra (cliente creado desde una cotización con su nombre
+// completo, persona o empresa); el servicio solo lo acepta si la cuenta ya no tenía apellido.
+const editableFullName = z.string().trim().min(2, "Ingresa el nombre.").max(300).transform((value) => {
+  const parts = value.split(/\s+/).filter(Boolean);
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+});
+
+// Edición: el correo es opcional solo mientras la cuenta está pendiente (lo exige el servicio).
+const editableEmail = z.union([
+  z.literal("").transform(() => null),
+  z.null(),
+  z.string().trim().pipe(z.email("Correo inválido.")).transform((value) => value.toLowerCase()),
+]).optional().transform((value) => value ?? null);
+
 const optionalPhone = z.string().max(40).optional().transform(normalizeOptionalPhone);
 
 /**
@@ -69,7 +83,7 @@ export const adminUserListSchema = z.object({
     limit: z.coerce.number().int().min(1).max(ADMIN_USERS_PAGE_SIZE).optional(),
     role: optionalCsvList(z.string().min(1).max(64).regex(/^[a-z0-9_-]+$/i)),
     search: z.string().trim().max(100).optional(),
-    status: optionalCsvList(z.enum(["active", "blocked", "inactive"]), 3),
+    status: optionalCsvList(z.enum(["active", "blocked", "inactive", "pending"]), 4),
   }).passthrough(),
 });
 
@@ -105,9 +119,14 @@ const adminUserMutationBody = z.object(adminUserMutationFields).refine(
   differentPhonesIssue,
 );
 
+// `pending` solo se acepta para conservar el estado de una cuenta pendiente: ninguna edición lo
+// asigna ni lo retira (lo comprueba el servicio); la activación usa su propio enlace.
 const adminUserUpdateBody = z.object({
   ...adminUserMutationFields,
+  email: editableEmail,
+  fullName: editableFullName,
   password: passwordsMatchPolicy.optional(),
+  status: z.enum(["active", "blocked", "inactive", "pending"]),
 }).refine(
   differentPhones,
   differentPhonesIssue,

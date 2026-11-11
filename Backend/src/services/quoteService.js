@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { withTransaction } from "../config/db.js";
-import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
+import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
   QUOTE_CURRENCY,
   QUOTE_SORT_FIELDS,
@@ -17,10 +17,14 @@ import { buildQuotePdfReservation, toQuotePdfStatus } from "../domain/quotePdfDo
 import { findQuotePdf, reserveQuotePdf } from "../repositories/quotePdfRepository.js";
 import { ensureQuotePdf } from "./quotePdfService.js";
 import { calculateQuoteTotals } from "../domain/quoteTotals.js";
+import { insertPendingClientAccount } from "../repositories/adminUserRepository.js";
+import { insertAuditLog } from "../repositories/auditLogRepository.js";
 import {
   findQuoteClient,
+  findQuoteClientNameMatches,
   listClientProjectOptions,
   listQuoteClientOptions,
+  lockQuoteClientCreation,
   lockQuoteProject,
 } from "../repositories/quoteParticipantRepository.js";
 import {
@@ -43,6 +47,8 @@ import { PROJECT_NAME_ALREADY_EXISTS, createDraftProject } from "./projectServic
 import { QUOTE_VERSION_CONFLICT_MESSAGE, translateQuoteError } from "./quoteErrors.js";
 
 const QUOTE_NOT_FOUND_MESSAGE = "La cotización solicitada no existe.";
+// Máximo de coincidencias mostradas y confirmables (acknowledged*Ids admite 50).
+const CLIENT_NAME_MATCH_LIMIT = 50;
 
 /**
  * Obtiene una página del listado de cotizaciones con búsqueda, intervalo de fechas y orden por
@@ -105,6 +111,44 @@ export async function getQuoteClientOptions(filters) {
   const rows = await listQuoteClientOptions({ cursor: decodeCursor(filters.cursor), limit, search: filters.search });
   const page = pageResult(rows, limit, (client) => client, (client) => [client.name, String(client.id)]);
   return { clients: page.items, nextCursor: page.nextCursor };
+}
+
+/**
+ * Busca personas registradas con un nombre igual o parecido al de un cliente nuevo para que el
+ * administrador elija una existente o confirme que es otra persona. Solo lectura.
+ *
+ * @param {{ name: string }} filters - Nombre normalizado por quoteClientMatchesSchema.
+ * @returns {Promise<{ matches: Array<object> }>} Coincidencias, exactas primero.
+ */
+export async function getQuoteClientNameMatches({ name }) {
+  return { matches: await findQuoteClientNameMatches(name, undefined, CLIENT_NAME_MATCH_LIMIT) };
+}
+
+/**
+ * Crea en la transacción del alta la ficha y la cuenta pendiente de un cliente nuevo. Bajo el
+ * bloqueo de creación vuelve a buscar coincidencias: cualquiera que el administrador no haya
+ * confirmado (incluida una creada en paralelo) devuelve 409 CLIENT_NAME_MATCHES con la lista.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción del alta.
+ * @param {{ name: string, acknowledgedClientIds: Array<number>, acknowledgedUserIds: Array<number> }} newClient - Cliente nuevo validado.
+ * @returns {Promise<{ clientId: number, userId: number }>} Identificadores creados.
+ * @throws {AppError} CLIENT_NAME_MATCHES (409) o CLIENT_ROLE_UNAVAILABLE (409).
+ */
+async function createQuoteClientAccount(client, newClient) {
+  await lockQuoteClientCreation(client);
+  const matches = await findQuoteClientNameMatches(newClient.name, client, CLIENT_NAME_MATCH_LIMIT);
+  const acknowledged = { client: new Set(newClient.acknowledgedClientIds), user: new Set(newClient.acknowledgedUserIds) };
+  if (matches.some((match) => !acknowledged[match.kind].has(match.id))) {
+    throw new AppError({
+      code: "CLIENT_NAME_MATCHES",
+      details: { matches },
+      message: "Hay personas registradas con un nombre igual o parecido. Selecciona una o confirma que es otra persona.",
+      status: 409,
+    });
+  }
+  const account = await insertPendingClientAccount(client, { name: newClient.name });
+  if (!account) throw new ConflictError("CLIENT_ROLE_UNAVAILABLE", "El rol de cliente no está disponible; no se puede crear el cliente.");
+  return account;
 }
 
 /**
@@ -347,6 +391,10 @@ async function createQuoteDraftProject(client, options) {
  * Sin `submissionId` (clientes anteriores a la idempotencia) el alta se registra como antes, sin
  * bloqueo ni comprobación de repetición, con identificador y huella NULL.
  *
+ * Cliente nuevo (`newClient`, exige `submissionId`): tras comprobar la repetición se crean su ficha
+ * y su cuenta pendiente (createQuoteClientAccount) y después todo lo demás. Un reintento devuelve la
+ * misma cotización sin crear otra cuenta; cualquier fallo revierte cliente, usuario y cotización.
+ *
  * @param {object} options - Datos de la operación.
  * @param {object} options.payload - Cuerpo validado por quoteCreateSchema.
  * @param {{ id: number }} options.user - Administrador autenticado.
@@ -354,6 +402,7 @@ async function createQuoteDraftProject(client, options) {
  *   nueva) y si el envío repetía un alta ya registrada.
  * @throws {ValidationError} Si el cliente, el proyecto, su nombre o algún concepto no son válidos.
  * @throws {ConflictError} QUOTE_SUBMISSION_REUSED si el identificador ya guardó otro contenido.
+ * @throws {AppError} CLIENT_NAME_MATCHES (409) si hay coincidencias de nombre sin confirmar.
  */
 export async function createQuote({ payload, user }) {
   // Una cotización nueva se calcula con la tasa referencial fija (QUOTE_REFERENCE_VAT_RATE).
@@ -369,15 +418,29 @@ export async function createQuote({ payload, user }) {
         if (replayed) return { quote: replayed, replayed: true };
       }
 
-      const participants = await resolveQuoteParticipants(client, { ...payload, current: null });
+      // Cliente nuevo: ficha y cuenta pendiente en esta misma transacción (un fallo posterior las revierte).
+      const account = payload.newClient ? await createQuoteClientAccount(client, payload.newClient) : null;
+      const clientId = account?.clientId ?? payload.clientId;
+      const participants = await resolveQuoteParticipants(client, { ...payload, clientId, current: null });
       const { lines, referenceVat: vat, servicesTotal } = await resolveQuoteLines(client, { current: null, items: payload.items, referenceVat });
       const quoteId = await reserveQuoteId(client);
+      const code = formatGeneratedQuoteCode(quoteId);
       // El draft (con su comprobación de nombre) se crea antes de escribir la cotización: un nombre
       // ocupado se rechaza sin escrituras previas, y el ROLLBACK revierte todo si algo falla después.
       const project = participants.project
-        ?? await createQuoteDraftProject(client, { clientId: payload.clientId, name: payload.newProjectName, quoteId, userId: user.id });
+        ?? await createQuoteDraftProject(client, { clientId, name: payload.newProjectName, quoteId, userId: user.id });
+      if (account) {
+        await insertAuditLog({
+          action: "user.create_pending_from_quote",
+          description: `Cliente y cuenta pendiente creados al guardar la cotización ${code}.`,
+          entityId: account.userId,
+          entityType: "user",
+          newValues: { clientId: account.clientId, quoteId, role: "client", status: "pending", userId: account.userId },
+          userId: user.id,
+        }, client);
+      }
       await insertQuoteRecord(client, {
-        code: formatGeneratedQuoteCode(quoteId),
+        code,
         id: quoteId,
         submissionFingerprint: submission?.fingerprint ?? null,
         submissionId: submission?.submissionId ?? null,
