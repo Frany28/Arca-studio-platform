@@ -1,12 +1,9 @@
-import receivedDivider from "../../../assets/project-requests/received-divider.svg";
 import Button from "../../../components/ui/Button/Button.jsx";
 import ProgressBarLabel from "../../../components/ui/ProgressBarLabel/ProgressBarLabel.jsx";
-import ProgressStepBase from "../../../components/ui/ProgressStepBase/ProgressStepBase.jsx";
 import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
-import { buildProjectRequestStages } from "../../../utils/projectRequestStages.js";
 import { PROJECT_REQUEST_FOOTER_CLASS_NAME } from "../utils/projectRequestLayout.js";
+import { ProjectRequestCurrentStages, ProjectRequestSectionDivider } from "./ProjectRequestProgressParts.jsx";
 
-const STEP_STATE_BY_TONE = { completed: "Completed", current: "Active", upcoming: "Incomplete" };
 const COMPATIBILITY_FILL = {
   Success: "bg-[var(--color-success-200)]",
   Warning: "bg-[var(--color-warning-200)]",
@@ -14,60 +11,19 @@ const COMPATIBILITY_FILL = {
   Accent: "bg-[var(--color-accent-300)]",
 };
 
-/** Conserva el SVG de Figma como máscara para adaptar el divisor al ancho y al tema actuales. */
-function SectionDivider() {
-  return (
-    <div
-      aria-hidden="true"
-      className="relative h-0 w-full"
-    >
-      <span
-        className="absolute inset-x-0 -top-px h-px bg-[var(--color-neutral-200)] [mask-repeat:no-repeat] [mask-size:100%_100%]"
-        style={{ maskImage: `url("${receivedDivider}")` }}
-      />
-    </div>
-  );
-}
-
-/** Presenta una etapa con el revelado original y las variantes del componente compartido. */
-function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
-  const lineColorClassName = state === "Completed"
-    ? "bg-[var(--color-accent-300)]"
-    : state === "Active"
-      ? "bg-[var(--color-text-300)]"
-      : "bg-[var(--color-neutral-200)]";
-
-  return (
-    <div className="relative min-w-[150px] flex-1">
-      <span
-        aria-hidden="true"
-        className={`progress-line-reveal absolute inset-x-0 top-0 h-[4px] ${lineColorClassName}`}
-        style={{ animationDelay: `${animationDelay}ms` }}
-      />
-      <ProgressStepBase
-        type="Line text"
-        size="L"
-        state={state}
-        title={title}
-        subtext={subtext}
-        className="!w-full !border-transparent [&>span]:font-sans min-[1024px]:[&>span]:whitespace-nowrap"
-      />
-    </div>
-  );
-}
-
 /**
- * Confirmación del cliente según Figma 3727:543692. Conserva el resultado y los motivos de
- * decisión reales de la API y comparte las etapas con la consulta administrativa, sin adelantar
- * hitos futuros. Las observaciones del algoritmo de compatibilidad son internas de la revisión:
- * el backend no las envía al cliente y esta vista no las muestra aunque una respuesta las incluya.
+ * «Solicitud recibida» (Figma 3727:543692): seguimiento mientras la solicitud está en evaluación
+ * (`pending_verification` o `pending_review`). Muestra el porcentaje real de compatibilidad y las
+ * etapas compartidas con la consulta administrativa, sin adelantar hitos futuros. No presenta
+ * aprobaciones, rechazos ni motivos: la decisión pertenece a «Estado de la solicitud»
+ * (`ProjectRequestStatusView`). Las observaciones del algoritmo de compatibilidad son internas de
+ * la revisión: el backend no las envía al cliente y esta vista no las muestra aunque una respuesta
+ * las incluya.
  * @param {Object} props - Evaluación, solicitud vigente y acciones de consulta y regreso.
  * @returns {import("react").ReactElement} Confirmación responsive de la solicitud.
  */
 function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRequest, projectRequest }) {
   const evaluation = getCompatibilityPresentation(compatibility);
-  const requestSteps = buildProjectRequestStages(projectRequest?.status);
-  const decisionMessage = projectRequest?.correctionReason || projectRequest?.rejectionReason;
   return (
     <div className="content-reveal mx-auto flex w-full max-w-[1200px] flex-col items-center gap-[48px] px-[16px] pb-[48px] min-[768px]:px-[24px] min-[1024px]:px-[48px]">
       <header className="flex w-full max-w-[850px] flex-col gap-[4px]">
@@ -79,7 +35,7 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
         </p>
       </header>
 
-      <SectionDivider />
+      <ProjectRequestSectionDivider />
 
       <section aria-labelledby="received-compatibility-title" className="flex w-full max-w-[850px] flex-wrap items-start justify-between gap-x-[24px] gap-y-[48px]">
         <h2 id="received-compatibility-title" className="text-heading-7 text-[var(--color-text-200)]">
@@ -109,39 +65,11 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
         </div>
       </section>
 
-      <SectionDivider />
+      <ProjectRequestSectionDivider />
 
-      <section className="flex w-full max-w-[850px] flex-col gap-[16px]">
-        <h2 className="text-heading-7 text-[var(--color-text-200)]">
-          Estado actual
-        </h2>
+      <ProjectRequestCurrentStages status={projectRequest?.status} />
 
-        <div
-          className="flex w-full flex-wrap items-start gap-[24px]"
-          aria-label="Progreso de la solicitud"
-        >
-          {requestSteps.map((step, index) => (
-            <AnimatedRequestStep
-              key={step.id}
-              title={step.title}
-              subtext={step.status}
-              state={STEP_STATE_BY_TONE[step.tone]}
-              animationDelay={180 + index * 110}
-            />
-          ))}
-        </div>
-      </section>
-
-      {decisionMessage ? (
-        <p
-          className="w-full max-w-[850px] rounded-[var(--radius-2)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[16px] text-body-3 text-[var(--color-text-200)]"
-          role="status"
-        >
-          {decisionMessage}
-        </p>
-      ) : null}
-
-      <SectionDivider />
+      <ProjectRequestSectionDivider />
 
       <p className="w-full max-w-[850px] text-body-2 text-[var(--color-text-100)]">
         Nuestro equipo revisará la información y se comunicará contigo en un plazo de 24–48 horas hábiles.

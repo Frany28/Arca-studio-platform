@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Edit2, Link21, Location } from "iconsax-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -7,26 +7,20 @@ import { getUserDisplay } from "../auth/userDisplay.js";
 import Alert from "../components/ui/Alert/Alert.jsx";
 import Button from "../components/ui/Button/Button.jsx";
 import HintText from "../components/ui/HintText/HintText.jsx";
-import NavigationBar from "../components/EnvironmentNavigationBar.jsx";
-import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
 import ProjectRequestCancelModal from "../components/ui/ProjectRequestFlow/ProjectRequestCancelModal.jsx";
 import ProjectLocationSuggestions from "../components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx";
 import ProjectRequestValidationStep from "../components/ui/ProjectRequestFlow/ProjectRequestValidationStep.jsx";
-import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
-import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { useInvalidFieldFocus } from "../hooks/useInvalidFieldFocus.js";
 import { hasApplicableProperty, requiresPropertyAvailability } from "../utils/projectRequestApplicability.js";
 import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
 import ProjectRequestAttachmentsField from "./project-request/components/ProjectRequestAttachmentsField.jsx";
 import ProjectRequestStandSection from "./project-request/components/ProjectRequestStandSection.jsx";
-import ProjectRequestReceivedView from "./project-request/components/ProjectRequestReceivedView.jsx";
-import ProjectRequestSummaryView from "./project-request/components/ProjectRequestSummaryView.jsx";
-import useProjectRequestDetail from "./project-request/hooks/useProjectRequestDetail.js";
+import ProjectRequestPageShell from "./project-request/components/ProjectRequestPageShell.jsx";
 import useProjectRequestDraft from "./project-request/hooks/useProjectRequestDraft.js";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
 import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm.js";
-import useProjectRequestSubmission, { REQUEST_VIEWS, VERIFICATION_MODES } from "./project-request/hooks/useProjectRequestSubmission.js";
+import useProjectRequestSubmission, { VERIFICATION_MODES } from "./project-request/hooks/useProjectRequestSubmission.js";
 import useProjectRequestNavigation from "./project-request/hooks/useProjectRequestNavigation.js";
 import useProjectRequestNotifications from "./project-request/hooks/useProjectRequestNotifications.js";
 import {
@@ -38,10 +32,7 @@ import {
   SelectField,
   TextField,
 } from "./project-request/components/ProjectRequestFormFields.jsx";
-import {
-  createUserSideNavigationItems,
-  getDashboardPath,
-} from "../utils/sideNavigationItems.js";
+import { getClientProjectRequestPath } from "../utils/projectRequestRoutes.js";
 import { PROJECT_REQUEST_FOOTER_CLASS_NAME } from "./project-request/utils/projectRequestLayout.js";
 
 
@@ -50,22 +41,13 @@ export default function ProjectRequestPage() {
   const location = useLocation();
   const { logout, user } = useAuth();
   const currentUser = getUserDisplay(user);
-  const mobileNavigation = useMobileNavigationDrawer();
-  const viewRequest = location.state?.viewRequest || null;
-  const initialRequest = location.state?.initialRequest || viewRequest;
+  // Solicitud con la que se inicia el formulario: un borrador, una solicitud devuelta para
+  // corregirla o una rechazada cuyos datos se reutilizan en una solicitud nueva.
+  const initialRequest = location.state?.initialRequest || null;
   // Un borrador o una solicitud devuelta se recuperan con sus adjuntos guardados en el backend.
   const recoveryRequestId = ["draft", "changes_requested"].includes(initialRequest?.status) ? initialRequest.id : null;
   const [showRequiredAlert, setShowRequiredAlert] = useState(false);
-  const {
-    close: closeNotifications,
-    comments: notificationComments,
-    error: recentProjectCommentsError,
-    isOpen: isNotificationsDrawerOpen,
-    loading: recentProjectCommentsLoading,
-    openComment: openImageComment,
-    setOpen: setIsNotificationsDrawerOpen,
-    toggle: toggleNotifications,
-  } = useProjectRequestNotifications({
+  const notifications = useProjectRequestNotifications({
     navigate,
     user,
   });
@@ -77,7 +59,6 @@ export default function ProjectRequestPage() {
   };
   const {
     cancelRequestAction,
-    collapseSidebar,
     confirmRequestAction,
     isRequestActionModalOpen,
     isSidebarExpanded,
@@ -91,7 +72,7 @@ export default function ProjectRequestPage() {
     navigate,
     onReset: resetRequestFlow,
     roleCode: currentUser.roleCode,
-    setNotificationsOpen: setIsNotificationsDrawerOpen,
+    setNotificationsOpen: notifications.setOpen,
     setShowRequiredAlert,
   });
   const {
@@ -134,28 +115,23 @@ export default function ProjectRequestPage() {
   const {
     closeValidation,
     codeStatus,
-    isRequestReceived,
     isSubmitting,
     isValidationModalOpen,
     openValidation,
-    receivedRequest,
-    requestView,
     resendCode,
     resetSubmission,
     setValidationCode,
-    showRequestStatus,
-    showRequestSummary,
     submitError,
     submitValidation,
     validationCode,
     verificationMode,
   } = useProjectRequestSubmission({
     draft,
-    onSubmitted: () => {
-      collapseSidebar();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    // La solicitud enviada se consulta en su ruta persistente: el estado se lee del backend por
+    // id, así que sigue disponible al recargar, volver del dashboard o iniciar sesión de nuevo.
+    onSubmitted: (projectRequest) => {
+      navigate(getClientProjectRequestPath(projectRequest.id), { replace: true });
     },
-    viewRequest,
   });
   const {
     allowRemoteRemoval,
@@ -178,23 +154,6 @@ export default function ProjectRequestPage() {
     recoveryRequestId,
     setShowRequiredAlert,
   });
-  // La consulta lee del backend el estado vigente y los adjuntos persistidos de la solicitud;
-  // una vez leída, también alimenta la vista de estado para no mostrar un estado anterior.
-  const requestDetail = useProjectRequestDetail({
-    enabled: requestView === REQUEST_VIEWS.summary,
-    projectRequestId: receivedRequest?.id ?? null,
-  });
-  const currentRequest = requestDetail.projectRequest || receivedRequest;
-  const navigateToDashboard = () => navigate(getDashboardPath(currentUser.roleCode));
-  // Las acciones están al pie: cada cambio de vista lleva al inicio de la nueva vista.
-  const switchRequestView = (showView) => () => {
-    showView();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-  const navigationItems = useMemo(
-    () => createUserSideNavigationItems([], currentUser.roleCode),
-    [currentUser.roleCode],
-  );
   const selectLocationSuggestion = (suggestion) => {
     applyLocationSuggestion(suggestion, fileErrors);
     clearLocationSuggestions();
@@ -214,55 +173,60 @@ export default function ProjectRequestPage() {
   const handleValidationSubmit = (code) => {
     submitValidation(code, { blockedReason: getTransferBlockReason() });
   };
-  // El drawer móvil se monta en portal: el contenedor oculto en móvil no lo afecta.
-  const sidebar = (
-    <ResponsiveSideNavigation
-      mobileOpen={mobileNavigation.isOpen}
-      onMobileClose={mobileNavigation.close}
-      activeItemId="requests"
-      expanded={isSidebarExpanded}
-      items={navigationItems}
-      userName={currentUser.name}
-      userEmail={currentUser.email}
-      userAvatarSrc={currentUser.profilePhotoUrl}
-      onExpandedChange={setIsSidebarExpanded}
-      onItemSelect={requestNavigation}
-      onNewOpportunityClick={() => navigate("/solicitudes/nueva")}
-      onLogoutClick={requestLogout}
-    />
-  );
 
   return (
-    <main className="min-h-screen bg-[var(--color-neutral-bg)]">
-      <div className="flex min-h-screen items-stretch">
-        <div className="hidden shrink-0 min-[768px]:block">
-          {sidebar}
-        </div>
-        <div className="min-w-0 flex-1">
-          <NavigationBar
-            onMenuClick={mobileNavigation.open}
-            mobileMenuExpanded={mobileNavigation.isOpen}
-            utilityActionActive={isNotificationsDrawerOpen}
-            onUtilityActionClick={toggleNotifications}
+    <ProjectRequestPageShell
+      currentUser={currentUser}
+      isSidebarExpanded={isSidebarExpanded}
+      notifications={notifications}
+      onItemSelect={requestNavigation}
+      onLogoutClick={requestLogout}
+      onNewOpportunityClick={() => navigate("/solicitudes/nueva")}
+      onSidebarExpandedChange={setIsSidebarExpanded}
+      overlays={(
+        <>
+          <ProjectRequestCancelModal
+            open={isRequestActionModalOpen}
+            onCancel={cancelRequestAction}
+            onConfirm={confirmRequestAction}
+            title={pendingRequestAction?.type === "clear" ? "¿Deseas limpiar el formulario?" : undefined}
+            description={pendingRequestAction?.type === "clear" ? "Esta acción eliminará toda la información ingresada en el formulario." : undefined}
+            primaryActionLabel={pendingRequestAction?.type === "clear" ? "Limpiar" : undefined}
+            ariaLabel={pendingRequestAction?.type === "clear" ? "Confirmar limpieza del formulario" : undefined}
           />
 
-          {requestView === REQUEST_VIEWS.summary ? (
-            <ProjectRequestSummaryView
-              error={requestDetail.error}
-              loading={requestDetail.loading}
-              projectRequest={requestDetail.projectRequest}
-              onRetry={requestDetail.reload}
-              onViewStatus={switchRequestView(showRequestStatus)}
-              onBackToDashboard={navigateToDashboard}
+          <ProjectRequestValidationStep
+            open={isValidationModalOpen}
+            code={validationCode}
+            codeStatus={codeStatus}
+            onCodeChange={setValidationCode}
+            onResendCode={resendCode}
+            isSubmitting={isSubmitting}
+            submitError={submitError}
+            testMode={verificationMode === VERIFICATION_MODES.test}
+            onClose={closeValidation}
+            onPrevious={closeValidation}
+            onNext={handleValidationSubmit}
+          />
+
+          <div className="pointer-events-none fixed bottom-0 right-0 z-[90] flex w-full max-w-[722.615px] p-[16px] min-[480px]:p-[24px]">
+            <Alert
+              id="project-request-required-alert"
+              visible={showRequiredAlert}
+              theme="Danger"
+              layout="Box"
+              title="Por favor, proporcione la información necesaria."
+              description="Revisa los campos señalados y los archivos seleccionados antes de continuar."
+              showActions={false}
+              showCloseButton
+              onDismiss={() => setShowRequiredAlert(false)}
+              aria-label="Campos obligatorios incompletos"
+              className="pointer-events-auto"
             />
-          ) : isRequestReceived ? (
-            <ProjectRequestReceivedView
-              compatibility={currentRequest?.compatibility}
-              projectRequest={currentRequest}
-              onViewRequest={switchRequestView(showRequestSummary)}
-              onBackToDashboard={navigateToDashboard}
-            />
-          ) : (
+          </div>
+        </>
+      )}
+    >
             <div className="content-reveal mx-auto flex w-full max-w-[1200px] flex-col items-center gap-[48px] px-[16px] pb-[48px] min-[768px]:px-[24px] min-[1024px]:px-[48px]">
             <header className="flex w-full max-w-[850px] flex-wrap items-end justify-between gap-x-[24px] gap-y-[16px]">
               <div className="min-w-0">
@@ -410,60 +374,6 @@ export default function ProjectRequestPage() {
               </footer>
             </form>
             </div>
-          )}
-
-          <NotificationsDrawer
-            open={isNotificationsDrawerOpen}
-            onClose={closeNotifications}
-            comments={notificationComments}
-            commentsError={recentProjectCommentsError}
-            commentsLoading={recentProjectCommentsLoading}
-            recentActivity={[]}
-            recentActivityLoading={false}
-            onCommentSelect={openImageComment}
-          />
-        </div>
-      </div>
-
-      <ProjectRequestCancelModal
-        open={isRequestActionModalOpen}
-        onCancel={cancelRequestAction}
-        onConfirm={confirmRequestAction}
-        title={pendingRequestAction?.type === "clear" ? "¿Deseas limpiar el formulario?" : undefined}
-        description={pendingRequestAction?.type === "clear" ? "Esta acción eliminará toda la información ingresada en el formulario." : undefined}
-        primaryActionLabel={pendingRequestAction?.type === "clear" ? "Limpiar" : undefined}
-        ariaLabel={pendingRequestAction?.type === "clear" ? "Confirmar limpieza del formulario" : undefined}
-      />
-
-      <ProjectRequestValidationStep
-        open={isValidationModalOpen}
-        code={validationCode}
-        codeStatus={codeStatus}
-        onCodeChange={setValidationCode}
-        onResendCode={resendCode}
-        isSubmitting={isSubmitting}
-        submitError={submitError}
-        testMode={verificationMode === VERIFICATION_MODES.test}
-        onClose={closeValidation}
-        onPrevious={closeValidation}
-        onNext={handleValidationSubmit}
-      />
-
-      <div className="pointer-events-none fixed bottom-0 right-0 z-[90] flex w-full max-w-[722.615px] p-[16px] min-[480px]:p-[24px]">
-        <Alert
-          id="project-request-required-alert"
-          visible={showRequiredAlert}
-          theme="Danger"
-          layout="Box"
-          title="Por favor, proporcione la información necesaria."
-          description="Revisa los campos señalados y los archivos seleccionados antes de continuar."
-          showActions={false}
-          showCloseButton
-          onDismiss={() => setShowRequiredAlert(false)}
-          aria-label="Campos obligatorios incompletos"
-          className="pointer-events-auto"
-        />
-      </div>
-    </main>
+    </ProjectRequestPageShell>
   );
 }

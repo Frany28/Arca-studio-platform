@@ -36,6 +36,36 @@ export function isProjectRequestEditable(status) {
 }
 
 /**
+ * Indica si la solicitud sigue en evaluación (verificación administrativa o revisión técnica),
+ * es decir, si todavía no existe una decisión que mostrar al cliente.
+ *
+ * @param {string|null} status - Estado de la solicitud.
+ * @returns {boolean} Si el estado es pending_verification o pending_review.
+ */
+export function isProjectRequestUnderEvaluation(status) {
+  return status === "pending_verification" || status === "pending_review";
+}
+
+/**
+ * Motivo que corresponde al estado vigente de la solicitud: `rejectionReason` para un rechazo y
+ * `correctionReason` para correcciones pendientes. El backend conserva el motivo de una corrección
+ * anterior al rechazar, así que el campo nunca se elige por disponibilidad sino por estado: un
+ * rechazo no muestra correcciones antiguas. Los demás estados no tienen motivo para el cliente.
+ * Nunca lee notas internas.
+ *
+ * @param {{status?: string, rejectionReason?: string|null, correctionReason?: string|null}|null} projectRequest - Solicitud de la API.
+ * @returns {string|null} Motivo recortado o null si el estado no tiene motivo o falta.
+ */
+export function getProjectRequestClientReason(projectRequest) {
+  const reason = projectRequest?.status === "rejected"
+    ? projectRequest.rejectionReason
+    : projectRequest?.status === "changes_requested"
+      ? projectRequest.correctionReason
+      : null;
+  return typeof reason === "string" && reason.trim() ? reason.trim() : null;
+}
+
+/**
  * Considera cerradas las solicitudes approved, converted o rejected.
  * Esta clasificación es independiente de si existe ya un proyecto convertido.
  *

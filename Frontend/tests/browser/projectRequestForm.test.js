@@ -29,20 +29,27 @@ before(async () => {
 });
 after(async () => { await browser?.close(); await server?.close(); });
 
+// Solicitud que el backend simulado devuelve tras el envío (y en su consulta por id).
+const SUBMITTED_REQUEST = { id: REQUEST_ID, projectName: "Casa Lago", status: "pending_verification", compatibility: { level: "excellent", score: 84, observations: [] }, files: [] };
+
 /**
  * Abre la solicitud como cliente con la API simulada: registra cada llamada y responde
  * al borrador, la carga de archivos y el envío final como lo hace el backend real.
+ * Con `viewRequest` abre su consulta persistente (`/solicitudes/:id`), que el backend simulado
+ * responde con esa solicitud salvo que `detailResponses` indique otra cosa; `readyHeading`
+ * es el encabezado que marca la vista lista (null para no esperar ninguno).
  */
-async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, touch = false, addressSuggestions = [], uploadResponses = [], initialRequest, viewRequest, detailResponses = [], deleteResponses = [], verificationResponses = [] } = {}) {
+async function openRequestPage(context, { viewport = { width: 1440, height: 1000 }, touch = false, addressSuggestions = [], uploadResponses = [], initialRequest, viewRequest, readyHeading, detailResponses = [], deleteResponses = [], verificationResponses = [] } = {}) {
   const session = await browser.newContext(touch ? { hasTouch: true, isMobile: true, viewport } : { viewport });
   const page = await session.newPage();
   const calls = [];
   const errors = [];
-  if (initialRequest || viewRequest) {
+  if (initialRequest) {
     await page.addInitScript((state) => {
       window.history.replaceState({ usr: state, key: "stand-test", idx: 0 }, "");
-    }, initialRequest ? { initialRequest } : { viewRequest });
+    }, { initialRequest });
   }
+  const defaultDetail = { json: { projectRequest: viewRequest || SUBMITTED_REQUEST } };
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
@@ -63,7 +70,7 @@ async function openRequestPage(context, { viewport = { width: 1440, height: 1000
       const response = typeof detailResponses === "function"
         ? detailResponses()
         : detailResponses.length > 1 ? detailResponses.shift() : detailResponses[0];
-      return route.fulfill(response || { json: { projectRequest: { id: REQUEST_ID, files: [] } } });
+      return route.fulfill(response || defaultDetail);
     }
     // Eliminación de adjuntos: cada respuesta de deleteResponses se usa una vez; después, éxito.
     if (method === "DELETE" && path.startsWith(`/api/project-requests/${REQUEST_ID}/files/`)) {
@@ -78,13 +85,15 @@ async function openRequestPage(context, { viewport = { width: 1440, height: 1000
       if (verificationCode !== VALID_CODE) {
         return route.fulfill({ status: 400, json: { code: "VERIFICATION_CODE_INVALID", message: "El código no es correcto. Te quedan 4 intentos." } });
       }
-      return route.fulfill({ json: { projectRequest: { id: REQUEST_ID, projectName: "Casa Lago", status: "pending_verification", compatibility: { level: "excellent", score: 84, observations: [] } } } });
+      // El envío no devuelve adjuntos (la serialización JSON omite `files: undefined`).
+      return route.fulfill({ json: { projectRequest: { ...SUBMITTED_REQUEST, files: undefined } } });
     }
     return route.fulfill({ json: {} });
   });
   context.after(async () => { await session.close(); assert.deepEqual(errors, []); });
-  await page.goto(`${origin}/solicitudes/nueva`);
-  await page.getByRole("heading", { name: viewRequest ? "Solicitud recibida" : "Solicitud de proyecto" }).waitFor();
+  await page.goto(viewRequest ? `${origin}/solicitudes/${REQUEST_ID}` : `${origin}/solicitudes/nueva`);
+  const heading = readyHeading !== undefined ? readyHeading : viewRequest ? "Solicitud recibida" : "Solicitud de proyecto";
+  if (heading) await page.getByRole("heading", { name: heading }).waitFor();
   return { calls, page };
 }
 
@@ -655,30 +664,28 @@ test("Solicitud recibida: cinco etapas de Figma, evaluación alineada y acciones
         assert.ok(geometry.stepTitleHeights.every((height) => height === 19), "los títulos de las cinco etapas caben en una línea");
         assert.equal(geometry.footer.right, geometry.section.right);
       }
-      assert.equal(detailCalls(calls).length, 0, "la confirmación no añade lecturas HTTP");
+      assert.ok(detailCalls(calls).length >= 1, "el seguimiento se lee del backend por id");
     }
   }
 });
 
-test("Solicitud recibida: conserva motivos y estados reales, sin observaciones internas ni hitos futuros", async (context) => {
-  for (const [status, expected] of [
-    ["pending_verification", "Pendiente"], ["changes_requested", "Correcciones solicitadas"],
-    ["rejected", "Rechazada"], ["converted", "Aprobada"],
-  ]) {
+test("Solicitud recibida: pendiente de verificación o revisión, sin motivos ni observaciones internas", async (context) => {
+  for (const [status, reviewStage, completed] of [["pending_verification", "Pendiente", 1], ["pending_review", "Pendiente", 2]]) {
     const { page } = await openRequestPage(context, {
       viewRequest: {
-        ...PERSISTED_REQUEST, status, correctionReason: "Motivo comunicado por el equipo.",
+        ...PERSISTED_REQUEST, status, correctionReason: "Corrección anterior.", rejectionReason: "Rechazo ajeno.",
         compatibility: { level: "low", score: 32.6, observations: ["Completa la información del proyecto."] },
       },
     });
     const stages = page.getByLabel("Progreso de la solicitud");
-    await stages.locator(":scope > div").nth(2).getByText(expected, { exact: true }).waitFor();
+    await stages.locator(":scope > div").nth(2).getByText(reviewStage, { exact: true }).waitFor();
     const completedSteps = await stages.locator(".progress-line-reveal").evaluateAll((nodes) =>
       nodes.filter((node) => node.className.includes("--color-accent-300")).length);
-    assert.equal(completedSteps, status === "pending_verification" ? 1 : status === "changes_requested" ? 2 : 3);
-    await page.getByRole("status").getByText("Motivo comunicado por el equipo.").waitFor();
-    // Las observaciones del algoritmo son internas: no se muestran aunque una respuesta las incluya.
-    assert.equal(await page.getByText("Completa la información del proyecto.", { exact: true }).count(), 0);
+    assert.equal(completedSteps, completed, status);
+    // La pantalla de seguimiento no adelanta decisiones ni muestra motivos.
+    for (const text of ["Corrección anterior.", "Rechazo ajeno.", "Completa la información del proyecto.", "Estado de la solicitud"]) {
+      assert.equal(await page.getByText(text, { exact: true }).count(), 0, `${status}: ${text}`);
+    }
     assert.equal(await page.getByRole("progressbar").getAttribute("aria-valuenow"), "33");
     assert.ok(await page.locator(".progress-fill-reveal").evaluate((node) => node.className.includes("--color-danger-200")));
   }
@@ -687,11 +694,130 @@ test("Solicitud recibida: conserva motivos y estados reales, sin observaciones i
   assert.equal(await page.getByRole("progressbar").count(), 0, "sin evaluación no inventa un 0 %");
 });
 
-test("Consulta: tras enviar, «Ver solicitud» muestra la solicitud en solo lectura con los adjuntos del backend", async (context) => {
+const LONG_REJECTION_REASON = `El inmueble no cuenta con la documentación legal necesaria para iniciar el proyecto.\n${"El presupuesto indicado no cubre el alcance solicitado ni los acabados descritos en la solicitud. ".repeat(6)}`.trim();
+const decisionSection = (page) => page.getByRole("region", { name: /Primer contacto|Motivo del rechazo|Información solicitada/ });
+const stageTexts = (page) => page.getByLabel("Progreso de la solicitud").locator(":scope > div > div").evaluateAll((nodes) => nodes.map((node) => node.textContent));
+
+test("Estado de la solicitud: aprobada muestra el primer contacto sin inventar etapas y abre el proyecto", async (context) => {
+  const { page } = await openRequestPage(context, {
+    viewRequest: { ...PERSISTED_REQUEST, status: "converted", convertedProjectId: 77, correctionReason: "Corrección anterior." },
+    readyHeading: "Estado de la solicitud",
+  });
+  await page.getByText("Verifique el progreso de su solicitud aquí.", { exact: true }).waitFor();
+  const section = decisionSection(page);
+  await section.getByRole("heading", { name: "Primer contacto" }).waitFor();
+  await section.getByText(/El siguiente paso es coordinar una reunión inicial/).waitFor();
+  assert.equal(await page.getByText(/Hemos enviado un correo/).count(), 0, "no afirma comunicaciones no registradas");
+  assert.equal(await page.getByText("Corrección anterior.", { exact: true }).count(), 0);
+  assert.deepEqual(await stageTexts(page), [
+    "Solicitud enviadaCompletado", "Evaluación preliminarCompletado", "RevisiónAprobada",
+    "Primer contactoPendiente", "Propuesta inicialPendiente",
+  ]);
+  // Sin compatibilidad: la pantalla B no repite la evaluación preliminar.
+  assert.equal(await page.getByRole("progressbar").count(), 0);
+  await page.getByRole("button", { name: "Ver proyecto", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/proyectos/77");
+});
+
+test("Estado de la solicitud: rechazo con correcciones previas muestra el motivo completo y crea una solicitud nueva", async (context) => {
+  const rejected = {
+    ...PERSISTED_REQUEST, status: "rejected", rejectionReason: LONG_REJECTION_REASON,
+    correctionReason: "Agrega fotos de la fachada.", internalReviewNotes: "Nota interna del equipo.",
+  };
+  const { calls, page } = await openRequestPage(context, { viewRequest: rejected, readyHeading: "Estado de la solicitud", viewport: { width: 375, height: 800 } });
+  const section = decisionSection(page);
+  await section.getByRole("heading", { name: "Motivo del rechazo" }).waitFor();
+  const reason = section.locator("p");
+  assert.equal((await reason.textContent()).trim(), LONG_REJECTION_REASON, "motivo completo, sin truncar");
+  assert.ok(await reason.evaluate((node) => node.scrollHeight <= node.clientHeight + 1 && getComputedStyle(node).textOverflow !== "ellipsis"));
+  for (const hidden of ["Agrega fotos de la fachada.", "Nota interna del equipo."]) {
+    assert.equal(await page.getByText(hidden, { exact: true }).count(), 0, hidden);
+  }
+  assert.deepEqual((await stageTexts(page)).slice(2), ["RevisiónRechazada", "Primer contactoNo aplica", "Propuesta inicialNo aplica"]);
+
+  await page.getByRole("button", { name: "Crear nueva solicitud", exact: true }).click();
+  await page.getByRole("heading", { name: "Solicitud de proyecto" }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago", "precarga los datos anteriores");
+  // La solicitud rechazada no se reabre ni se modifica: ninguna escritura sobre su id.
+  assert.equal(calls.filter((call) => call.method !== "GET" && call.path.startsWith(`/api/project-requests/${REQUEST_ID}`)).length, 0);
+});
+
+test("Estado de la solicitud: correcciones pendientes muestran correctionReason y abren la corrección", async (context) => {
+  const { page } = await openRequestPage(context, {
+    viewRequest: { ...PERSISTED_REQUEST, ...CORRECTION_REQUEST, files: PERSISTED_REQUEST.files, rejectionReason: "Rechazo ajeno." },
+    readyHeading: "Estado de la solicitud",
+  });
+  const section = decisionSection(page);
+  await section.getByRole("heading", { name: "Información solicitada" }).waitFor();
+  await section.getByText("Agrega referencias de la fachada.", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Rechazo ajeno.", { exact: true }).count(), 0);
+  assert.equal((await stageTexts(page))[2], "RevisiónCorrecciones solicitadas");
+  await page.getByRole("button", { name: "Corregir solicitud", exact: true }).click();
+  await page.getByRole("heading", { name: "Solicitud de proyecto" }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Nombre del proyecto" }).inputValue(), "Casa Lago");
+});
+
+test("Estado de la solicitud: sin motivo registrado usa un texto neutral", async (context) => {
+  const { page } = await openRequestPage(context, { viewRequest: { ...PERSISTED_REQUEST, status: "rejected", rejectionReason: null, correctionReason: "Corrección anterior." }, readyHeading: "Estado de la solicitud" });
+  await page.getByText("El motivo del rechazo no está disponible en este momento.", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Corrección anterior.", { exact: true }).count(), 0);
+});
+
+for (const width of [375, 768, 1024, 1440]) {
+  test(`Estado de la solicitud ${width}px: estructura de Figma, sin desbordamiento, claro y oscuro`, async (context) => {
+    const { page } = await openRequestPage(context, {
+      viewRequest: { ...PERSISTED_REQUEST, status: "rejected", rejectionReason: LONG_REJECTION_REASON },
+      readyHeading: "Estado de la solicitud",
+      viewport: { width, height: 900 },
+    });
+    await page.waitForFunction(() => !document.getAnimations().some((animation) =>
+      animation.animationName === "content-reveal" && animation.playState === "running"));
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+      const geometry = await page.evaluate(() => {
+        const section = document.querySelector("[aria-labelledby='request-decision-title']");
+        const column = section.children[1];
+        const footer = section.parentElement.querySelector("footer");
+        return {
+          columnWidth: column.getBoundingClientRect().width,
+          dividers: section.parentElement.querySelectorAll(":scope > [aria-hidden='true']").length,
+          footerButtons: [...footer.querySelectorAll("button")].map((button) => button.getBoundingClientRect()),
+          headingSize: getComputedStyle(document.querySelector("h1")).fontSize,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+          sectionWidth: section.getBoundingClientRect().width,
+        };
+      });
+      assert.equal(geometry.overflow, false, `${theme} ${width}px sin desbordamiento`);
+      assert.equal(geometry.dividers, 3);
+      assert.equal(geometry.footerButtons.length, 3, "Ver solicitud, Volver al Dashboard y Crear nueva solicitud");
+      if (width === 1440) {
+        assert.equal(geometry.headingSize, "48px");
+        assert.equal(geometry.sectionWidth, 850);
+        assert.equal(geometry.columnWidth, 445);
+      }
+      if (width === 375) {
+        // En móvil la acción principal ocupa su propia fila a todo el ancho.
+        const [first, , primary] = geometry.footerButtons;
+        assert.ok(primary.top > first.top && Math.abs(primary.width - geometry.sectionWidth) < 1);
+      }
+    }
+    const colors = await page.evaluate(async () => {
+      const reason = document.querySelector("[aria-labelledby='request-decision-title'] p");
+      document.documentElement.classList.remove("dark");
+      const light = getComputedStyle(reason).color;
+      document.documentElement.classList.add("dark");
+      return { dark: getComputedStyle(reason).color, light };
+    });
+    assert.notEqual(colors.light, colors.dark, "el texto usa tokens del tema");
+  });
+}
+
+test("Consulta: tras enviar se navega a la ruta persistente y «Ver solicitud» reutiliza la lectura", async (context) => {
   const { calls, page } = await openRequestPage(context, { detailResponses: [{ json: { projectRequest: PERSISTED_REQUEST } }] });
   await fillCommonFields(page);
   await chooseLand(page, "No todavía");
   await submitWithCode(page, calls);
+  await page.waitForURL((url) => url.pathname === `/solicitudes/${REQUEST_ID}`);
 
   await page.getByRole("button", { name: "Ver solicitud", exact: true }).click();
   const summary = page.getByRole("region", { name: "Información de la solicitud" });
@@ -704,38 +830,108 @@ test("Consulta: tras enviar, «Ver solicitud» muestra la solicitud en solo lect
     await summary.getByText(text, { exact: true }).first().waitFor();
   }
   // Los adjuntos provienen del backend, no de la selección local («Plano.pdf» no se adjuntó en la sesión).
-  assert.equal(detailCalls(calls).length, 1);
+  const readsAfterLoad = detailCalls(calls).length;
+  assert.ok(readsAfterLoad >= 1);
   assert.equal(await summary.getByRole("link", { name: "Abrir fachada.png en una pestaña nueva" }).getAttribute("href"), `/api/project-requests/${REQUEST_ID}/files/8/content`);
   await summary.getByRole("button", { name: "Ver Plano.pdf" }).waitFor();
 
-  // «Ver estado» vuelve al progreso; volver a la consulta reutiliza la lectura.
+  // «Ver estado» vuelve al progreso; alternar vistas no repite la lectura.
   await page.getByRole("button", { name: "Ver estado", exact: true }).click();
   await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
   await page.getByRole("button", { name: "Ver solicitud", exact: true }).click();
   await summary.waitFor();
-  assert.equal(detailCalls(calls).length, 1);
+  assert.equal(detailCalls(calls).length, readsAfterLoad);
 
   await page.getByRole("button", { name: "Volver al Dashboard", exact: true }).click();
   await page.waitForURL((url) => url.pathname === "/dashboard-clientes");
 });
 
-test("Consulta: una solicitud abierta desde el dashboard muestra su estado y reintenta la lectura fallida", async (context) => {
-  const { calls, page } = await openRequestPage(context, {
-    viewRequest: { ...PERSISTED_REQUEST, files: undefined },
-    detailResponses: [
-      { status: 500, json: { code: "INTERNAL_ERROR", message: "Error temporal." } },
-      { json: { projectRequest: PERSISTED_REQUEST } },
-    ],
+test("Consulta: sobrevive a la recarga y reintenta una lectura fallida", async (context) => {
+  // Falla hasta pulsar «Reintentar»: el StrictMode de desarrollo repite la primera lectura.
+  let failing = true;
+  const { page } = await openRequestPage(context, {
+    viewRequest: PERSISTED_REQUEST,
+    readyHeading: null,
+    detailResponses: () => (failing
+      ? { status: 500, json: { code: "INTERNAL_ERROR", message: "Error temporal." } }
+      : { json: { projectRequest: { ...PERSISTED_REQUEST, status: "rejected", rejectionReason: "Fuera de alcance." } } }),
   });
-  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
-  assert.equal(detailCalls(calls).length, 0, "la vista de estado no necesita los adjuntos");
-
-  await page.getByRole("button", { name: "Ver solicitud", exact: true }).click();
   await page.getByText("No pudimos cargar la solicitud", { exact: true }).waitFor();
   await page.getByText("Error temporal.", { exact: true }).waitFor();
+  failing = false;
   await page.getByRole("button", { name: "Reintentar", exact: true }).click();
-  await page.getByRole("region", { name: "Información de la solicitud" }).getByText("Plano.pdf", { exact: true }).waitFor();
-  assert.equal(detailCalls(calls).length, 2);
+  await page.getByRole("heading", { name: "Estado de la solicitud" }).waitFor();
+  // La vista se recupera por id del backend, sin estado de navegación.
+  await page.reload();
+  await page.getByRole("heading", { name: "Estado de la solicitud" }).waitFor();
+  await page.getByText("Fuera de alcance.", { exact: true }).waitFor();
+});
+
+test("Consulta: muestra el loader con la geometría final mientras lee", async (context) => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const { page } = await openRequestPage(context, {
+    viewRequest: PERSISTED_REQUEST,
+    readyHeading: null,
+    detailResponses: () => ({ json: { projectRequest: PERSISTED_REQUEST } }),
+  });
+  // Retiene las lecturas siguientes para observar el estado de carga tras recargar.
+  await page.route(`**/api/project-requests/${REQUEST_ID}`, async (route) => { await held; await route.fallback(); });
+  await page.reload();
+  const loader = page.getByRole("status").filter({ hasText: "Cargando solicitud" });
+  await loader.waitFor();
+  assert.equal(await page.locator("[data-skeleton-preset='projectRequestStatus']").count(), 1);
+  release();
+  await page.getByRole("heading", { name: "Solicitud recibida" }).waitFor();
+  assert.equal(await loader.count(), 0);
+});
+
+test("Consulta: una solicitud de otro cliente o inexistente no se muestra", async (context) => {
+  const { page } = await openRequestPage(context, {
+    viewRequest: PERSISTED_REQUEST,
+    readyHeading: null,
+    detailResponses: [{ status: 404, json: { code: "PROJECT_REQUEST_NOT_FOUND", message: "Solicitud no encontrada." } }],
+  });
+  await page.getByText("No encontramos esta solicitud", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Casa Lago", { exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Volver al Dashboard", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/dashboard-clientes");
+});
+
+test("Mis proyectos: cada estado navega a su pantalla por id", async (context) => {
+  const rows = [
+    { id: REQUEST_ID, projectName: "Rechazada", status: "rejected", correctionReason: "Corrección anterior.", rejectionReason: "Fuera de alcance.", createdAt: "2026-11-01T10:00:00Z" },
+    { id: 32, projectName: "Aprobada", status: "converted", convertedProjectId: 77, createdAt: "2026-11-01T10:00:00Z" },
+    { id: 33, projectName: "En revisión", status: "pending_review", createdAt: "2026-11-01T10:00:00Z" },
+    { id: 34, projectName: "Devuelta", status: "changes_requested", correctionReason: "Adjunta planos.", createdAt: "2026-11-01T10:00:00Z" },
+  ];
+  const { page } = await openRequestPage(context, {
+    viewRequest: { ...PERSISTED_REQUEST, status: "rejected", rejectionReason: "Fuera de alcance." },
+    readyHeading: "Estado de la solicitud",
+  });
+  await page.route((url) => url.pathname === "/api/project-requests", (route) => route.fulfill({ json: { projectRequests: rows, nextCursor: null } }));
+  await page.goto(`${origin}/solicitudes`);
+  const row = (name) => page.locator("article").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  // El motivo de la fila corresponde al estado: el rechazo no muestra la corrección anterior.
+  await row("Rechazada").getByText("Fuera de alcance.", { exact: true }).waitFor();
+  assert.equal(await row("Rechazada").getByText("Corrección anterior.").count(), 0);
+  assert.deepEqual(await row("Aprobada").getByRole("button").allTextContents(), ["Ver resultado", "Ver proyecto"]);
+  assert.deepEqual(await row("En revisión").getByRole("button").allTextContents(), ["Ver solicitud"]);
+  assert.deepEqual(await row("Devuelta").getByRole("button").allTextContents(), ["Corregir solicitud"]);
+
+  await row("Rechazada").getByRole("button", { name: "Ver motivo", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === `/solicitudes/${REQUEST_ID}`);
+  await page.getByRole("heading", { name: "Estado de la solicitud" }).waitFor();
+  await page.getByRole("region", { name: "Motivo del rechazo" }).waitFor();
+
+  await page.goto(`${origin}/solicitudes`);
+  await row("Aprobada").getByRole("button", { name: "Ver resultado", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/solicitudes/32");
+  await page.goto(`${origin}/solicitudes`);
+  await row("Devuelta").getByRole("button", { name: "Corregir solicitud", exact: true }).click();
+  await page.getByRole("heading", { name: "Solicitud de proyecto" }).waitFor();
+  await page.waitForURL((url) => url.pathname === "/solicitudes/nueva");
 });
 
 const CORRECTION_REQUEST = {
@@ -747,7 +943,13 @@ const CORRECTION_REQUEST = {
 const CORRECTION_DETAIL = { json: { projectRequest: { ...CORRECTION_REQUEST, files: PERSISTED_REQUEST.files } } };
 
 test("Corrección: conserva los adjuntos guardados, admite agregar y eliminar y reenvía la misma solicitud", async (context) => {
-  const { calls, page } = await openRequestPage(context, { initialRequest: CORRECTION_REQUEST, detailResponses: [CORRECTION_DETAIL] });
+  // Como el backend real: tras reenviar, la misma solicitud vuelve a verificación.
+  let resubmitted = false;
+  const { calls, page } = await openRequestPage(context, {
+    initialRequest: CORRECTION_REQUEST,
+    detailResponses: () => (resubmitted ? { json: { projectRequest: SUBMITTED_REQUEST } } : CORRECTION_DETAIL),
+  });
+  page.on("request", (request) => { if (request.url().endsWith("/submit")) resubmitted = true; });
   // Los adjuntos guardados aparecen como completados y se pueden eliminar.
   await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
   await page.getByRole("button", { name: "Eliminar archivo fachada.png" }).waitFor();

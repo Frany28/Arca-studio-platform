@@ -207,7 +207,7 @@ RequestPayload (JSON estricto, rechaza propiedades desconocidas):
 
 `meetingRecommendation` es una decisión estructurada de reunión independiente del workflow (`recommendation`) y de la justificación (`note`). Sus únicos códigos son `SCHEDULE_MEETING` y `DO_NOT_SCHEDULE_MEETING`; las lecturas históricas devuelven `null`. En escritura, omitir el campo conserva el valor registrado y `null` explícito lo elimina. La validación Zod rechaza códigos desconocidos. El drawer muestra reunión y nota de la misma revisión más reciente; no hereda decisiones antiguas ni interpreta el texto. No se agrega una acción de workflow ni un endpoint. Ver [modelo, migración y mapping frontend](PROJECT_REQUEST_MEETING_RECOMMENDATION.md).
 
-`update` y `deleteFile` de solicitudes están consumidos por formularios/modales; `listReviewQueue` por dashboard. No existe GET de detalle individual de solicitud en la fachada.
+`update` y `deleteFile` de solicitudes están consumidos por formularios/modales; `listReviewQueue` por dashboard. `get` (`GET /project-requests/:projectRequestId`) lo consume la consulta persistente del cliente (`/solicitudes/:projectRequestId`): elige «Solicitud recibida» (`pending_verification`, `pending_review`) o «Estado de la solicitud» (`converted`, `rejected`, `changes_requested`) por `status`, y muestra `rejectionReason` solo si `status = rejected` y `correctionReason` solo si `status = changes_requested`, porque el backend conserva `correctionReason` al rechazar. El 404 de una solicitud ajena se presenta igual que una inexistente. Sin cambios de endpoints ni de respuestas.
 
 ### Administración
 

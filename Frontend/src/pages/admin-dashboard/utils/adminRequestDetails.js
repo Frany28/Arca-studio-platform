@@ -50,6 +50,8 @@ export function getReviewObservationsPresentation(observations, isPartial) {
  * independientes de la compatibilidad; si faltan quedan en null para mostrar estados vacíos.
  * `clientUserId` procede de requestedBy; clientId conserva la identidad comercial del cliente.
  * `statusCode` conserva el estado del backend para la disponibilidad de las decisiones.
+ * `rejectionReason` solo se rellena en solicitudes rechazadas y se muestra como campo propio,
+ * independiente de la recomendación y la justificación del arquitecto.
  *
  * @param {Object} params - Fuentes ya cargadas por el dashboard.
  * @param {Object} params.summary - Solicitud de `overview.newRequests`.
@@ -77,6 +79,9 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     standRequirements: queueRequest?.standRequirements ?? null,
     projectTypeLabel: getProjectTypeLabel(source.projectType, "Sin tipo registrado"),
     recommendation: getMeetingRecommendationPresentation(latestReview?.meetingRecommendation),
+    // Motivo del rechazo administrativo: solo existe en una solicitud `rejected` y procede
+    // exclusivamente de `rejectionReason` (nunca de la revisión técnica ni de correcciones).
+    rejectionReason: source.status === "rejected" ? source.rejectionReason?.trim() || null : null,
     reviewObservations: getReviewObservationsPresentation(queueRequest?.reviewObservations, !queueRequest),
     reviewerName: latestReview?.reviewer?.name || null,
     status: { label: status.label, theme: status.badgeTheme },

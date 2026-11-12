@@ -4,6 +4,30 @@ import { getDashboardPath } from "../../../utils/sideNavigationItems.js";
 import useResponsiveSidebarExpansion from "../../../hooks/useResponsiveSidebarExpansion.js";
 
 /**
+ * Navega al destino de un elemento del riel lateral de las páginas de solicitudes. Lo comparten
+ * el formulario (tras confirmar la salida) y la consulta de estado (sin confirmación, porque no
+ * hay datos que perder).
+ *
+ * @param {{id?: string, to?: string}|null} item - Elemento seleccionado del riel.
+ * @param {Object} params - Navegación y rol.
+ * @param {Function} params.navigate - Navegación del router.
+ * @param {string} params.roleCode - Rol usado para resolver el dashboard.
+ * @returns {void}
+ */
+export function navigateToSideNavigationItem(item, { navigate, roleCode }) {
+  if (!item) return;
+  if (item.to) {
+    navigate(item.to);
+    return;
+  }
+
+  if (item.id === "dashboard") navigate(getDashboardPath(roleCode));
+  if (item.id === "requests") navigate("/solicitudes");
+  if (item.id === "more-projects") navigate("/proyectos");
+  if (item.id === "settings") navigate("/configuraciones");
+}
+
+/**
  * Expone la expansión compartida del riel (useResponsiveSidebarExpansion); el drawer móvil
  * pertenece a useMobileNavigationDrawer.
  * Difiere navegación, logout o reset hasta confirmarlos; cancelar no ejecuta la acción.
@@ -29,17 +53,7 @@ export default function useProjectRequestNavigation({
   const [pendingRequestAction, setPendingRequestAction] = useState(null);
   const [isRequestActionModalOpen, setIsRequestActionModalOpen] = useState(false);
 
-  const performSideNavigation = (item) => {
-    if (item?.to) {
-      navigate(item.to);
-      return;
-    }
-
-    if (item.id === "dashboard") navigate(getDashboardPath(roleCode));
-    if (item.id === "requests") navigate("/solicitudes");
-    if (item.id === "more-projects") navigate("/proyectos");
-    if (item.id === "settings") navigate("/configuraciones");
-  };
+  const performSideNavigation = (item) => navigateToSideNavigationItem(item, { navigate, roleCode });
 
   const requestNavigation = (item) => {
     if (!item) return;

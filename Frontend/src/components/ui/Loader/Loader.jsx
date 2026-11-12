@@ -519,6 +519,50 @@ function AdminProjectRequestSkeleton() {
   );
 }
 
+// Seguimiento de una solicitud del cliente («Solicitud recibida» y «Estado de la solicitud»):
+// encabezado h3, sección de dos columnas (título h7 y columna de 445 px), cinco etapas de
+// 150 px mínimo con su línea de 4 px y pie de dos acciones, separados por divisores de 48 px.
+function ProjectRequestStatusSkeleton() {
+  const divider = (delay) => <SkeletonBlock className="h-px w-full rounded-[var(--radius-none)]" delay={delay} tone="muted" />;
+  return (
+    <div className="flex w-full flex-col items-center gap-[48px]" data-skeleton-preset="projectRequestStatus">
+      <div className="flex w-full max-w-[850px] flex-col gap-[4px]">
+        <SkeletonBlock className="h-[38px] w-[300px] max-w-full rounded-[var(--radius-2)] min-[768px]:h-[58px] min-[768px]:w-[480px]" tone="text" />
+        <SkeletonBlock className="h-[21px] w-[320px] max-w-full rounded-[var(--radius-1)]" delay={60} tone="muted" />
+      </div>
+      {divider(90)}
+      <div className="flex w-full max-w-[850px] flex-wrap items-start justify-between gap-x-[24px] gap-y-[16px] min-[768px]:gap-y-[48px]">
+        <SkeletonBlock className="h-[19px] w-[200px] rounded-[var(--radius-1)]" delay={110} tone="text" />
+        <div className="flex w-[445px] min-w-[min(100%,300px)] max-w-full flex-col gap-[8px]">
+          <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={140} tone="muted" />
+          <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={160} tone="muted" />
+          <SkeletonBlock className="h-[17px] w-2/3 rounded-[var(--radius-1)]" delay={180} tone="muted" />
+        </div>
+      </div>
+      {divider(200)}
+      <div className="flex w-full max-w-[850px] flex-col gap-[16px]">
+        <SkeletonBlock className="h-[19px] w-[120px] rounded-[var(--radius-1)]" delay={220} tone="text" />
+        <div className="flex w-full flex-wrap items-start gap-[24px]">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="flex min-w-[150px] flex-1 flex-col gap-[16px]">
+              <SkeletonBlock className="h-[4px] w-full rounded-[var(--radius-none)]" delay={240 + index * 40} />
+              <div className="flex flex-col gap-[4px]">
+                <SkeletonBlock className="h-[19px] w-3/4 rounded-[var(--radius-1)]" delay={260 + index * 40} tone="text" />
+                <SkeletonBlock className="h-[17px] w-1/2 rounded-[var(--radius-1)]" delay={280 + index * 40} tone="muted" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {divider(460)}
+      <div className="grid w-full max-w-[850px] grid-cols-2 gap-[8px] min-[480px]:flex min-[480px]:justify-end">
+        <SkeletonBlock className="h-[43px] w-full rounded-[var(--radius-2)] min-[480px]:w-[112px]" delay={480} />
+        <SkeletonBlock className="h-[43px] w-full rounded-[var(--radius-2)] min-[480px]:w-[160px]" delay={500} />
+      </div>
+    </div>
+  );
+}
+
 function AdminRequestDetailsSkeleton() {
   return (
     <div className="flex w-full flex-col gap-[24px]">
@@ -799,6 +843,8 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <AdminUserDetailsSkeleton />;
   } else if (preset === "adminProjectRequest") {
     content = <AdminProjectRequestSkeleton />;
+  } else if (preset === "projectRequestStatus") {
+    content = <ProjectRequestStatusSkeleton />;
   } else if (preset === "adminRequestDetails") {
     content = <AdminRequestDetailsSkeleton />;
   } else if (preset === "detailValue") {

@@ -10,7 +10,7 @@ import RouteErrorPage from "./components/RouteErrorPage.jsx";
 import ThemeSync from "./components/ui/ThemeSync.jsx";
 // Carga diferida con recuperación ante módulos eliminados por una nueva publicación.
 import { lazyWithRetry as lazy } from "./utils/lazyWithRetry.js";
-import { ADMIN_PROJECT_REQUEST_ROUTE } from "./utils/projectRequestRoutes.js";
+import { ADMIN_PROJECT_REQUEST_ROUTE, CLIENT_PROJECT_REQUEST_ROUTE } from "./utils/projectRequestRoutes.js";
 
 const InternalDashboardRouter = lazy(
   () => import("./pages/internal-dashboard/InternalDashboardRouter.jsx"),
@@ -64,6 +64,7 @@ const PublicProjectsGallery = lazy(
   () => import("./pages/projects/PublicProjectsGallery.jsx"),
 );
 const ProjectRequestPage = lazy(() => import("./pages/ProjectRequestPage.jsx"));
+const ProjectRequestStatusPage = lazy(() => import("./pages/ProjectRequestStatusPage.jsx"));
 const RecoverAccount = lazy(() => import("./pages/auth/RecoverAccount.jsx"));
 const Settings = lazy(() => import("./pages/settings/SettingsPage.jsx"));
 
@@ -109,6 +110,8 @@ const router = createBrowserRouter(
               <Route path="/dashboard-clientes" element={<Home />} />
               <Route path="/solicitudes" element={<Requests view="requests" />} />
               <Route path="/solicitudes/nueva" element={<ProjectRequestPage />} />
+              {/* «nueva» es un segmento estático: React Router lo prioriza sobre el id. */}
+              <Route path={CLIENT_PROJECT_REQUEST_ROUTE} element={<ProjectRequestStatusPage />} />
               <Route
                 path="/dashboard-clientes-vacio"
                 element={<EmptyProjectsExample />}

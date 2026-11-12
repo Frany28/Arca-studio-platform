@@ -4,7 +4,8 @@ import test from "node:test";
 
 const AUTHENTICATED_PAGE_FILES = [
   "src/pages/Home.jsx",
-  "src/pages/ProjectRequestPage.jsx",
+  // Formulario y consulta de solicitudes comparten este shell (riel, navbar y drawer).
+  "src/pages/project-request/components/ProjectRequestPageShell.jsx",
   "src/pages/projects/PublicProjectsGallery.jsx",
   "src/pages/examples/EmptyProjectsExample.jsx",
   "src/pages/examples/EmptyProjectRendersExample.jsx",

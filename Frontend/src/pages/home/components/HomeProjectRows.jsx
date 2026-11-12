@@ -8,6 +8,7 @@ import ProjectImage from "../../../components/ui/ProjectImage/ProjectImage.jsx";
 import Tooltip from "../../../components/ui/Tooltip/Tooltip.jsx";
 import { getProjectPath } from "../../../utils/projectRoutes.js";
 import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
+import { getProjectRequestRowActions, getProjectRequestRowMessage } from "../utils/projectRequestRowActions.js";
 
 function ProjectRow({ project }) {
   const navigate = useNavigate();
@@ -61,18 +62,20 @@ function ProjectRow({ project }) {
   );
 }
 
+/**
+ * Fila de una solicitud en «Mis proyectos». Las acciones y el motivo dependen del estado real
+ * (`getProjectRequestRowActions`, `getProjectRequestRowMessage`): el motivo de un rechazo nunca
+ * se sustituye por correcciones anteriores. `onReview` recibe la solicitud y la acción elegida.
+ *
+ * @param {Object} props - Solicitud y manejador de acciones.
+ * @param {Object} props.projectRequest - Solicitud del listado del cliente.
+ * @param {(projectRequest: Object, kind: string) => void} props.onReview - Ejecuta la acción.
+ * @returns {import("react").ReactElement} Fila de la solicitud.
+ */
 function ProjectRequestRow({ projectRequest, onReview }) {
   const status = getProjectRequestStatus(projectRequest.status);
-  const supportingMessage = projectRequest.correctionReason
-    || projectRequest.rejectionReason
-    || "Puedes consultar el avance y la decisión de nuestro equipo.";
-  const actionLabel = projectRequest.status === "changes_requested"
-    ? "Corregir solicitud"
-    : projectRequest.status === "rejected"
-      ? "Crear nueva"
-      : projectRequest.status === "converted"
-        ? "Ver proyecto"
-        : "Ver solicitud";
+  const supportingMessage = getProjectRequestRowMessage(projectRequest);
+  const actions = getProjectRequestRowActions(projectRequest);
 
   return (
     <article className="grid grid-cols-1 items-center gap-[16px] border-b border-[var(--color-neutral-200)] py-[16px] min-[768px]:grid-cols-[120px_minmax(0,1fr)_auto] min-[1024px]:grid-cols-[160px_minmax(300px,1fr)_auto] min-[1024px]:gap-[24px]">
@@ -95,18 +98,23 @@ function ProjectRequestRow({ projectRequest, onReview }) {
         </div>
       </div>
 
-      <Button
-        theme="Primary"
-        type="Solid"
-        size="M"
-        fitContent
-        showLeftIcon={false}
-        showRightIcon={false}
-        className="w-full min-[768px]:w-auto"
-        onClick={() => onReview(projectRequest)}
-      >
-        {actionLabel}
-      </Button>
+      <div className="flex w-full flex-col gap-[8px] min-[768px]:w-auto min-[768px]:flex-row">
+        {actions.map((action) => (
+          <Button
+            key={action.kind}
+            theme="Primary"
+            type={action.type}
+            size="M"
+            fitContent
+            showLeftIcon={false}
+            showRightIcon={false}
+            className="w-full min-[768px]:w-auto"
+            onClick={() => onReview(projectRequest, action.kind)}
+          >
+            {action.label}
+          </Button>
+        ))}
+      </div>
     </article>
   );
 }

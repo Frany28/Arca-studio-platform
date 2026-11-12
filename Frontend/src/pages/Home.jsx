@@ -15,6 +15,7 @@ import useHomeProjects from "./home/hooks/useHomeProjects.js";
 import useHomeNotifications from "./home/hooks/useHomeNotifications.js";
 import useHomeNavigation from "./home/hooks/useHomeNavigation.js";
 import useSyncedScrollBar from "./home/hooks/useSyncedScrollBar.js";
+import { getProjectRequestRowDestination } from "./home/utils/projectRequestRowActions.js";
 import {
   HomeProjectsSection,
   HomePublicProjectsSection,
@@ -104,22 +105,11 @@ function Home({ view = "dashboard" }) {
     ownedProjectRows,
     user,
   });
-  const handleReviewRequest = (request) => {
-    if (request.status === "converted" && request.convertedProjectId) {
-      navigate(`/proyectos/${request.convertedProjectId}`);
-      return;
-    }
-
-    if (["changes_requested", "rejected"].includes(request.status)) {
-      navigate("/solicitudes/nueva", {
-        state: { initialRequest: request },
-      });
-      return;
-    }
-
-    navigate("/solicitudes/nueva", {
-      state: { viewRequest: request },
-    });
+  // La consulta de una solicitud se identifica por id en la URL y se lee del backend; solo
+  // «Corregir solicitud» abre el formulario con la solicitud devuelta.
+  const handleReviewRequest = (request, kind) => {
+    const destination = getProjectRequestRowDestination(request, kind);
+    navigate(destination.to, destination.state ? { state: destination.state } : undefined);
   };
 
   const handleNewRequest = () => {

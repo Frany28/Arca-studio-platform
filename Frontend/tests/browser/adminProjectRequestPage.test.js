@@ -170,6 +170,30 @@ test("el resumen reutiliza el drawer y solo entonces consulta al cliente", async
   assert.deepEqual(reads.filter((read) => !isBackgroundRead(read)), [DETAIL_PATH, "/api/admin/users/11"]);
 });
 
+test("el resumen de una rechazada añade «Motivo del rechazo» sin mezclarlo con la revisión técnica", async (context) => {
+  const reason = "El presupuesto no cubre el alcance.\nEl terreno no tiene documentación vigente.";
+  const field = (drawer, label) => drawer.locator("dl > div").filter({ has: drawer.page().locator("dt", { hasText: new RegExp(`^${label}$`) }) });
+  for (const [name, request, expected] of [
+    // Con revisión: recomendación y justificación del arquitecto se conservan aparte.
+    ["con revisión", { ...REQUEST, correctionReason: "Corrección antigua.", rejectionReason: reason, status: "rejected" }, { justification: "Viable.", reason }],
+    // Decisión directa del administrador: no se inventa una justificación del arquitecto.
+    ["sin revisión", { ...REQUEST, rejectionReason: reason, reviews: [], status: "rejected" }, { justification: "Sin justificación registrada", reason }],
+    ["sin motivo", { ...REQUEST, rejectionReason: null, reviews: [], status: "rejected" }, { justification: "Sin justificación registrada", reason: "Motivo no disponible" }],
+    ["pendiente", { ...REQUEST, rejectionReason: "residuo" }, { justification: "Viable.", reason: null }],
+  ]) {
+    const { page } = await openPage(context, { detail: { json: { projectRequest: request } } });
+    await page.getByRole("button", { name: "Ver resumen & recomendación" }).click();
+    const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
+    await field(drawer, "Justificación").locator("dd").getByText(expected.justification, { exact: true }).waitFor();
+    if (expected.reason) {
+      assert.equal(await field(drawer, "Motivo del rechazo").locator("dd").innerText(), expected.reason, name);
+    } else {
+      assert.equal(await field(drawer, "Motivo del rechazo").count(), 0, name);
+    }
+    assert.equal(await drawer.getByText("Corrección antigua.").count(), 0, name);
+  }
+});
+
 test("la viabilidad porcentual coincide en detalle y resumen, sin datos de prototipo", async (context) => {
   for (const score of [95, 0, null]) {
     const { page } = await openPage(context, { detail: { json: { projectRequest: {

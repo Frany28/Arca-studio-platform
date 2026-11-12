@@ -2,8 +2,6 @@ import { useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
 
-export const REQUEST_VIEWS = Object.freeze({ form: "form", status: "status", summary: "summary" });
-
 // Estado de la emisión del código de validación que el backend envía al correo del cliente.
 export const VERIFICATION_CODE_STATUS = Object.freeze({
   error: "error",
@@ -25,22 +23,18 @@ export const VERIFICATION_MODES = Object.freeze({ email: "email", test: "test" }
  * consume: los adjuntos ya se subieron al seleccionarlos y no se vuelven a transferir, y el envío
  * se bloquea mientras haya archivos sin guardar (`blockedReason`). Un código incorrecto deja la
  * solicitud como borrador con sus adjuntos. Si el backend informa el modo de pruebas, no hay correo
- * ni reenvío. La vista inicia en "status" con viewRequest; tras enviar pasa a "status" y desde ahí
- * solo alterna con "summary" (consulta de solo lectura), sin reabrir el formulario editable.
+ * ni reenvío. Tras un envío correcto entrega la solicitud a `onSubmitted`: la página navega a su
+ * consulta persistente por id (`/solicitudes/:id`), que lee el estado vigente del backend.
  *
  * @param {Object} params - Datos del flujo y callback posterior.
  * @param {{draftId: number|string|null, ensureDraft: Function, saveForm: Function}} params.draft - Borrador compartido.
- * @param {Function} [params.onSubmitted] - Callback invocado tras el envío exitoso; no se espera su resultado.
- * @param {Object|null} params.viewRequest - Solicitud para inicializar la vista recibida.
- * @returns {Object} Código, estado y modo de su emisión, modal, solicitud recibida, carga/error y
- *   acciones de validación, reenvío, envío, vista y reset.
+ * @param {(projectRequest: Object) => void} [params.onSubmitted] - Recibe la solicitud enviada (con su id); no se espera su resultado.
+ * @returns {Object} Código, estado y modo de su emisión, modal, carga/error y acciones de
+ *   validación, reenvío, envío y reset.
  */
-export default function useProjectRequestSubmission({ draft, onSubmitted, viewRequest }) {
+export default function useProjectRequestSubmission({ draft, onSubmitted }) {
   const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
   const [validationCode, setValidationCode] = useState("");
-  // Vista activa: formulario editable, estado de la solicitud enviada o consulta de solo lectura.
-  const [requestView, setRequestView] = useState(viewRequest ? REQUEST_VIEWS.status : REQUEST_VIEWS.form);
-  const [receivedRequest, setReceivedRequest] = useState(viewRequest);
   const [codeStatus, setCodeStatus] = useState(VERIFICATION_CODE_STATUS.idle);
   const [verificationMode, setVerificationMode] = useState(VERIFICATION_MODES.email);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,13 +99,9 @@ export default function useProjectRequestSubmission({ draft, onSubmitted, viewRe
     }
   };
 
-  // Una solicitud enviada solo se consulta: desde estas vistas no se vuelve al formulario.
-  const showRequestStatus = () => setRequestView(REQUEST_VIEWS.status);
-  const showRequestSummary = () => setRequestView(REQUEST_VIEWS.summary);
-
   /**
-   * Limpia modal, código, emisión, vista recibida y error. Conserva el borrador remoto y sus
-   * adjuntos guardados (se eliminan con su botón) y no reinicia los estados de formulario o archivos.
+   * Limpia modal, código, emisión y error. Conserva el borrador remoto y sus adjuntos guardados
+   * (se eliminan con su botón) y no reinicia los estados de formulario o archivos.
    *
    * @returns {void} Restablece el estado local indicado sin cambiar isSubmitting.
    */
@@ -120,8 +110,6 @@ export default function useProjectRequestSubmission({ draft, onSubmitted, viewRe
     setIsValidationModalOpen(false);
     setValidationCode("");
     setCodeStatus(VERIFICATION_CODE_STATUS.idle);
-    setRequestView(REQUEST_VIEWS.form);
-    setReceivedRequest(null);
     setSubmitError("");
   };
 
@@ -135,7 +123,7 @@ export default function useProjectRequestSubmission({ draft, onSubmitted, viewRe
    * @param {string|number} code - Código recibido por correo (o cualquiera en modo de pruebas).
    * @param {Object} [options] - Estado de los adjuntos.
    * @param {string} [options.blockedReason=""] - Motivo por el que los adjuntos impiden enviar.
-   * @returns {Promise<void>} Actualiza la vista recibida y llama onSubmitted tras éxito; captura errores.
+   * @returns {Promise<void>} Cierra la validación y llama onSubmitted con la solicitud tras éxito; captura errores.
    */
   const submitValidation = async (code, { blockedReason = "" } = {}) => {
     const verificationCode = String(code ?? "").trim();
@@ -154,11 +142,10 @@ export default function useProjectRequestSubmission({ draft, onSubmitted, viewRe
 
     try {
       const submitted = await api.projectRequests.submit(projectRequestId, verificationCode);
-      setReceivedRequest(submitted?.projectRequest || null);
       setIsValidationModalOpen(false);
       setCodeStatus(VERIFICATION_CODE_STATUS.idle);
-      setRequestView(REQUEST_VIEWS.status);
-      onSubmitted?.();
+      // El envío opera sobre el borrador: su id identifica la solicitud aunque la respuesta lo omita.
+      onSubmitted?.({ id: projectRequestId, ...(submitted?.projectRequest || {}) });
     } catch (error) {
       setSubmitError(error.message || "No se pudo enviar la solicitud. Puedes reintentarlo.");
     } finally {
@@ -169,17 +156,12 @@ export default function useProjectRequestSubmission({ draft, onSubmitted, viewRe
   return {
     closeValidation,
     codeStatus,
-    isRequestReceived: requestView !== REQUEST_VIEWS.form,
     isSubmitting,
     isValidationModalOpen,
     openValidation,
-    receivedRequest,
-    requestView,
     resendCode,
     resetSubmission,
     setValidationCode,
-    showRequestStatus,
-    showRequestSummary,
     submitError,
     submitValidation,
     validationCode,

@@ -29,8 +29,10 @@ test("client, architect and admin surfaces consume the shared workflow", async (
     readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(homeRows, /Corregir solicitud/);
-  assert.match(home, /convertedProjectId/);
+  // Acciones y destinos de «Mis proyectos» salen del helper por estado (probado en
+  // projectRequestClientStatus.test.js), no de condiciones locales.
+  assert.match(homeRows, /getProjectRequestRowActions/);
+  assert.match(home, /getProjectRequestRowDestination/);
   assert.match(dashboard, /useProjectRequestWorkflow/);
   assert.match(requestWorkflow, /useProjectRequestWorkflow/);
   assert.match(sharedWorkflow, /listReviewQueue/);

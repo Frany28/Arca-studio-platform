@@ -20,14 +20,16 @@ const RECOMMENDATION_ICONS = {
  * La viabilidad usa la barra porcentual compartida con el detalle y conserva los motivos.
  * Sin score muestra el estado vacío, sin sustituirlo por una puntuación de demostración.
  * Las observaciones para la revisión son avisos sin puntos y solo aparecen cuando aplican.
- * `unavailableText` se usa cuando la solicitud no llegó en la cola técnica.
+ * `unavailableText` se usa cuando la solicitud no llegó en la cola técnica. En una solicitud
+ * rechazada añade «Motivo del rechazo» (`rejectionReason`) como campo independiente; sin revisión
+ * técnica, recomendación y justificación conservan sus estados vacíos sin inventar valores.
  *
  * @param {Object} props - Modelo de `buildAdminRequestDetails`.
  * @param {Object} props.details - Datos de presentación de la solicitud.
  * @returns {import("react").ReactElement} Sección de evaluación.
  */
 function AdminRequestEvaluation({ details }) {
-  const { compatibility, completeness, financialViability, isPartial, justification, recommendation, reviewObservations } = details;
+  const { compatibility, completeness, financialViability, isPartial, justification, recommendation, rejectionReason, reviewObservations, statusCode } = details;
   const unavailableText = "Información no disponible";
   const recommendationIcon = RECOMMENDATION_ICONS[recommendation?.value];
 
@@ -110,6 +112,13 @@ function AdminRequestEvaluation({ details }) {
         <RequestDetailField label="Justificación" className="w-full">
           {justification || (isPartial ? unavailableText : "Sin justificación registrada")}
         </RequestDetailField>
+        {/* Decisión del administrador, separada de la revisión técnica: solo en solicitudes
+        rechazadas y con el texto completo de `rejectionReason`. */}
+        {statusCode === "rejected" ? (
+          <RequestDetailField label="Motivo del rechazo" className="w-full" valueColorClassName="whitespace-pre-line text-[var(--color-text-200)]">
+            {rejectionReason || "Motivo no disponible"}
+          </RequestDetailField>
+        ) : null}
       </dl>
     </section>
   );

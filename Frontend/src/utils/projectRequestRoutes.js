@@ -11,6 +11,20 @@ export function getAdminProjectRequestPath(projectRequestId) {
   return `/solicitudes-proyecto/${encodeURIComponent(projectRequestId)}`;
 }
 
+// Consulta del cliente de una de sus solicitudes (solo rol client; ver main.jsx). La solicitud se
+// lee del backend por id, que solo la entrega a su propietario.
+export const CLIENT_PROJECT_REQUEST_ROUTE = "/solicitudes/:projectRequestId";
+
+/**
+ * Construye el enlace persistente a la consulta del cliente de una solicitud.
+ *
+ * @param {number|string} projectRequestId - ID de la solicitud.
+ * @returns {string} Ruta `/solicitudes/:id`.
+ */
+export function getClientProjectRequestPath(projectRequestId) {
+  return `/solicitudes/${encodeURIComponent(projectRequestId)}`;
+}
+
 /**
  * Normaliza el ID de la URL: solo enteros positivos identifican una solicitud.
  * Un ID inválido se trata como inexistente sin consultar la API.
