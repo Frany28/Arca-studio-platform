@@ -15,6 +15,19 @@ export function parsePageLimit(value) {
 }
 
 /**
+ * Devuelve la expresión SQL que serializa una marca temporal del cursor en ISO-8601 UTC con
+ * microsegundos, la precisión de `timestamptz`. Un `Date` de JavaScript la trunca a milisegundos:
+ * filas creadas en el mismo milisegundo (p. ej. en una sola transacción) quedarían fuera de la
+ * comparación `(fecha, id) < cursor` y la página siguiente las omitiría.
+ *
+ * @param {string} column - Columna `timestamptz` calificada (constante del código, nunca entrada externa).
+ * @returns {string} Expresión SQL para seleccionar el valor del cursor como texto.
+ */
+export function preciseCursorTimestampSql(column) {
+  return `to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+}
+
+/**
  * Codifica el valor de cursor en una representación segura para transporte.
  * Centraliza este comportamiento para que sus consumidores utilicen el mismo criterio.
  *

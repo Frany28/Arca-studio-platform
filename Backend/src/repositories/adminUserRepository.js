@@ -1,5 +1,6 @@
 import { pool, query } from "../config/db.js";
 import { mapAdminUserMetrics } from "../utils/adminUsers.js";
+import { preciseCursorTimestampSql } from "../utils/pagination.js";
 import { insertAuditLog } from "./auditLogRepository.js";
 import { invalidatePasswordResetTokens } from "./passwordResetRepository.js";
 import { SESSION_REVOCATION_REASONS, revokeUserSessions } from "./sessionRepository.js";
@@ -431,6 +432,7 @@ export async function listAdminUsers({ cursor, limit, role, search, status }) {
         (u.profile_photo_url is not null and btrim(u.profile_photo_url) <> '') as has_profile_photo,
         u.last_login_at,
         u.created_at,
+        ${preciseCursorTimestampSql("u.created_at")} as cursor_created_at,
         r.code as role_code,
         r.name as role_name
       from public.users u
@@ -570,7 +572,8 @@ export async function adminUserExists(userId) {
 export async function listAdminUserNotes({ adminUserId, cursor, limit, targetUserId }) {
   const result = await query(
     `
-      select id, content, created_at, updated_at
+      select id, content, created_at, updated_at,
+        ${preciseCursorTimestampSql("created_at")} as cursor_created_at
       from public.admin_user_notes
       where admin_user_id = $1
         and target_user_id = $2

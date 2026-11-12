@@ -27,6 +27,18 @@ import {
 } from "../utils/pagination.js";
 
 /**
+ * Valores del cursor de usuarios y notas: fecha de creación con microsegundos y id.
+ * Usa `cursor_created_at` (texto de PostgreSQL); el `Date` de `created_at` truncaría la fecha a
+ * milisegundos y la página siguiente omitiría filas creadas en el mismo milisegundo.
+ *
+ * @param {{cursor_created_at?: string, created_at: Date|string, id: number|string}} row - Última fila visible.
+ * @returns {[string, string]} Fecha precisa e id del cursor.
+ */
+function toCreatedAtCursor(row) {
+  return [row.cursor_created_at || new Date(row.created_at).toISOString(), String(row.id)];
+}
+
+/**
  * Obtiene la página de usuarios administrados para que el flujo llamador pueda continuar.
  * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
  *
@@ -49,10 +61,7 @@ export async function getAdminUsersPage(query = {}) {
     }),
     getAdminUserMetrics(),
   ]);
-  const page = pageResult(rows, limit, mapAdminUser, (row) => [
-    new Date(row.created_at).toISOString(),
-    String(row.id),
-  ]);
+  const page = pageResult(rows, limit, mapAdminUser, toCreatedAtCursor);
 
   return {
     metrics,
@@ -101,10 +110,7 @@ export async function getAdminUserNotesPage({ actorUserId, query = {}, userId })
     limit,
     targetUserId: userId,
   });
-  const page = pageResult(rows, limit, mapAdminUserNote, (row) => [
-    new Date(row.created_at).toISOString(),
-    String(row.id),
-  ]);
+  const page = pageResult(rows, limit, mapAdminUserNote, toCreatedAtCursor);
   return { notes: page.items, nextCursor: page.nextCursor };
 }
 
