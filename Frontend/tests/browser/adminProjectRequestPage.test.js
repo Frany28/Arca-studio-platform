@@ -366,7 +366,8 @@ async function actionBarButtons(page) {
 
 /** Escribe el motivo, confirma la decisión y espera a que la API la reciba. */
 async function confirmDecision(page, mutations, note, actionLabel = "Confirmar decisión") {
-  const dialog = page.getByRole("dialog");
+  // La aprobación es una alerta modal (alertdialog); el resto de decisiones, un dialog.
+  const dialog = page.getByRole("dialog").or(page.getByRole("alertdialog"));
   if (note !== undefined) await dialog.getByRole("textbox").fill(note);
   const before = mutations.length;
   await dialog.getByRole("button", { name: actionLabel, exact: true }).click();
@@ -505,12 +506,14 @@ test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cot
   });
 
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  // La nota interna es opcional al aprobar.
-  await dialog.getByText("Nota interna (opcional)", { exact: true }).waitFor();
-  await confirmDecision(page, mutations);
+  // Confirmación con estilo de alerta: sin campos, solo «Cancelar» / «Aprobar».
+  const dialog = page.getByRole("alertdialog", { name: "¿Deseas aprobar la solicitud?" });
+  await dialog.waitFor();
+  assert.equal(await dialog.getByRole("textbox").count(), 0);
+  assert.equal(await dialog.getByText(/recomendaci/i).count(), 0);
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   // Un segundo clic durante el envío no repite la decisión.
-  await dialog.getByRole("button", { name: "Guardando..." }).click({ force: true });
+  await dialog.getByRole("button", { name: "Aprobando..." }).click({ force: true });
   await page.evaluate(() => new Promise(requestAnimationFrame));
   assert.equal(mutations.length, 1);
   assert.deepEqual(mutations[0].body, { action: "approve" });
@@ -541,7 +544,7 @@ test("el administrador aprueba directamente una solicitud sin arquitectos ni rev
   });
 
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
-  await confirmDecision(page, mutations);
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   assert.deepEqual(mutations[0].body, { action: "approve" });
   assert.equal(mutations.length, 1);
   await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
@@ -582,10 +585,10 @@ test("un fallo de red y un conflicto de nombre se muestran en el modal sin éxit
   });
 
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
-  await confirmDecision(page, mutations);
-  const dialog = page.getByRole("dialog");
+  await confirmDecision(page, mutations, undefined, "Aprobar");
+  const dialog = page.getByRole("alertdialog");
   await dialog.getByText("El cliente ya tiene un proyecto con el nombre de esta solicitud.", { exact: true }).waitFor();
-  await confirmDecision(page, mutations);
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   await dialog.getByText(/conexión/i).first().waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
   assert.equal(detailReads(reads), 1);
@@ -675,8 +678,8 @@ test("la barra es accesible por teclado y no desborda en tablet ni móvil, en cl
     }
   }
 
-  // Teclado: Tab llega a las acciones en orden y Enter abre el modal con el foco en el motivo;
-  // Escape lo cierra y devuelve el foco a la acción.
+  // Teclado: Tab llega a las acciones en orden y Enter abre la confirmación con el foco en
+  // «Cancelar» (la opción segura); Escape la cierra y devuelve el foco a la acción.
   const { page } = await openPage(context);
   const focusedText = () => page.evaluate(() => document.activeElement?.innerText);
   await page.getByRole("button", { name: "Ver resumen & recomendación" }).focus();
@@ -685,9 +688,9 @@ test("la barra es accesible por teclado y no desborda en tablet ni móvil, en cl
     assert.equal(await focusedText(), label);
   }
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Confirmar decisión" }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.tagName === "TEXTAREA");
+  const dialog = page.getByRole("alertdialog");
+  await dialog.getByRole("button", { name: "Aprobar", exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.innerText === "Cancelar");
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
   await page.waitForFunction(() => document.activeElement?.innerText === "Aprobar");

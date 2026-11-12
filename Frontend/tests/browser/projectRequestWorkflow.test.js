@@ -339,13 +339,13 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   const paths =["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/projects", "/api/project-requests/review-queue"];
   const before = paths.map((path) => calls.filter((call) => call.path === path).length);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Aprobar", exact: true }).click();
   await decisionRequest;
   assert.equal(mutations.length, 1);
   const refreshed = paths.map((path) => page.waitForRequest((request) => new URL(request.url()).pathname === path));
   await mutations[0].fulfill({ json: {} });
   await Promise.all(refreshed);
-  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await page.getByRole("alertdialog").waitFor({ state: "hidden" });
   await page.waitForLoadState("networkidle");
   for (const [index, path] of paths.entries()) {
     assert.equal(calls.filter((call) => call.path === path).length, before[index] + 1, `${path}: ${JSON.stringify(calls)}`);
@@ -952,7 +952,7 @@ test("Dashboard admin real: aprobar avisa del proyecto creado y retira la solici
   await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Acciones para Casa Norte" }).click();
   await page.getByRole("menuitem", { name: "Aprobar" }).click();
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Aprobar", exact: true }).click();
   await decisionRequest;
   assert.equal(mutations.length, 1);
   decided = true;
@@ -970,14 +970,14 @@ test("Dashboard admin real: un conflicto de estado relee overview, métricas y c
   await openDrawerDecision(page, "Aprobar");
   const before = countReads(calls, SYNC_PATHS);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Aprobar", exact: true }).click();
   await decisionRequest;
   const reread = SYNC_PATHS.map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
   await mutations[0].fulfill({ status: 409, json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes que están en revisión." } });
   await Promise.all(reread);
   await page.waitForLoadState("networkidle");
   assert.deepEqual(countReads(calls, SYNC_PATHS), before.map((count) => count + 1));
-  await page.getByRole("dialog").getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
+  await page.getByRole("alertdialog").getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
 });
 

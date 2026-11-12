@@ -15,6 +15,7 @@ import {
   describeRecommendationNoteError,
 } from "../../utils/projectRequestRecommendations.js";
 import ProjectRequestAdditionalInfoContent from "./ProjectRequestAdditionalInfoContent.jsx";
+import ProjectRequestApprovalContent from "./ProjectRequestApprovalContent.jsx";
 import ProjectRequestRecommendationContent from "./ProjectRequestRecommendationContent.jsx";
 import ProjectRequestRejectionContent from "./ProjectRequestRejectionContent.jsx";
 
@@ -49,12 +50,14 @@ function CloseIcon() {
  * está abierto, el visor gestiona su propio teclado.
  *
  * @param {Object} props - Solicitud, modo, estado del envío y callbacks.
- * @param {string} [props.initialAction="approve"] - approve, reject o changes_requested.
+ * @param {string} [props.initialAction] - approve, reject o changes_requested. Sin valor, el modal
+ * de decisión muestra el selector con «Aprobar» preseleccionado; con «approve» explícito muestra la
+ * confirmación con estilo de alerta (`ProjectRequestApprovalContent`).
  * @returns {import("react").ReactElement|null} Modal o null sin solicitud.
  */
 function ProjectRequestWorkflowModal({
   error = "",
-  initialAction = "approve",
+  initialAction,
   mode = "review",
   onClose,
   onSubmit,
@@ -224,6 +227,15 @@ function ProjectRequestWorkflowModal({
           }}
           open={open}
           projectRequest={projectRequest}
+          submitting={submitting}
+        />
+      ) : mode === "decision" && action === "approve" && initialAction === "approve" ? (
+        <ProjectRequestApprovalContent
+          dialogRef={dialogRef}
+          error={error}
+          projectName={projectRequest.projectName}
+          onCancel={onClose}
+          onConfirm={submit}
           submitting={submitting}
         />
       ) : mode === "decision" && action === "reject" ? (
