@@ -218,11 +218,16 @@ for (const [action, label, expected] of [
     const dialog = page.getByRole("dialog");
     assert.equal(await dialog.getByRole("group", { name: "Recomendación de reunión" }).count(), 0);
     await dialog.getByRole("button", { name: label, exact: true }).click();
+    // Más información y rechazo cambian al modal propio de cada decisión.
     if (action === "changes_requested") {
       await dialog.getByRole("heading", { name: "Solicitar información adicional" }).waitFor();
     }
+    if (action === "reject") {
+      await dialog.getByRole("heading", { name: "¿Deseas rechazar la solicitud?" }).waitFor();
+    }
     await dialog.getByRole("textbox").fill("Nota de decisión");
-    await dialog.getByRole("button", { name: action === "changes_requested" ? "Finalizar" : "Confirmar decisión", exact: true }).click();
+    const confirmLabel = { approve: "Confirmar decisión", changes_requested: "Finalizar", reject: "Rechazar" }[action];
+    await dialog.getByRole("button", { name: confirmLabel, exact: true }).click();
     await waitMutation(page, mutations);
     assert.deepEqual(calls.find((call) => call.method === "PATCH"), { method: "PATCH", path: "/api/admin/project-requests/7/decision", body: expected });
     assert.deepEqual(await page.evaluate(() => window.workflowHarness.events), []);
@@ -410,8 +415,8 @@ test("Dashboard admin real: el drawer de detalle muestra datos reales y preselec
   await page.getByRole("menuitem", { name: "Rechazar", exact: true }).click();
   await drawer.waitFor({ state: "detached" });
   const decisionDialog = page.getByRole("dialog");
-  await decisionDialog.getByText("Motivo", { exact: true }).waitFor();
-  assert.equal(await decisionDialog.getByRole("heading", { name: "Casa Norte" }).count(), 1);
+  await decisionDialog.getByRole("heading", { name: "¿Deseas rechazar la solicitud?" }).waitFor();
+  assert.equal(await decisionDialog.getByRole("textbox", { name: "Motivo del rechazo" }).count(), 1);
   // Abrir una acción no ejecuta la decisión: solo el modal confirma contra la API.
   assert.equal(mutations.length, 0);
 });
@@ -1053,7 +1058,7 @@ test("Dashboard admin real: decidir en la consulta completa sincroniza el dashbo
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("textbox").fill("Fuera del alcance del estudio.");
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  await dialog.getByRole("button", { name: "Rechazar", exact: true }).click();
   await decisionRequest;
   assert.deepEqual(calls.find((call) => call.method === "PATCH"), {
     body: { action: "reject", reason: "Fuera del alcance del estudio." },

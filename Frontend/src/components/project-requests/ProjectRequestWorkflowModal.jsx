@@ -16,6 +16,7 @@ import {
 } from "../../utils/projectRequestRecommendations.js";
 import ProjectRequestAdditionalInfoContent from "./ProjectRequestAdditionalInfoContent.jsx";
 import ProjectRequestRecommendationContent from "./ProjectRequestRecommendationContent.jsx";
+import ProjectRequestRejectionContent from "./ProjectRequestRejectionContent.jsx";
 
 const OPTIONS = [
   { id: "changes_requested", label: "Solicitar correcciones" },
@@ -35,6 +36,7 @@ function CloseIcon() {
  * Modal de revisión técnica o decisión administrativa de una solicitud.
  * «Solicitar más información» muestra el contenido de Figma 3727:677375
  * con contacto real del cliente y motivo requerido, sin alterar el contrato HTTP.
+ * «Rechazar» (decisión) muestra `ProjectRequestRejectionContent`, con el estilo del rechazo de Figma.
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * Revisión del arquitecto (Figma Dashboard ARQ 3727:618270): el detalle ofrece «Recomendar rechazo»,
  * «Recomendar solicitar más información» y «Recomendar aprobación»; cada una abre su modal
@@ -222,6 +224,19 @@ function ProjectRequestWorkflowModal({
           }}
           open={open}
           projectRequest={projectRequest}
+          submitting={submitting}
+        />
+      ) : mode === "decision" && action === "reject" ? (
+        <ProjectRequestRejectionContent
+          dialogRef={dialogRef}
+          error={localError || error}
+          note={note}
+          onCancel={onClose}
+          onConfirm={submit}
+          onNoteChange={(value) => {
+            setNote(value);
+            setLocalError("");
+          }}
           submitting={submitting}
         />
       ) : (

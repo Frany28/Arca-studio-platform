@@ -408,20 +408,28 @@ test("rechazar exige motivo, confirma contra la API y solo entonces avisa y actu
 
   await page.getByRole("button", { name: "Rechazar", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  // Reutiliza el modal de decisión con el rechazo preseleccionado (motivo obligatorio), sin releer el detalle.
-  await dialog.getByText("Motivo", { exact: true }).waitFor();
+  // Modal propio de rechazo (estilo Figma 3727:618488, motivo obligatorio), sin releer el detalle.
+  await dialog.getByRole("heading", { name: "¿Deseas rechazar la solicitud?" }).waitFor();
   // El administrador decide: su modal nunca ofrece las recomendaciones del arquitecto.
   assert.equal(await dialog.getByRole("button", { name: /Recomendar/ }).count(), 0);
-  await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
+  assert.equal(await dialog.getByText(/recomendaci/i).count(), 0);
+  // Mismo ancho de 400 px que el modal de rechazo de Figma.
+  assert.equal(Math.round((await dialog.boundingBox()).width), 400);
+  // Captura opcional para la revisión visual manual (no se guarda en el repositorio).
+  if (process.env.ARCA_REVIEW_CAPTURE_DIR) {
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${process.env.ARCA_REVIEW_CAPTURE_DIR}/admin-reject.png` });
+  }
+  await dialog.getByRole("button", { name: "Rechazar", exact: true }).click();
   await dialog.getByText("Explica el motivo de tu decisión con al menos 10 caracteres.", { exact: true }).waitFor();
   assert.deepEqual(mutations, []);
   assert.equal(detailReads(reads), 1);
 
-  await confirmDecision(page, mutations, "El presupuesto no cubre el alcance.");
+  await confirmDecision(page, mutations, "El presupuesto no cubre el alcance.", "Rechazar");
   assert.deepEqual(mutations, [{ body: { action: "reject", reason: "El presupuesto no cubre el alcance." }, method: "PATCH", path: DECISION_PATH }]);
   // Nunca hay éxito antes de la confirmación del servidor.
   assert.equal(await page.getByText("Solicitud rechazada", { exact: true }).count(), 0);
-  await dialog.getByRole("button", { name: "Guardando..." }).waitFor();
+  await dialog.getByRole("button", { name: "Rechazando..." }).waitFor();
 
   held.resolve({ json: { project: null, projectRequest: { id: 9, rejectionReason: "El presupuesto no cubre el alcance.", reviewedAt: "2026-10-05T12:00:00.000Z", status: "rejected" } } });
   await page.getByText("Solicitud rechazada", { exact: true }).waitFor();
@@ -548,7 +556,7 @@ test("un conflicto por otro administrador conserva el modal, relee y avisa del c
   });
 
   await page.getByRole("button", { name: "Rechazar", exact: true }).click();
-  await confirmDecision(page, mutations, "Motivo escrito antes del conflicto.");
+  await confirmDecision(page, mutations, "Motivo escrito antes del conflicto.", "Rechazar");
   const dialog = page.getByRole("dialog");
   await dialog.getByText("Solo se pueden decidir solicitudes pendientes de evaluación o revisión.", { exact: true }).waitFor();
   assert.equal(await dialog.getByRole("textbox").inputValue(), "Motivo escrito antes del conflicto.");
