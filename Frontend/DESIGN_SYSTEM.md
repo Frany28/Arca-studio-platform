@@ -232,8 +232,6 @@ Usar `Modal` y sus configuraciones antes de crear overlays nuevos. Toda capa deb
 
 Los modales con `mount="viewport"` deben renderizarse mediante portal en `document.body`. No deben quedar anidados dentro de layouts, paneles o contenedores transformados, porque eso altera el sistema de referencia de `position: fixed`, desplaza el centrado y puede recortar el overlay. Solo `mount="contained"` permanece dentro del contenedor que lo invoca.
 
-El diálogo estándar de Figma (icono, título, descripción, X y pie con acción secundaria y principal; alineaciones `Left`, `Centered` y `Horizontal split`) vive en `ModalDialog`, exportado por `Modal.jsx`. `Modal` lo usa cuando no recibe `children`; un flujo que ya monta su propio `Modal` y cambia de contenido (por ejemplo, la confirmación de aprobación dentro de `ProjectRequestWorkflowModal`) lo renderiza como hijo en lugar de copiar su marcado. `ModalDialog` acepta `dialogRef`, `closeButtonAriaLabel` y atributos de rol/aria en su contenedor.
-
 Cuando se añadan animaciones, respetar `prefers-reduced-motion`, como ya hace el progreso de proyectos.
 
 ## Estados obligatorios de una pantalla
