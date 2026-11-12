@@ -35,9 +35,10 @@ test("client, architect and admin surfaces consume the shared workflow", async (
   assert.match(requestWorkflow, /useProjectRequestWorkflow/);
   assert.match(sharedWorkflow, /listReviewQueue/);
   assert.match(adminDecision, /decideProjectRequest/);
-  // El arquitecto recomienda con los modales de Figma; el administrador conserva «Confirmar decisión».
+  // El arquitecto recomienda con los modales de Figma; el administrador decide con los suyos.
   assert.match(modal, /ProjectRequestRecommendationContent/);
-  assert.match(modal, /Confirmar decisión/);
+  assert.match(modal, /ProjectRequestClientContactContent/);
+  assert.match(modal, /ProjectRequestRejectionContent/);
   assert.match(projectRequestsApi, /project-requests\/review-queue/);
   assert.match(adminApi, /project-requests\/\$\{encodeURIComponent\(projectRequestId\)\}\/decision/);
 });

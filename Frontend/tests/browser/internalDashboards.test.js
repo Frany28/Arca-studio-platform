@@ -183,7 +183,9 @@ for (const role of ["admin", "architect"]) {
       // Comprueba el callback real sin depender de los timers del toast durante StrictMode.
       await page.evaluate(() => window.__dashboardLoginAlert.onView());
       await page.getByRole("dialog").waitFor();
-      assert.equal(await page.getByRole("dialog").getByRole("button", { name: "Confirmar decisión", exact: true }).count(), 1);
+      // Sin acción elegida se abre el selector: cada decisión abre luego su modal propio.
+      const decisions = page.getByRole("dialog").getByRole("group", { name: "Decisión de la solicitud" });
+      assert.deepEqual(await decisions.getByRole("button").allInnerTexts(), ["Rechazar", "Solicitar más información", "Aprobar"]);
     }
   });
 }

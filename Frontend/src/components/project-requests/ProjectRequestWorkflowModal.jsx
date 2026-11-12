@@ -1,11 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Button from "../ui/Button/Button.jsx";
 import { api } from "../../api/http.js";
-import { useDialogKeyboard } from "../../hooks/useDialogKeyboard.js";
+import { DIALOG_FOCUSABLE_SELECTOR, useDialogKeyboard } from "../../hooks/useDialogKeyboard.js";
 import { useInvalidFieldFocus } from "../../hooks/useInvalidFieldFocus.js";
 import Modal from "../ui/Modal/Modal.jsx";
-import TextArea from "../ui/TextArea/TextArea.jsx";
 import { ProjectDocumentViewerModal } from "../../pages/projects/components/ProjectDocumentPreview.jsx";
 import { isPdfAttachment, toAttachmentViewerDocument } from "../../utils/projectRequestAttachments.js";
 import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
@@ -14,15 +13,16 @@ import {
   PROJECT_REQUEST_RECOMMENDATION_ORDER,
   describeRecommendationNoteError,
 } from "../../utils/projectRequestRecommendations.js";
-import ProjectRequestAdditionalInfoContent from "./ProjectRequestAdditionalInfoContent.jsx";
-import ProjectRequestApprovalContent from "./ProjectRequestApprovalContent.jsx";
+import { PROJECT_REQUEST_CHANGES_REQUESTED_REASON } from "../../utils/projectRequestContactLinks.js";
+import ProjectRequestClientContactContent from "./ProjectRequestClientContactContent.jsx";
 import ProjectRequestRecommendationContent from "./ProjectRequestRecommendationContent.jsx";
 import ProjectRequestRejectionContent from "./ProjectRequestRejectionContent.jsx";
 
+// Mismo orden, textos y estilos que la barra de acciones de la consulta administrativa.
 const OPTIONS = [
-  { id: "changes_requested", label: "Solicitar correcciones" },
-  { id: "reject", label: "Rechazar" },
-  { id: "approve", label: "Aprobar" },
+  { id: "reject", label: "Rechazar", theme: "Danger", type: "Outline" },
+  { id: "changes_requested", label: "Solicitar más información", theme: "Info", type: "Outline" },
+  { id: "approve", label: "Aprobar", theme: "Primary", type: "Solid" },
 ];
 
 function CloseIcon() {
@@ -35,9 +35,9 @@ function CloseIcon() {
 
 /**
  * Modal de revisión técnica o decisión administrativa de una solicitud.
- * «Solicitar más información» muestra el contenido de Figma 3727:677375
- * con contacto real del cliente y motivo requerido, sin alterar el contrato HTTP.
- * «Rechazar» (decisión) muestra `ProjectRequestRejectionContent`, con el estilo del rechazo de Figma.
+ * Decisión: «Solicitar más información» (Figma 3727:677375) y «Aprobar» («Solicitud Aprobada»,
+ * 3727:677374) muestran `ProjectRequestClientContactContent` con el contacto real del cliente y
+ * «Finalizar» como única mutación; «Rechazar» muestra `ProjectRequestRejectionContent`.
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * Revisión del arquitecto (Figma Dashboard ARQ 3727:618270): el detalle ofrece «Recomendar rechazo»,
  * «Recomendar solicitar más información» y «Recomendar aprobación»; cada una abre su modal
@@ -51,8 +51,7 @@ function CloseIcon() {
  *
  * @param {Object} props - Solicitud, modo, estado del envío y callbacks.
  * @param {string} [props.initialAction] - approve, reject o changes_requested. Sin valor, el modal
- * de decisión muestra el selector con «Aprobar» preseleccionado; con «approve» explícito muestra la
- * confirmación con estilo de alerta (`ProjectRequestApprovalContent`).
+ * de decisión muestra el detalle con las tres acciones; cada una abre su modal propio.
  * @returns {import("react").ReactElement|null} Modal o null sin solicitud.
  */
 function ProjectRequestWorkflowModal({
@@ -65,8 +64,10 @@ function ProjectRequestWorkflowModal({
   projectRequest,
   submitting = false,
 }) {
+  // Decisión sin acción explícita: null muestra el selector. La revisión parte de «approve» y
+  // `openRecommendation` fija la recomendación elegida.
   const [action, setAction] = useState(
-    OPTIONS.some((option) => option.id === initialAction) ? initialAction : "approve",
+    OPTIONS.some((option) => option.id === initialAction) ? initialAction : mode === "review" ? "approve" : null,
   );
   const [note, setNote] = useState("");
   const [localError, setLocalError] = useState("");
@@ -92,6 +93,16 @@ function ProjectRequestWorkflowModal({
     setMeetingRecommendation(null);
     setMeetingError("");
   };
+  useEffect(() => {
+    // Desde el selector, el botón pulsado desaparece al cambiar de modal: el foco pasa al motivo
+    // (rechazo) o al primer control del modal nuevo. Las aperturas directas las enfoca el hook.
+    if (mode !== "decision" || initialAction || !action) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const container = dialogRef.current;
+      (container?.querySelector("textarea") ?? container?.querySelector(DIALOG_FOCUSABLE_SELECTOR))?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [action, initialAction, mode]);
   useDialogKeyboard({
     getContainer: () => dialogRef.current,
     getInitialFocus: (elements) => elements.find((element) => element.tagName === "TEXTAREA"),
@@ -163,12 +174,13 @@ function ProjectRequestWorkflowModal({
     if (reviewStep) closeRecommendation();
     else onClose?.();
   };
-  // Decisión administrativa: la nota es opcional solo al aprobar. La revisión del arquitecto se
-  // guarda con `submitRecommendation` y nunca usa esta ruta.
+  // Decisión administrativa: el rechazo exige el motivo escrito; aprobar no lleva nota y «Solicitar
+  // más información» envía el motivo estándar (el administrador contacta al cliente desde el modal).
+  // La revisión del arquitecto se guarda con `submitRecommendation` y nunca usa esta ruta.
   const requiresReason = action !== "approve";
-  const submit = async () => {
+  const submit = async (noteOverride) => {
     if (submitting) return;
-    const normalizedNote = note.trim();
+    const normalizedNote = (typeof noteOverride === "string" ? noteOverride : note).trim();
     if (requiresReason && normalizedNote.length < 10) {
       // Solo el administrador llega aquí: el texto habla de su decisión, nunca de una recomendación.
       setLocalError("Explica el motivo de tu decisión con al menos 10 caracteres.");
@@ -214,28 +226,16 @@ function ProjectRequestWorkflowModal({
           onBack={() => setReviewStep("reason")}
           onSubmit={submitRecommendation}
         />
-      ) : mode === "decision" && action === "changes_requested" ? (
-        <ProjectRequestAdditionalInfoContent
-          dialogRef={dialogRef}
-          error={localError || error}
-          note={note}
-          onCancel={onClose}
-          onFinalize={submit}
-          onNoteChange={(value) => {
-            setNote(value);
-            setLocalError("");
-          }}
-          open={open}
-          projectRequest={projectRequest}
-          submitting={submitting}
-        />
-      ) : mode === "decision" && action === "approve" && initialAction === "approve" ? (
-        <ProjectRequestApprovalContent
+      ) : mode === "decision" && (action === "changes_requested" || action === "approve") ? (
+        // Figma 3727:677375 (más información) y 3727:677374 («Solicitud Aprobada»): solo contacto.
+        <ProjectRequestClientContactContent
           dialogRef={dialogRef}
           error={error}
-          projectName={projectRequest.projectName}
           onCancel={onClose}
-          onConfirm={submit}
+          onFinalize={() => submit(action === "changes_requested" ? PROJECT_REQUEST_CHANGES_REQUESTED_REASON : "")}
+          open={open}
+          projectRequest={projectRequest}
+          purpose={action}
           submitting={submitting}
         />
       ) : mode === "decision" && action === "reject" ? (
@@ -357,16 +357,19 @@ function ProjectRequestWorkflowModal({
         ) : null}
 
         {mode === "review" ? null : (
-        <div className="grid grid-cols-1 gap-[8px] min-[600px]:grid-cols-3" role="group" aria-label="Resultado de la revisión">
+        // Selector de decisión (se abre sin acción, p. ej. desde el aviso de inicio de sesión): cada
+        // acción abre su modal propio, igual que la barra de la consulta. No hay campos aquí.
+        <div className="grid grid-cols-1 gap-[8px] min-[600px]:grid-cols-3" role="group" aria-label="Decisión de la solicitud">
           {OPTIONS.map((option) => (
             <Button
               key={option.id}
-              theme={option.id === "reject" ? "Danger" : "Primary"}
-              type={action === option.id ? "Solid" : "Outline"}
+              theme={option.theme}
+              type={option.type}
               size="S"
               showLeftIcon={false}
               showRightIcon={false}
               disabled={submitting}
+              aria-haspopup="dialog"
               onClick={() => setAction(option.id)}
             >
               {option.label}
@@ -376,34 +379,9 @@ function ProjectRequestWorkflowModal({
         )}
 
         {mode === "review" ? null : (
-        <TextArea
-          label={mode === "decision" && action === "approve" ? "Nota interna (opcional)" : "Motivo"}
-          required={requiresReason}
-          showLabelInfo={false}
-          showHint={Boolean(localError || error)}
-          hintText={localError || error}
-          state={localError || error ? "Error" : "Default"}
-          value={note}
-          disabled={submitting}
-          maxLength={mode === "decision" ? 4000 : 2000}
-          onChange={(event) => setNote(event.target.value)}
-        />
-        )}
-
-        {mode === "review" ? null : (
-        <footer className="flex flex-col-reverse gap-[8px] min-[480px]:flex-row min-[480px]:justify-end">
+        <footer className="flex justify-end">
           <Button theme="Primary" type="Outline" size="M" fitContent disabled={submitting} onClick={onClose}>
             Cancelar
-          </Button>
-          <Button
-            theme={action === "reject" ? "Danger" : "Primary"}
-            type="Solid"
-            size="M"
-            fitContent
-            disabled={submitting}
-            onClick={submit}
-          >
-            {submitting ? "Guardando..." : "Confirmar decisión"}
           </Button>
         </footer>
         )}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  PROJECT_REQUEST_CHANGES_REQUESTED_REASON,
   buildProjectRequestContactMessage,
   buildProjectRequestEmailHref,
   buildProjectRequestWhatsAppHref,
@@ -42,6 +43,21 @@ test("WhatsApp solo abre números con prefijo internacional explícito", () => {
   assert.equal(url.origin, "https://wa.me");
   assert.equal(url.pathname, "/584141234567");
   assert.match(url.searchParams.get("text"), /Falta un documento legal/);
+});
+
+test("la solicitud aprobada prepara un mensaje para coordinar la reunión inicial", () => {
+  const href = buildProjectRequestEmailHref({ email: "cliente@ejemplo.com", projectName: "Casa Centro", purpose: "approve" });
+  const fields = new URLSearchParams(href.split("?")[1]);
+  assert.equal(fields.get("subject"), "Tu solicitud de proyecto fue aprobada");
+  assert.match(fields.get("body"), /Casa Centro fue aprobada/);
+  assert.match(fields.get("body"), /reunión inicial/);
+  const whatsApp = new URL(buildProjectRequestWhatsAppHref({ phone: "+58 414 1234567", purpose: "approve" }));
+  assert.match(whatsApp.searchParams.get("text"), /fue aprobada/);
+});
+
+test("el motivo estándar de más información cumple el mínimo del backend", () => {
+  assert.ok(PROJECT_REQUEST_CHANGES_REQUESTED_REASON.trim().length >= 10);
+  assert.ok(PROJECT_REQUEST_CHANGES_REQUESTED_REASON.length <= 2000);
 });
 
 test("el texto de contacto no inventa información faltante cuando el motivo está vacío", () => {

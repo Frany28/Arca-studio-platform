@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import { getBrowserTestCacheDir } from "../helpers/browserViteCache.js";
+import { PROJECT_REQUEST_CHANGES_REQUESTED_REASON } from "../../src/utils/projectRequestContactLinks.js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -173,11 +174,13 @@ for (const role of ["architect", "admin"]) {
     const { page, calls, mutations } = await openPage(context, { role });
     await openRequest(page);
     const dialog = page.getByRole("dialog");
-    const submitLabel = role === "admin" ? "Confirmar decisión" : "Enviar";
+    const submitLabel = role === "admin" ? "Rechazar" : "Enviar";
     if (role === "architect") {
       await writeRecommendation(dialog, "Nota conservada para reintentar");
       await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
     } else {
+      // El selector abre el modal de rechazo, que conserva el motivo escrito.
+      await dialog.getByRole("button", { name: "Rechazar", exact: true }).click();
       await dialog.getByRole("textbox").fill("Nota conservada para reintentar");
     }
     await dialog.getByRole("button", { name: submitLabel, exact: true }).click();
@@ -208,9 +211,9 @@ for (const role of ["architect", "admin"]) {
 }
 
 for (const [action, label, expected] of [
-  ["approve", "Aprobar", { action: "approve", internalNotes: "Nota de decisión" }],
+  ["approve", "Aprobar", { action: "approve" }],
   ["reject", "Rechazar", { action: "reject", reason: "Nota de decisión" }],
-  ["changes_requested", "Solicitar correcciones", { action: "request_changes", reason: "Nota de decisión" }],
+  ["changes_requested", "Solicitar más información", { action: "request_changes", reason: PROJECT_REQUEST_CHANGES_REQUESTED_REASON }],
 ]) {
   test(`Admin: payload ${action} y notificación de invalidación tras confirmación`, async (context) => {
     const { page, calls, mutations } = await openPage(context, { role: "admin" });
@@ -218,15 +221,13 @@ for (const [action, label, expected] of [
     const dialog = page.getByRole("dialog");
     assert.equal(await dialog.getByRole("group", { name: "Recomendación de reunión" }).count(), 0);
     await dialog.getByRole("button", { name: label, exact: true }).click();
-    // Más información y rechazo cambian al modal propio de cada decisión.
-    if (action === "changes_requested") {
-      await dialog.getByRole("heading", { name: "Solicitar información adicional" }).waitFor();
-    }
-    if (action === "reject") {
-      await dialog.getByRole("heading", { name: "¿Deseas rechazar la solicitud?" }).waitFor();
-    }
-    await dialog.getByRole("textbox").fill("Nota de decisión");
-    const confirmLabel = { approve: "Confirmar decisión", changes_requested: "Finalizar", reject: "Rechazar" }[action];
+    // Cada acción del selector abre su modal propio (Figma): contacto para aprobar o pedir más
+    // información, sin campos; motivo obligatorio para rechazar.
+    const heading = { approve: "Solicitud Aprobada", changes_requested: "Solicitar información adicional", reject: "¿Deseas rechazar la solicitud?" }[action];
+    await dialog.getByRole("heading", { name: heading }).waitFor();
+    if (action === "reject") await dialog.getByRole("textbox").fill("Nota de decisión");
+    else assert.equal(await dialog.getByRole("textbox").count(), 0);
+    const confirmLabel = action === "reject" ? "Rechazar" : "Finalizar";
     await dialog.getByRole("button", { name: confirmLabel, exact: true }).click();
     await waitMutation(page, mutations);
     assert.deepEqual(calls.find((call) => call.method === "PATCH"), { method: "PATCH", path: "/api/admin/project-requests/7/decision", body: expected });
@@ -339,13 +340,13 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   const paths =["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/projects", "/api/project-requests/review-queue"];
   const before = paths.map((path) => calls.filter((call) => call.path === path).length);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("alertdialog").getByRole("button", { name: "Aprobar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByRole("button", { name: "Finalizar", exact: true }).click();
   await decisionRequest;
   assert.equal(mutations.length, 1);
   const refreshed = paths.map((path) => page.waitForRequest((request) => new URL(request.url()).pathname === path));
   await mutations[0].fulfill({ json: {} });
   await Promise.all(refreshed);
-  await page.getByRole("alertdialog").waitFor({ state: "hidden" });
+  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).waitFor({ state: "hidden" });
   await page.waitForLoadState("networkidle");
   for (const [index, path] of paths.entries()) {
     assert.equal(calls.filter((call) => call.path === path).length, before[index] + 1, `${path}: ${JSON.stringify(calls)}`);
@@ -811,14 +812,15 @@ test("Dashboard admin real: menú de acciones del drawer — orden, teclado y pr
   await drawer.waitFor({ state: "detached" });
   const decisionDialog = page.getByRole("dialog");
   await decisionDialog.getByRole("heading", { name: "Solicitar información adicional" }).waitFor();
-  await decisionDialog.getByRole("textbox").fill("Falta adjuntar los planos del terreno.");
+  // Como en Figma: solo contacto, sin campos de texto.
+  assert.equal(await decisionDialog.getByRole("textbox").count(), 0);
   assert.equal(mutations.length, 0);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
   await decisionDialog.getByRole("button", { name: "Finalizar", exact: true }).click();
   await decisionRequest;
   assert.deepEqual(calls.find((call) => call.method === "PATCH").body, {
     action: "request_changes",
-    reason: "Falta adjuntar los planos del terreno.",
+    reason: PROJECT_REQUEST_CHANGES_REQUESTED_REASON,
   });
   await mutations[0].fulfill({ json: {} });
 });
@@ -888,7 +890,7 @@ function countReads(calls, paths) {
 
 for (const [role, label, response, expected] of [
   ["architect", "Enviar", { review: {} }, { title: "Revisión guardada", content: "Casa Norte", theme: "Success" }],
-  ["admin", "Confirmar decisión", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
+  ["admin", "Finalizar", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
 ]) {
   test(`${role}: el aviso de éxito se publica solo tras la confirmación de la API`, async (context) => {
     const { page, mutations } = await openPage(context, { role });
@@ -896,7 +898,7 @@ for (const [role, label, response, expected] of [
     const dialog = page.getByRole("dialog");
     if (role === "admin") {
       await dialog.getByRole("button", { name: "Aprobar", exact: true }).click();
-      await dialog.getByRole("textbox").fill("Nota de la operación");
+      await dialog.getByRole("heading", { name: "Solicitud Aprobada" }).waitFor();
     } else {
       await writeRecommendation(dialog, "Nota de la operación");
       await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
@@ -925,9 +927,10 @@ for (const [role, code] of [["admin", "PROJECT_REQUEST_INVALID_STATE"], ["archit
       await writeRecommendation(dialog, "Nota conservada");
       await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
     } else {
+      await dialog.getByRole("button", { name: "Rechazar", exact: true }).click();
       await dialog.getByRole("textbox").fill("Nota conservada");
     }
-    await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Enviar", exact: true }).click();
+    await dialog.getByRole("button", { name: role === "admin" ? "Rechazar" : "Enviar", exact: true }).click();
     await waitMutation(page, mutations);
     const queueReread = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/project-requests/review-queue");
     await mutations[0].fulfill({ status: code.endsWith("NOT_FOUND") ? 404 : 409, json: { code, message: "La solicitud ya cambió de estado." } });
@@ -952,7 +955,7 @@ test("Dashboard admin real: aprobar avisa del proyecto creado y retira la solici
   await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Acciones para Casa Norte" }).click();
   await page.getByRole("menuitem", { name: "Aprobar" }).click();
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("alertdialog").getByRole("button", { name: "Aprobar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByRole("button", { name: "Finalizar", exact: true }).click();
   await decisionRequest;
   assert.equal(mutations.length, 1);
   decided = true;
@@ -970,14 +973,14 @@ test("Dashboard admin real: un conflicto de estado relee overview, métricas y c
   await openDrawerDecision(page, "Aprobar");
   const before = countReads(calls, SYNC_PATHS);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("alertdialog").getByRole("button", { name: "Aprobar", exact: true }).click();
+  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByRole("button", { name: "Finalizar", exact: true }).click();
   await decisionRequest;
   const reread = SYNC_PATHS.map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
   await mutations[0].fulfill({ status: 409, json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes que están en revisión." } });
   await Promise.all(reread);
   await page.waitForLoadState("networkidle");
   assert.deepEqual(countReads(calls, SYNC_PATHS), before.map((count) => count + 1));
-  await page.getByRole("alertdialog").getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
+  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
 });
 

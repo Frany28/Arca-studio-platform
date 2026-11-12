@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Copy, MessageNotif } from "iconsax-react";
 
 import Button from "../ui/Button/Button.jsx";
+import HintText from "../ui/HintText/HintText.jsx";
 import IconContainer from "../ui/IconContainer.jsx";
 import Loader from "../ui/Loader/Loader.jsx";
-import TextArea from "../ui/TextArea/TextArea.jsx";
 import { useAdminRequestClient } from "../../pages/admin-dashboard/hooks/useAdminRequestClient.js";
 import {
   buildProjectRequestEmailHref,
@@ -74,26 +74,38 @@ function RequestContactRow({
   );
 }
 
+// Textos de Figma: «Solicitar información adicional» (3727:677375) y «Solicitud Aprobada» (3727:677374).
+const CONTACT_MODAL_COPY = Object.freeze({
+  approve: Object.freeze({
+    description: "El siguiente paso es coordinar la reunión inicial con el cliente.",
+    title: "Solicitud Aprobada",
+  }),
+  changes_requested: Object.freeze({
+    description: "Se notificará al cliente para completar la información faltante.",
+    title: "Solicitar información adicional",
+  }),
+});
+
 /**
- * Contenido del modal administrativo «Solicitar información adicional» de Figma.
- * Reutiliza el Modal, IconContainer, Button y TextArea del sistema de diseño.
- * El backend exige motivo de al menos 10 caracteres, por eso se incorpora
- * un campo adicional al prototipo; Finalizar es la única mutación.
+ * Modal administrativo de contacto con el cliente, igual que Figma: «Solicitar información
+ * adicional» o «Solicitud Aprobada». Muestra correo y teléfono reales con sus acciones, sin campos
+ * de texto; «Finalizar» es la única mutación (la decisión) y un error la conserva abierta.
  *
- * @param {Object} props - Solicitud vigente, motivo y callbacks del workflow compartido.
- * @returns {import("react").ReactElement} Modal con contactos reales y motivo editable.
+ * @param {Object} props - Solicitud vigente, propósito, estado del envío y callbacks del workflow.
+ * @param {"approve"|"changes_requested"} props.purpose - Decisión que se confirma.
+ * @returns {import("react").ReactElement} Modal con los contactos reales del cliente.
  */
-function ProjectRequestAdditionalInfoContent({
+function ProjectRequestClientContactContent({
   dialogRef,
   error = "",
-  note,
   onCancel,
   onFinalize,
-  onNoteChange,
   open,
   projectRequest,
+  purpose = "changes_requested",
   submitting,
 }) {
+  const copy = purpose === "approve" ? CONTACT_MODAL_COPY.approve : CONTACT_MODAL_COPY.changes_requested;
   const [copyStatus, setCopyStatus] = useState("");
   const client = useAdminRequestClient({
     enabled: Boolean(open && projectRequest),
@@ -102,8 +114,8 @@ function ProjectRequestAdditionalInfoContent({
   const email = client.client?.email || "";
   const phone = client.client?.phone || client.client?.secondaryPhone || "";
   const projectName = projectRequest?.projectName || "";
-  const emailHref = buildProjectRequestEmailHref({ email, note, projectName });
-  const whatsAppHref = buildProjectRequestWhatsAppHref({ phone, note, projectName });
+  const emailHref = buildProjectRequestEmailHref({ email, projectName, purpose });
+  const whatsAppHref = buildProjectRequestWhatsAppHref({ phone, projectName, purpose });
 
   /**
    * Copia datos reales del contacto al portapapeles; muestra el resultado
@@ -148,7 +160,8 @@ function ProjectRequestAdditionalInfoContent({
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="project-request-additional-info-title"
+      aria-labelledby="project-request-client-contact-title"
+      aria-describedby="project-request-client-contact-description"
       className="flex w-full max-w-[531px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e1)]"
       onClick={(event) => event.stopPropagation()}
     >
@@ -160,11 +173,11 @@ function ProjectRequestAdditionalInfoContent({
         />
         <div className="flex min-w-0 flex-1 flex-col gap-[16px]">
           <header className="flex flex-col gap-[4px]">
-            <h2 id="project-request-additional-info-title" className="text-heading-6 text-[var(--color-text-300)]">
-              Solicitar información adicional
+            <h2 id="project-request-client-contact-title" className="text-heading-6 text-[var(--color-text-300)]">
+              {copy.title}
             </h2>
-            <p className="text-body-3 text-[var(--color-text-200)]">
-              Se notificará al cliente para completar la información faltante.
+            <p id="project-request-client-contact-description" className="text-body-3 text-[var(--color-text-200)]">
+              {copy.description}
             </p>
           </header>
 
@@ -209,28 +222,7 @@ function ProjectRequestAdditionalInfoContent({
               ) : null}
             </div>
           )}
-          <div className="flex w-full flex-col gap-[4px]">
-            <TextArea
-              label="Información que debe completar el cliente"
-              required
-              showLabelInfo={false}
-              showHint={Boolean(error)}
-              hintText={error}
-              state={error ? "Error" : "Default"}
-              className="!max-w-full"
-              rows={3}
-              minHeight={88}
-              maxLength={2000}
-              value={note}
-              disabled={submitting}
-              onChange={(event) => onNoteChange?.(event.target.value)}
-            />
-            {!error ? (
-              <p className="text-body-4 m-0 text-[var(--color-text-200)]">
-                Explica qué información falta (mínimo 10 caracteres). Este motivo se notificará al cliente al finalizar.
-              </p>
-            ) : null}
-          </div>
+          {error ? <HintText state="Error" hintText={error} role="alert" className="w-full" /> : null}
           <span role="status" aria-live="polite" className="text-body-4 text-[var(--color-text-200)] empty:hidden">
             {copyStatus}
           </span>
@@ -267,4 +259,4 @@ function ProjectRequestAdditionalInfoContent({
   );
 }
 
-export default ProjectRequestAdditionalInfoContent;
+export default ProjectRequestClientContactContent;
