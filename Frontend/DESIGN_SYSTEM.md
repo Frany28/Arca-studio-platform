@@ -856,8 +856,10 @@ Validación, capturas y diferencias respecto a Figma:
     al navegador sin retirar el botón. La acción guarda los bytes almacenados de la ruta autenticada como
     `COT-001-v1.pdf`, sin otra transferencia; `useQuotePdfDownload` bloquea clics repetidos, informa
     errores y reutiliza `saveBlobAsFile`. El visor lee primero el detalle vigente, aborta respuestas
-    obsoletas y libera el archivo al cerrar o cambiar de cotización. Los documentos pendientes o con
-    error ofrecen Reintentar, que solicita recuperación sin crear versión comercial. Un guardado sin
+    obsoletas y libera el archivo al cerrar o cambiar de cotización. Si el documento está pendiente,
+    con error o perdido, el visor solicita una vez su recuperación automáticamente al abrirlo
+    (`useQuotePdfDocument`); si sigue sin estar disponible ofrece Reintentar, que solicita otra
+    recuperación sin crear versión comercial. Un error de integridad no se reintenta solo. Un guardado sin
     PDF disponible muestra un aviso Warning y conserva la cotización confirmada.
     Los PDF nuevos muestran como máximo diez servicios por página: el servicio once comienza en
     la siguiente con la cabecera y el encabezado de tabla repetidos. Si una fila larga agota el

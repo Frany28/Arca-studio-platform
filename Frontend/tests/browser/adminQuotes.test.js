@@ -1264,26 +1264,56 @@ test("proyecto tras guardar vacío: la ayuda de la búsqueda sustituye al error 
   assert.equal(backend.requests.some((request) => request.method === "POST"), false);
 });
 
-test("visor: recupera un PDF pendiente mediante POST sin crear una versión comercial", async (context) => {
+const retryRequests = (backend, quoteId) => backend.requests.filter((request) => request.method === "POST" && request.path === `/api/admin/quotes/${quoteId}/pdf/retry`);
+
+test("visor: si la recuperación automática no basta, muestra el error y Reintentar recupera sin crear versión", async (context) => {
   const failures = { "GET /api/admin/quotes/:id/pdf": { body: { code: "QUOTE_PDF_PENDING", message: "El PDF está pendiente. Reintenta su recuperación en unos momentos." }, status: 409 } };
   const backend = createBackend({ failures });
   const page = await openQuotes(context, backend);
   await page.getByRole("button", { name: "Ver COT-001" }).click();
   const viewer = page.locator("[data-quote-pdf-viewer]");
   await viewer.getByText(/El PDF está pendiente/).waitFor();
+  // Al abrir se pidió una sola recuperación automática; sigue sin documento y no entra en bucle.
+  assert.equal(retryRequests(backend, 1).length, 1);
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).count(), 0);
   delete failures["GET /api/admin/quotes/:id/pdf"];
   await viewer.getByRole("button", { name: "Reintentar", exact: true }).click();
   await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
   assert.equal(await viewer.getByRole("button", { name: "Descargar PDF", exact: true }).isEnabled(), true);
-  assert.equal(backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes/1/pdf/retry").length, 1);
+  assert.equal(retryRequests(backend, 1).length, 2);
   assert.equal(backend.quotes[0].currentVersion, 1);
   assert.equal(backend.quotes.length, 2);
   await viewer.getByRole("button", { name: "Cerrar" }).click();
   await viewer.waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Ver COT-002" }).click();
   await viewer.locator("canvas[aria-label='Cotización COT-002, página 1']").waitFor();
-  assert.equal(backend.requests.filter((request) => request.path.endsWith("/pdf/retry")).length, 1, "Cambiar de cotización no repite la recuperación anterior");
+  assert.equal(backend.requests.filter((request) => request.path.endsWith("/pdf/retry")).length, 2, "Cambiar de cotización no repite la recuperación anterior");
+});
+
+test("visor: un PDF cuya generación falló al guardar se recupera solo al abrirlo", async (context) => {
+  const failures = { "GET /api/admin/quotes/:id/pdf": { body: { code: "QUOTE_PDF_ERROR", message: "El PDF no está disponible. Reintenta su recuperación." }, status: 409 } };
+  const backend = createBackend({ failures });
+  const page = await openQuotes(context, backend);
+  // La recuperación del backend genera el documento: las lecturas posteriores lo encuentran.
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname.endsWith("/pdf/retry")) delete failures["GET /api/admin/quotes/:id/pdf"];
+  });
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.locator("canvas[aria-label='Cotización COT-001, página 1']").waitFor();
+  assert.equal(await viewer.getByText(/no está disponible/).count(), 0, "sin pulsar Reintentar");
+  assert.equal(retryRequests(backend, 1).length, 1);
+  assert.equal(backend.quotes[0].currentVersion, 1, "recuperar no crea una versión comercial");
+});
+
+test("visor: un error de integridad no se reintenta automáticamente", async (context) => {
+  const failures = { "GET /api/admin/quotes/:id/pdf": { body: { code: "QUOTE_PDF_INTEGRITY_ERROR", message: "La integridad del PDF no pudo verificarse. Requiere revisión administrativa." }, status: 409 } };
+  const backend = createBackend({ failures });
+  const page = await openQuotes(context, backend);
+  await page.getByRole("button", { name: "Ver COT-001" }).click();
+  const viewer = page.locator("[data-quote-pdf-viewer]");
+  await viewer.getByText(/Requiere revisión administrativa/).waitFor();
+  assert.equal(retryRequests(backend, 1).length, 0);
 });
 
 test("visor: lee la versión vigente antes del PDF, conserva paginación y zoom y bloquea doble descarga", async (context) => {
