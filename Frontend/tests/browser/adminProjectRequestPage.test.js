@@ -410,8 +410,10 @@ test("rechazar exige motivo, confirma contra la API y solo entonces avisa y actu
   const dialog = page.getByRole("dialog");
   // Reutiliza el modal de decisión con el rechazo preseleccionado (motivo obligatorio), sin releer el detalle.
   await dialog.getByText("Motivo", { exact: true }).waitFor();
+  // El administrador decide: su modal nunca ofrece las recomendaciones del arquitecto.
+  assert.equal(await dialog.getByRole("button", { name: /Recomendar/ }).count(), 0);
   await dialog.getByRole("button", { name: "Confirmar decisión", exact: true }).click();
-  await dialog.getByText("Explica la recomendación o decisión con al menos 10 caracteres.", { exact: true }).waitFor();
+  await dialog.getByText("Explica el motivo de tu decisión con al menos 10 caracteres.", { exact: true }).waitFor();
   assert.deepEqual(mutations, []);
   assert.equal(detailReads(reads), 1);
 
@@ -451,7 +453,7 @@ test("solicitar más información muestra el modal de Figma, el contacto real y 
   assert.equal(await dialog.getByRole("button", { name: "Enviar correo" }).isDisabled(), false);
   assert.equal(await dialog.getByRole("button", { name: "Abrir WhatsApp" }).isDisabled(), false);
   await dialog.getByRole("button", { name: "Finalizar", exact: true }).click();
-  await dialog.getByText("Explica la recomendación o decisión con al menos 10 caracteres.").waitFor();
+  await dialog.getByText("Explica el motivo de tu decisión con al menos 10 caracteres.").waitFor();
   assert.deepEqual(mutations, [], "no se guarda sin especificar información faltante");
 
   await page.evaluate(() => {
