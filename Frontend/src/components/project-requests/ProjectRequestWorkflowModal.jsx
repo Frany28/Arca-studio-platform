@@ -165,7 +165,8 @@ function ProjectRequestWorkflowModal({
     if (submitting) return;
     const normalizedNote = note.trim();
     if (requiresReason && normalizedNote.length < 10) {
-      setLocalError("Explica la recomendación o decisión con al menos 10 caracteres.");
+      // Solo el administrador llega aquí: el texto habla de su decisión, nunca de una recomendación.
+      setLocalError("Explica el motivo de tu decisión con al menos 10 caracteres.");
       focusInvalidField();
       return;
     }
