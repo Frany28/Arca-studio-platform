@@ -40,6 +40,14 @@ export const ICON_CONTAINER_TYPE_STYLES = {
     "border border-transparent bg-[var(--color-danger-10)] text-[var(--color-danger-100)] shadow-[var(--shadow-e1)]",
   Disabled:
     "border border-transparent bg-[var(--color-neutral-200)] text-[var(--color-neutral-400)] shadow-[var(--shadow-e1)]",
+  // Variantes sólidas (fondo de color e icono blanco) de los modales de recomendación del
+  // arquitecto (Figma 3727:618383, 3727:618488 y 3727:618593).
+  SuccessSolid:
+    "border border-transparent bg-[var(--color-success-200)] text-[var(--color-neutral-100-uniform)] shadow-[var(--shadow-e1)]",
+  InfoSolid:
+    "border border-transparent bg-[var(--color-info-100)] text-[var(--color-neutral-100-uniform)] shadow-[var(--shadow-e1)]",
+  DangerSolid:
+    "border border-transparent bg-[var(--color-danger-200)] text-[var(--color-neutral-100-uniform)] shadow-[var(--shadow-e1)]",
 };
 
 export function createIconContainerProps(overrides = {}) {

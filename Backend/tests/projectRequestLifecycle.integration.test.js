@@ -331,11 +331,22 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   assert.equal(architectQueue.status, 200);
   assert.equal(architectQueue.body.projectRequests.find((item) => item.id === id).clientName, null, "el arquitecto no recibe el cliente en su cola");
   const review = await api(`/project-requests/${id}/review`, {
-    body: { note: "Faltan fotografías actuales del terreno.", recommendation: "changes_requested" },
+    body: { meetingRecommendation: "SCHEDULE_MEETING", note: "Faltan fotografías actuales del terreno.", recommendation: "changes_requested" },
     headers: architect,
     method: "PUT",
   });
   assert.equal(review.status, 200, JSON.stringify(review.body));
+  // La recomendación del arquitecto solo se registra: la solicitud sigue en revisión y él no decide.
+  const [stored] = (await database.client.query(`select request.status::text as status, review.recommendation::text as recommendation,
+      review.meeting_recommendation::text as meeting from public.project_requests request
+      join public.project_request_reviews review on review.project_request_id = request.id where request.id = $1`, [id])).rows;
+  assert.deepEqual(stored, { meeting: "SCHEDULE_MEETING", recommendation: "changes_requested", status: "pending_review" });
+  const architectDecision = await api(`/admin/project-requests/${id}/decision`, {
+    body: { action: "request_changes", reason: "El arquitecto no puede decidir." },
+    headers: architect,
+    method: "PATCH",
+  });
+  assert.equal(architectDecision.status, 403);
   const decision = await api(`/admin/project-requests/${id}/decision`, {
     body: { action: "request_changes", reason: "Adjunta fotografías actuales del terreno." },
     headers: admin,

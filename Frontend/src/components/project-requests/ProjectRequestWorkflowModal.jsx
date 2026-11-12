@@ -9,8 +9,13 @@ import TextArea from "../ui/TextArea/TextArea.jsx";
 import { ProjectDocumentViewerModal } from "../../pages/projects/components/ProjectDocumentPreview.jsx";
 import { isPdfAttachment, toAttachmentViewerDocument } from "../../utils/projectRequestAttachments.js";
 import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
-import MeetingRecommendationField from "./MeetingRecommendationField.jsx";
+import {
+  PROJECT_REQUEST_RECOMMENDATIONS,
+  PROJECT_REQUEST_RECOMMENDATION_ORDER,
+  describeRecommendationNoteError,
+} from "../../utils/projectRequestRecommendations.js";
 import ProjectRequestAdditionalInfoContent from "./ProjectRequestAdditionalInfoContent.jsx";
+import ProjectRequestRecommendationContent from "./ProjectRequestRecommendationContent.jsx";
 
 const OPTIONS = [
   { id: "changes_requested", label: "Solicitar correcciones" },
@@ -31,6 +36,10 @@ function CloseIcon() {
  * «Solicitar más información» muestra el contenido de Figma 3727:677375
  * con contacto real del cliente y motivo requerido, sin alterar el contrato HTTP.
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
+ * Revisión del arquitecto (Figma Dashboard ARQ 3727:618270): el detalle ofrece «Recomendar rechazo»,
+ * «Recomendar solicitar más información» y «Recomendar aprobación»; cada una abre su modal
+ * (`ProjectRequestRecommendationContent`): justificación → reunión → guardado de la recomendación.
+ * Cerrar o X vuelve al detalle sin guardar; un error del guardado conserva el borrador.
  * `initialAction` solo preselecciona la opción al montar; el consumidor debe cambiar
  * la `key` del modal para reiniciar la selección entre aperturas.
  * Teclado (`useDialogKeyboard`): enfoca el motivo, mantiene Tab dentro del diálogo, cierra con
@@ -58,17 +67,35 @@ function ProjectRequestWorkflowModal({
   const [localError, setLocalError] = useState("");
   const [meetingRecommendation, setMeetingRecommendation] = useState(null);
   const [meetingError, setMeetingError] = useState("");
+  // Revisión del arquitecto: null (detalle), "reason" (justificación) o "meeting" (reunión).
+  const [reviewStep, setReviewStep] = useState(null);
   // El documento se conserva al cerrar para que el visor complete su animación de salida.
   const [pdfViewer, setPdfViewer] = useState({ document: null, open: false });
   const pdfTriggerRef = useRef(null);
   // El contenido del Modal es el área desplazable (contentClassName); el diálogo es el contenedor.
   const dialogRef = useRef(null);
   const focusInvalidField = useInvalidFieldFocus({ getContainer: () => dialogRef.current });
+  /**
+   * Cierra el modal de recomendación sin guardar y vuelve al detalle de la solicitud.
+   *
+   * @returns {void}
+   */
+  const closeRecommendation = () => {
+    setReviewStep(null);
+    setNote("");
+    setLocalError("");
+    setMeetingRecommendation(null);
+    setMeetingError("");
+  };
   useDialogKeyboard({
     getContainer: () => dialogRef.current,
     getInitialFocus: (elements) => elements.find((element) => element.tagName === "TEXTAREA"),
     onEscape: () => {
-      if (!submitting) onClose?.();
+      if (submitting) return;
+      // Escape retrocede un paso dentro de la recomendación antes de cerrar la revisión.
+      if (reviewStep === "meeting") setReviewStep("reason");
+      else if (reviewStep === "reason") closeRecommendation();
+      else onClose?.();
     },
     open: Boolean(open && projectRequest) && !pdfViewer.open,
   });
@@ -82,14 +109,60 @@ function ProjectRequestWorkflowModal({
   const closePdfViewer = () => setPdfViewer((current) => ({ ...current, open: false }));
 
   const status = getProjectRequestStatus(projectRequest.status);
-  const requiresReason = mode === "review" || action !== "approve";
-  const submit = async () => {
+
+  /**
+   * Abre el modal de la recomendación elegida en el detalle, con su borrador vacío.
+   *
+   * @param {"approve"|"reject"|"changes_requested"} recommendation - Recomendación del arquitecto.
+   * @returns {void}
+   */
+  const openRecommendation = (recommendation) => {
+    setAction(recommendation);
+    setReviewStep("reason");
+  };
+
+  /**
+   * Valida la justificación (10–2000 caracteres, como el backend) y pasa a la reunión.
+   *
+   * @returns {void}
+   */
+  const goToMeeting = () => {
+    const noteError = describeRecommendationNoteError(note);
+    setLocalError(noteError);
+    if (noteError) {
+      dialogRef.current?.querySelector("textarea")?.focus();
+      return;
+    }
+    setReviewStep("meeting");
+  };
+
+  /**
+   * Guarda la recomendación con el contrato de revisión existente. No cambia el estado de la
+   * solicitud: el backend solo registra la revisión del arquitecto asignado.
+   *
+   * @returns {Promise<void>}
+   */
+  const submitRecommendation = async () => {
     if (submitting) return;
-    if (mode === "review" && !meetingRecommendation) {
+    if (!meetingRecommendation) {
       setMeetingError("Selecciona una recomendación de reunión.");
+      // La navegación a errores enfoca la primera opción del grupo inválido.
       focusInvalidField();
       return;
     }
+    await onSubmit?.({ action, meetingRecommendation, note: note.trim() });
+  };
+
+  const handleModalClose = () => {
+    if (submitting) return;
+    if (reviewStep) closeRecommendation();
+    else onClose?.();
+  };
+  // Decisión administrativa: la nota es opcional solo al aprobar. La revisión del arquitecto se
+  // guarda con `submitRecommendation` y nunca usa esta ruta.
+  const requiresReason = action !== "approve";
+  const submit = async () => {
+    if (submitting) return;
     const normalizedNote = note.trim();
     if (requiresReason && normalizedNote.length < 10) {
       setLocalError("Explica la recomendación o decisión con al menos 10 caracteres.");
@@ -97,9 +170,7 @@ function ProjectRequestWorkflowModal({
       return;
     }
     setLocalError("");
-    await onSubmit?.({ action, note: normalizedNote,
-      ...(mode === "review" ? { meetingRecommendation } : {}),
-    });
+    await onSubmit?.({ action, note: normalizedNote });
     // El error del guardado se muestra en el campo «Motivo» (prop `error`): se navega a él. Tras un
     // guardado correcto el modal se cierra y no queda contenedor, así que no ocurre nada.
     focusInvalidField();
@@ -109,10 +180,35 @@ function ProjectRequestWorkflowModal({
     <Modal
       mount="viewport"
       visible={open}
-      onClose={submitting ? undefined : onClose}
+      onClose={submitting ? undefined : handleModalClose}
       contentClassName="max-h-dvh overflow-y-auto"
     >
-      {mode === "decision" && action === "changes_requested" ? (
+      {mode === "review" && reviewStep ? (
+        <ProjectRequestRecommendationContent
+          key={reviewStep}
+          dialogRef={dialogRef}
+          step={reviewStep}
+          recommendation={action}
+          note={note}
+          noteError={localError}
+          meetingRecommendation={meetingRecommendation}
+          meetingError={meetingError}
+          submitError={error}
+          submitting={submitting}
+          onNoteChange={(value) => {
+            setNote(value);
+            setLocalError("");
+          }}
+          onMeetingChange={(value) => {
+            setMeetingRecommendation(value);
+            setMeetingError("");
+          }}
+          onClose={closeRecommendation}
+          onNext={goToMeeting}
+          onBack={() => setReviewStep("reason")}
+          onSubmit={submitRecommendation}
+        />
+      ) : mode === "decision" && action === "changes_requested" ? (
         <ProjectRequestAdditionalInfoContent
           dialogRef={dialogRef}
           error={localError || error}
@@ -128,9 +224,10 @@ function ProjectRequestWorkflowModal({
           submitting={submitting}
         />
       ) : (
+      // La revisión del arquitecto mide 680 px para que sus tres recomendaciones quepan en una fila (Figma).
       <section
         ref={dialogRef}
-        className="relative flex w-full max-w-[620px] flex-col gap-[20px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[24px] shadow-[var(--shadow-e2)]"
+        className={`relative flex w-full ${mode === "review" ? "max-w-[680px]" : "max-w-[620px]"} flex-col gap-[20px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[24px] shadow-[var(--shadow-e2)]`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-request-workflow-title"
@@ -205,6 +302,33 @@ function ProjectRequestWorkflowModal({
           </div>
         ) : null}
 
+        {mode === "review" ? (
+          // Figma 3727:618270: Rechazo (Danger Outline), Más información (Info Outline), Aprobación (Primary Solid).
+          <footer className="flex flex-col-reverse gap-[8px] min-[640px]:flex-row min-[640px]:flex-wrap min-[640px]:justify-end" role="group" aria-label="Recomendación técnica">
+            {PROJECT_REQUEST_RECOMMENDATION_ORDER.map((recommendation) => {
+              const option = PROJECT_REQUEST_RECOMMENDATIONS[recommendation];
+              return (
+                <Button
+                  key={recommendation}
+                  theme={option.buttonTheme}
+                  type={option.buttonType}
+                  size="M"
+                  fitContent
+                  showLeftIcon={false}
+                  showRightIcon={false}
+                  className="max-[639px]:w-full"
+                  disabled={submitting}
+                  aria-haspopup="dialog"
+                  onClick={() => openRecommendation(recommendation)}
+                >
+                  {option.buttonLabel}
+                </Button>
+              );
+            })}
+          </footer>
+        ) : null}
+
+        {mode === "review" ? null : (
         <div className="grid grid-cols-1 gap-[8px] min-[600px]:grid-cols-3" role="group" aria-label="Resultado de la revisión">
           {OPTIONS.map((option) => (
             <Button
@@ -221,16 +345,9 @@ function ProjectRequestWorkflowModal({
             </Button>
           ))}
         </div>
+        )}
 
-        {mode === "review" ? (
-          <MeetingRecommendationField
-            disabled={submitting}
-            error={meetingError}
-            value={meetingRecommendation}
-            onChange={(value) => { setMeetingRecommendation(value); setMeetingError(""); }}
-          />
-        ) : null}
-
+        {mode === "review" ? null : (
         <TextArea
           label={mode === "decision" && action === "approve" ? "Nota interna (opcional)" : "Motivo"}
           required={requiresReason}
@@ -243,7 +360,9 @@ function ProjectRequestWorkflowModal({
           maxLength={mode === "decision" ? 4000 : 2000}
           onChange={(event) => setNote(event.target.value)}
         />
+        )}
 
+        {mode === "review" ? null : (
         <footer className="flex flex-col-reverse gap-[8px] min-[480px]:flex-row min-[480px]:justify-end">
           <Button theme="Primary" type="Outline" size="M" fitContent disabled={submitting} onClick={onClose}>
             Cancelar
@@ -256,9 +375,10 @@ function ProjectRequestWorkflowModal({
             disabled={submitting}
             onClick={submit}
           >
-            {submitting ? "Guardando..." : mode === "decision" ? "Confirmar decisión" : "Guardar revisión"}
+            {submitting ? "Guardando..." : "Confirmar decisión"}
           </Button>
         </footer>
+        )}
 
         {/* Dentro de la sección: los eventos del portal no llegan a la capa del modal y no lo cierran. */}
         {pdfViewer.document ? (

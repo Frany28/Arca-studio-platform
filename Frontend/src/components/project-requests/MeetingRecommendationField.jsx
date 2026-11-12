@@ -34,6 +34,7 @@ function MeetingRecommendationField({ disabled, error, onChange, value }) {
             size="S"
             showLeftIcon={false}
             showRightIcon={false}
+            className="w-full"
             disabled={disabled}
             aria-pressed={value === option.value}
             onClick={() => onChange(option.value)}
