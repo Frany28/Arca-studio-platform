@@ -4,7 +4,9 @@ import Button from "../ui/Button/Button.jsx";
 import { api } from "../../api/http.js";
 import { DIALOG_FOCUSABLE_SELECTOR, useDialogKeyboard } from "../../hooks/useDialogKeyboard.js";
 import { useInvalidFieldFocus } from "../../hooks/useInvalidFieldFocus.js";
-import Modal from "../ui/Modal/Modal.jsx";
+import { TickCircle } from "iconsax-react";
+
+import Modal, { ModalDialog } from "../ui/Modal/Modal.jsx";
 import { ProjectDocumentViewerModal } from "../../pages/projects/components/ProjectDocumentPreview.jsx";
 import { isPdfAttachment, toAttachmentViewerDocument } from "../../utils/projectRequestAttachments.js";
 import { getProjectRequestStatus } from "../../utils/projectRequestStatus.js";
@@ -35,9 +37,11 @@ function CloseIcon() {
 
 /**
  * Modal de revisión técnica o decisión administrativa de una solicitud.
- * Decisión: «Solicitar más información» (Figma 3727:677375) y «Aprobar» («Solicitud Aprobada»,
- * 3727:677374) muestran `ProjectRequestClientContactContent` con el contacto real del cliente y
- * «Finalizar» como única mutación; «Rechazar» muestra `ProjectRequestRejectionContent`.
+ * Decisión: «Solicitar más información» (Figma 3727:677375) muestra `ProjectRequestClientContactContent`
+ * con el contacto real y «Finalizar» como mutación; «Aprobar» pide confirmación con el diálogo
+ * estándar centrado en verde (`ModalDialog`, Figma 2061:24296) y, aprobada la solicitud
+ * (`completedAction`), muestra «Solicitud Aprobada» (3727:677374) con el contacto del cliente;
+ * «Rechazar» muestra `ProjectRequestRejectionContent`.
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * Revisión del arquitecto (Figma Dashboard ARQ 3727:618270): el detalle ofrece «Recomendar rechazo»,
  * «Recomendar solicitar más información» y «Recomendar aprobación»; cada una abre su modal
@@ -52,9 +56,24 @@ function CloseIcon() {
  * @param {Object} props - Solicitud, modo, estado del envío y callbacks.
  * @param {string} [props.initialAction] - approve, reject o changes_requested. Sin valor, el modal
  * de decisión muestra el detalle con las tres acciones; cada una abre su modal propio.
+ * @param {string|null} [props.completedAction] - Decisión ya confirmada que el modal sigue mostrando
+ * («approve» → «Solicitud Aprobada»).
  * @returns {import("react").ReactElement|null} Modal o null sin solicitud.
  */
+/**
+ * Control que recibe el foco al abrir o cambiar de modal: el motivo cuando existe; si no,
+ * «Cancelar», la opción segura de las confirmaciones (como `StatusConfirmationModal`).
+ *
+ * @param {HTMLElement[]} elements - Controles enfocables del diálogo.
+ * @returns {HTMLElement|undefined} Control preferido, o undefined para usar el primero.
+ */
+function getPreferredFocus(elements) {
+  return elements.find((element) => element.tagName === "TEXTAREA")
+    ?? elements.find((element) => element.textContent?.trim() === "Cancelar");
+}
+
 function ProjectRequestWorkflowModal({
+  completedAction = null,
   error = "",
   initialAction,
   mode = "review",
@@ -94,18 +113,19 @@ function ProjectRequestWorkflowModal({
     setMeetingError("");
   };
   useEffect(() => {
-    // Desde el selector, el botón pulsado desaparece al cambiar de modal: el foco pasa al motivo
-    // (rechazo) o al primer control del modal nuevo. Las aperturas directas las enfoca el hook.
-    if (mode !== "decision" || initialAction || !action) return undefined;
+    // Al cambiar de modal (desde el selector o al completar la aprobación) el botón pulsado
+    // desaparece: el foco pasa al control preferido del modal nuevo. Las aperturas directas las
+    // enfoca el hook de teclado.
+    if (mode !== "decision" || !action || (initialAction && !completedAction)) return undefined;
     const frame = window.requestAnimationFrame(() => {
-      const container = dialogRef.current;
-      (container?.querySelector("textarea") ?? container?.querySelector(DIALOG_FOCUSABLE_SELECTOR))?.focus();
+      const elements = Array.from(dialogRef.current?.querySelectorAll(DIALOG_FOCUSABLE_SELECTOR) ?? []);
+      (getPreferredFocus(elements) ?? elements[0])?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [action, initialAction, mode]);
+  }, [action, completedAction, initialAction, mode]);
   useDialogKeyboard({
     getContainer: () => dialogRef.current,
-    getInitialFocus: (elements) => elements.find((element) => element.tagName === "TEXTAREA"),
+    getInitialFocus: getPreferredFocus,
     onEscape: () => {
       if (submitting) return;
       // Escape retrocede un paso dentro de la recomendación antes de cerrar la revisión.
@@ -226,17 +246,64 @@ function ProjectRequestWorkflowModal({
           onBack={() => setReviewStep("reason")}
           onSubmit={submitRecommendation}
         />
-      ) : mode === "decision" && (action === "changes_requested" || action === "approve") ? (
-        // Figma 3727:677375 (más información) y 3727:677374 («Solicitud Aprobada»): solo contacto.
+      ) : mode === "decision" && completedAction === "approve" ? (
+        // Figma 3727:677374: la solicitud ya está aprobada; el contacto ayuda a coordinar la reunión
+        // inicial. Ambas acciones solo cierran: la decisión ya se guardó.
+        <ProjectRequestClientContactContent
+          dialogRef={dialogRef}
+          onCancel={onClose}
+          onFinalize={onClose}
+          open={open}
+          projectRequest={projectRequest}
+          purpose="approve"
+          submitting={false}
+        />
+      ) : mode === "decision" && action === "changes_requested" ? (
+        // Figma 3727:677375: solo contacto; «Finalizar» envía el motivo estándar.
         <ProjectRequestClientContactContent
           dialogRef={dialogRef}
           error={error}
           onCancel={onClose}
-          onFinalize={() => submit(action === "changes_requested" ? PROJECT_REQUEST_CHANGES_REQUESTED_REASON : "")}
+          onFinalize={() => submit(PROJECT_REQUEST_CHANGES_REQUESTED_REASON)}
           open={open}
           projectRequest={projectRequest}
-          purpose={action}
+          purpose="changes_requested"
           submitting={submitting}
+        />
+      ) : mode === "decision" && action === "approve" ? (
+        // Confirmación con el diálogo estándar de Modal (Figma 2061:24296, Centered) en verde, como
+        // `StatusConfirmationModal`. Al confirmar se aprueba y se muestra «Solicitud Aprobada».
+        <ModalDialog
+          dialogRef={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="project-request-approval-title"
+          aria-describedby="project-request-approval-description"
+          aria-busy={submitting || undefined}
+          alignment="Centered"
+          closeButtonAriaLabel="Cerrar aprobación de solicitud"
+          icon={<TickCircle size="20" color="currentColor" className="size-5 text-[var(--color-success-200)]" aria-hidden="true" />}
+          title={<span id="project-request-approval-title">¿Deseas aprobar la solicitud?</span>}
+          description={(
+            <span id="project-request-approval-description">
+              Se creará el proyecto {projectRequest.projectName ? `«${projectRequest.projectName}» ` : ""}y
+              luego podrás coordinar la reunión inicial con el cliente.
+              {error ? (
+                <span role="alert" className="mt-[4px] block text-[var(--color-danger-100)] [overflow-wrap:anywhere]">
+                  {error}
+                </span>
+              ) : null}
+            </span>
+          )}
+          secondaryActionLabel="Cancelar"
+          primaryActionLabel={submitting ? "Aprobando..." : "Aprobar"}
+          secondaryActionTheme="Success"
+          primaryActionTheme="Success"
+          actionsDisabled={submitting}
+          primaryActionBusy={submitting}
+          onClose={onClose}
+          onSecondaryAction={onClose}
+          onPrimaryAction={() => submit("")}
         />
       ) : mode === "decision" && action === "reject" ? (
         <ProjectRequestRejectionContent

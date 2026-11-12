@@ -23,12 +23,16 @@ import { isStaleProjectRequestError } from "../utils/projectRequestSync.js";
  * @param {(request: Object, values: Object, result: unknown) => void} [params.onSubmitted] - Efectos
  *   tras la confirmación (por ejemplo, releer la cola).
  * @param {(error: Error) => void} [params.onStaleError] - Conflicto de estado obsoleto.
- * @returns {{selectedRequest: Object|null, initialAction: string|undefined, error: string, submitting: boolean,
- *   feedback: Object|null, dismissFeedback: (id: string) => void, open: Function, close: Function,
- *   submit: Function}} Estado y acciones del modal.
+ * @param {(values: Object, result: unknown) => boolean} [params.keepOpenAfter] - Si devuelve true, el
+ *   modal sigue abierto tras la confirmación y `completedAction` indica la acción completada (por
+ *   ejemplo, «Solicitud Aprobada» con el contacto del cliente). Por defecto se cierra.
+ * @returns {{selectedRequest: Object|null, initialAction: string|undefined, completedAction: string|null,
+ *   error: string, submitting: boolean, feedback: Object|null, dismissFeedback: (id: string) => void,
+ *   open: Function, close: Function, submit: Function}} Estado y acciones del modal.
  */
-export function useProjectRequestWorkflowSelection({ getSuccessFeedback, onStaleError, onSubmitted, submitOperation }) {
+export function useProjectRequestWorkflowSelection({ getSuccessFeedback, keepOpenAfter, onStaleError, onSubmitted, submitOperation }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [completedAction, setCompletedAction] = useState(null);
   const [initialAction, setInitialAction] = useState(undefined);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -44,6 +48,7 @@ export function useProjectRequestWorkflowSelection({ getSuccessFeedback, onStale
    */
   const open = (request, { initialAction: action } = {}) => {
     setError("");
+    setCompletedAction(null);
     setInitialAction(action);
     setSelectedRequest(request);
   };
@@ -63,7 +68,9 @@ export function useProjectRequestWorkflowSelection({ getSuccessFeedback, onStale
       const values = { action, meetingRecommendation, note };
       const result = await submitOperation(selectedRequest, values);
       const nextFeedback = getSuccessFeedback?.(selectedRequest, values, result) || null;
-      setSelectedRequest(null);
+      // Una acción completada que el consumidor quiere mostrar mantiene el modal abierto.
+      if (keepOpenAfter?.(values, result)) setCompletedAction(action);
+      else setSelectedRequest(null);
       onSubmitted?.(selectedRequest, values, result);
       if (nextFeedback) setFeedback({ ...nextFeedback, id: `${selectedRequest.id}-${Date.now()}` });
     } catch (submitError) {
@@ -77,6 +84,7 @@ export function useProjectRequestWorkflowSelection({ getSuccessFeedback, onStale
   return {
     selectedRequest,
     initialAction,
+    completedAction,
     error,
     submitting,
     feedback,
@@ -86,7 +94,9 @@ export function useProjectRequestWorkflowSelection({ getSuccessFeedback, onStale
     // El cierre manual conserva el error y se bloquea durante el envío; abrir otra solicitud o
     // intentar guardar lo limpia.
     close: () => {
-      if (!submitting) setSelectedRequest(null);
+      if (submitting) return;
+      setSelectedRequest(null);
+      setCompletedAction(null);
     },
     submit,
   };

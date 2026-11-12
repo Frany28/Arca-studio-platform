@@ -41,6 +41,8 @@ export function useAdminProjectRequestDecision({ applyConfirmedChange, revalidat
 
   return useProjectRequestWorkflowSelection({
     getSuccessFeedback: (request, values, result) => getProjectRequestDecisionFeedback(request, values.action, result),
+    // Tras aprobar se muestra «Solicitud Aprobada» con el contacto del cliente.
+    keepOpenAfter: (values) => values.action === "approve",
     onStaleError: () => {
       invalidateAdminDashboardOverview();
       void revalidateWithFeedback({ fresh: true });

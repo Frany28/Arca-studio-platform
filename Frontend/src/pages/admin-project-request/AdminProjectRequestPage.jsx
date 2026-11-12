@@ -181,6 +181,7 @@ function AdminProjectRequestPage() {
       <ProjectRequestWorkflowModal
         // Cada apertura reinicia la acción preseleccionada y el borrador del modal.
         key={decision.selectedRequest ? `${decision.selectedRequest.id}-${decision.initialAction}` : "closed-request-decision"}
+        completedAction={decision.completedAction}
         error={decision.error}
         initialAction={decision.initialAction}
         mode="decision"

@@ -38,10 +38,12 @@ function mergeQueuePage(current, page) {
  *   su resultado se entrega a `getSuccessFeedback`.
  * @param {(request: Object, values: Object, result: unknown) => Object|null} [params.getSuccessFeedback]
  *   Aviso de éxito ({theme, title, content, description}) tras una operación confirmada.
+ * @param {(values: Object, result: unknown) => boolean} [params.keepOpenAfter] - Mantiene el modal
+ *   abierto tras la confirmación (ver `useProjectRequestWorkflowSelection`).
  * @returns {Object} Cola con cursor, carga de páginas y reintento, y workflow con selección,
  *   error, estado de envío y el aviso de éxito vigente (`feedback`, con `id` nuevo en cada envío).
  */
-export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOperation, getSuccessFeedback }) {
+export function useProjectRequestWorkflow({ enabled, empty, keepOpenAfter, scopeKey, submitOperation, getSuccessFeedback }) {
   const [reviewRequests, setReviewRequests] = useState([]);
   const [reviewRequestsError, setReviewRequestsError] = useState("");
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(
@@ -57,6 +59,7 @@ export function useProjectRequestWorkflow({ enabled, empty, scopeKey, submitOper
   // Tras guardar se relee la cola sin esperar; un conflicto de estado obsoleto también la relee.
   const selection = useProjectRequestWorkflowSelection({
     getSuccessFeedback,
+    keepOpenAfter,
     onStaleError: rereadQueue,
     onSubmitted: rereadQueue,
     submitOperation,

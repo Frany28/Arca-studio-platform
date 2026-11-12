@@ -223,11 +223,12 @@ for (const [action, label, expected] of [
     await dialog.getByRole("button", { name: label, exact: true }).click();
     // Cada acción del selector abre su modal propio (Figma): contacto para aprobar o pedir más
     // información, sin campos; motivo obligatorio para rechazar.
-    const heading = { approve: "Solicitud Aprobada", changes_requested: "Solicitar información adicional", reject: "¿Deseas rechazar la solicitud?" }[action];
-    await dialog.getByRole("heading", { name: heading }).waitFor();
+    const heading = { approve: "¿Deseas aprobar la solicitud?", changes_requested: "Solicitar información adicional", reject: "¿Deseas rechazar la solicitud?" }[action];
+    // El diálogo estándar de Modal titula con un párrafo; el nombre accesible lo da aria-labelledby.
+    await dialog.getByText(heading, { exact: true }).first().waitFor();
     if (action === "reject") await dialog.getByRole("textbox").fill("Nota de decisión");
     else assert.equal(await dialog.getByRole("textbox").count(), 0);
-    const confirmLabel = action === "reject" ? "Rechazar" : "Finalizar";
+    const confirmLabel = { approve: "Aprobar", changes_requested: "Finalizar", reject: "Rechazar" }[action];
     await dialog.getByRole("button", { name: confirmLabel, exact: true }).click();
     await waitMutation(page, mutations);
     assert.deepEqual(calls.find((call) => call.method === "PATCH"), { method: "PATCH", path: "/api/admin/project-requests/7/decision", body: expected });
@@ -340,13 +341,15 @@ test("Dashboard admin real: decidir refresca overview, métricas, proyectos y co
   const paths =["/api/admin/dashboard-overview", "/api/admin/dashboard-metrics", "/api/projects", "/api/project-requests/review-queue"];
   const before = paths.map((path) => calls.filter((call) => call.path === path).length);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByRole("button", { name: "Finalizar", exact: true }).click();
+  await page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" }).getByRole("button", { name: "Aprobar", exact: true }).click();
   await decisionRequest;
   assert.equal(mutations.length, 1);
   const refreshed = paths.map((path) => page.waitForRequest((request) => new URL(request.url()).pathname === path));
   await mutations[0].fulfill({ json: {} });
   await Promise.all(refreshed);
-  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).waitFor({ state: "hidden" });
+  const approved = page.getByRole("dialog", { name: "Solicitud Aprobada" });
+  await approved.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await approved.waitFor({ state: "hidden" });
   await page.waitForLoadState("networkidle");
   for (const [index, path] of paths.entries()) {
     assert.equal(calls.filter((call) => call.path === path).length, before[index] + 1, `${path}: ${JSON.stringify(calls)}`);
@@ -890,7 +893,7 @@ function countReads(calls, paths) {
 
 for (const [role, label, response, expected] of [
   ["architect", "Enviar", { review: {} }, { title: "Revisión guardada", content: "Casa Norte", theme: "Success" }],
-  ["admin", "Finalizar", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
+  ["admin", "Aprobar", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
 ]) {
   test(`${role}: el aviso de éxito se publica solo tras la confirmación de la API`, async (context) => {
     const { page, mutations } = await openPage(context, { role });
@@ -898,7 +901,7 @@ for (const [role, label, response, expected] of [
     const dialog = page.getByRole("dialog");
     if (role === "admin") {
       await dialog.getByRole("button", { name: "Aprobar", exact: true }).click();
-      await dialog.getByRole("heading", { name: "Solicitud Aprobada" }).waitFor();
+      await page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" }).waitFor();
     } else {
       await writeRecommendation(dialog, "Nota de la operación");
       await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
@@ -955,13 +958,20 @@ test("Dashboard admin real: aprobar avisa del proyecto creado y retira la solici
   await page.getByRole("dialog", { name: "Detalles de solicitud" }).getByRole("button", { name: "Acciones para Casa Norte" }).click();
   await page.getByRole("menuitem", { name: "Aprobar" }).click();
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByRole("button", { name: "Finalizar", exact: true }).click();
+  await page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" }).getByRole("button", { name: "Aprobar", exact: true }).click();
   await decisionRequest;
   assert.equal(mutations.length, 1);
   decided = true;
   await mutations[0].fulfill({ json: { project: { id: 40, name: "Casa Norte", status: "pending" }, projectRequest: { id: 7, status: "converted" } } });
   await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
   await page.getByText("Proyecto creado correctamente.", { exact: true }).waitFor();
+  // Ya aprobada, el modal muestra «Solicitud Aprobada» con el contacto del cliente hasta cerrarlo.
+  const approved = page.getByRole("dialog", { name: "Solicitud Aprobada" });
+  await approved.getByText("El siguiente paso es coordinar la reunión inicial con el cliente.", { exact: true }).waitFor();
+  assert.equal(mutations.length, 1);
+  await approved.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await approved.waitFor({ state: "detached" });
+  assert.equal(mutations.length, 1);
   await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).waitFor({ state: "detached" });
   await page.waitForLoadState("networkidle");
   assert.equal(await newRequests.getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).count(), 0);
@@ -973,14 +983,14 @@ test("Dashboard admin real: un conflicto de estado relee overview, métricas y c
   await openDrawerDecision(page, "Aprobar");
   const before = countReads(calls, SYNC_PATHS);
   const decisionRequest = page.waitForRequest((request) => request.url().includes("/decision"));
-  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByRole("button", { name: "Finalizar", exact: true }).click();
+  await page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" }).getByRole("button", { name: "Aprobar", exact: true }).click();
   await decisionRequest;
   const reread = SYNC_PATHS.map((path) => page.waitForResponse((response) => new URL(response.url()).pathname === path));
   await mutations[0].fulfill({ status: 409, json: { code: "PROJECT_REQUEST_INVALID_STATE", message: "Solo se pueden decidir solicitudes que están en revisión." } });
   await Promise.all(reread);
   await page.waitForLoadState("networkidle");
   assert.deepEqual(countReads(calls, SYNC_PATHS), before.map((count) => count + 1));
-  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
+  await page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" }).getByText("Solo se pueden decidir solicitudes que están en revisión.").waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
 });
 

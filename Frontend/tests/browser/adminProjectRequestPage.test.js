@@ -507,17 +507,18 @@ test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cot
   });
 
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
-  // Figma 3727:677374 «Solicitud Aprobada»: contacto del cliente, sin campos; «Finalizar» aprueba.
-  const dialog = page.getByRole("dialog", { name: "Solicitud Aprobada" });
-  await dialog.getByText("El siguiente paso es coordinar la reunión inicial con el cliente.", { exact: true }).waitFor();
-  await dialog.getByRole("button", { name: "Enviar correo" }).waitFor();
-  await dialog.getByRole("button", { name: "Abrir WhatsApp" }).waitFor();
+  // Confirmación con el diálogo estándar centrado (Figma 2061:24296) en verde: 400 px, sin campos
+  // y con el foco en «Cancelar», la opción segura.
+  const dialog = page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" });
+  await dialog.waitFor();
+  assert.equal(Math.round((await dialog.boundingBox()).width), 400);
+  await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Cancelar");
   assert.equal(await dialog.getByRole("textbox").count(), 0);
   assert.equal(await dialog.getByText(/recomendaci/i).count(), 0);
-  assert.deepEqual(mutations, [], "abrir el modal no aprueba");
-  await confirmDecision(page, mutations, undefined, "Finalizar");
+  assert.deepEqual(mutations, [], "abrir la confirmación no aprueba");
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   // Un segundo clic durante el envío no repite la decisión.
-  await dialog.getByRole("button", { name: "Finalizando..." }).click({ force: true });
+  await dialog.getByRole("button", { name: "Aprobando..." }).click({ force: true });
   await page.evaluate(() => new Promise(requestAnimationFrame));
   assert.equal(mutations.length, 1);
   assert.deepEqual(mutations[0].body, { action: "approve" });
@@ -525,6 +526,14 @@ test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cot
   held.resolve({ json: { project: { id: 40, name: "Casa Prueba", status: "pending" }, projectRequest: { convertedProjectId: 40, id: 9, reviewedAt: "2026-10-05T12:00:00.000Z", status: "converted" } } });
   await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
   await page.getByText("Proyecto creado correctamente.", { exact: true }).waitFor();
+  // Ya aprobada, Figma 3727:677374 «Solicitud Aprobada» ofrece el contacto para la reunión inicial;
+  // «Finalizar» solo cierra (la decisión ya se guardó).
+  const approved = page.getByRole("dialog", { name: "Solicitud Aprobada" });
+  await approved.getByText("El siguiente paso es coordinar la reunión inicial con el cliente.", { exact: true }).waitFor();
+  await approved.getByRole("button", { name: "Enviar correo" }).waitFor();
+  await approved.getByRole("button", { name: "Abrir WhatsApp" }).waitFor();
+  await approved.getByRole("button", { name: "Finalizar", exact: true }).click();
+  await approved.waitFor({ state: "detached" });
   // La relectura incorpora el proyecto creado (con su slug real) y el historial se conserva.
   await page.getByRole("button", { name: "Crear cotización", exact: true }).waitFor();
   assert.deepEqual(await actionBarButtons(page), ["Ver resumen & recomendación", "Ver proyecto", "Crear cotización"]);
@@ -548,7 +557,7 @@ test("el administrador aprueba directamente una solicitud sin arquitectos ni rev
   });
 
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
-  await confirmDecision(page, mutations, undefined, "Finalizar");
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   assert.deepEqual(mutations[0].body, { action: "approve" });
   assert.equal(mutations.length, 1);
   await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
@@ -589,10 +598,10 @@ test("un fallo de red y un conflicto de nombre se muestran en el modal sin éxit
   });
 
   await page.getByRole("button", { name: "Aprobar", exact: true }).click();
-  await confirmDecision(page, mutations, undefined, "Finalizar");
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   const dialog = page.getByRole("dialog");
   await dialog.getByText("El cliente ya tiene un proyecto con el nombre de esta solicitud.", { exact: true }).waitFor();
-  await confirmDecision(page, mutations, undefined, "Finalizar");
+  await confirmDecision(page, mutations, undefined, "Aprobar");
   await dialog.getByText(/conexión/i).first().waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
   assert.equal(detailReads(reads), 1);
@@ -682,8 +691,8 @@ test("la barra es accesible por teclado y no desborda en tablet ni móvil, en cl
     }
   }
 
-  // Teclado: Tab llega a las acciones en orden y Enter abre «Solicitud Aprobada» con el foco
-  // dentro del diálogo; Escape la cierra sin aprobar y devuelve el foco a la acción.
+  // Teclado: Tab llega a las acciones en orden y Enter abre la confirmación con el foco en
+  // «Cancelar»; Escape la cierra sin aprobar y devuelve el foco a la acción.
   const { page } = await openPage(context);
   const focusedText = () => page.evaluate(() => document.activeElement?.innerText);
   await page.getByRole("button", { name: "Ver resumen & recomendación" }).focus();
@@ -692,9 +701,9 @@ test("la barra es accesible por teclado y no desborda en tablet ni móvil, en cl
     assert.equal(await focusedText(), label);
   }
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Solicitud Aprobada" });
-  await dialog.getByRole("button", { name: "Finalizar", exact: true }).waitFor();
-  await page.waitForFunction(() => Boolean(document.activeElement?.closest("[role='dialog']")));
+  const dialog = page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" });
+  await dialog.getByRole("button", { name: "Aprobar", exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Cancelar");
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
   await page.waitForFunction(() => document.activeElement?.innerText === "Aprobar");

@@ -139,6 +139,8 @@ function AdminDashboard({ empty = false }) {
     enabled: currentUser.roleCode === "admin" && !empty,
     empty,
     getSuccessFeedback: (request, values, result) => getProjectRequestDecisionFeedback(request, values.action, result),
+    // Tras aprobar se muestra «Solicitud Aprobada» con el contacto del cliente.
+    keepOpenAfter: (values) => values.action === "approve",
     scopeKey: currentUser.roleCode,
     submitOperation: submitDecision,
   });
@@ -291,6 +293,7 @@ function AdminDashboard({ empty = false }) {
             ? `${workflow.selectedRequest.id}-${workflow.initialAction || "default"}`
             : "closed-request-workflow"
         }
+        completedAction={workflow.completedAction}
         error={workflow.error}
         initialAction={workflow.initialAction}
         mode="decision"

@@ -63,6 +63,135 @@ function ModalCloseButton({
   );
 }
 
+/**
+ * Diálogo estándar del Modal de Figma (alineaciones Left, Centered y Horizontal split): icono en
+ * `IconContainer` M Outline, título h6, descripción b3, X opcional y pie con acción secundaria
+ * (Outline) y principal (Solid). `Modal` lo usa sin `children`; los flujos que ya montan su propio
+ * `Modal` lo renderizan como hijo para obtener el mismo diseño. Las props adicionales (rol, aria,
+ * data-*) y `dialogRef` se aplican al contenedor del diálogo.
+ *
+ * @param {Object} props - Alineación, textos, icono, acciones y callbacks.
+ * @param {"Left"|"Centered"|"Horizontal split"} [props.alignment="Left"] - Variante de Figma.
+ * @param {string} [props.closeButtonAriaLabel] - Nombre accesible de la X.
+ * @param {import("react").Ref<HTMLDivElement>} [props.dialogRef] - Ref del contenedor del diálogo.
+ * @returns {import("react").ReactElement} Diálogo de 400 px.
+ */
+function ModalDialog({
+  actionsDisabled = false,
+  alignment = MODAL_DEFAULT_PROPS.alignment,
+  checkboxLabel = MODAL_DEFAULT_PROPS.checkboxLabel,
+  className,
+  closeButtonAriaLabel,
+  description = MODAL_DEFAULT_PROPS.description,
+  dialogRef,
+  icon = null,
+  onClose,
+  onPrimaryAction,
+  onSecondaryAction,
+  primaryActionBusy = false,
+  primaryActionLabel = MODAL_DEFAULT_PROPS.primaryActionLabel,
+  primaryActionTheme = "Primary",
+  secondaryActionLabel = MODAL_DEFAULT_PROPS.secondaryActionLabel,
+  secondaryActionTheme = "Primary",
+  showCloseButton = MODAL_DEFAULT_PROPS.showCloseButton,
+  showSecondaryAction = true,
+  title = MODAL_DEFAULT_PROPS.title,
+  ...props
+}) {
+  const resolvedAlignment = MODAL_ALIGNMENTS.includes(alignment) ? alignment : MODAL_DEFAULT_PROPS.alignment;
+  const isHorizontalSplit = resolvedAlignment === "Horizontal split";
+  const dialogAlignmentClassName = resolvedAlignment === "Centered"
+    ? "items-center text-center"
+    : "items-start text-left";
+  const showDialogCloseButton = showCloseButton && !isHorizontalSplit;
+  const contentLayoutClassName = isHorizontalSplit
+    ? "flex-row items-start"
+    : "flex-col";
+  const buttonClassName = isHorizontalSplit
+    ? "h-[40px] min-w-0 w-[90px]"
+    : "h-[41px] min-w-0 w-auto flex-1";
+
+  return (
+    <div
+      ref={dialogRef}
+      className={clsx(
+        "relative flex w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]",
+        className,
+      )}
+      onClick={(event) => event.stopPropagation()}
+      {...props}
+    >
+      {showDialogCloseButton ? (
+        <ModalCloseButton
+          ariaLabel={closeButtonAriaLabel}
+          className="absolute right-0 top-0"
+          disabled={actionsDisabled}
+          onClick={onClose}
+        />
+      ) : null}
+
+      <div
+        className={clsx(
+          "flex w-[400px] max-w-full gap-[16px] px-[16px] pt-[16px] pb-[16px]",
+          contentLayoutClassName,
+          dialogAlignmentClassName,
+        )}
+      >
+        <IconContainer size="M" type="Outline" icon={icon} />
+
+        <div className="flex w-full flex-col gap-[4px] tracking-[-0.5px]">
+          <p className="text-heading-6 text-[var(--color-text-300)]">
+            {title}
+          </p>
+          <p className="text-body-3 text-[var(--color-text-200)]">
+            {description}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex w-full items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
+        {isHorizontalSplit ? (
+          <div className="flex h-[17px] w-[168px] items-center gap-[12px]">
+            <Checkbox checked="No" size="S" interactive={false} />
+            <span className="text-body-3 text-[var(--color-text-300)]">
+              {checkboxLabel}
+            </span>
+          </div>
+        ) : null}
+
+        {showSecondaryAction ? (
+          <Button
+            theme={secondaryActionTheme}
+            type="Outline"
+            size="S"
+            showLeftIcon={false}
+            showRightIcon={false}
+            className={buttonClassName}
+            disabled={actionsDisabled}
+            onClick={onSecondaryAction}
+          >
+            {secondaryActionLabel}
+          </Button>
+        ) : null}
+
+        <Button
+          theme={primaryActionTheme}
+          type="Solid"
+          size="S"
+          showLeftIcon={false}
+          showRightIcon={false}
+          className={buttonClassName}
+          disabled={actionsDisabled}
+          aria-busy={primaryActionBusy || undefined}
+          onClick={onPrimaryAction}
+        >
+          {primaryActionLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Modal({
   className,
   contentClassName,
@@ -169,22 +298,10 @@ function Modal({
       ? "absolute inset-0 size-full"
       : "fixed inset-0 h-dvh w-screen";
   const shouldRenderDialog = showDialog || Boolean(children);
-  const isCenteredAlignment = resolvedAlignment === "Centered";
-  const isHorizontalSplit = resolvedAlignment === "Horizontal split";
-  const dialogAlignmentClassName = isCenteredAlignment
-    ? "items-center text-center"
-    : "items-start text-left";
   const dialogShellClassName =
     resolvedMount === "contained"
       ? "flex size-full flex-col items-center justify-center"
       : "flex size-full flex-col items-center justify-center pb-[24px]";
-  const showDialogCloseButton = showCloseButton && !isHorizontalSplit;
-  const contentLayoutClassName = isHorizontalSplit
-    ? "flex-row items-start"
-    : "flex-col";
-  const buttonClassName = isHorizontalSplit
-    ? "h-[40px] min-w-0 w-[90px]"
-    : "h-[41px] min-w-0 w-auto flex-1";
   const overlayClassName =
     resolvedTransitionPreset === "fade-scale"
       ? clsx("transition-opacity", isActive ? "opacity-100" : "opacity-0")
@@ -236,77 +353,24 @@ function Modal({
             style={transitionStyle}
           >
             {children ?? (
-              <div
-                className="relative flex w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]"
-                onClick={(event) => event.stopPropagation()}
-              >
-                {showDialogCloseButton ? (
-                  <ModalCloseButton
-                    className="absolute right-0 top-0"
-                    disabled={actionsDisabled}
-                    onClick={onClose}
-                  />
-                ) : null}
-
-                <div
-                  className={clsx(
-                    "flex w-[400px] max-w-full gap-[16px] px-[16px] pt-[16px] pb-[16px]",
-                    contentLayoutClassName,
-                    dialogAlignmentClassName,
-                  )}
-                >
-                  <IconContainer size="M" type="Outline" icon={icon} />
-
-                  <div className="flex w-full flex-col gap-[4px] tracking-[-0.5px]">
-                    <p className="text-heading-6 text-[var(--color-text-300)]">
-                      {title}
-                    </p>
-                    <p className="text-body-3 text-[var(--color-text-200)]">
-                      {description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex w-full items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
-                  {isHorizontalSplit ? (
-                    <div className="flex h-[17px] w-[168px] items-center gap-[12px]">
-                      <Checkbox checked="No" size="S" interactive={false} />
-                      <span className="text-body-3 text-[var(--color-text-300)]">
-                        {checkboxLabel}
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {showSecondaryAction ? (
-                    <Button
-                      theme={secondaryActionTheme}
-                      type="Outline"
-                      size="S"
-                      showLeftIcon={false}
-                      showRightIcon={false}
-                      className={buttonClassName}
-                      disabled={actionsDisabled}
-                      onClick={onSecondaryAction}
-                    >
-                      {secondaryActionLabel}
-                    </Button>
-                  ) : null}
-
-                  <Button
-                    theme={primaryActionTheme}
-                    type="Solid"
-                    size="S"
-                    showLeftIcon={false}
-                    showRightIcon={false}
-                    className={buttonClassName}
-                    disabled={actionsDisabled}
-                    aria-busy={primaryActionBusy || undefined}
-                    onClick={onPrimaryAction}
-                  >
-                    {primaryActionLabel}
-                  </Button>
-                </div>
-              </div>
+              <ModalDialog
+                alignment={resolvedAlignment}
+                title={title}
+                description={description}
+                icon={icon}
+                checkboxLabel={checkboxLabel}
+                showCloseButton={showCloseButton}
+                showSecondaryAction={showSecondaryAction}
+                primaryActionLabel={primaryActionLabel}
+                secondaryActionLabel={secondaryActionLabel}
+                primaryActionTheme={primaryActionTheme}
+                secondaryActionTheme={secondaryActionTheme}
+                actionsDisabled={actionsDisabled}
+                primaryActionBusy={primaryActionBusy}
+                onClose={onClose}
+                onPrimaryAction={onPrimaryAction}
+                onSecondaryAction={onSecondaryAction}
+              />
             )}
           </div>
         </div>
@@ -328,5 +392,5 @@ function Modal({
   return modalContent;
 }
 
-export { ModalCloseButton };
+export { ModalCloseButton, ModalDialog };
 export default Modal;
