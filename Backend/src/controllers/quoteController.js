@@ -227,6 +227,8 @@ export async function getQuotePdfDocument(req, res, next) {
 /**
  * Recupera el PDF de una versión existente sin modificar su contenido comercial.
  * Responde disponibilidad explícita sin caché y conserva la protección administrativa de la ruta.
+ * Un fallo de configuración del almacenamiento privado no es transitorio: su mensaje lo indica
+ * en lugar de pedir otro reintento que fallaría igual.
  *
  * @param {import("express").Request} req - Cotización y versión validadas.
  * @param {import("express").Response} res - Respuesta HTTP.
@@ -236,9 +238,12 @@ export async function getQuotePdfDocument(req, res, next) {
 export async function postQuotePdfRetry(req, res, next) {
   try {
     const pdf = await retryQuotePdf({ quoteId: req.params.quoteId, versionNumber: req.validatedQuery.version });
+    const errorMessage = pdf.errorCode === "QUOTE_PDF_STORAGE_PRIVATE_REQUIRED"
+      ? "El almacenamiento privado de cotizaciones no está configurado en el servidor (SUPABASE_QUOTE_PDF_BUCKET). Avisa al responsable técnico."
+      : "No se pudo recuperar el PDF. Reintenta en unos momentos.";
     res.set("Cache-Control", NO_STORE).status(pdf.status === "available" ? 200 : pdf.status === "pending" ? 202 : 503).json({
       code: pdf.status === "error" ? pdf.errorCode : undefined,
-      message: pdf.status === "available" ? "PDF disponible." : pdf.status === "pending" ? "El PDF se está preparando. Reintenta en unos momentos." : "No se pudo recuperar el PDF. Reintenta en unos momentos.",
+      message: pdf.status === "available" ? "PDF disponible." : pdf.status === "pending" ? "El PDF se está preparando. Reintenta en unos momentos." : errorMessage,
       pdf,
     });
   } catch (error) {

@@ -4,11 +4,17 @@ import { api } from "../../../../api/http.js";
 import { openPdfDocument } from "../../../../components/document-viewer/pdfDocumentLoader.js";
 
 const IDLE = Object.freeze({ blob: null, documentProxy: null, error: "", key: "", pageCount: 1, size: 0, status: "idle" });
+// Respuestas del PDF almacenado que la recuperación idempotente puede resolver: generación fallida
+// o pendiente y objeto perdido. Un error de integridad requiere revisión y nunca se reintenta solo.
+const AUTO_RECOVERABLE_PDF_CODES = new Set(["QUOTE_PDF_ERROR", "QUOTE_PDF_PENDING", "QUOTE_PDF_MISSING"]);
 
 /**
  * Descarga y abre con PDF.js el documento de la versión vigente de una cotización mientras el
  * visor está abierto. La clave incluye la versión: una edición posterior descarga el documento
- * almacenado. La recuperación solo se solicita al pulsar Reintentar. Cerrar el visor o
+ * almacenado. Si el documento no está disponible (`AUTO_RECOVERABLE_PDF_CODES`), solicita una vez
+ * su recuperación (`POST /pdf/retry`, idempotente: no crea versiones ni cambia la cotización) y
+ * vuelve a descargarlo; así una generación fallida al guardar se repara al abrir el visor. Si
+ * vuelve a fallar se muestra el error con Reintentar, sin bucles. Cerrar el visor o
  * cambiar de cotización aborta la descarga y destruye el documento anterior, de modo que una
  * respuesta lenta nunca sustituye a la cotización mostrada. Conserva el Blob mientras está
  * abierto para guardar exactamente el PDF mostrado sin repetir HTTP; al cerrar lo libera.
@@ -38,9 +44,14 @@ export function useQuotePdfDocument(quote) {
       if (!signal.aborted) setState({ ...IDLE, key, status: quoteId === null ? "idle" : "loading" });
     });
     if (quoteId === null) return () => controller.abort();
+    const download = () => api.quotes.getQuotePdf({ quoteId, signal, version });
+    const recoverAndDownload = () => api.quotes.retryQuotePdf({ quoteId, signal, version }).then(download);
     const request = recover
-      ? api.quotes.retryQuotePdf({ quoteId, signal, version }).then(() => api.quotes.getQuotePdf({ quoteId, signal, version }))
-      : api.quotes.getQuotePdf({ quoteId, signal, version });
+      ? recoverAndDownload()
+      : download().catch((error) => {
+        if (signal.aborted || !AUTO_RECOVERABLE_PDF_CODES.has(error?.code)) throw error;
+        return recoverAndDownload();
+      });
     request
       .then(async (blob) => {
         const documentProxy = await openPdfDocument(await blob.arrayBuffer(), signal);
