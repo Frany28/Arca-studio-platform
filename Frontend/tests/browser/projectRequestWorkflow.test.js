@@ -118,6 +118,21 @@ async function waitMutation(page, mutations, count = 1) {
   assert.equal(mutations.length, count);
 }
 
+/**
+ * Recorre el modal de recomendación del arquitecto (Figma Dashboard ARQ): elige la recomendación
+ * en el detalle, escribe la justificación y pasa con «Siguiente» al paso de reunión.
+ *
+ * @param {import("playwright").Locator} dialog - Diálogo de la revisión.
+ * @param {string} note - Justificación.
+ * @param {string} [recommendation="Recomendar aprobación"] - Botón de la recomendación.
+ * @returns {Promise<void>}
+ */
+async function writeRecommendation(dialog, note, recommendation = "Recomendar aprobación") {
+  await dialog.getByRole("button", { name: recommendation, exact: true }).click();
+  await dialog.getByRole("textbox").fill(note);
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+}
+
 for (const role of ["admin", "architect"]) {
   test(`Cola ${role}: una lectura, detalle por ID numérico y fallback sin HTTP adicional`, async (context) => {
     const { page, calls } = await openPage(context, { role });
@@ -135,12 +150,12 @@ test("Architect: recomendación, pending, cierre bloqueado y refresco de la cola
   const { page, calls, mutations } = await openPage(context);
   await openRequest(page);
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("textbox").fill("  Recomiendo aprobar el proyecto  ");
+  await writeRecommendation(dialog, "  Recomiendo aprobar el proyecto  ");
   await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
-  await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
+  await dialog.getByRole("button", { name: "Enviar", exact: true }).click();
   await waitMutation(page, mutations);
-  assert.equal(await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).count(), 0);
-  assert.equal(await dialog.getByRole("button", { name: "Guardando...", exact: true }).isDisabled(), true);
+  assert.equal(await dialog.getByRole("button", { name: "Enviar", exact: true }).count(), 0);
+  assert.equal(await dialog.getByRole("button", { name: "Enviando...", exact: true }).isDisabled(), true);
   await page.evaluate(() => window.workflowHarness.result.workflow.close());
   assert.equal((await state(page)).workflow.selectedRequest.id, 7);
   assert.deepEqual(calls.find((call) => call.method === "PUT"), {
@@ -158,17 +173,31 @@ for (const role of ["architect", "admin"]) {
     const { page, calls, mutations } = await openPage(context, { role });
     await openRequest(page);
     const dialog = page.getByRole("dialog");
-    await dialog.getByRole("textbox").fill("Nota conservada para reintentar");
-    if (role === "architect") await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
-    await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Guardar revisión", exact: true }).click();
+    const submitLabel = role === "admin" ? "Confirmar decisión" : "Enviar";
+    if (role === "architect") {
+      await writeRecommendation(dialog, "Nota conservada para reintentar");
+      await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
+    } else {
+      await dialog.getByRole("textbox").fill("Nota conservada para reintentar");
+    }
+    await dialog.getByRole("button", { name: submitLabel, exact: true }).click();
     await waitMutation(page, mutations);
     await mutations[0].fulfill({ status: 409, json: { code: "REVIEW_CONFLICT", message: "La revisión debe reintentarse." } });
     await waitState(page, (result) => !result.workflow.submitting && Boolean(result.workflow.error));
-    assert.equal(await dialog.getByRole("textbox").inputValue(), "Nota conservada para reintentar");
-    if (role === "architect") assert.equal(await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).getAttribute("aria-pressed"), "true");
+    if (role === "architect") {
+      // El error real se muestra en el paso de reunión, que conserva la elección y la justificación.
+      await dialog.getByRole("alert").getByText("La revisión debe reintentarse.").waitFor();
+      assert.equal(await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).getAttribute("aria-pressed"), "true");
+      await dialog.getByRole("button", { name: "Volver", exact: true }).click();
+      assert.equal(await dialog.getByRole("textbox").inputValue(), "Nota conservada para reintentar");
+      await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+      assert.equal(await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).getAttribute("aria-pressed"), "true");
+    } else {
+      assert.equal(await dialog.getByRole("textbox").inputValue(), "Nota conservada para reintentar");
+    }
     assert.equal((await state(page)).workflow.selectedRequest.id, 7);
     assert.equal(queueCalls(calls), 1);
-    await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Guardar revisión", exact: true }).click();
+    await dialog.getByRole("button", { name: submitLabel, exact: true }).click();
     await waitMutation(page, mutations, 2);
     await mutations[1].fulfill({ json: {} });
     await waitState(page, (result) => !result.workflow.selectedRequest && !result.reviewQueue.loading);
@@ -531,12 +560,106 @@ test("Drawer cliente: cerrar cancela la lectura y reabrir carga sin mostrar Abor
   assert.equal(await reopened.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
 });
 
+test("Architect (Figma Dashboard ARQ): tres recomendaciones con su modal; cerrar, X y Escape no guardan", async (context) => {
+  const { page, mutations } = await openPage(context);
+  await openRequest(page);
+  const dialog = page.getByRole("dialog");
+  const actions = dialog.getByRole("group", { name: "Recomendación técnica" });
+  assert.deepEqual(await actions.getByRole("button").allInnerTexts(), [
+    "Recomendar rechazo", "Recomendar solicitar más información", "Recomendar aprobación",
+  ]);
+  for (const [button, title] of [
+    ["Recomendar rechazo", "¿Deseas recomendar rechazo?"],
+    ["Recomendar solicitar más información", "¿Deseas solicitar más información?"],
+    ["Recomendar aprobación", "¿Deseas recomendar aprobación?"],
+  ]) {
+    await dialog.getByRole("button", { name: button, exact: true }).click();
+    await page.getByRole("dialog", { name: title }).waitFor();
+    // El campo recibe el foco y muestra la ayuda de Figma.
+    await page.waitForFunction(() => document.activeElement?.tagName === "TEXTAREA");
+    await dialog.getByRole("textbox").fill("Borrador que no debe guardarse");
+    await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+    await actions.waitFor();
+  }
+  // X y Escape también vuelven al detalle sin guardar; al reabrir, el campo está vacío.
+  await dialog.getByRole("button", { name: "Recomendar aprobación", exact: true }).click();
+  assert.equal(await dialog.getByRole("textbox").inputValue(), "");
+  await dialog.getByRole("textbox").fill("Otro borrador sin guardar");
+  await dialog.getByRole("button", { name: "Cerrar recomendación", exact: true }).click();
+  await actions.waitFor();
+  await dialog.getByRole("button", { name: "Recomendar rechazo", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await actions.waitFor();
+  assert.equal((await state(page)).workflow.selectedRequest.id, 7, "la revisión sigue abierta en el detalle");
+  assert.equal(mutations.length, 0);
+});
+
+test("Architect: la justificación se valida antes de avanzar y cada recomendación envía su valor", async (context) => {
+  const { page, calls, mutations } = await openPage(context);
+  await openRequest(page);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Recomendar solicitar más información", exact: true }).click();
+  await dialog.getByRole("textbox").fill("  corta ");
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog.getByText("Escribe al menos 10 caracteres para justificar tu recomendación.", { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole("textbox").getAttribute("aria-invalid"), "true");
+  await dialog.getByRole("textbox").fill("La visión del proyecto es inconclusa y faltan planos.");
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await page.getByRole("dialog", { name: "¿Recomiendas agendar una reunión?" }).waitFor();
+  await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
+  // Doble clic: un único PUT; la solicitud no cambia de estado desde el arquitecto.
+  await dialog.getByRole("button", { name: "Enviar", exact: true }).dblclick();
+  await waitMutation(page, mutations);
+  assert.equal(mutations.length, 1);
+  assert.deepEqual(calls.filter((call) => call.method !== "GET"), [{
+    method: "PUT", path: "/api/project-requests/7/review",
+    body: { meetingRecommendation: "SCHEDULE_MEETING", note: "La visión del proyecto es inconclusa y faltan planos.", recommendation: "changes_requested" },
+  }]);
+  await mutations[0].fulfill({ json: {} });
+});
+
+test("Architect: recomendar rechazo envía reject y respeta Figma en escritorio, oscuro y móvil", async (context) => {
+  const { page, calls, mutations } = await openPage(context);
+  await openRequest(page);
+  const dialog = page.getByRole("dialog");
+  if (process.env.ARCA_REVIEW_CAPTURE_DIR) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${process.env.ARCA_REVIEW_CAPTURE_DIR}/review-detail.png` });
+  }
+  await dialog.getByRole("button", { name: "Recomendar rechazo", exact: true }).click();
+  const modal = page.getByRole("dialog", { name: "¿Deseas recomendar rechazo?" });
+  await modal.waitFor();
+  const box = await modal.boundingBox();
+  assert.equal(Math.round(box.width), 400, "ancho de Figma");
+  const capture = async (name) => {
+    if (!process.env.ARCA_REVIEW_CAPTURE_DIR) return;
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${process.env.ARCA_REVIEW_CAPTURE_DIR}/${name}.png` });
+  };
+  await capture("reject-light");
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await capture("reject-dark");
+  await page.evaluate(() => document.documentElement.classList.remove("dark"));
+  await page.setViewportSize({ width: 375, height: 812 });
+  const mobile = await modal.boundingBox();
+  assert.ok(mobile.x >= 0 && mobile.x + mobile.width <= 375, "cabe en móvil");
+  await capture("reject-mobile");
+  await dialog.getByRole("textbox").fill("El cliente no posee terreno ni presupuesto adecuado.");
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
+  await capture("reject-meeting-mobile");
+  await dialog.getByRole("button", { name: "Enviar", exact: true }).click();
+  await waitMutation(page, mutations);
+  assert.equal(calls.find((call) => call.method === "PUT").body.recommendation, "reject");
+  await mutations[0].fulfill({ json: {} });
+});
+
 test("Architect: la reunión exige elección explícita y es independiente de aprobar", async (context) => {
   const { page, calls, mutations } = await openPage(context);
   await openRequest(page);
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("textbox").fill("La propuesta permite revisión pero no reunión todavía.");
-  await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
+  await writeRecommendation(dialog, "La propuesta permite revisión pero no reunión todavía.");
+  await dialog.getByRole("button", { name: "Enviar", exact: true }).click();
   await dialog.getByRole("alert").getByText("Selecciona una recomendación de reunión.").waitFor();
   assert.equal(mutations.length, 0);
   // La navegación a errores enfoca la primera opción del grupo inválido, asociado a su mensaje.
@@ -548,7 +671,7 @@ test("Architect: la reunión exige elección explícita y es independiente de ap
   await selection.focus();
   await page.keyboard.press("Enter");
   assert.equal(await selection.getAttribute("aria-pressed"), "true");
-  await dialog.getByRole("button", { name: "Guardar revisión", exact: true }).click();
+  await dialog.getByRole("button", { name: "Enviar", exact: true }).click();
   await waitMutation(page, mutations);
   assert.deepEqual(calls.find((call) => call.method === "PUT").body, {
     note: "La propuesta permite revisión pero no reunión todavía.", recommendation: "approve", meetingRecommendation: "DO_NOT_SCHEDULE_MEETING",
@@ -759,16 +882,20 @@ function countReads(calls, paths) {
 }
 
 for (const [role, label, response, expected] of [
-  ["architect", "Guardar revisión", { review: {} }, { title: "Revisión guardada", content: "Casa Norte", theme: "Success" }],
+  ["architect", "Enviar", { review: {} }, { title: "Revisión guardada", content: "Casa Norte", theme: "Success" }],
   ["admin", "Confirmar decisión", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
 ]) {
   test(`${role}: el aviso de éxito se publica solo tras la confirmación de la API`, async (context) => {
     const { page, mutations } = await openPage(context, { role });
     await openRequest(page);
     const dialog = page.getByRole("dialog");
-    if (role === "admin") await dialog.getByRole("button", { name: "Aprobar", exact: true }).click();
-    await dialog.getByRole("textbox").fill("Nota de la operación");
-    if (role === "architect") await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
+    if (role === "admin") {
+      await dialog.getByRole("button", { name: "Aprobar", exact: true }).click();
+      await dialog.getByRole("textbox").fill("Nota de la operación");
+    } else {
+      await writeRecommendation(dialog, "Nota de la operación");
+      await dialog.getByRole("button", { name: "Agendar reunión", exact: true }).click();
+    }
     await dialog.getByRole("button", { name: label, exact: true }).click();
     await waitMutation(page, mutations);
     assert.equal((await state(page)).workflow.feedback, null);
@@ -789,9 +916,13 @@ for (const [role, code] of [["admin", "PROJECT_REQUEST_INVALID_STATE"], ["archit
     const { page, calls, mutations } = await openPage(context, { role });
     await openRequest(page);
     const dialog = page.getByRole("dialog");
-    await dialog.getByRole("textbox").fill("Nota conservada");
-    if (role === "architect") await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
-    await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Guardar revisión", exact: true }).click();
+    if (role === "architect") {
+      await writeRecommendation(dialog, "Nota conservada");
+      await dialog.getByRole("button", { name: "No agendar reunión", exact: true }).click();
+    } else {
+      await dialog.getByRole("textbox").fill("Nota conservada");
+    }
+    await dialog.getByRole("button", { name: role === "admin" ? "Confirmar decisión" : "Enviar", exact: true }).click();
     await waitMutation(page, mutations);
     const queueReread = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/project-requests/review-queue");
     await mutations[0].fulfill({ status: code.endsWith("NOT_FOUND") ? 404 : 409, json: { code, message: "La solicitud ya cambió de estado." } });
@@ -801,6 +932,7 @@ for (const [role, code] of [["admin", "PROJECT_REQUEST_INVALID_STATE"], ["archit
     const result = await state(page);
     assert.equal(result.workflow.selectedRequest.id, 7);
     assert.equal(result.workflow.feedback, null);
+    if (role === "architect") await dialog.getByRole("button", { name: "Volver", exact: true }).click();
     assert.equal(await dialog.getByRole("textbox").inputValue(), "Nota conservada");
     assert.deepEqual(await page.evaluate(() => window.workflowHarness.events), []);
   });
@@ -885,20 +1017,20 @@ test("Dashboard admin real: recuperar la conexión revalida overview, métricas 
 
 // --- Fase 3: navegación definitiva y acciones desde la consulta completa ---
 
-test("Dashboard admin real: el menú bloquea las decisiones de una solicitud sin revisión técnica", async (context) => {
+test("Dashboard admin real: sin revisión técnica ni arquitectos, el menú permite decidir directamente", async (context) => {
   const pending = { ...REQUEST, assignees: [], status: "pending_verification" };
   const { page, mutations } = await openPage(context, { role: "admin", realDashboard: true, queue: [pending] });
   await page.waitForLoadState("networkidle");
   await page.locator('[data-admin-new-requests="true"]').getByRole("button", { name: "Ver solicitud Casa Norte", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "Detalles de solicitud" });
-  // «Ver solicitud» sigue disponible para consultar; las decisiones, no.
+  // La revisión técnica es opcional (PR #54): el administrador decide sin asignar arquitectos.
   assert.equal(await drawer.getByRole("button", { name: "Ver solicitud", exact: true }).isEnabled(), true);
   await drawer.getByRole("button", { name: "Acciones para Casa Norte", exact: true }).click();
   const menu = page.getByRole("menu", { name: "Acciones para Casa Norte" });
   for (const label of ["Aprobar", "Solicitar más información", "Rechazar"]) {
-    assert.equal(await menu.getByRole("menuitem", { name: label, exact: true }).isDisabled(), true, label);
+    assert.equal(await menu.getByRole("menuitem", { name: label, exact: true }).isDisabled(), false, label);
   }
-  assert.equal(mutations.length, 0);
+  assert.equal(mutations.length, 0, "abrir el menú no decide nada");
 });
 
 test("Dashboard admin real: decidir en la consulta completa sincroniza el dashboard al volver", async (context) => {
