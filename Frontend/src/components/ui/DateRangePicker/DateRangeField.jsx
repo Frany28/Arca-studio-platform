@@ -16,18 +16,24 @@ import { formatShortDay } from "./dateRangeCalendar.js";
  * @param {{from: string|null, to: string|null}} props.value - Intervalo aplicado (claves `YYYY-MM-DD`).
  * @param {(range: {from: string, to: string}) => void} props.onChange - Aplica un intervalo.
  * @param {string} [props.placeholder="Filtrar por fecha"] - Texto sin intervalo aplicado.
+ * @param {"range"|"single"} [props.selection="range"] - Intervalo o una sola fecha (un mes visible).
+ * @param {boolean} [props.invalid=false] - Marca el campo con el borde de error y `aria-invalid`.
  * @param {string} props["aria-label"] - Nombre accesible del disparador.
  * @param {boolean} [props.disabled=false] - Bloquea el campo (por ejemplo, durante la carga).
  * @param {string} [props.className] - Clases del contenedor.
  * @returns {import("react").ReactElement} Campo con su panel.
  */
-function DateRangeField({ className, disabled = false, onChange, placeholder = "Filtrar por fecha", value, "aria-label": ariaLabel }) {
+function DateRangeField({ className, disabled = false, invalid = false, onChange, placeholder = "Filtrar por fecha", selection = "range", value, "aria-label": ariaLabel }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const triggerRef = useRef(null);
   const panelId = useId();
   const mobile = useMobileLayout();
-  const label = value?.from ? `${formatShortDay(value.from)} | ${formatShortDay(value.to ?? value.from)}` : placeholder;
+  const label = !value?.from
+    ? placeholder
+    : selection === "single"
+      ? formatShortDay(value.from)
+      : `${formatShortDay(value.from)} | ${formatShortDay(value.to ?? value.from)}`;
   const visibleOpen = open && !disabled;
 
   /**
@@ -71,9 +77,11 @@ function DateRangeField({ className, disabled = false, onChange, placeholder = "
         aria-label={`${ariaLabel}: ${label}`}
         aria-haspopup="dialog"
         aria-expanded={visibleOpen}
+        aria-invalid={invalid || undefined}
         aria-controls={visibleOpen ? panelId : undefined}
         className={clsx(
-          "flex h-[39px] w-full items-center gap-[8px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] px-[16px] text-left transition-colors duration-150 motion-reduce:transition-none",
+          "flex h-[39px] w-full items-center gap-[8px] rounded-[var(--radius-3)] border px-[16px] text-left transition-colors duration-150 motion-reduce:transition-none",
+          invalid ? "border-[var(--color-danger-200)]" : "border-[var(--color-neutral-200)]",
           "hover:bg-[var(--color-neutral-200)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-10)]",
           "disabled:cursor-not-allowed disabled:opacity-60",
         )}
@@ -88,7 +96,8 @@ function DateRangeField({ className, disabled = false, onChange, placeholder = "
         <div id={panelId} className="absolute left-0 top-full mt-[8px] max-[767px]:right-0">
           <DateRangePicker
             value={value}
-            monthsShown={mobile ? 1 : 2}
+            monthsShown={mobile || selection === "single" ? 1 : 2}
+            selection={selection}
             className="max-[767px]:w-full"
             onClose={close}
             onApply={(range) => {

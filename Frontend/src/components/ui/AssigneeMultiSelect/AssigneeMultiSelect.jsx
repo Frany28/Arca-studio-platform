@@ -87,6 +87,9 @@ function toTag(person, showAvatar) {
  * sin habilitar búsqueda, altas ni eliminación de responsables.
  * @param {Object} props Selección, catálogo, callbacks y estado del campo.
  * @param {boolean} [props.showDisabledTags=false] Conserva nombres en la variante informativa.
+ * @param {boolean} [props.showAssignmentFeedback=true] Muestra el AlertToast tras `onChange`. Un
+ * formulario que guarda la selección después (p. ej. la configuración del proyecto) lo desactiva
+ * para no anunciar una asignación que aún no se guardó.
  * @returns {import("react").ReactElement} Selector conectado al Input compartido.
  */
 function AssigneeMultiSelect({
@@ -102,6 +105,7 @@ function AssigneeMultiSelect({
   placeholder = "Asignar responsables...",
   showTagAvatars = true,
   showDisabledTags = false,
+  showAssignmentFeedback = true,
   value = [],
 }) {
   const inputId = useId();
@@ -165,7 +169,7 @@ function AssigneeMultiSelect({
     try {
       await onChange(nextValue);
       setQuery("");
-      if (addedAssignees.length) {
+      if (addedAssignees.length && showAssignmentFeedback) {
         const names = addedAssignees
           .map((assignee) => assignee.name)
           .filter(Boolean)
@@ -192,7 +196,7 @@ function AssigneeMultiSelect({
         changeError?.message || "No se pudieron guardar los responsables.";
 
       setLocalError(errorMessage);
-      if (addedAssignees.length) {
+      if (addedAssignees.length && showAssignmentFeedback) {
         setAssignmentFeedback({
           id: `assignee-error-${Date.now()}`,
           theme: "Danger",

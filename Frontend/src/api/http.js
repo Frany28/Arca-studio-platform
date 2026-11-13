@@ -3,6 +3,7 @@ import { adminApi } from "./adminApi.js";
 import { authApi } from "./authApi.js";
 import { environmentCommentsApi } from "./environmentCommentsApi.js";
 import { measurementUnitsApi } from "./measurementUnitsApi.js";
+import { projectConfigurationApi } from "./projectConfigurationApi.js";
 import { projectRequestsApi } from "./projectRequestsApi.js";
 import { projectsApi } from "./projectsApi.js";
 import { quotesApi } from "./quotesApi.js";
@@ -14,6 +15,7 @@ export { authApi } from "./authApi.js";
 export { getApiUrl } from "./client.js";
 export { environmentCommentsApi } from "./environmentCommentsApi.js";
 export { measurementUnitsApi } from "./measurementUnitsApi.js";
+export { projectConfigurationApi } from "./projectConfigurationApi.js";
 export { projectRequestsApi } from "./projectRequestsApi.js";
 export { projectsApi } from "./projectsApi.js";
 export { quotesApi } from "./quotesApi.js";
@@ -32,6 +34,7 @@ export const api = {
   auth: authApi,
   environmentComments: environmentCommentsApi,
   measurementUnits: measurementUnitsApi,
+  projectConfiguration: projectConfigurationApi,
   projectRequests: projectRequestsApi,
   projects: projectsApi,
   quotes: quotesApi,

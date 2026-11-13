@@ -121,9 +121,11 @@ function CalendarMonth({ focusedDay, month, onDayKeyDown, onNavigate, onSelectDa
  * @param {(range: {from: string, to: string}) => void} props.onApply - Aplica el intervalo elegido.
  * @param {() => void} props.onClose - Cierra sin aplicar.
  * @param {string} [props.className] - Clases del panel.
+ * @param {"range"|"single"} [props.selection="range"] - `single` elige un solo día (Figma «Fecha
+ *   estimada»): cada clic reemplaza el día y se aplica como `{from: día, to: día}`.
  * @returns {import("react").ReactElement} Panel del selector.
  */
-function DateRangePicker({ className, monthsShown = 2, onApply, onClose, value }) {
+function DateRangePicker({ className, monthsShown = 2, onApply, onClose, selection = "range", value }) {
   const initialDay = value?.from ?? toDayKey(new Date());
   const [draft, setDraft] = useState({ from: value?.from ?? null, to: value?.to ?? null });
   const [visibleMonth, setVisibleMonth] = useState(() => addMonths(fromDayKey(initialDay) ?? new Date(), 0));
@@ -194,7 +196,7 @@ function DateRangePicker({ className, monthsShown = 2, onApply, onClose, value }
   return (
     <div
       role="dialog"
-      aria-label="Seleccionar intervalo de fechas"
+      aria-label={selection === "single" ? "Seleccionar fecha" : "Seleccionar intervalo de fechas"}
       className={clsx(
         "flex flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]",
         className,
@@ -211,7 +213,7 @@ function DateRangePicker({ className, monthsShown = 2, onApply, onClose, value }
             onNavigate={(offset) => setVisibleMonth((current) => addMonths(current, offset))}
             onSelectDay={(dayKey) => {
               setFocusedDay(dayKey);
-              setDraft((current) => selectRangeDay(current, dayKey));
+              setDraft((current) => (selection === "single" ? { from: dayKey, to: dayKey } : selectRangeDay(current, dayKey)));
             }}
             onDayKeyDown={handleDayKeyDown}
           />
