@@ -88,22 +88,20 @@ test("«Estado de la solicitud»: correcciones muestran correctionReason y permi
   assert.equal(getProjectRequestDecisionPresentation({ status: "pending_review" }), null);
 });
 
-test("«Mis proyectos»: cada estado ofrece su acción y navega por id", () => {
+test("«Mis proyectos»: toda solicitud ofrece «Ver solicitud» y navega por id", () => {
   const labels = (request) => getProjectRequestRowActions(request).map((action) => `${action.label}:${action.type}`);
-  assert.deepEqual(labels({ status: "pending_verification" }), ["Ver solicitud:Solid"]);
-  assert.deepEqual(labels({ status: "pending_review" }), ["Ver solicitud:Solid"]);
-  assert.deepEqual(labels({ status: "converted", convertedProjectAvailable: true, convertedProjectId: 9 }), ["Ver resultado:Outline", "Ver proyecto:Solid"]);
-  assert.deepEqual(labels({ status: "converted", convertedProjectAvailable: false, convertedProjectId: 9 }), ["Ver resultado:Solid"], "draft: sin enlace al proyecto");
-  assert.deepEqual(labels({ status: "converted", convertedProjectId: null }), ["Ver resultado:Solid"]);
-  assert.deepEqual(labels({ status: "rejected" }), ["Ver motivo:Solid"]);
-  assert.deepEqual(labels({ status: "changes_requested" }), ["Corregir solicitud:Solid"]);
+  for (const status of ["pending_verification", "pending_review", "rejected", "changes_requested", "estado_futuro"]) {
+    assert.deepEqual(labels({ status }), ["Ver solicitud:Solid"], status);
+  }
+  assert.deepEqual(labels({ status: "converted", convertedProjectAvailable: true, convertedProjectId: 9 }), ["Ver solicitud:Outline", "Ver proyecto:Solid"]);
+  assert.deepEqual(labels({ status: "converted", convertedProjectAvailable: false, convertedProjectId: 9 }), ["Ver solicitud:Solid"], "draft: sin enlace al proyecto");
+  assert.deepEqual(labels({ status: "converted", convertedProjectId: null }), ["Ver solicitud:Solid"]);
 
-  const rejected = { id: 41, status: "rejected", rejectionReason: "Fuera de alcance." };
-  // «Ver motivo» abre «Estado de la solicitud» por id, nunca el formulario.
-  assert.deepEqual(getProjectRequestRowDestination(rejected, "status"), { to: "/solicitudes/41" });
+  // «Ver solicitud» abre su seguimiento por id en cualquier estado, nunca el formulario directamente.
+  for (const status of ["rejected", "changes_requested", "converted"]) {
+    assert.deepEqual(getProjectRequestRowDestination({ id: 41, status }, "status"), { to: "/solicitudes/41" }, status);
+  }
   assert.deepEqual(getProjectRequestRowDestination({ id: 5, status: "converted", convertedProjectId: 9 }, "viewProject"), { to: "/proyectos/9" });
-  const corrections = { id: 6, status: "changes_requested" };
-  assert.deepEqual(getProjectRequestRowDestination(corrections, "correct"), { state: { initialRequest: corrections }, to: "/solicitudes/nueva" });
 
   assert.equal(getProjectRequestRowMessage({ status: "rejected", correctionReason: "antigua", rejectionReason: "Fuera de alcance." }), "Fuera de alcance.");
   assert.equal(getProjectRequestRowMessage({ status: "pending_review", correctionReason: "antigua" }), DEFAULT_REQUEST_ROW_MESSAGE);

@@ -917,22 +917,23 @@ test("Mis proyectos: cada estado navega a su pantalla por id", async (context) =
   // El motivo de la fila corresponde al estado: el rechazo no muestra la corrección anterior.
   await row("Rechazada").getByText("Fuera de alcance.", { exact: true }).waitFor();
   assert.equal(await row("Rechazada").getByText("Corrección anterior.").count(), 0);
-  assert.deepEqual(await row("Aprobada").getByRole("button").allTextContents(), ["Ver resultado", "Ver proyecto"]);
+  // Acción estándar: todas las solicitudes dicen «Ver solicitud»; «Ver proyecto» solo si está disponible.
+  assert.deepEqual(await row("Rechazada").getByRole("button").allTextContents(), ["Ver solicitud"]);
+  assert.deepEqual(await row("Aprobada").getByRole("button").allTextContents(), ["Ver solicitud", "Ver proyecto"]);
   assert.deepEqual(await row("En revisión").getByRole("button").allTextContents(), ["Ver solicitud"]);
-  assert.deepEqual(await row("Devuelta").getByRole("button").allTextContents(), ["Corregir solicitud"]);
+  assert.deepEqual(await row("Devuelta").getByRole("button").allTextContents(), ["Ver solicitud"]);
+  for (const label of ["Ver resultado", "Ver motivo", "Corregir solicitud"]) {
+    assert.equal(await page.getByRole("button", { name: label, exact: true }).count(), 0, label);
+  }
 
-  await row("Rechazada").getByRole("button", { name: "Ver motivo", exact: true }).click();
+  await row("Rechazada").getByRole("button", { name: "Ver solicitud", exact: true }).click();
   await page.waitForURL((url) => url.pathname === `/solicitudes/${REQUEST_ID}`);
   await page.getByRole("heading", { name: "Estado de la solicitud" }).waitFor();
   await page.getByRole("region", { name: "Motivo del rechazo" }).waitFor();
 
   await page.goto(`${origin}/solicitudes`);
-  await row("Aprobada").getByRole("button", { name: "Ver resultado", exact: true }).click();
+  await row("Aprobada").getByRole("button", { name: "Ver solicitud", exact: true }).click();
   await page.waitForURL((url) => url.pathname === "/solicitudes/32");
-  await page.goto(`${origin}/solicitudes`);
-  await row("Devuelta").getByRole("button", { name: "Corregir solicitud", exact: true }).click();
-  await page.getByRole("heading", { name: "Solicitud de proyecto" }).waitFor();
-  await page.waitForURL((url) => url.pathname === "/solicitudes/nueva");
 });
 
 const CORRECTION_REQUEST = {
