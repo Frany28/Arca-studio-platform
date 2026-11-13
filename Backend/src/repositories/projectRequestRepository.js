@@ -1,5 +1,5 @@
 import { query } from "../config/db.js";
-import { pageResult } from "../utils/pagination.js";
+import { pageResult, preciseCursorTimestampSql } from "../utils/pagination.js";
 
 const SELECT_FIELDS = `
   id,
@@ -109,18 +109,28 @@ function toProjectRequestRecord(row) {
     status: row.status,
     submissionId: row.submission_id,
     updatedAt: row.updated_at,
+    // Miniatura: solo el listado del cliente la selecciona (`cover_file_id`); las demás lecturas
+    // conservan su forma sin estos campos.
+    ...(row.cover_file_id === undefined ? {} : {
+      imageFileId: row.cover_file_id == null ? null : Number(row.cover_file_id),
+      imageFileVersionId: row.cover_file_version_id == null ? null : Number(row.cover_file_version_id),
+    }),
   };
 }
 
 /**
- * Lista el valor de proyecto solicitudes for usuario respetando el alcance y la paginación solicitados.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Lista las solicitudes enviadas del cliente autenticado (sin borradores), paginadas por cursor.
+ * Cada solicitud incluye su miniatura (`imageFileId`, `imageFileVersionId`): la imagen más reciente
+ * de sus adjuntos y, si fue convertida, la del proyecto creado. Al aprobar, los adjuntos pasan al
+ * proyecto, así que la miniatura sigue siendo la de la solicitud hasta que el proyecto tiene imágenes
+ * más recientes. El cursor guarda `created_at` con microsegundos para no omitir solicitudes del
+ * mismo milisegundo. Consulta PostgreSQL con parámetros.
  *
- * @param {unknown} user - Usuario autenticado que ejecuta la operación.
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.cursor - Valor de `options.cursor` requerido por esta operación.
- * @param {number} options.limit - Valor de `options.limit` requerido por esta operación.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @param {{clientId: number, id: number}} user - Usuario autenticado propietario de las solicitudes.
+ * @param {object} options - Paginación.
+ * @param {Array<string>|null} options.cursor - Cursor decodificado `[createdAt, id]`.
+ * @param {number} options.limit - Tamaño de página.
+ * @returns {Promise<{items: Array<object>, nextCursor: string|null}>} Página de solicitudes.
  */
 export async function listProjectRequestsForUser(user, { cursor, limit }) {
   const params = [user.clientId, user.id];
@@ -134,8 +144,28 @@ export async function listProjectRequestsForUser(user, { cursor, limit }) {
   params.push(limit + 1);
   const result = await query(
     `
-      select ${SELECT_FIELDS}
-      from public.project_requests
+      select ${SELECT_FIELDS},
+        ${preciseCursorTimestampSql("request.created_at")} as cursor_created_at,
+        cover.cover_file_id,
+        cover.cover_file_version_id
+      from public.project_requests request
+      left join lateral (
+        select file.id as cover_file_id, version.id as cover_file_version_id
+        from public.files file
+        inner join public.file_versions version
+          on version.file_id = file.id
+          and version.version_number = file.current_version
+          and version.deleted_at is null
+        where file.deleted_at is null
+          and file.status <> 'deleted'
+          and file.file_type like 'image/%'
+          and (
+            file.project_request_id = request.id
+            or (request.status = 'converted' and file.project_id = request.converted_project_id)
+          )
+        order by file.created_at desc, file.id desc
+        limit 1
+      ) cover on true
       where client_id = $1
         and requested_by = $2
         and deleted_at is null
@@ -151,7 +181,7 @@ export async function listProjectRequestsForUser(user, { cursor, limit }) {
     result.rows,
     limit,
     toProjectRequestRecord,
-    (row) => [row.created_at, Number(row.id)],
+    (row) => [row.cursor_created_at || new Date(row.created_at).toISOString(), Number(row.id)],
   );
 }
 

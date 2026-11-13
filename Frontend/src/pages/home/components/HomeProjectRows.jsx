@@ -6,6 +6,7 @@ import Button from "../../../components/ui/Button/Button.jsx";
 import ProjectProgress from "../../../components/ui/ProjectProgress/ProjectProgress.jsx";
 import ProjectImage from "../../../components/ui/ProjectImage/ProjectImage.jsx";
 import Tooltip from "../../../components/ui/Tooltip/Tooltip.jsx";
+import { getProjectRequestImageSource } from "../../../utils/projectImage.js";
 import { getProjectPath } from "../../../utils/projectRoutes.js";
 import { getProjectRequestStatus } from "../../../utils/projectRequestStatus.js";
 import { getProjectRequestRowActions, getProjectRequestRowMessage } from "../utils/projectRequestRowActions.js";
@@ -80,7 +81,9 @@ function ProjectRequestRow({ projectRequest, onReview }) {
   return (
     <article className="grid grid-cols-1 items-center gap-[16px] border-b border-[var(--color-neutral-200)] py-[16px] min-[768px]:grid-cols-[120px_minmax(0,1fr)_auto] min-[1024px]:grid-cols-[160px_minmax(300px,1fr)_auto] min-[1024px]:gap-[24px]">
       <ProjectImage
+        src={getProjectRequestImageSource(projectRequest)}
         alt=""
+        imageClassName="object-cover"
         className="aspect-[262/150] w-full rounded-[var(--radius-2)] min-[768px]:aspect-[120/69] min-[768px]:w-[120px] min-[1024px]:aspect-[160/91.4286] min-[1024px]:w-[160px]"
       />
 

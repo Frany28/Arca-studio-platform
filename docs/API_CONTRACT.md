@@ -161,7 +161,7 @@ En los adjuntos de solicitudes, `frame-ancestors` solo admite `'self'`. Se manti
 
 | Método y path | Request | Éxito | Acceso / errores relevantes |
 | --- | --- | --- | --- |
-| GET `/project-requests` | P | 200 `{projectRequests:ProjectRequest[],nextCursor}` | Sesión + clientId; solo solicitudes propias, excluye draft; 403 CLIENT_REQUIRED |
+| GET `/project-requests` | P | 200 `{projectRequests:(ProjectRequest & {imageFileId:number|null,imageFileVersionId:number|null})[],nextCursor}`. `imageFileId` es la imagen más reciente de los adjuntos; en una solicitud `converted`, la del proyecto creado (los adjuntos pasan a él al aprobar, así que cambia cuando el proyecto recibe imágenes nuevas) y se sirve por `/projects/:convertedProjectId/files/:id/content`. Cursor con microsegundos | Sesión + clientId; solo solicitudes propias, excluye draft; 403 CLIENT_REQUIRED |
 | GET `/project-requests/:projectRequestId` | — | 200 `{projectRequest: ProjectRequest & {files:[{id,name,fileType,size,createdAt}]}}` | Sesión + clientId + propiedad; consulta de solo lectura con adjuntos persistidos; 403 CLIENT_REQUIRED, 404 PROJECT_REQUEST_NOT_FOUND |
 | POST `/project-requests` | RequestPayload + `submissionId:UUID` | 201 `{projectRequest}` | Sesión + clientId; crea draft, idempotencia por submissionId; 409 PROJECT_NAME_ALREADY_EXISTS |
 | PATCH `/project-requests/:projectRequestId` | RequestPayload completo (no patch parcial) | 200 `{projectRequest}` | Sesión + propiedad; draft o changes_requested; 404 PROJECT_REQUEST_NOT_FOUND |

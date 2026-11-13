@@ -560,6 +560,35 @@ test("PostgreSQL y HTTP: aprobar con varios adjuntos los pasa al proyecto con tr
   }
 });
 
+test("PostgreSQL y HTTP: la miniatura del listado es la imagen de la solicitud y cambia a la del proyecto al subir imágenes", { skip }, async () => {
+  const listedRow = async (headers, id) => (await api("/project-requests", { headers })).body.projectRequests.find((row) => row.id === id);
+  const { fileIds: [planId, photoId], headers, id } = await reviewedRequest([pdf("plano.pdf"), png("fachada.png")]);
+  // En evaluación: la imagen adjunta (no el PDF), servida por la ruta de la solicitud.
+  const pending = await listedRow(headers.owner, id);
+  assert.equal(pending.imageFileId, photoId);
+  assert.notEqual(pending.imageFileId, planId);
+  assert.equal((await fetch(`${base}/project-requests/${id}/files/${photoId}/content`, { headers: headers.owner })).status, 200);
+
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
+  const projectId = Number((await database.client.query("select converted_project_id from public.project_requests where id = $1", [id])).rows[0].converted_project_id);
+  // Aprobada sin imágenes propias: conserva la de la solicitud, ahora archivo del proyecto.
+  const converted = await listedRow(headers.owner, id);
+  assert.equal(converted.imageFileId, photoId);
+  assert.equal((await fetch(`${base}/projects/${projectId}/files/${photoId}/content`, { headers: headers.owner })).status, 200);
+
+  // Una imagen nueva del proyecto sustituye la miniatura.
+  const newFile = await database.client.query(`
+    insert into public.files (project_id, uploaded_by, title, file_type, file_category, current_version, created_at)
+    values ($1, $2, 'render.png', 'image/png', 'image', 1, now() + interval '1 minute') returning id`, [projectId, seed.admin]);
+  const newFileId = Number(newFile.rows[0].id);
+  const version = await database.client.query(`
+    insert into public.file_versions (file_id, uploaded_by, version_number, file_name, original_name, file_url, file_extension, file_size)
+    values ($1, $2, 1, 'render.png', 'render.png', 'projects/render.png', 'png', 10) returning id`, [newFileId, seed.admin]);
+  const updated = await listedRow(headers.owner, id);
+  assert.equal(updated.imageFileId, newFileId);
+  assert.equal(updated.imageFileVersionId, Number(version.rows[0].id));
+});
+
 test("PostgreSQL y HTTP: aprobar una solicitud sin adjuntos crea el proyecto", { skip }, async () => {
   const { headers, id } = await reviewedRequest([]);
   const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
