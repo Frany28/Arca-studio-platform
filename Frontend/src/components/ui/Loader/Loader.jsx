@@ -563,6 +563,47 @@ function ProjectRequestStatusSkeleton() {
   );
 }
 
+// Formulario de solicitud de proyecto («Editar solicitud» mientras se lee la solicitud): encabezado
+// h1, divisor y secciones de dos columnas como FormSection (título y descripción a la izquierda,
+// campos de etiqueta 17 px y control 42 px a la derecha, 401 px base cada columna), con el pie de
+// dos acciones. Mantiene los 48 px entre bloques para que el formulario no salte al cargar.
+function ProjectRequestFormSkeleton() {
+  const divider = (delay) => <SkeletonBlock className="h-px w-full max-w-[850px] rounded-[var(--radius-none)]" delay={delay} tone="muted" />;
+  const section = (fields, delay) => (
+    <div className="flex w-full max-w-[850px] flex-wrap content-start items-start gap-[48px]">
+      <div className="flex min-w-0 flex-[1_1_401px] flex-col gap-[16px]">
+        <SkeletonBlock className="h-[19px] w-[180px] rounded-[var(--radius-1)]" delay={delay} tone="text" />
+        <SkeletonBlock className="h-[17px] w-full rounded-[var(--radius-1)]" delay={delay + 20} tone="muted" />
+        <SkeletonBlock className="h-[17px] w-4/5 rounded-[var(--radius-1)]" delay={delay + 40} tone="muted" />
+      </div>
+      <div className="flex min-w-0 flex-[1_1_401px] flex-col gap-[16px]">
+        {Array.from({ length: fields }, (_, index) => (
+          <div key={index} className="flex w-full flex-col gap-[8px]">
+            <SkeletonBlock className="h-[17px] w-[160px] max-w-full rounded-[var(--radius-1)]" delay={delay + 60 + index * 30} tone="text" />
+            <SkeletonBlock className="h-[42px] w-full rounded-[var(--radius-2)]" delay={delay + 80 + index * 30} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex w-full flex-col items-center gap-[48px]" data-skeleton-preset="projectRequestForm">
+      <div className="flex w-full max-w-[850px] flex-col gap-[4px]">
+        <SkeletonBlock className="h-[38px] w-[260px] max-w-full rounded-[var(--radius-2)] min-[768px]:h-[58px] min-[768px]:w-[380px]" tone="text" />
+        <SkeletonBlock className="h-[17px] w-[280px] max-w-full rounded-[var(--radius-1)] min-[768px]:h-[21px]" delay={60} tone="muted" />
+      </div>
+      {divider(90)}
+      {section(4, 110)}
+      {divider(300)}
+      {section(2, 320)}
+      <div className="grid w-full max-w-[850px] grid-cols-2 gap-[8px] min-[480px]:flex min-[480px]:justify-end">
+        <SkeletonBlock className="h-[41px] w-full rounded-[var(--radius-2)] min-[480px]:w-[112px]" delay={460} />
+        <SkeletonBlock className="h-[41px] w-full rounded-[var(--radius-2)] min-[480px]:w-[160px]" delay={480} />
+      </div>
+    </div>
+  );
+}
+
 function AdminRequestDetailsSkeleton() {
   return (
     <div className="flex w-full flex-col gap-[24px]">
@@ -845,6 +886,8 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <AdminProjectRequestSkeleton />;
   } else if (preset === "projectRequestStatus") {
     content = <ProjectRequestStatusSkeleton />;
+  } else if (preset === "projectRequestForm") {
+    content = <ProjectRequestFormSkeleton />;
   } else if (preset === "adminRequestDetails") {
     content = <AdminRequestDetailsSkeleton />;
   } else if (preset === "detailValue") {

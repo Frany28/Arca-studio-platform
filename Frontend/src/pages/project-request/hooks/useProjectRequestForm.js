@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { EMPTY_PROPERTY_DETAIL_FIELDS, normalizeConditionalFormFields } from "../../../utils/projectRequestApplicability.js";
+import { normalizeWithRetainedAnswers } from "../../../utils/projectRequestRetainedAnswers.js";
 import { EMPTY_STAND_FORM_FIELDS, toCurrentProjectType } from "../../../utils/projectRequestStand.js";
 
 import { getProjectRequestFieldErrors } from "../../../utils/projectRequestValidation.js";
@@ -87,11 +88,15 @@ function createInitialForm(initialRequest) {
  *
  * @param {Object} params - Datos iniciales y control del aviso.
  * @param {Object|null} params.initialRequest - Solicitud inicial; cambios posteriores no reinicializan el estado.
+ * @param {boolean} [params.retainHiddenAnswers=false] - Edición de una solicitud existente: las respuestas
+ *   condicionales que se ocultan se retienen y se restauran si su sección vuelve a aplicar
+ *   (normalizeWithRetainedAnswers). La creación no lo usa: allí reaparecen vacías.
  * @param {Function} params.setShowRequiredAlert - Controla el aviso de datos inv?lidos.
  * @returns {Object} Formulario, errores actuales/visibles, intento de env?o, foco y acciones de edici?n, validaci?n y reset.
  */
 export default function useProjectRequestForm({
   initialRequest,
+  retainHiddenAnswers = false,
   setShowRequiredAlert,
 }) {
   const [form, setForm] = useState(() => createInitialForm(initialRequest));
@@ -100,6 +105,8 @@ export default function useProjectRequestForm({
   const [isLocationInputFocused, setIsLocationInputFocused] = useState(false);
   // El contexto procede del registro restaurado; nunca se deduce del tipo que se selecciona.
   const [existingProjectType] = useState(() => initialRequest?.id ? initialRequest.projectType : null);
+  // Respuestas ocultas retenidas (solo con retainHiddenAnswers); no se renderizan ni se envían.
+  const retainedAnswersRef = useRef({});
 
   const currentFieldErrors = useMemo(
     () => getProjectRequestFieldErrors(form, { existingProjectType }),
@@ -135,7 +142,14 @@ export default function useProjectRequestForm({
    */
   const update = (field, fileErrors = []) => (eventOrValue) => {
     const value = eventOrValue?.target ? eventOrValue.target.value : eventOrValue;
-    const nextForm = normalizeConditionalFormFields({ ...form, [field]: value });
+    let nextForm;
+    if (retainHiddenAnswers) {
+      const next = normalizeWithRetainedAnswers({ ...form, [field]: value }, retainedAnswersRef.current, field);
+      retainedAnswersRef.current = next.retained;
+      nextForm = next.form;
+    } else {
+      nextForm = normalizeConditionalFormFields({ ...form, [field]: value });
+    }
 
     setForm(nextForm);
     updateErrorsAfterChange(nextForm, fileErrors);
@@ -228,6 +242,7 @@ export default function useProjectRequestForm({
   };
 
   const resetFormState = () => {
+    retainedAnswersRef.current = {};
     setForm(INITIAL_FORM);
     setFieldErrors({});
     setHasAttemptedSubmit(false);

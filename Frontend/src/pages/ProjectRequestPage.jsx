@@ -1,21 +1,16 @@
 import { useRef, useState } from "react";
-import { Edit2, Link21, Location } from "iconsax-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
 import { getUserDisplay } from "../auth/userDisplay.js";
-import Alert from "../components/ui/Alert/Alert.jsx";
 import Button from "../components/ui/Button/Button.jsx";
-import HintText from "../components/ui/HintText/HintText.jsx";
 import ProjectRequestCancelModal from "../components/ui/ProjectRequestFlow/ProjectRequestCancelModal.jsx";
-import ProjectLocationSuggestions from "../components/ui/ProjectRequestFlow/ProjectLocationSuggestions.jsx";
 import ProjectRequestValidationStep from "../components/ui/ProjectRequestFlow/ProjectRequestValidationStep.jsx";
 import useAddressSuggestions from "../hooks/useAddressSuggestions.js";
 import { useInvalidFieldFocus } from "../hooks/useInvalidFieldFocus.js";
-import { hasApplicableProperty, requiresPropertyAvailability } from "../utils/projectRequestApplicability.js";
-import { PROJECT_REQUEST_OPTIONS } from "../utils/projectRequestOptions.js";
-import ProjectRequestAttachmentsField from "./project-request/components/ProjectRequestAttachmentsField.jsx";
-import ProjectRequestStandSection from "./project-request/components/ProjectRequestStandSection.jsx";
+import ProjectRequestRequiredAlert from "./project-request/components/ProjectRequestRequiredAlert.jsx";
+import ProjectRequestFormHeader from "./project-request/components/ProjectRequestFormHeader.jsx";
+import ProjectRequestFormSections from "./project-request/components/ProjectRequestFormSections.jsx";
 import ProjectRequestPageShell from "./project-request/components/ProjectRequestPageShell.jsx";
 import useProjectRequestDraft from "./project-request/hooks/useProjectRequestDraft.js";
 import useProjectRequestFiles from "./project-request/hooks/useProjectRequestFiles.js";
@@ -23,15 +18,7 @@ import useProjectRequestForm from "./project-request/hooks/useProjectRequestForm
 import useProjectRequestSubmission, { VERIFICATION_MODES } from "./project-request/hooks/useProjectRequestSubmission.js";
 import useProjectRequestNavigation from "./project-request/hooks/useProjectRequestNavigation.js";
 import useProjectRequestNotifications from "./project-request/hooks/useProjectRequestNotifications.js";
-import {
-  CheckboxField,
-  ChoiceGroup,
-  FormDivider,
-  FormSection,
-  LegalDocumentTypesField,
-  SelectField,
-  TextField,
-} from "./project-request/components/ProjectRequestFormFields.jsx";
+import { FormDivider } from "./project-request/components/ProjectRequestFormFields.jsx";
 import { getClientProjectRequestPath } from "../utils/projectRequestRoutes.js";
 import { PROJECT_REQUEST_FOOTER_CLASS_NAME } from "./project-request/utils/projectRequestLayout.js";
 
@@ -75,28 +62,18 @@ export default function ProjectRequestPage() {
     setNotificationsOpen: notifications.setOpen,
     setShowRequiredAlert,
   });
-  const {
-    applyLocationSuggestion,
-    currentFieldErrors,
-    fieldErrors,
-    form,
-    hasAttemptedSubmit,
-    isLocationInputFocused,
-    resetFormState,
-    setIsLocationInputFocused,
-    update,
-    updateLandStatus,
-    updateLegalDocumentationStatus,
-    updateLocation,
-    validateForSubmit,
-  } = useProjectRequestForm({
+  const formState = useProjectRequestForm({
     initialRequest,
     setShowRequiredAlert,
   });
-  // Estado derivado: en Stand publicitario el inmueble no aplica; en otros tipos la sección
-  // legal depende de la respuesta sobre el terreno.
-  const showLandStatusQuestion = requiresPropertyAvailability(form.projectType);
-  const showPropertyLegalSection = hasApplicableProperty(form);
+  const {
+    applyLocationSuggestion,
+    currentFieldErrors,
+    form,
+    hasAttemptedSubmit,
+    resetFormState,
+    validateForSubmit,
+  } = formState;
   const formRef = useRef(null);
   const focusInvalidField = useInvalidFieldFocus({ getContainer: () => formRef.current });
   const {
@@ -209,159 +186,42 @@ export default function ProjectRequestPage() {
             onNext={handleValidationSubmit}
           />
 
-          <div className="pointer-events-none fixed bottom-0 right-0 z-[90] flex w-full max-w-[722.615px] p-[16px] min-[480px]:p-[24px]">
-            <Alert
-              id="project-request-required-alert"
-              visible={showRequiredAlert}
-              theme="Danger"
-              layout="Box"
-              title="Por favor, proporcione la información necesaria."
-              description="Revisa los campos señalados y los archivos seleccionados antes de continuar."
-              showActions={false}
-              showCloseButton
-              onDismiss={() => setShowRequiredAlert(false)}
-              aria-label="Campos obligatorios incompletos"
-              className="pointer-events-auto"
-            />
-          </div>
+          <ProjectRequestRequiredAlert visible={showRequiredAlert} onDismiss={() => setShowRequiredAlert(false)} />
         </>
       )}
     >
             <div className="content-reveal mx-auto flex w-full max-w-[1200px] flex-col items-center gap-[48px] px-[16px] pb-[48px] min-[768px]:px-[24px] min-[1024px]:px-[48px]">
-            <header className="flex w-full max-w-[850px] flex-wrap items-end justify-between gap-x-[24px] gap-y-[16px]">
-              <div className="min-w-0">
-                <h1 className="text-[32px] font-bold leading-[38px] tracking-[-1px] text-[var(--color-text-50)] min-[768px]:text-[48px] min-[768px]:leading-[58px]">Solicitud de proyecto</h1>
-                <p className="mt-[4px] text-[14px] leading-[17px] tracking-[-0.5px] text-[var(--color-text-200)] min-[768px]:text-[18px] min-[768px]:leading-[21px]">Cada proyecto merece ser el correcto.</p>
-              </div>
-              <p className="hidden shrink-0 text-right text-[14px] font-medium leading-[17px] tracking-[-0.5px] text-[var(--color-text-100)] min-[480px]:block">Tiempo estimado<br />3–5 minutos</p>
-            </header>
+            <ProjectRequestFormHeader
+              title="Solicitud de proyecto"
+              subtitle="Cada proyecto merece ser el correcto."
+              aside={<>Tiempo estimado<br />3–5 minutos</>}
+            />
 
             <FormDivider />
 
             <form ref={formRef} noValidate className="flex w-full flex-col items-center gap-[48px]" onSubmit={(event) => { event.preventDefault(); handleFrontendSubmit(); }}>
-              <FormSection title="Detalles del proyecto" description="Cuéntanos qué deseas desarrollar. Esta información nos ayudará a comprender el alcance, los objetivos y las características generales de tu proyecto antes de la primera reunión.">
-                <TextField error={hasAttemptedSubmit ? fieldErrors.projectName : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectName)} label="Nombre del proyecto" icon={Edit2} placeholder='Ej. “Apto. Noventa y Uno”' value={form.projectName} onChange={update("projectName", fileErrors)} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectType : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectType)} label="Tipo de proyecto" value={form.projectType} onChange={update("projectType", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectType} />
-                <TextField
-                  error={hasAttemptedSubmit ? fieldErrors.location : ""}
-                  invalid={hasAttemptedSubmit && Boolean(fieldErrors.location)}
-                  label="Ubicación del proyecto"
-                  icon={Location}
-                  placeholder='Ej. “Maracaibo, Estado Zulia.”'
-                  value={form.location}
-                  onFocus={() => setIsLocationInputFocused(true)}
-                  onBlur={() => {
-                    window.setTimeout(() => setIsLocationInputFocused(false), 120);
-                  }}
-                  onChange={(event) => updateLocation(event, fileErrors)}
-                  onKeyDown={(event) => {
-                    // Escape cierra las sugerencias como los demás desplegables; el texto se conserva
-                    // y escribir de nuevo las vuelve a mostrar.
-                    if (event.key === "Escape" && isLocationInputFocused && locationSuggestions.length) {
-                      setIsLocationInputFocused(false);
-                    }
-                  }}
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={
-                    isLocationInputFocused && locationSuggestions.length > 0
-                  }
-                  containerClassName="relative z-20"
-                  supportingContent={
-                    isLocationSearching ? (
-                      <HintText
-                        state="Default"
-                        hintText="Buscando direcciones..."
-                        className="w-full"
-                        role="status"
-                      />
-                    ) : locationSuggestionsError ? (
-                      <HintText
-                        state="Error"
-                        hintText={locationSuggestionsError}
-                        className="w-full"
-                        role="alert"
-                      />
-                    ) : hasSearchedLocation && locationSuggestions.length === 0 ? (
-                      <HintText
-                        state="Default"
-                        hintText="No encontramos coincidencias. Puedes escribir una dirección más específica o continuar con la dirección manual."
-                        className="w-full"
-                        role="status"
-                      />
-                    ) : null
-                  }
-                >
-                  {isLocationInputFocused && locationSuggestions.length ? (
-                    <ProjectLocationSuggestions
-                      suggestions={locationSuggestions}
-                      onSelect={selectLocationSuggestion}
-                    />
-                  ) : null}
-                </TextField>
-                <TextField error={hasAttemptedSubmit ? fieldErrors.description : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.description)} label="Descripción del proyecto" multiline minLength={30} maxLength={100} placeholder="Describe brevemente qué quieres lograr, dónde está el inmueble, y cualquier detalle relevante." value={form.description} onChange={update("description", fileErrors)} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.projectSize : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.projectSize)} label="Tamaño aproximado del proyecto" optional value={form.projectSize} onChange={update("projectSize", fileErrors)} options={PROJECT_REQUEST_OPTIONS.projectSize} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.developmentMode : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.developmentMode)} label="¿Cómo desea desarrollar el proyecto?" info value={form.developmentMode} onChange={update("developmentMode", fileErrors)} options={PROJECT_REQUEST_OPTIONS.developmentMode} />
-                {showLandStatusQuestion ? (
-                  <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.landStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.landStatus)} label="¿Tiene terreno o inmueble disponible?" value={form.landStatus} onChange={(status) => updateLandStatus(status, fileErrors)} options={PROJECT_REQUEST_OPTIONS.landStatus} />
-                ) : null}
-              </FormSection>
-
-              <ProjectRequestStandSection form={form} fieldErrors={fieldErrors} hasAttemptedSubmit={hasAttemptedSubmit} update={update} fileErrors={fileErrors} />
-
-              {/* Solo aplica con inmueble aplicable y disponible: se desmonta (no se oculta con CSS)
-              y useProjectRequestForm restablece sus valores al cambiar el tipo o la respuesta. */}
-              {showPropertyLegalSection ? (
-                <>
-                  <FormDivider />
-
-                  <FormSection title="Documentación legal del inmueble" description="Por favor, proporciona detalles sobre el estado legal de la propiedad que deseas intervenir. Esta información es crucial para evaluar la viabilidad del proyecto y asegurarnos de que se cumplan todos los requisitos legales antes de proceder.">
-                    <SelectField error={hasAttemptedSubmit ? fieldErrors.legalDocumentationStatus : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.legalDocumentationStatus)} label="¿Cuenta con documentación que acredite la situación legal del inmueble?" value={form.legalDocumentationStatus} onChange={(status) => updateLegalDocumentationStatus(status, fileErrors)} options={PROJECT_REQUEST_OPTIONS.legalDocumentationStatus} />
-                    <LegalDocumentTypesField error={hasAttemptedSubmit ? fieldErrors.legalDocumentTypes : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.legalDocumentTypes)} value={form.legalDocumentTypes} onChange={update("legalDocumentTypes", fileErrors)} disabled={form.legalDocumentationStatus !== "available"} />
-                    <div className="flex w-full flex-col gap-[8px]">
-                      <SelectField error={hasAttemptedSubmit ? fieldErrors.multipleOwners : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.multipleOwners)} label="¿El inmueble tiene más de un propietario?" value={form.multipleOwners} onChange={update("multipleOwners", fileErrors)} options={PROJECT_REQUEST_OPTIONS.multipleOwners} />
-                      <HintText state="Default" hintText="La documentación podrá ser presentada posteriormente durante la reunión inicial." className="w-full" />
-                    </div>
-                    <div className="border-t border-[var(--color-neutral-200)] pt-[12px]">
-                      <CheckboxField label="¿Dispone de planos del lugar?" value={form.hasBlueprints} onChange={update("hasBlueprints", fileErrors)} />
-                    </div>
-                  </FormSection>
-                </>
-              ) : null}
-
-              <FormDivider />
-
-              <FormSection title="Viabilidad financiera" description="Conocer el presupuesto y la disponibilidad del capital nos permite proponerte soluciones acordes.">
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.investmentRange : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.investmentRange)} label="Rango de inversión estimado" value={form.investmentRange} onChange={update("investmentRange", fileErrors)} options={PROJECT_REQUEST_OPTIONS.investmentRange} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.capitalAvailability : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.capitalAvailability)} label="Disponibilidad del capital" value={form.capitalAvailability} onChange={update("capitalAvailability", fileErrors)} options={PROJECT_REQUEST_OPTIONS.capitalAvailability} />
-              </FormSection>
-
-              <FormDivider />
-
-              <FormSection title="Compatibilidad" description="Estas preguntas nos ayudan a conocer tus expectativas, tiempos y experiencia previa para ofrecerte un proceso de trabajo más personalizado y eficiente.">
-                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.startTime : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.startTime)} label="¿Cuándo espera iniciar el proyecto?" value={form.startTime} onChange={update("startTime", fileErrors)} options={PROJECT_REQUEST_OPTIONS.startTime} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.decisionMaker : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.decisionMaker)} label="¿Quién toma la decisión final del proyecto?" optional value={form.decisionMaker} onChange={update("decisionMaker", fileErrors)} options={PROJECT_REQUEST_OPTIONS.decisionMaker} />
-                <SelectField error={hasAttemptedSubmit ? fieldErrors.quality : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.quality)} label="Expectativa de estilo / nivel de calidad" optional info value={form.quality} onChange={update("quality", fileErrors)} options={PROJECT_REQUEST_OPTIONS.quality} />
-                <ChoiceGroup error={hasAttemptedSubmit ? fieldErrors.experience : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.experience)} label="¿Ha trabajado con un arquitecto o diseñador antes?" optional value={form.experience} onChange={update("experience", fileErrors)} options={PROJECT_REQUEST_OPTIONS.experience} />
-              </FormSection>
-
-              <FormDivider />
-
-              <FormSection title="Referencias" description="Comparte imágenes, enlaces o cualquier material de referencia que represente tu visión del proyecto. Esto nos ayudará a comprender mejor el estilo, la atmósfera y los acabados que deseas lograr.">
-                <ProjectRequestAttachmentsField
-                  allowRemoteRemoval={allowRemoteRemoval}
-                  loadingPersisted={attachmentsLoading}
-                  persistedError={attachmentsError}
-                  onRetryPersisted={reloadAttachments}
-                  disabled={isSubmitting}
-                  fileErrors={fileErrors}
-                  files={files}
-                  onFilesSelected={handleFilesChange}
-                  onRemove={removeFile}
-                  onRetry={retryFile}
-                />
-                <TextField error={hasAttemptedSubmit ? fieldErrors.referenceLink : ""} invalid={hasAttemptedSubmit && Boolean(fieldErrors.referenceLink)} label="Link de referencia (Pinterest, web, etc.)" optional icon={Link21} placeholder='Ej. “https://es.pinterest.com/pin”' value={form.referenceLink} onChange={update("referenceLink", fileErrors)} />
-              </FormSection>
+              <ProjectRequestFormSections
+                attachments={{
+                  allowRemoteRemoval,
+                  disabled: isSubmitting,
+                  files,
+                  loadingPersisted: attachmentsLoading,
+                  onFilesSelected: handleFilesChange,
+                  onRemove: removeFile,
+                  onRetry: retryFile,
+                  onRetryPersisted: reloadAttachments,
+                  persistedError: attachmentsError,
+                }}
+                fileErrors={fileErrors}
+                formState={formState}
+                locationSearch={{
+                  error: locationSuggestionsError,
+                  hasSearched: hasSearchedLocation,
+                  isSearching: isLocationSearching,
+                  onSelect: selectLocationSuggestion,
+                  suggestions: locationSuggestions,
+                }}
+              />
 
               <FormDivider />
 

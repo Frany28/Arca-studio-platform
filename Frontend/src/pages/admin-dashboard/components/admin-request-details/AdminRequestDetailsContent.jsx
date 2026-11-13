@@ -1,3 +1,4 @@
+import Alert from "../../../../components/ui/Alert/Alert.jsx";
 import Badge from "../../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../../components/ui/Button/Button.jsx";
 import Loader from "../../../../components/ui/Loader/Loader.jsx";
@@ -69,6 +70,20 @@ function AdminRequestDetailsContent({ client, details, onRetryQueue, queueError 
       </dl>
 
       {details.isPartial ? <PartialDataNotice queueError={queueError} onRetry={onRetryQueue} /> : null}
+
+      {details.outdatedReviewsNotice ? (
+        <Alert
+          visible
+          theme="Warning"
+          layout="Box"
+          title="Revisiones desactualizadas"
+          description={`${details.outdatedReviewsNotice} La recomendación mostrada puede no reflejar los datos actuales.`}
+          showActions={false}
+          showCloseButton={false}
+          aria-label="Revisiones técnicas desactualizadas"
+          className="w-full"
+        />
+      ) : null}
 
       <AdminRequestEvaluation details={details} />
 

@@ -186,11 +186,40 @@ export const adminApi = {
     return withAdminAssigneeAvatars(payload);
   },
 
-  decideProjectRequest({ action, internalNotes, projectRequestId, reason }) {
+  /**
+   * Lee una solicitud en su forma editable para precargar «Editar solicitud»: respuestas del
+   * formulario, adjuntos, versión (`updatedAt`) y si su estado admite edición (`editable`).
+   *
+   * @param {Object} params - Solicitud y cancelación.
+   * @param {number|string} params.projectRequestId - Solicitud a editar.
+   * @param {AbortSignal} [params.signal] - Cancela la lectura al salir o cambiar de solicitud.
+   * @returns {Promise<{projectRequest: Object}>} Solicitud editable.
+   */
+  getProjectRequestForm({ projectRequestId, signal }) {
+    return apiRequest(`/admin/project-requests/${encodeURIComponent(projectRequestId)}/form`, { signal });
+  },
+
+  /**
+   * Guarda la edición administrativa de una solicitud sin cambiar su estado. El backend rechaza
+   * con 409 si la solicitud cambió desde `expectedUpdatedAt` o si su estado ya no es editable.
+   *
+   * @param {Object} params - Solicitud, respuestas y versión.
+   * @param {number|string} params.projectRequestId - Solicitud editada.
+   * @param {Object} params.payload - Respuestas (buildProjectRequestPayload) con `expectedUpdatedAt`.
+   * @returns {Promise<{changedFields: Array<string>, projectRequest: Object}>} Versión guardada.
+   */
+  updateProjectRequestForm({ payload, projectRequestId }) {
+    return apiRequest(`/admin/project-requests/${encodeURIComponent(projectRequestId)}/form`, {
+      body: JSON.stringify(payload),
+      method: "PUT",
+    });
+  },
+
+  decideProjectRequest({ acknowledgeOutdatedReviews, action, internalNotes, outdatedReviewsJustification, projectRequestId, reason }) {
     return apiRequest(
       `/admin/project-requests/${encodeURIComponent(projectRequestId)}/decision`,
       {
-        body: JSON.stringify({ action, internalNotes, reason }),
+        body: JSON.stringify({ acknowledgeOutdatedReviews, action, internalNotes, outdatedReviewsJustification, reason }),
         method: "PATCH",
       },
     );

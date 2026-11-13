@@ -422,6 +422,109 @@ export async function updateProjectRequestDraft(projectRequestId, user, payload)
 }
 
 /**
+ * Lee en PostgreSQL una solicitud enviada (no borrador) para editarla desde administración,
+ * con sus respuestas en la misma forma que la consulta del propietario. Con `forUpdate` bloquea
+ * la fila hasta el fin de la transacción para serializar la edición con decisiones u otras ediciones.
+ *
+ * @param {number|string} projectRequestId - Solicitud a leer.
+ * @param {object} [options] - Opciones de la lectura.
+ * @param {{ query: Function }} [options.executor] - Cliente de la transacción; por defecto, el pool.
+ * @param {boolean} [options.forUpdate=false] - Bloquea la fila (`FOR UPDATE`).
+ * @returns {Promise<object|null>} Registro de la solicitud o null si no existe o es un borrador.
+ */
+export async function findProjectRequestForAdminEdit(projectRequestId, { executor = { query }, forUpdate = false } = {}) {
+  const result = await executor.query(
+    `
+      select ${SELECT_FIELDS}
+      from public.project_requests
+      where id = $1
+        and deleted_at is null
+        and status <> 'draft'
+      limit 1
+      ${forUpdate ? "for update" : ""}
+    `,
+    [projectRequestId],
+  );
+  return result.rows[0] ? toProjectRequestRecord(result.rows[0]) : null;
+}
+
+/**
+ * Sustituye en PostgreSQL las respuestas del formulario de una solicitud en evaluación. No toca
+ * cliente, solicitante, estado, revisiones ni responsables, y solo actúa sobre los estados que la
+ * política administrativa admite (la fila ya está bloqueada por la transacción del servicio).
+ *
+ * @param {number|string} projectRequestId - Solicitud a editar.
+ * @param {object} payload - Respuestas validadas (projectRequestBody, tipo vigente).
+ * @param {Array<string>} editableStatuses - Estados editables (ADMIN_EDITABLE_PROJECT_REQUEST_STATUSES).
+ * @param {{ query: Function }} executor - Cliente de la transacción.
+ * @returns {Promise<object|null>} Registro actualizado o null si dejó de ser editable.
+ */
+export async function updateProjectRequestAnswers(projectRequestId, payload, editableStatuses, executor) {
+  const result = await executor.query(
+    `
+      update public.project_requests
+      set
+        project_name = $1,
+        project_type = $2::project_type,
+        location = $3,
+        description = $4,
+        has_plans = $5,
+        project_size = $6::project_request_size,
+        development_mode = $7::project_development_mode,
+        land_status = $8::project_land_status,
+        investment_range = $9::project_investment_range,
+        capital_availability = $10::project_capital_availability,
+        expected_start_time = $11::project_start_time,
+        decision_maker = $12::project_decision_maker,
+        quality_expectation = $13::project_quality_expectation,
+        prior_design_experience = $14::project_design_experience,
+        reference_link = $15,
+        location_latitude = $16,
+        location_longitude = $17,
+        provider_place_id = $18,
+        formatted_address = $19,
+        legal_documentation_status = $20::project_legal_documentation_status,
+        legal_document_types = $21::text[],
+        has_multiple_owners = $22,
+        stand_requirements = $23::jsonb,
+        updated_at = now()
+      where id = $24
+        and deleted_at is null
+        and status::text = any($25::text[])
+      returning ${SELECT_FIELDS}
+    `,
+    [...projectRequestAnswerParams(payload), projectRequestId, editableStatuses],
+  );
+  return result.rows[0] ? toProjectRequestRecord(result.rows[0]) : null;
+}
+
+/**
+ * Guarda en PostgreSQL la compatibilidad recalculada de una solicitud tras editar sus respuestas.
+ * Es un indicador derivado: no cambia el estado ni las decisiones o revisiones registradas.
+ *
+ * @param {number|string} projectRequestId - Solicitud editada.
+ * @param {{score: number, level: string, reasonCodes: Array<string>, version: string}} evaluation - Evaluación vigente.
+ * @param {{ query: Function }} executor - Cliente de la transacción.
+ * @returns {Promise<object|null>} Registro con la compatibilidad actualizada.
+ */
+export async function updateProjectRequestCompatibility(projectRequestId, evaluation, executor) {
+  const result = await executor.query(
+    `
+      update public.project_requests
+      set
+        compatibility_score = $2,
+        compatibility_level = $3::project_compatibility_level,
+        compatibility_reason_codes = $4::jsonb,
+        compatibility_scoring_version = $5
+      where id = $1
+      returning ${SELECT_FIELDS}
+    `,
+    [projectRequestId, evaluation.score, evaluation.level, JSON.stringify(evaluation.reasonCodes), evaluation.version],
+  );
+  return result.rows[0] ? toProjectRequestRecord(result.rows[0]) : null;
+}
+
+/**
  * Envía el valor de proyecto solicitud for usuario después de validar el estado y las reglas aplicables.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
@@ -498,9 +601,19 @@ export async function submitProjectRequestForUser(projectRequestId, user, evalua
  * @returns {Array<unknown>} Resultado producido por la operación.
  */
 function projectRequestParams(user, payload) {
+  return [user.clientId, user.id, ...projectRequestAnswerParams(payload)];
+}
+
+/**
+ * Ordena las respuestas validadas del formulario como parámetros SQL ($n consecutivos), sin
+ * datos de propiedad ni de workflow. La comparten el cliente (tras cliente y autor) y la edición
+ * administrativa, para que ambos persistan cada respuesta en la misma columna.
+ *
+ * @param {object} payload - Cuerpo validado con projectRequestBody.
+ * @returns {Array<unknown>} 23 respuestas en el orden de las columnas de la solicitud.
+ */
+function projectRequestAnswerParams(payload) {
   return [
-    user.clientId,
-    user.id,
     payload.projectName,
     payload.projectType,
     payload.projectLocation,

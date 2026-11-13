@@ -870,3 +870,70 @@ test("un vídeo adjunto muestra un fotograma real solo al acercarse; los documen
   assert.ok(videoReads >= 1, "al acercarse se intenta leer el fotograma");
   assert.equal(reads.includes(PDF_CONTENT_PATH), false, "el PDF no se descarga");
 });
+
+// --- Revisiones técnicas anteriores a los últimos cambios relevantes ---
+
+const OUTDATED_REQUEST = Object.freeze({
+  ...REQUEST,
+  answersRevisedAt: "2026-10-03T09:00:00.000Z",
+  hasOutdatedReviews: true,
+  reviews: REQUEST.reviews.map((review) => ({ ...review, outdated: true })),
+});
+const OUTDATED_TITLE = "Las revisiones técnicas están desactualizadas";
+const OUTDATED_CONFIRM = "Confirmo que apruebo sin una revisión técnica actualizada";
+
+test("revisiones desactualizadas: la consulta avisa y aprobar exige confirmación y justificación", async (context) => {
+  const held = deferred();
+  const { page, mutations } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? OUTDATED_REQUEST : CONVERTED } }),
+    mutation: async (route) => route.fulfill(await held.promise),
+  });
+  const team = page.getByRole("region", { name: "Gestión de la solicitud" });
+  await team.getByText("Revisiones desactualizadas", { exact: true }).waitFor();
+  await team.getByText(/1 revisión técnica es anterior a los últimos cambios/).waitFor();
+  await team.getByText("Anterior a los últimos cambios", { exact: true }).waitFor();
+  await team.getByText("Viable.", { exact: true }).waitFor();
+
+  await page.getByRole("button", { name: "Aprobar", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: OUTDATED_TITLE });
+  await dialog.waitFor();
+  const approve = dialog.getByRole("button", { name: "Aprobar de todos modos" });
+  assert.equal(await approve.isDisabled(), true, "sin confirmación no se puede aprobar");
+  await dialog.getByRole("checkbox", { name: OUTDATED_CONFIRM }).click();
+  await dialog.getByRole("textbox", { name: "Justificación de la aprobación" }).fill("corta");
+  await approve.click();
+  await dialog.getByText("Justifica la aprobación con al menos 10 caracteres.").waitFor();
+  assert.deepEqual(mutations, [], "una justificación insuficiente no llega a la API");
+
+  await dialog.getByRole("textbox", { name: "Justificación de la aprobación" }).fill("El cliente confirmó el presupuesto en la reunión.");
+  await confirmDecision(page, mutations, undefined, "Aprobar de todos modos");
+  assert.deepEqual(mutations[0].body, {
+    acknowledgeOutdatedReviews: true,
+    action: "approve",
+    outdatedReviewsJustification: "El cliente confirmó el presupuesto en la reunión.",
+  });
+  held.resolve({ json: { project: { id: 40, name: "Casa Prueba", status: "draft" }, projectRequest: { convertedProjectId: 40, id: 9, reviewedAt: "2026-10-05T12:00:00.000Z", status: "converted" } } });
+  await page.getByRole("dialog", { name: "Solicitud Aprobada" }).waitFor();
+});
+
+test("revisiones desactualizadas: el resumen avisa y una copia sin la marca pasa a la confirmación tras el 409", async (context) => {
+  const { page, mutations } = await openPage(context, {
+    detail: (attempt) => ({ json: { projectRequest: attempt === 1 ? REQUEST : OUTDATED_REQUEST } }),
+    extraDetails: { "/api/admin/users/11": { json: { user: { companyName: "Empresa Prueba", id: 11, name: "Cliente Prueba" } } } },
+    mutation: (route) => route.fulfill({ json: { code: "PROJECT_REQUEST_REVIEWS_OUTDATED", message: "Hay 1 revisión técnica anterior a los últimos cambios de la solicitud." }, status: 409 }),
+  });
+  // Sin la marca del backend no hay avisos (la fecha de la solicitud no cuenta).
+  assert.equal(await page.getByText("Revisiones desactualizadas", { exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Aprobar", exact: true }).click();
+  await confirmDecision(page, mutations, undefined, "Aprobar");
+  const dialog = page.getByRole("dialog", { name: OUTDATED_TITLE });
+  await dialog.waitFor();
+  await dialog.getByText(/anterior a los últimos cambios/).first().waitFor();
+  assert.equal(mutations.length, 1, "el rechazo no repite la decisión");
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  // La consulta se relee y ahora muestra el aviso; el resumen también.
+  await page.getByRole("region", { name: "Gestión de la solicitud" }).getByText("Revisiones desactualizadas", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Ver resumen & recomendación" }).click();
+  await page.getByRole("dialog").getByText(/La recomendación mostrada puede no reflejar los datos actuales/).waitFor();
+});

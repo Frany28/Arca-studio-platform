@@ -16,7 +16,9 @@ import {
   describeRecommendationNoteError,
 } from "../../utils/projectRequestRecommendations.js";
 import { PROJECT_REQUEST_CHANGES_REQUESTED_REASON } from "../../utils/projectRequestContactLinks.js";
+import { hasOutdatedReviews } from "../../utils/projectRequestOutdatedReviews.js";
 import ProjectRequestClientContactContent from "./ProjectRequestClientContactContent.jsx";
+import ProjectRequestOutdatedApprovalContent from "./ProjectRequestOutdatedApprovalContent.jsx";
 import ProjectRequestRecommendationContent from "./ProjectRequestRecommendationContent.jsx";
 import ProjectRequestRejectionContent from "./ProjectRequestRejectionContent.jsx";
 
@@ -41,7 +43,9 @@ function CloseIcon() {
  * con el contacto real y «Finalizar» como mutación; «Aprobar» pide confirmación con el diálogo
  * estándar centrado en verde (`ModalDialog`, Figma 2061:24296) y, aprobada la solicitud
  * (`completedAction`), muestra «Solicitud Aprobada» (3727:677374) con el contacto del cliente;
- * «Rechazar» muestra `ProjectRequestRejectionContent`.
+ * «Rechazar» muestra `ProjectRequestRejectionContent`. Si las revisiones técnicas son anteriores a los
+ * últimos cambios relevantes (`hasOutdatedReviews`), «Aprobar» muestra
+ * `ProjectRequestOutdatedApprovalContent`, que exige confirmación explícita y justificación.
  * La reunión exige selección explícita en revisión y nunca se envía desde una decisión administrativa.
  * Revisión del arquitecto (Figma Dashboard ARQ 3727:618270): el detalle ofrece «Recomendar rechazo»,
  * «Recomendar solicitar más información» y «Recomendar aprobación»; cada una abre su modal
@@ -268,6 +272,21 @@ function ProjectRequestWorkflowModal({
           open={open}
           projectRequest={projectRequest}
           purpose="changes_requested"
+          submitting={submitting}
+        />
+      ) : mode === "decision" && action === "approve" && hasOutdatedReviews(projectRequest) ? (
+        // Revisiones anteriores a los últimos cambios: aprobar es una excepción explícita, justificada y auditada.
+        <ProjectRequestOutdatedApprovalContent
+          dialogRef={dialogRef}
+          error={error}
+          onCancel={onClose}
+          onConfirm={(justification) => onSubmit?.({
+            acknowledgeOutdatedReviews: true,
+            action: "approve",
+            note: "",
+            outdatedReviewsJustification: justification,
+          })}
+          projectRequest={projectRequest}
           submitting={submitting}
         />
       ) : mode === "decision" && action === "approve" ? (

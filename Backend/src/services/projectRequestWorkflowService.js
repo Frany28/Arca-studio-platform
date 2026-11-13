@@ -1,4 +1,4 @@
-import { AppError, ConflictError, NotFoundError } from "../errors/appError.js";
+import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { buildProjectRequestMetrics } from "../domain/projectRequestEvaluation.js";
 import { buildProjectRequestReviewObservations } from "../domain/projectRequestReviewObservations.js";
 import { listProjectRequestFiles } from "../repositories/fileRepository.js";
@@ -129,8 +129,30 @@ function translateProjectNameConflict(error) {
 }
 
 /**
- * Procesa el valor de apply proyecto solicitud decisión para completar la responsabilidad asignada al módulo.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
+ * Traduce la excepción de aprobación con revisiones desactualizadas: la confirmación y la
+ * justificación deben llegar juntas; sin ambas no hay excepción.
+ *
+ * @param {object} payload - Cuerpo validado de la decisión.
+ * @returns {{justification: string}|null} Excepción explícita o null.
+ * @throws {ValidationError} Si solo llega una de las dos partes.
+ */
+function toOutdatedReviewsOverride(payload) {
+  const acknowledged = payload.acknowledgeOutdatedReviews === true;
+  const justification = payload.outdatedReviewsJustification || "";
+  if (acknowledged !== Boolean(justification)) {
+    throw new ValidationError("Confirma y justifica la aprobación con revisiones desactualizadas.", {
+      [acknowledged ? "body.outdatedReviewsJustification" : "body.acknowledgeOutdatedReviews"]:
+        "La confirmación y la justificación deben enviarse juntas.",
+    });
+  }
+  return acknowledged ? { justification } : null;
+}
+
+/**
+ * Aplica la decisión administrativa (aprobar, rechazar o solicitar correcciones) en PostgreSQL.
+ * Aprobar con revisiones técnicas anteriores a la última edición relevante de la solicitud
+ * exige una excepción explícita (confirmación y justificación) que queda auditada; sin ella
+ * responde 409 PROJECT_REQUEST_REVIEWS_OUTDATED y no cambia nada.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.payload - Valor de `options.payload` requerido por esta operación.
@@ -149,6 +171,7 @@ export async function applyProjectRequestDecision({
     result = await decideProjectRequestRecord({
       action: payload.action,
       internalNotes: payload.internalNotes || null,
+      outdatedReviewsOverride: payload.action === "approve" ? toOutdatedReviewsOverride(payload) : null,
       projectRequestId,
       reason: payload.reason || null,
       reviewedBy: user.id,
@@ -161,6 +184,14 @@ export async function applyProjectRequestDecision({
     throw new NotFoundError(
       "PROJECT_REQUEST_NOT_FOUND",
       "Solicitud de proyecto no encontrada.",
+    );
+  }
+  if (result.outcome === "outdated_reviews") {
+    throw new ConflictError(
+      "PROJECT_REQUEST_REVIEWS_OUTDATED",
+      result.outdatedReviews === 1
+        ? "Hay 1 revisión técnica anterior a los últimos cambios de la solicitud. Pide una revisión actualizada o confirma y justifica la aprobación."
+        : `Hay ${result.outdatedReviews} revisiones técnicas anteriores a los últimos cambios de la solicitud. Pide una revisión actualizada o confirma y justifica la aprobación.`,
     );
   }
   if (result.outcome === "invalid_state") {

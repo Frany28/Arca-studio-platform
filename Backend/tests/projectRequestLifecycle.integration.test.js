@@ -1016,3 +1016,264 @@ test("PostgreSQL y HTTP: el administrador sube archivos y asigna encargados a un
   assert.equal(architectUpload.status, 404);
   assert.equal((await api(`/projects/${projectId}/comments`, { body: { content: "Hola" }, headers: admin, method: "POST" })).status, 409);
 });
+
+/**
+ * Convierte la representación editable de la API en el cuerpo del formulario
+ * (buildProjectRequestPayload), con la versión leída para el control de concurrencia.
+ *
+ * @param {Object} projectRequest - Respuesta de GET /admin/project-requests/:id/form.
+ * @param {Object} [overrides] - Campos a sustituir.
+ * @returns {Object} Cuerpo de PUT /admin/project-requests/:id/form.
+ */
+function adminEditPayload(projectRequest, overrides = {}) {
+  return {
+    capitalAvailability: projectRequest.capitalAvailability,
+    decisionMaker: projectRequest.decisionMaker,
+    description: projectRequest.description,
+    developmentMode: projectRequest.developmentMode,
+    expectedUpdatedAt: projectRequest.updatedAt,
+    experience: projectRequest.experience,
+    hasBlueprints: projectRequest.hasPlans,
+    hasMultipleOwners: projectRequest.hasMultipleOwners,
+    investmentRange: projectRequest.investmentRange,
+    landStatus: projectRequest.landStatus,
+    legalDocumentTypes: projectRequest.legalDocumentTypes,
+    legalDocumentationStatus: projectRequest.legalDocumentationStatus,
+    projectLocation: projectRequest.location,
+    projectLocationFormattedAddress: projectRequest.formattedAddress,
+    projectLocationLatitude: projectRequest.locationCoordinates?.latitude ?? null,
+    projectLocationLongitude: projectRequest.locationCoordinates?.longitude ?? null,
+    projectLocationProviderPlaceId: projectRequest.providerPlaceId,
+    projectName: projectRequest.projectName,
+    projectSize: projectRequest.projectSize,
+    projectType: projectRequest.projectType,
+    quality: projectRequest.quality,
+    referenceLink: projectRequest.referenceLink,
+    standRequirements: projectRequest.standRequirements,
+    startTime: projectRequest.startTime,
+    ...overrides,
+  };
+}
+
+const workflowSnapshot = async (id) => (await database.client.query(`
+  select r.status, r.client_id, r.requested_by, r.reviewed_by, r.converted_project_id, r.verified_at,
+    (select count(*)::int from public.project_request_assignees a where a.project_request_id = r.id) as assignees,
+    (select count(*)::int from public.project_request_reviews v where v.project_request_id = r.id) as reviews,
+    (select count(*)::int from public.project_requests same where same.client_id = r.client_id and same.deleted_at is null) as client_requests,
+    (select count(*)::int from public.projects p where p.client_id = r.client_id) as client_projects
+  from public.project_requests r where r.id = $1`, [id])).rows[0];
+
+const adminEditAudits = async (id) => (await database.client.query(
+  "select user_id, new_values, old_values from public.audit_logs where action = 'project_request.admin_update' and entity_id = $1 order by id",
+  [id],
+)).rows;
+
+test("PostgreSQL y HTTP: el administrador edita una solicitud en evaluación sin cambiar su estado, workflow ni adjuntos", { skip }, async () => {
+  const { fileIds, headers, id } = await reviewedRequest([png("referencia.png"), pdf("escritura.pdf")]);
+  const anonymous = await api(`/admin/project-requests/${id}/form`);
+  assert.equal(anonymous.status, 401);
+  assert.equal((await api(`/admin/project-requests/${id}/form`, { headers: headers.owner })).status, 403);
+  assert.equal((await api(`/admin/project-requests/${id}/form`, { headers: headers.architect })).status, 403);
+  assert.equal((await api("/admin/project-requests/999999999/form", { headers: headers.admin })).status, 404);
+
+  // Precarga: respuestas reales con sus false/null, adjuntos y versión.
+  const loaded = await api(`/admin/project-requests/${id}/form`, { headers: headers.admin });
+  assert.equal(loaded.status, 200, JSON.stringify(loaded.body));
+  const original = loaded.body.projectRequest;
+  assert.equal(original.id, id);
+  assert.equal(original.editable, true);
+  assert.equal(original.hasMultipleOwners, false);
+  assert.equal(original.hasPlans, true);
+  assert.deepEqual(original.locationCoordinates, { latitude: 10.6545, longitude: -71.6406 });
+  assert.deepEqual(original.files.map((file) => file.id), fileIds);
+  assert.equal("submissionId" in original, false);
+  const before = await workflowSnapshot(id);
+  const versionsBefore = (await database.client.query("select file_id, file_name, file_size, version_number from public.file_versions where file_id = any($1) order by file_id", [fileIds])).rows;
+  const objectsBefore = storage.size;
+
+  // Cuerpos inválidos o con campos de workflow no se aceptan ni modifican nada.
+  const workflowField = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(original, { status: "converted" }), headers: headers.admin, method: "PUT" });
+  assert.equal(workflowField.status, 400);
+  const invalid = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(original, { description: "corta" }), headers: headers.admin, method: "PUT" });
+  assert.equal(invalid.status, 400);
+  assert.ok(invalid.body.fields["body.description"]);
+  assert.equal((await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(original), headers: headers.architect, method: "PUT" })).status, 403);
+  assert.equal((await adminEditAudits(id)).length, 0);
+
+  // Guardar sin cambios no mueve la versión ni audita.
+  const noop = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(original), headers: headers.admin, method: "PUT" });
+  assert.equal(noop.status, 200, JSON.stringify(noop.body));
+  assert.deepEqual(noop.body.changedFields, []);
+  assert.equal(noop.body.projectRequest.updatedAt, original.updatedAt);
+  assert.equal((await adminEditAudits(id)).length, 0);
+
+  // Edición real: texto, booleano a true, opcionales a null y sin coordenadas.
+  const saved = await api(`/admin/project-requests/${id}/form`, {
+    body: adminEditPayload(original, {
+      decisionMaker: null,
+      description: "Vivienda unifamiliar de tres plantas frente al lago, con terraza y piscina.",
+      hasMultipleOwners: true,
+      projectLocationFormattedAddress: null,
+      projectLocationLatitude: null,
+      projectLocationLongitude: null,
+      projectLocationProviderPlaceId: null,
+    }),
+    headers: headers.admin,
+    method: "PUT",
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.changedFields, ["formattedAddress", "locationCoordinates", "providerPlaceId", "description", "hasMultipleOwners", "decisionMaker"]);
+  const edited = saved.body.projectRequest;
+  assert.equal(edited.id, id, "se conserva el identificador");
+  assert.equal(edited.status, original.status, "guardar no decide ni reenvía");
+  assert.equal(edited.hasMultipleOwners, true);
+  assert.equal(edited.decisionMaker, null);
+  assert.equal(edited.locationCoordinates, null);
+  assert.notEqual(edited.updatedAt, original.updatedAt);
+  assert.deepEqual(edited.files.map((file) => file.id), fileIds, "los adjuntos siguen en la solicitud");
+
+  // Persistencia: la recarga devuelve lo guardado; el workflow, el cliente y los adjuntos no cambian.
+  const reloaded = (await api(`/admin/project-requests/${id}/form`, { headers: headers.admin })).body.projectRequest;
+  assert.equal(reloaded.description, edited.description);
+  assert.equal(reloaded.hasMultipleOwners, true);
+  assert.equal(reloaded.updatedAt, edited.updatedAt);
+  assert.deepEqual(await workflowSnapshot(id), before);
+  assert.deepEqual((await database.client.query("select file_id, file_name, file_size, version_number from public.file_versions where file_id = any($1) order by file_id", [fileIds])).rows, versionsBefore);
+  assert.equal(storage.size, objectsBefore, "sin objetos duplicados");
+  const compatibility = (await database.client.query("select compatibility_score, compatibility_level from public.project_requests where id = $1", [id])).rows[0];
+  assert.equal(Number(compatibility.compatibility_score), edited.compatibility.score, "compatibilidad recalculada y persistida");
+  assert.equal((await api(`/admin/project-requests/${id}`, { headers: headers.admin })).body.projectRequest.description, edited.description, "la consulta administrativa ve el cambio");
+  assert.equal((await api(`/project-requests/${id}`, { headers: headers.owner })).body.projectRequest.description, edited.description, "el cliente ve su solicitud actualizada");
+
+  // Auditoría: quién, qué solicitud y qué campos, sin copiar las respuestas.
+  const audits = await adminEditAudits(id);
+  assert.equal(audits.length, 1);
+  assert.equal(Number(audits[0].user_id), seed.admin);
+  assert.deepEqual(audits[0].new_values.changedFields, saved.body.changedFields);
+  assert.equal(JSON.stringify(audits[0]).includes("piscina"), false, "la auditoría no guarda el texto del cliente");
+
+  // Concurrencia: guardar con la versión anterior no sobrescribe.
+  const stale = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(original, { description: "Otra descripción suficientemente larga para pasar la validación." }), headers: headers.admin, method: "PUT" });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, "PROJECT_REQUEST_EDIT_CONFLICT");
+  assert.equal((await api(`/admin/project-requests/${id}/form`, { headers: headers.admin })).body.projectRequest.description, edited.description);
+  const [first, second] = await Promise.all([1, 2].map((index) => api(`/admin/project-requests/${id}/form`, {
+    body: adminEditPayload(reloaded, { description: `Edición simultánea número ${index} con texto suficientemente largo.` }),
+    headers: headers.admin,
+    method: "PUT",
+  })));
+  assert.deepEqual([first.status, second.status].sort(), [200, 409], "solo una edición simultánea gana");
+
+  // Unicidad del nombre dentro del mismo cliente.
+  const other = await reviewedRequest([]);
+  const otherName = (await api(`/admin/project-requests/${other.id}/form`, { headers: headers.admin })).body.projectRequest.projectName;
+  const current = (await api(`/admin/project-requests/${id}/form`, { headers: headers.admin })).body.projectRequest;
+  const duplicated = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(current, { projectName: otherName }), headers: headers.admin, method: "PUT" });
+  assert.equal(duplicated.status, 409);
+  assert.equal(duplicated.body.code, "PROJECT_NAME_ALREADY_EXISTS");
+
+  // Tras una decisión deja de ser editable: se consulta, pero no se guarda.
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "reject", reason: "Fuera del alcance del estudio." }, headers: headers.admin, method: "PATCH" })).status, 200);
+  const closed = (await api(`/admin/project-requests/${id}/form`, { headers: headers.admin })).body.projectRequest;
+  assert.equal(closed.editable, false);
+  const rejectedEdit = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(closed), headers: headers.admin, method: "PUT" });
+  assert.equal(rejectedEdit.status, 409);
+  assert.equal(rejectedEdit.body.code, "PROJECT_REQUEST_NOT_EDITABLE");
+  assert.equal((await workflowSnapshot(id)).status, "rejected");
+});
+
+test("PostgreSQL y HTTP: la edición administrativa no alcanza borradores del cliente", { skip }, async () => {
+  const owner = await authAs(seed.owner);
+  const admin = await authAs(seed.admin);
+  const created = await api("/project-requests", { body: { ...draftPayload(), submissionId: randomUUID() }, headers: owner, method: "POST" });
+  const id = created.body.projectRequest.id;
+  assert.equal((await api(`/admin/project-requests/${id}/form`, { headers: admin })).status, 404);
+  const attempt = await api(`/admin/project-requests/${id}/form`, {
+    body: adminEditPayload(created.body.projectRequest),
+    headers: admin,
+    method: "PUT",
+  });
+  assert.equal(attempt.status, 404);
+  assert.equal((await requestRow(id)).status, "draft");
+});
+
+test("PostgreSQL y HTTP: las revisiones anteriores a cambios relevantes se marcan y protegen la aprobación", { skip }, async () => {
+  const { headers, id } = await reviewedRequest([]);
+  const detail = async () => (await api(`/admin/project-requests/${id}`, { headers: headers.admin })).body.projectRequest;
+  const form = async () => (await api(`/admin/project-requests/${id}/form`, { headers: headers.admin })).body.projectRequest;
+  const edit = async (overrides) => {
+    const saved = await api(`/admin/project-requests/${id}/form`, { body: adminEditPayload(await form(), overrides), headers: headers.admin, method: "PUT" });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    return saved.body;
+  };
+  const initial = await detail();
+  assert.equal(initial.hasOutdatedReviews, false);
+  assert.equal(initial.answersRevisedAt, null);
+  assert.deepEqual(initial.reviews.map((review) => review.outdated), [false]);
+
+  // Sin avisos falsos: cambiar responsables o datos que no afectan a la revisión no marca nada.
+  assert.equal((await api(`/admin/project-requests/${id}/assignees`, { body: { assigneeIds: [seed.architect, seed.admin] }, headers: headers.admin, method: "PUT" })).status, 200);
+  const renamed = await edit({ projectName: `Casa renombrada ${randomUUID().slice(0, 8)}`, referenceLink: null });
+  assert.deepEqual(renamed.changedFields, ["projectName", "referenceLink"]);
+  assert.equal((await detail()).hasOutdatedReviews, false, "nombre y enlace no desactualizan la revisión");
+
+  // Un cambio relevante marca la revisión previa, sin modificarla ni cambiar el estado.
+  const reviewBefore = (await database.client.query("select reviewer_id, recommendation, note, updated_at from public.project_request_reviews where project_request_id = $1", [id])).rows;
+  await edit({ investmentRange: "50k_150k" });
+  const revised = await detail();
+  assert.equal(revised.hasOutdatedReviews, true);
+  assert.ok(revised.answersRevisedAt);
+  assert.deepEqual(revised.reviews.map((review) => review.outdated), [true]);
+  assert.equal(revised.status, "pending_review");
+  assert.deepEqual((await database.client.query("select reviewer_id, recommendation, note, updated_at from public.project_request_reviews where project_request_id = $1", [id])).rows, reviewBefore, "la revisión original se conserva");
+  const queue = await api("/project-requests/review-queue?limit=100", { headers: headers.admin });
+  assert.equal(queue.body.projectRequests.find((request) => request.id === id).hasOutdatedReviews, true, "la cola (resumen) también lo indica");
+  const audit = (await database.client.query("select new_values from public.audit_logs where action = 'project_request.admin_update' and entity_id = $1 order by id desc limit 1", [id])).rows[0];
+  assert.deepEqual(audit.new_values.reviewRelevantFields, ["investmentRange"]);
+
+  // Aprobar sin excepción se rechaza y no crea nada; la excepción exige confirmación y justificación.
+  const blocked = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.code, "PROJECT_REQUEST_REVIEWS_OUTDATED");
+  assert.equal((await workflowSnapshot(id)).status, "pending_review");
+  assert.equal((await database.client.query("select converted_project_id from public.project_requests where id = $1", [id])).rows[0].converted_project_id, null);
+  for (const body of [
+    { acknowledgeOutdatedReviews: true, action: "approve" },
+    { action: "approve", outdatedReviewsJustification: "El cliente confirmó el presupuesto por teléfono." },
+    { acknowledgeOutdatedReviews: true, action: "approve", outdatedReviewsJustification: "corta" },
+  ]) {
+    assert.equal((await api(`/admin/project-requests/${id}/decision`, { body, headers: headers.admin, method: "PATCH" })).status, 400, JSON.stringify(body));
+  }
+
+  // Una revisión nueva sobre los datos actuales retira el aviso; otra edición relevante lo repone.
+  const rereview = await api(`/project-requests/${id}/review`, { body: { note: "Revisado con el presupuesto actualizado.", recommendation: "approve" }, headers: headers.architect, method: "PUT" });
+  assert.equal(rereview.status, 200, JSON.stringify(rereview.body));
+  assert.equal((await detail()).hasOutdatedReviews, false);
+  await edit({ startTime: "3_6_months" });
+  assert.equal((await detail()).hasOutdatedReviews, true);
+
+  // Excepción explícita: aprueba y queda auditada con su justificación.
+  const approved = await api(`/admin/project-requests/${id}/decision`, {
+    body: { acknowledgeOutdatedReviews: true, action: "approve", outdatedReviewsJustification: "El cliente confirmó el nuevo plazo en la reunión." },
+    headers: headers.admin,
+    method: "PATCH",
+  });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  const decisionAudit = (await database.client.query("select new_values from public.audit_logs where action = 'project_request.approve' and entity_id = $1", [id])).rows[0];
+  assert.deepEqual(decisionAudit.new_values.outdatedReviewsOverride, { justification: "El cliente confirmó el nuevo plazo en la reunión.", outdatedReviews: 1 });
+  assert.equal(Number((await database.client.query("select count(*) from public.project_request_reviews where project_request_id = $1", [id])).rows[0].count), 1);
+});
+
+test("PostgreSQL y HTTP: sin revisiones desactualizadas la aprobación y el rechazo no cambian", { skip }, async () => {
+  const { headers, id } = await reviewedRequest([]);
+  const other = await reviewedRequest([]);
+  const current = (await api(`/admin/project-requests/${other.id}/form`, { headers: headers.admin })).body.projectRequest;
+  assert.equal((await api(`/admin/project-requests/${other.id}/form`, { body: adminEditPayload(current, { quality: "luxury" }), headers: headers.admin, method: "PUT" })).status, 200);
+  // Rechazar o pedir correcciones con revisiones desactualizadas no exige la excepción.
+  assert.equal((await api(`/admin/project-requests/${other.id}/decision`, { body: { action: "reject", reason: "Fuera del alcance del estudio." }, headers: headers.admin, method: "PATCH" })).status, 200);
+  // Sin ediciones, aprobar sigue funcionando como antes y no audita ninguna excepción.
+  const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  const decisionAudit = (await database.client.query("select new_values from public.audit_logs where action = 'project_request.approve' and entity_id = $1", [id])).rows[0];
+  assert.equal("outdatedReviewsOverride" in decisionAudit.new_values, false);
+});

@@ -17,7 +17,7 @@ import { isArchivedProject } from "../admin-dashboard/components/admin-active-pr
 import { useAdminDashboardData } from "../admin-dashboard/hooks/useAdminDashboardData.js";
 import { useAdminProjectMutations } from "../admin-dashboard/hooks/useAdminProjectMutations.js";
 import { getProjectPath } from "../../utils/projectRoutes.js";
-import { getAdminProjectRequestPath } from "../../utils/projectRequestRoutes.js";
+import { getAdminProjectRequestEditPath, getAdminProjectRequestPath } from "../../utils/projectRequestRoutes.js";
 import ProjectArchiveModal from "./components/ProjectArchiveModal.jsx";
 import ProjectSettingsModal from "./components/ProjectSettingsModal.jsx";
 import { useAdminProjectRequestRows } from "./hooks/useAdminProjectRequestRows.js";
@@ -28,6 +28,8 @@ import { isProjectRequestRow } from "./utils/projectRequestRows.js";
 import { getProjectRowActions } from "./utils/projectRowActions.js";
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
+// Contexto de regreso del formulario «Editar solicitud» y de su consulta (breadcrumb y «Volver»).
+const EDIT_RETURN_TARGET = Object.freeze({ label: "Gestión de proyectos", to: "/gestion-proyectos" });
 
 /**
  * Compone Gestión de Proyectos con las lecturas, la tabla y las mutaciones del dashboard.
@@ -96,10 +98,10 @@ export default function AdminProjectsPage() {
         onProjectAssigneesChange={(row, assignees) => (isProjectRequestRow(row) ? updateRequestAssignees(row, assignees) : updateProjectAssignees(row, assignees))}
         getProjectActions={(row) => (isProjectRequestRow(row) ? [] : getProjectRowActions(row))} onProjectAction={rowActions.handleRowAction}
         onOpenProject={(row) => navigate(isProjectRequestRow(row) ? getAdminProjectRequestPath(row.requestId) : getProjectPath(row))}
-        // «Editar solicitud» abre su consulta administrativa (decisiones). Los proyectos aún no
-        // tienen edición de datos (ni pantalla ni endpoint), así que su lápiz sigue deshabilitado.
+        // «Editar solicitud» abre el formulario de solicitud en modo edición (mismo formulario que
+        // la creación). Los proyectos aún no tienen edición de datos, así que su lápiz sigue deshabilitado.
         canEditProject={isProjectRequestRow}
-        onEditProject={(row) => navigate(getAdminProjectRequestPath(row.requestId))}
+        onEditProject={(row) => navigate(getAdminProjectRequestEditPath(row.requestId), { state: { from: EDIT_RETURN_TARGET } })}
         onRetry={() => setRequestKey((key) => key + 1)}
       />
       <ProjectSettingsModal

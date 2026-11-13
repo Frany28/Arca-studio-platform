@@ -1,3 +1,4 @@
+import { describeOutdatedReviews, hasOutdatedReviews } from "../../../utils/projectRequestOutdatedReviews.js";
 import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
 import {
   getCompletenessPresentation,
@@ -73,6 +74,8 @@ export function buildAdminRequestDetails({ summary, queueRequest = null }) {
     id: source.id,
     isPartial: !queueRequest,
     justification: latestReview?.note?.trim() || null,
+    // Revisiones técnicas anteriores a los últimos cambios relevantes (marca del backend en la cola).
+    outdatedReviewsNotice: hasOutdatedReviews(queueRequest) ? describeOutdatedReviews(queueRequest) : null,
     location: queueRequest?.location?.trim() || null,
     projectName: source.projectName || "Solicitud de proyecto",
     projectType: source.projectType || null,

@@ -2,6 +2,19 @@ import { pool, query } from "../config/db.js";
 import { mapRequestToDraftProject } from "../domain/projectConfiguration.js";
 import { pageResult } from "../utils/pagination.js";
 
+// Última edición administrativa de cada solicitud que cambió respuestas relevantes para la revisión
+// técnica, según la auditoría (`project_request.admin_update` con `reviewRelevantFields` no vacío).
+// No usa `updated_at`: también cambia al asignar responsables o decidir. Es un único agregado por
+// consulta (una lectura de audit_logs, que no tiene índice por entidad), no una subconsulta por fila.
+const ANSWERS_REVISION_SOURCE = `
+        select audit.entity_id, max(audit.created_at) as revised_at
+        from public.audit_logs audit
+        where audit.entity_type = 'project_request'
+          and audit.action = 'project_request.admin_update'
+          and jsonb_typeof(audit.new_values -> 'reviewRelevantFields') = 'array'
+          and jsonb_array_length(audit.new_values -> 'reviewRelevantFields') > 0
+        group by audit.entity_id`;
+
 // Columnas y relaciones de una solicitud en el flujo de revisión. Las comparten la cola técnica
 // y el detalle administrativo por ID para que ambos devuelvan responsables, revisiones y
 // adjuntos con la misma forma y el mismo mapeo (`toWorkflowRequest`).
@@ -36,12 +49,15 @@ const WORKFLOW_REQUEST_COLUMNS = `
         request.first_contact_at,
         request.created_at,
         request.updated_at,
+        answers_revision.revised_at as answers_revised_at,
         coalesce(assignment.assignees, '[]'::json) as assignees,
         coalesce(review.reviews, '[]'::json) as reviews,
         coalesce(attachment.files, '[]'::json) as files`;
 
 const WORKFLOW_REQUEST_RELATIONS = `
       left join public.clients request_client on request_client.id = request.client_id
+      left join (${ANSWERS_REVISION_SOURCE}
+      ) answers_revision on answers_revision.entity_id = request.id
       left join lateral (
         select json_agg(
           json_build_object(
@@ -64,6 +80,10 @@ const WORKFLOW_REQUEST_RELATIONS = `
             'meetingRecommendation', request_review.meeting_recommendation,
             'recommendation', request_review.recommendation,
             'updatedAt', request_review.updated_at,
+            -- Anterior a la última edición relevante: la revisión valoró datos que ya cambiaron.
+            -- Se compara en PostgreSQL con precisión de microsegundos; una revisión nueva o
+            -- actualizada después de la edición deja de estarlo.
+            'outdated', coalesce(request_review.updated_at < answers_revision.revised_at, false),
             'reviewer', json_build_object(
               'id', reviewer.id,
               'name', concat_ws(' ', reviewer.first_name, reviewer.last_name),
@@ -185,10 +205,14 @@ function toWorkflowRequest(row) {
     requestedBy: row.requested_by == null ? null : Number(row.requested_by),
     standRequirements: row.stand_requirements ?? null,
     rejectionReason: row.rejection_reason || null,
+    // Fecha de la última edición administrativa que cambió respuestas relevantes para la revisión.
+    answersRevisedAt: row.answers_revised_at || null,
+    hasOutdatedReviews: Array.isArray(row.reviews) && row.reviews.some((review) => review.outdated === true),
     reviews: Array.isArray(row.reviews)
       ? row.reviews.map((review) => ({
           meetingRecommendation: review.meetingRecommendation ?? null,
           note: review.note,
+          outdated: review.outdated === true,
           recommendation: review.recommendation,
           reviewer: toPerson(review.reviewer),
           updatedAt: review.updatedAt,
@@ -425,12 +449,38 @@ export async function upsertProjectRequestReview({
 }
 
 /**
+ * Cuenta en PostgreSQL las revisiones técnicas de una solicitud registradas antes de su última
+ * edición administrativa relevante (ver ANSWERS_REVISION_SOURCE). Se usa dentro de la transacción
+ * de la decisión, con la solicitud ya bloqueada.
+ *
+ * @param {{ query: Function }} executor - Cliente de la transacción.
+ * @param {number|string} projectRequestId - Solicitud que se decide.
+ * @returns {Promise<number>} Revisiones anteriores a la última edición relevante (0 si no hay edición).
+ */
+async function countOutdatedReviews(executor, projectRequestId) {
+  const result = await executor.query(
+    `
+      select count(*)::int as outdated
+      from public.project_request_reviews review
+      inner join (${ANSWERS_REVISION_SOURCE}
+      ) answers_revision on answers_revision.entity_id = review.project_request_id
+      where review.project_request_id = $1
+        and review.updated_at < answers_revision.revised_at
+    `,
+    [projectRequestId],
+  );
+  return Number(result.rows[0]?.outdated || 0);
+}
+
+/**
  * Procesa el valor de decide proyecto solicitud para completar la responsabilidad asignada al módulo.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
  * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} options.action - Valor de `options.action` requerido por esta operación.
  * @param {unknown} options.internalNotes - Valor de `options.internalNotes` requerido por esta operación.
+ * @param {{justification: string}|null} [options.outdatedReviewsOverride=null] - Excepción explícita para aprobar con
+ *   revisiones anteriores a la última edición relevante; sin ella la aprobación responde `outdated_reviews`.
  * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
  * @param {unknown} options.reason - Valor de `options.reason` requerido por esta operación.
  * @param {unknown} options.reviewedBy - Valor de `options.reviewedBy` requerido por esta operación.
@@ -440,6 +490,7 @@ export async function upsertProjectRequestReview({
 export async function decideProjectRequest({
   action,
   internalNotes,
+  outdatedReviewsOverride = null,
   projectRequestId,
   reason,
   reviewedBy,
@@ -466,6 +517,18 @@ export async function decideProjectRequest({
     if (!["pending_verification", "pending_review"].includes(request.status)) {
       await client.query("rollback");
       return { outcome: "invalid_state", status: request.status };
+    }
+
+    // Aprobar con revisiones técnicas anteriores a la última edición relevante exige una excepción
+    // explícita (confirmación y justificación), que queda auditada con la decisión. La fila está
+    // bloqueada: una edición o revisión simultánea no puede cambiar el resultado de esta comprobación.
+    let outdatedReviews = 0;
+    if (action === "approve") {
+      outdatedReviews = await countOutdatedReviews(client, projectRequestId);
+      if (outdatedReviews > 0 && !outdatedReviewsOverride) {
+        await client.query("rollback");
+        return { outcome: "outdated_reviews", outdatedReviews };
+      }
     }
 
     // La revisión técnica es opcional: el administrador puede decidir sin asignaciones.
@@ -563,6 +626,9 @@ export async function decideProjectRequest({
         JSON.stringify({
           convertedProjectId: project ? Number(project.id) : null,
           status: nextStatus,
+          ...(outdatedReviews > 0 && outdatedReviewsOverride
+            ? { outdatedReviewsOverride: { justification: outdatedReviewsOverride.justification, outdatedReviews } }
+            : {}),
         }),
       ],
     );

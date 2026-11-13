@@ -37,3 +37,16 @@ export function parseProjectRequestId(value) {
   const id = Number(value);
   return Number.isSafeInteger(id) ? id : null;
 }
+
+// Edición administrativa de una solicitud con el mismo formulario de creación (solo rol admin).
+export const ADMIN_PROJECT_REQUEST_EDIT_ROUTE = "/solicitudes-proyecto/:projectRequestId/editar";
+
+/**
+ * Construye el enlace al formulario «Editar solicitud» del administrador.
+ *
+ * @param {number|string} projectRequestId - ID de la solicitud.
+ * @returns {string} Ruta `/solicitudes-proyecto/:id/editar`.
+ */
+export function getAdminProjectRequestEditPath(projectRequestId) {
+  return `${getAdminProjectRequestPath(projectRequestId)}/editar`;
+}

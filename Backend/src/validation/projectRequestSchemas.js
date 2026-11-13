@@ -262,6 +262,16 @@ export const updateProjectRequestSchema = z.object({
   params: z.object({ projectRequestId: positiveId }),
 });
 
+// Edición administrativa: las mismas respuestas y reglas del formulario, más la versión leída al
+// abrirlo (`expectedUpdatedAt`) para no sobrescribir cambios posteriores. `.strict()` rechaza
+// cualquier campo de workflow (estado, cliente, responsables, revisiones) enviado en el cuerpo.
+export const adminUpdateProjectRequestSchema = z.object({
+  body: projectRequestBody.safeExtend({
+    expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
+  params: z.object({ projectRequestId: positiveId }),
+});
+
 export const projectRequestIdSchema = z.object({
   params: z.object({ projectRequestId: positiveId }),
 });

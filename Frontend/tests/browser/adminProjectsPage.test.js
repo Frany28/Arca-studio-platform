@@ -473,15 +473,16 @@ test("Gestión: las solicitudes abiertas aparecen en la tabla con su cliente, es
   await page.getByRole("heading", { name: "Gestión de proyectos", exact: true }).click();
   assert.equal(await rows.count(), 2);
 
-  // El ojo abre el detalle administrativo de la solicitud (su lectura queda fuera de esta prueba).
+  // El lápiz abre «Editar solicitud» y el ojo la consulta administrativa (sus lecturas quedan fuera de esta prueba).
   await page.route((url) => url.pathname.startsWith("/api/admin/project-requests/30"), (route) => route.fulfill({ json: { code: "PROJECT_REQUEST_NOT_FOUND", message: "Fuera de la prueba" }, status: 404 }));
-  // «Editar solicitud» está habilitado y abre la misma consulta; los proyectos aún no tienen edición.
+  // «Editar solicitud» está habilitado y abre el formulario en modo edición; los proyectos aún no tienen edición.
   const editRequest = request.getByRole("button", { name: "Editar Stand Aurea", exact: true });
   assert.equal(await editRequest.isEnabled(), true);
   await editRequest.hover();
   await page.getByRole("tooltip").filter({ hasText: "Editar solicitud" }).waitFor();
   await editRequest.click();
-  await page.waitForURL((url) => url.pathname === "/solicitudes-proyecto/30");
+  await page.waitForURL((url) => url.pathname === "/solicitudes-proyecto/30/editar");
+  assert.deepEqual(await page.evaluate(() => window.history.state?.usr?.from), { label: "Gestión de proyectos", to: "/gestion-proyectos" });
   await page.goBack();
   await page.getByRole("heading", { name: "Gestión de proyectos", exact: true }).waitFor();
   await page.getByRole("button", { name: "Ver Stand Aurea" }).click();

@@ -17,7 +17,11 @@ export const projectRequestDecisionSchema = z.object({
   body: z.discriminatedUnion("action", [
     z.object({
       action: z.literal("approve"),
+      // Excepción para aprobar con revisiones técnicas anteriores a la última edición relevante:
+      // confirmación explícita y justificación juntas (el servicio exige ambas o ninguna).
+      acknowledgeOutdatedReviews: z.literal(true).optional(),
       internalNotes: z.string().trim().max(4000).nullable().optional(),
+      outdatedReviewsJustification: z.string().trim().min(10).max(2000).optional(),
     }).strict(),
     z.object({
       action: z.literal("reject"),

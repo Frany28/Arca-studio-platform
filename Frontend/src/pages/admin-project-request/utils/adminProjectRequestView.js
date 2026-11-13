@@ -1,3 +1,4 @@
+import { describeOutdatedReviews, hasOutdatedReviews } from "../../../utils/projectRequestOutdatedReviews.js";
 import { buildProjectRequestStages } from "../../../utils/projectRequestStages.js";
 import { getCompatibilityPresentation } from "../../../utils/projectRequestCompatibility.js";
 import {
@@ -95,6 +96,7 @@ export function buildAdminRequestTeam(projectRequest) {
     .map((review, index) => ({
       key: `${review?.reviewer?.id ?? "reviewer"}-${index}`,
       note: review?.note?.trim() || "",
+      outdated: review?.outdated === true,
       recommendationLabel: REVIEW_RECOMMENDATION_LABELS[review?.recommendation] || "Revisión registrada",
       reviewerName: review?.reviewer?.name || "Usuario",
       updatedAt: review?.updatedAt || null,
@@ -105,7 +107,10 @@ export function buildAdminRequestTeam(projectRequest) {
     ? { badgeTheme: statusPresentation.badgeTheme, label: statusPresentation.label }
     : null;
 
-  return { assignees, reviews, status };
+  // Aviso de revisiones anteriores a los últimos cambios relevantes (marca del backend, no updatedAt).
+  const outdatedNotice = hasOutdatedReviews(projectRequest) ? describeOutdatedReviews(projectRequest) : null;
+
+  return { assignees, outdatedNotice, reviews, status };
 }
 
 /**

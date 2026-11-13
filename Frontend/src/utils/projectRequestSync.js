@@ -16,6 +16,8 @@ const STALE_PROJECT_REQUEST_ERROR_CODES = new Set([
   "PROJECT_REQUEST_CLOSED",
   "PROJECT_REQUEST_INVALID_STATE",
   "PROJECT_REQUEST_NOT_FOUND",
+  // Otra persona editó la solicitud y sus revisiones quedaron desactualizadas.
+  "PROJECT_REQUEST_REVIEWS_OUTDATED",
 ]);
 
 /**

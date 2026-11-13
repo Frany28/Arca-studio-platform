@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { OUTDATED_REVIEWS_ERROR_CODE, withOutdatedReviewsDetected } from "../utils/projectRequestOutdatedReviews.js";
 import { isStaleProjectRequestError } from "../utils/projectRequestSync.js";
 
 /**
@@ -60,12 +61,12 @@ export function useProjectRequestWorkflowSelection({ getSuccessFeedback, keepOpe
    * @param {{action: string, meetingRecommendation?: string, note: string}} values - Valores del modal.
    * @returns {Promise<void>} Completa el envío; los errores quedan en `error`.
    */
-  const submit = async ({ action, meetingRecommendation, note }) => {
+  const submit = async ({ acknowledgeOutdatedReviews, action, meetingRecommendation, note, outdatedReviewsJustification }) => {
     if (!selectedRequest || submitting) return;
     setSubmitting(true);
     setError("");
     try {
-      const values = { action, meetingRecommendation, note };
+      const values = { acknowledgeOutdatedReviews, action, meetingRecommendation, note, outdatedReviewsJustification };
       const result = await submitOperation(selectedRequest, values);
       const nextFeedback = getSuccessFeedback?.(selectedRequest, values, result) || null;
       // Una acción completada que el consumidor quiere mostrar mantiene el modal abierto.
@@ -75,6 +76,9 @@ export function useProjectRequestWorkflowSelection({ getSuccessFeedback, keepOpe
       if (nextFeedback) setFeedback({ ...nextFeedback, id: `${selectedRequest.id}-${Date.now()}` });
     } catch (submitError) {
       setError(submitError?.message || "No se pudo guardar la revisión.");
+      // La copia mostrada no sabía que las revisiones quedaron desactualizadas: el modal pasa a
+      // pedir confirmación y justificación sin cerrarse.
+      if (submitError?.code === OUTDATED_REVIEWS_ERROR_CODE) setSelectedRequest(withOutdatedReviewsDetected);
       if (isStaleProjectRequestError(submitError)) onStaleError?.(submitError);
     } finally {
       setSubmitting(false);

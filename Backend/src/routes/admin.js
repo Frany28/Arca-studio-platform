@@ -36,6 +36,10 @@ import {
 } from "../controllers/adminUserController.js";
 import { postAdminUserActivationLink } from "../controllers/accountActivationController.js";
 import {
+  getAdminProjectRequestForm,
+  putAdminProjectRequestForm,
+} from "../controllers/projectRequestAdminEditController.js";
+import {
   deleteProjectFolderById,
   getConfiguration,
   getConfigurationFiles,
@@ -64,7 +68,7 @@ import {
   projectWarrantiesConfigurationSchema,
 } from "../validation/projectConfigurationSchemas.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
-import { adminRateLimits, uploadRateLimit } from "../middlewares/actionRateLimits.js";
+import { adminRateLimits, requestRateLimit, uploadRateLimit } from "../middlewares/actionRateLimits.js";
 import { validate } from "../middlewares/validate.js";
 import { adminUserActivationLinkSchema } from "../validation/schemas.js";
 import {
@@ -73,7 +77,7 @@ import {
   projectAssigneesSchema,
   projectRequestAssigneesSchema,
 } from "../validation/adminDashboardSchemas.js";
-import { projectRequestIdSchema } from "../validation/projectRequestSchemas.js";
+import { adminUpdateProjectRequestSchema, projectRequestIdSchema } from "../validation/projectRequestSchemas.js";
 import { projectRequestDecisionSchema } from "../validation/projectRequestWorkflowSchemas.js";
 import {
   adminUserCreateSchema,
@@ -190,6 +194,14 @@ router.patch("/projects/:projectId/configuration/folders/:folderId", validate(pr
 router.delete("/projects/:projectId/configuration/folders/:folderId", validate(projectFolderDeleteSchema), deleteProjectFolderById);
 router.post("/project-requests/:projectRequestId/first-contact", validate(projectRequestFirstContactSchema), postFirstContact);
 router.get("/project-requests/:projectRequestId", validate(projectRequestIdSchema), getAdminProjectRequest);
+// Edición administrativa de las respuestas (formulario «Editar solicitud»); nunca decide ni cambia el estado.
+router.get("/project-requests/:projectRequestId/form", validate(projectRequestIdSchema), getAdminProjectRequestForm);
+router.put(
+  "/project-requests/:projectRequestId/form",
+  requestRateLimit,
+  validate(adminUpdateProjectRequestSchema),
+  putAdminProjectRequestForm,
+);
 router.put(
   "/project-requests/:projectRequestId/assignees",
   validate(projectRequestAssigneesSchema),

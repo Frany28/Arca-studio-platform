@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
 import { getProjectRequestFileErrors, getProjectRequestFileIssues } from "../../../utils/projectRequestValidation.js";
-import { isProjectRequestFileRemovable } from "../utils/projectRequestFilePresentation.js";
+import { isProjectRequestFileRemovable, toPersistedProjectRequestFileItem } from "../utils/projectRequestFilePresentation.js";
 import useProjectRequestDetail from "./useProjectRequestDetail.js";
 
 const ATTACHMENTS_LOADING_MESSAGE = "Espera a que carguen los archivos adjuntos de la solicitud.";
@@ -21,27 +21,6 @@ const MAX_CONCURRENT_UPLOADS = 2;
  */
 function isAttachmentsAvailabilityMessage(message) {
   return message === ATTACHMENTS_LOADING_MESSAGE || message.startsWith(ATTACHMENTS_ERROR_PREFIX);
-}
-
-/**
- * Convierte un adjunto guardado en el backend al item del formulario. El descriptor `file`
- * no es un `File`: solo aporta nombre, tamaño y tipo para validar y presentar la tarjeta.
- *
- * @param {{id: number, name: string, size: number, fileType: string|null}} file - Adjunto de la API.
- * @param {boolean} removing - Si su eliminación está en curso.
- * @returns {Object} Item subido con `remoteId` y `persisted`.
- */
-function toPersistedItem(file, removing) {
-  return {
-    error: "",
-    file: { name: file.name, size: Number(file.size) || 0, type: file.fileType || "" },
-    id: `project-request-persisted-${file.id}`,
-    persisted: true,
-    progress: 100,
-    remoteId: file.id,
-    removing,
-    status: "uploaded",
-  };
 }
 
 /**
@@ -98,7 +77,7 @@ export default function useProjectRequestFiles({
   const persistedItems = useMemo(
     () => (persistedFiles || [])
       .filter((file) => !removedRemoteIds.has(file.id))
-      .map((file) => toPersistedItem(file, removingRemoteIds.has(file.id))),
+      .map((file) => toPersistedProjectRequestFileItem(file, removingRemoteIds.has(file.id))),
     [persistedFiles, removedRemoteIds, removingRemoteIds],
   );
   const files = useMemo(

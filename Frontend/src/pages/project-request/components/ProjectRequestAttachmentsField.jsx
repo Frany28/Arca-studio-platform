@@ -44,7 +44,12 @@ const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
  * tarjetas muestran «Eliminar archivo», que los elimina de la solicitud.
  *
  * @param {Object} props - Adjuntos, errores y acciones del hook de archivos.
+ * En la edición administrativa (`readOnlyMessage`) los adjuntos guardados se muestran con
+ * `completedLabel` y sin acciones: la zona de carga queda deshabilitada y el mensaje explica por qué.
+ *
  * @param {boolean} [props.allowRemoteRemoval=false] - Permite eliminar adjuntos ya subidos.
+ * @param {string} [props.completedLabel] - Texto de los adjuntos subidos (por defecto, pendiente de enviar).
+ * @param {string} [props.readOnlyMessage=""] - Si se indica, los adjuntos son de solo lectura y se explica el motivo.
  * @param {boolean} [props.loadingPersisted=false] - Lectura de los adjuntos guardados en curso.
  * @param {string} [props.persistedError=""] - Error de la lectura de los adjuntos guardados.
  * @param {() => void} [props.onRetryPersisted] - Reintenta la lectura de los adjuntos guardados.
@@ -58,7 +63,8 @@ const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
  */
 function ProjectRequestAttachmentsField({
   allowRemoteRemoval = false,
-  disabled,
+  completedLabel,
+  disabled: disabledProp,
   fileErrors,
   files,
   loadingPersisted = false,
@@ -67,7 +73,9 @@ function ProjectRequestAttachmentsField({
   onRetry,
   onRetryPersisted,
   persistedError = "",
+  readOnlyMessage = "",
 }) {
+  const disabled = Boolean(disabledProp || readOnlyMessage);
   const baseId = useId().replace(/[^\w-]/g, "");
   const idPrefix = `project-request-attachments-${baseId}`;
   const labelId = `${idPrefix}-label`;
@@ -108,6 +116,7 @@ function ProjectRequestAttachmentsField({
 
   const fileCards = toProjectRequestFileCards(files, disabled ? undefined : removeFile, {
     allowRemoteRemoval,
+    completedLabel,
     onRetry: disabled ? undefined : onRetry,
   })
     .map((card) => (byFileId.has(card.id) ? { ...card, validationMessage: byFileId.get(card.id) } : card));
@@ -136,8 +145,9 @@ function ProjectRequestAttachmentsField({
         formatsLabel={FORMATS_LABEL}
         idPrefix={idPrefix}
         onFilesSelected={onFilesSelected}
-        dropzoneSupportingContent={general.length || loadingPersisted || persistedError ? (
+        dropzoneSupportingContent={general.length || loadingPersisted || persistedError || readOnlyMessage ? (
           <div className="flex w-full flex-col gap-[8px]">
+            {readOnlyMessage ? <HintText state="Default" hintText={readOnlyMessage} className="w-full" /> : null}
             {loadingPersisted ? (
               <HintText state="Default" hintText="Cargando los archivos adjuntos de la solicitud..." className="w-full" role="status" />
             ) : null}

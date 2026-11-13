@@ -93,7 +93,7 @@ test("gestión: estado vigente, responsables con rol y revisiones de la más rec
   assert.deepEqual(team.reviews.map((review) => review.reviewerName), ["Luis Gómez", "Ana Pérez"]);
   assert.equal(team.reviews[0].recommendationLabel, "Recomienda aprobar");
   assert.equal(team.reviews[0].note, "Viable.");
-  assert.deepEqual(buildAdminRequestTeam({}), { assignees: [], reviews: [], status: null });
+  assert.deepEqual(buildAdminRequestTeam({}), { assignees: [], outdatedNotice: null, reviews: [], status: null });
 });
 
 test("los fallos de lectura distinguen inexistencia, permisos, conexión y error recuperable", () => {

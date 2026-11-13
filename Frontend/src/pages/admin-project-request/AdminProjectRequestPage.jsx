@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
 import { loadAdminProjectRequest } from "../../api/adminProjectRequestDetail.js";
@@ -52,6 +52,9 @@ const NO_PROJECT_SHORTCUTS = [];
  * la confirmación antes de llamar a la API; una solicitud convertida ofrece su proyecto y
  * «Crear cotización», que abre el editor de cotizaciones existente con el proyecto y su cliente.
  *
+ * Al volver de «Editar solicitud» tras guardar (`location.state.projectRequestSaved`) confirma los
+ * cambios con un aviso; el estado de navegación se limpia para que recargar no lo repita.
+ *
  * @returns {import("react").ReactElement} Página de la solicitud.
  */
 function AdminProjectRequestPage() {
@@ -64,6 +67,14 @@ function AdminProjectRequestPage() {
   const projectRequestId = parseProjectRequestId(params.projectRequestId);
   const returnTarget = getRequestReturnTarget(location.state);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(() => location.state?.projectRequestSaved || null);
+  const hasSavedNoticeState = Boolean(location.state?.projectRequestSaved);
+  // El aviso ya se copió al estado local: se retira del historial para que una recarga no lo muestre.
+  useEffect(() => {
+    if (!hasSavedNoticeState) return;
+    const { projectRequestSaved: _saved, ...state } = location.state;
+    navigate(location.pathname, { replace: true, state });
+  }, [hasSavedNoticeState, location.pathname, location.state, navigate]);
   const sessionScope = user?.id ?? user?.email ?? null;
   // Lector deduplicado del endpoint administrativo (nunca el del propietario), estable mientras
   // no cambie la sesión: un cambio de usuario vuelve a leer en lugar de reutilizar la lectura.
@@ -132,7 +143,7 @@ function AdminProjectRequestPage() {
         <AdminProjectRequestMetrics {...buildAdminProjectRequestMetrics(projectRequest)} />
         {/* Bloque de Figma (3727:687225) y, separada, la gestión administrativa con datos reales. */}
         <ProjectRequestSummaryContent projectRequest={projectRequest} variant="admin" />
-        <AdminProjectRequestTeam assignees={team.assignees} reviews={team.reviews} status={team.status} />
+        <AdminProjectRequestTeam assignees={team.assignees} outdatedNotice={team.outdatedNotice} reviews={team.reviews} status={team.status} />
       </>
     );
     actionBar = (
@@ -209,6 +220,18 @@ function AdminProjectRequestPage() {
           onPrimaryAction={sync.revalidate}
           onDismiss={() => sync.dismissFeedback(sync.feedback.id)}
           aria-label={sync.feedback.title}
+        />
+      ) : null}
+      {savedNotice ? (
+        <AlertToast
+          trigger={savedNotice.id}
+          theme="Success"
+          title="Solicitud actualizada"
+          description={savedNotice.changedFields?.length
+            ? "Se guardaron los cambios. El estado de la solicitud no cambió."
+            : "No había cambios que guardar. La solicitud no se modificó."}
+          onDismiss={() => setSavedNotice(null)}
+          aria-label="Solicitud actualizada"
         />
       ) : null}
       {decision.feedback ? (

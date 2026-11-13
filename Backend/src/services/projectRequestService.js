@@ -63,7 +63,7 @@ export function toPublicProjectRequest(record) {
  * @returns {void} Finaliza cuando el tipo está permitido.
  * @throws {ValidationError} Cuando se intenta introducir un tipo retirado o desconocido.
  */
-function assertAllowedProjectType(projectType, previousType = null) {
+export function assertAllowedProjectType(projectType, previousType = null) {
   if (!isAllowedProjectRequestType(projectType, previousType)) {
     throw new ValidationError("Selecciona un tipo de proyecto vigente.", {
       "body.projectType": "Este tipo solo puede conservarse en la solicitud histórica que ya lo utiliza.",
@@ -82,10 +82,27 @@ function assertAllowedProjectType(projectType, previousType = null) {
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 async function assertAvailableName(user, payload, excludeProjectRequestId = null) {
+  await assertProjectRequestNameAvailable(user.clientId, payload.projectName, { excludeProjectRequestId });
+}
+
+/**
+ * Rechaza un nombre que el cliente ya usa en un proyecto no cancelado o en otra solicitud activa.
+ * Es la regla de unicidad compartida por el formulario del cliente y la edición administrativa;
+ * consulta PostgreSQL con el ejecutor recibido (el pool o la transacción en curso).
+ *
+ * @param {number} clientId - Cliente propietario de la solicitud.
+ * @param {string} projectName - Nombre propuesto.
+ * @param {object} [options] - Opciones de la comprobación.
+ * @param {number|string|null} [options.excludeProjectRequestId=null] - Solicitud que se está editando.
+ * @param {{ query: Function }} [options.executor] - Cliente de la transacción; por defecto, el pool.
+ * @returns {Promise<void>} Finaliza si el nombre está disponible.
+ * @throws {ConflictError} PROJECT_NAME_ALREADY_EXISTS si el nombre ya está en uso.
+ */
+export async function assertProjectRequestNameAvailable(clientId, projectName, { excludeProjectRequestId = null, executor } = {}) {
   const existing = await findExistingProjectNameForClient(
-    user.clientId,
-    payload.projectName,
-    { excludeProjectRequestId },
+    clientId,
+    projectName,
+    { excludeProjectRequestId, ...(executor ? { executor } : {}) },
   );
   if (existing) {
     throw new ConflictError(
