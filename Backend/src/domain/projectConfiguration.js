@@ -104,7 +104,7 @@ function isPositive(value) {
  * Requisitos para confirmar «Finalizar configuración» (draft → pending), los campos marcados como
  * obligatorios en Figma: nombre, cliente, al menos un responsable, tipo, área general, área de
  * construcción, ubicación, zonificación y al menos una fase con nombre, estado y fechas. Garantías,
- * hitos, coordenadas y los demás textos son opcionales. Guardar una sección no evalúa esto.
+ * hitos, coordenadas y los demás textos son opcionales. Incluye las incoherencias de seguimiento.
  *
  * @param {object} configuration - Configuración actual del borrador.
  * @returns {string[]} Códigos de los requisitos que faltan (vacío si está completo).
@@ -124,7 +124,59 @@ export function findMissingConfigurationRequirements(configuration) {
   else if (stages.some((stage) => !hasText(stage.name) || !stage.status || !stage.startDate || !stage.endDate)) {
     missing.push("stages.incomplete");
   }
-  return missing;
+  return [...missing, ...Object.keys(findTrackingDateErrors(configuration))];
+}
+
+/**
+ * Comprueba una fecha civil real del calendario gregoriano, entre los años 0001 y 9999.
+ * Trabaja con sus componentes numéricos para evitar normalizaciones y zonas horarias de Date.
+ *
+ * @param {unknown} value - Fecha con formato AAAA-MM-DD.
+ * @returns {boolean} true si el día existe en el calendario.
+ */
+export function isConfigurationDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
+}
+
+/**
+ * Revisa las fechas informadas de seguimiento y la entrega respecto al inicio más temprano.
+ * Permite borradores incompletos y devuelve errores de campo reutilizables al guardar y finalizar.
+ *
+ * @param {object} configuration - Seguimiento recibido o leído de PostgreSQL bajo bloqueo.
+ * @param {string|null} [configuration.estimatedDeliveryDate] - Entrega opcional.
+ * @param {object[]} [configuration.stages] - Fases vigentes con fechas opcionales.
+ * @param {object[]} [configuration.milestones] - Hitos con fecha.
+ * @returns {Record<string, string>} Campos incoherentes y sus mensajes públicos.
+ */
+export function findTrackingDateErrors({ estimatedDeliveryDate, stages = [], milestones = [] }) {
+  const errors = {};
+  if (estimatedDeliveryDate != null && !isConfigurationDate(estimatedDeliveryDate)) {
+    errors.estimatedDeliveryDate = "Usa una fecha válida (AAAA-MM-DD).";
+  }
+  for (const [index, stage] of stages.entries()) {
+    for (const field of ["startDate", "endDate"]) {
+      if (stage[field] != null && !isConfigurationDate(stage[field])) {
+        errors[`stages.${index}.${field}`] = "Usa una fecha válida (AAAA-MM-DD).";
+      }
+    }
+    if (isConfigurationDate(stage.startDate) && isConfigurationDate(stage.endDate) && stage.endDate < stage.startDate) {
+      errors[`stages.${index}.endDate`] = "La fecha final no puede ser anterior a la inicial.";
+    }
+  }
+  for (const [index, milestone] of milestones.entries()) {
+    if (!isConfigurationDate(milestone.dueDate)) {
+      errors[`milestones.${index}.dueDate`] = "Usa una fecha válida (AAAA-MM-DD).";
+    }
+  }
+  const startDate = earliestStageStartDate(stages.filter((stage) => isConfigurationDate(stage.startDate)));
+  if (isConfigurationDate(estimatedDeliveryDate) && startDate && estimatedDeliveryDate < startDate) {
+    errors["estimatedDeliveryDate.beforeStart"] = "La entrega estimada no puede ser anterior al inicio de la primera fase.";
+  }
+  return errors;
 }
 
 /**

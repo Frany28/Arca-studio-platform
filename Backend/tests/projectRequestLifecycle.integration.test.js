@@ -33,6 +33,7 @@ before(async () => {
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "lifecycle-test-secret-0123456789abcdef0123456789abcdef",
     DATABASE_URL: database.databaseUrl,
+    DATABASE_POOL_MAX: "6",
     FILE_UPLOAD_MAX_BYTES: String(MAX_FILE_BYTES),
     MAIL_FROM: "ARCA <no-reply@example.test>",
     NODE_ENV: "test",
@@ -526,9 +527,10 @@ async function reviewedRequest(attachments) {
  * @param {number} projectId - Proyecto draft.
  * @param {Object} adminHeaders - Autenticación del administrador.
  * @param {number[]} assigneeIds - Responsables operativos.
+ * @param {boolean} [finalize=true] - Confirma al terminar o conserva el borrador para pruebas de edición.
  * @returns {Promise<{status: number, body: Object|null}>} Respuesta de la finalización.
  */
-async function configureAndFinalize(projectId, adminHeaders, assigneeIds) {
+async function configureAndFinalize(projectId, adminHeaders, assigneeIds, finalize = true) {
   const general = await api(`/admin/projects/${projectId}/configuration/general`, {
     body: {
       assigneeIds, constructionArea: 80, generalArea: 120, location: "Maracaibo, Estado Zulia",
@@ -542,8 +544,181 @@ async function configureAndFinalize(projectId, adminHeaders, assigneeIds) {
     headers: adminHeaders, method: "PUT",
   });
   assert.equal(tracking.status, 200, JSON.stringify(tracking.body));
+  if (!finalize) return tracking;
   return api(`/admin/projects/${projectId}/configuration/finalize`, { headers: adminHeaders, method: "POST" });
 }
+
+/**
+ * Crea por HTTP un borrador completo sin coordenadas y con planos todavía desconocidos.
+ * Conserva draft para comprobar fechas, rollback y carreras con la finalización.
+ *
+ * @returns {Promise<{headers: object, projectId: number, path: string}>} Borrador editable.
+ */
+async function configuredDraft() {
+  const headers = await authAs(seed.admin);
+  const created = await api("/admin/projects/drafts", {
+    body: { clientId: seed.ownerClientId, name: `Prueba Fase 1.1 ${randomUUID()}` }, headers, method: "POST",
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const projectId = created.body.projectId;
+  await configureAndFinalize(projectId, headers, [seed.architect], false);
+  return { headers, path: `/admin/projects/${projectId}/configuration`, projectId };
+}
+
+test("Fase 1.1: seguimiento rechaza fechas inválidas sin modificar datos y finalizar revalida borradores anteriores", { skip }, async () => {
+  const { headers, path, projectId } = await configuredDraft();
+  const initial = (await api(path, { headers })).body.configuration;
+  const tracking = {
+    estimatedDeliveryDate: "2026-12-20", milestones: [],
+    stages: [{ name: "Fase", status: "pending", startDate: "2026-12-01", endDate: "2026-12-10" }],
+  };
+  const { saveProjectTrackingConfiguration } = await import("../src/services/projectConfigurationService.js");
+  for (const body of [
+    { ...tracking, estimatedDeliveryDate: "2026-11-30" },
+    { ...tracking, estimatedDeliveryDate: "2026-02-31" },
+    { ...tracking, stages: [{ ...tracking.stages[0], startDate: "2026-12-11" }] },
+    { ...tracking, milestones: [{ title: "Hito", dueDate: "2026-04-31" }] },
+  ]) {
+    const result = await api(`${path}/tracking`, { body, headers, method: "PUT" });
+    assert.equal(result.status, 400, JSON.stringify(result.body));
+    assert.equal(result.body.code, "VALIDATION_ERROR");
+    await assert.rejects(saveProjectTrackingConfiguration({ payload: body, projectId }), {
+      code: "VALIDATION_ERROR", status: 400,
+    }, "el servicio también valida cuando se invoca sin middleware HTTP");
+    const after = (await api(path, { headers })).body.configuration;
+    assert.deepEqual(after, initial, "el guardado fallido es atómico");
+  }
+  // Datos válidos para PostgreSQL que el servicio anterior permitía guardar en draft.
+  await database.client.query("update public.projects set end_date = '2026-11-30' where id = $1", [projectId]);
+  let finalized = await api(`${path}/finalize`, { headers, method: "POST" });
+  assert.equal(finalized.status, 400, JSON.stringify(finalized.body));
+  assert.ok(finalized.body.fields["estimatedDeliveryDate.beforeStart"]);
+  assert.equal(await requestRowStatus(projectId), "draft");
+  assert.equal(Number((await database.client.query("select count(*) from public.project_status_history where project_id = $1", [projectId])).rows[0].count), 0);
+  await database.client.query("update public.projects set end_date = null where id = $1", [projectId]);
+  await database.client.query("update public.project_stages set end_date = '2026-11-30' where project_id = $1 and deleted_at is null", [projectId]);
+  finalized = await api(`${path}/finalize`, { headers, method: "POST" });
+  assert.equal(finalized.status, 400);
+  assert.ok(finalized.body.fields["stages.0.endDate"]);
+  const repaired = await api(`${path}/tracking`, { body: { ...tracking, estimatedDeliveryDate: "2026-12-01" }, headers, method: "PUT" });
+  assert.equal(repaired.status, 200);
+  finalized = await api(`${path}/finalize`, { headers, method: "POST" });
+  assert.equal(finalized.status, 200, JSON.stringify(finalized.body));
+  assert.equal(finalized.body.configuration.latitude, null);
+  assert.equal(finalized.body.configuration.longitude, null);
+  assert.equal(finalized.body.configuration.hasPlans, false, "se conserva la convención de planos desconocidos");
+});
+
+test("Fase 1.1: DATE vuelve idéntica con UTC+14, Caracas y DateStyle alternativo", { skip }, async () => {
+  const { headers, path } = await configuredDraft();
+  const previousZone = process.env.TZ;
+  try {
+    const { findProjectConfiguration } = await import("../src/repositories/projectConfigurationRepository.js");
+    await database.client.query("set datestyle = 'SQL, DMY'; set time zone 'Pacific/Kiritimati'");
+    for (const zone of ["Pacific/Kiritimati", "America/Caracas"]) {
+      process.env.TZ = zone;
+      const tracking = await api(`${path}/tracking`, { body: {
+        estimatedDeliveryDate: "2026-12-20", milestones: [{ title: "Hito", dueDate: "2026-12-05" }],
+        stages: [{ name: "Fase", status: "pending", startDate: "2026-12-01", endDate: "2026-12-10" }],
+      }, headers, method: "PUT" });
+      assert.equal(tracking.status, 200, JSON.stringify(tracking.body));
+      const warranty = { product: "P", model: "M", code: "C", startDate: "2027-01-01", serviceDate: "2027-06-01", endDate: "2027-12-01" };
+      assert.equal((await api(`${path}/warranties`, { body: { warranties: [warranty] }, headers, method: "PUT" })).status, 200);
+      const config = (await api(path, { headers })).body.configuration;
+      assert.equal(config.estimatedDeliveryDate, "2026-12-20", zone);
+      assert.equal(config.stages[0].startDate, "2026-12-01", zone);
+      assert.equal(config.stages[0].endDate, "2026-12-10", zone);
+      assert.equal(config.milestones[0].dueDate, "2026-12-05", zone);
+      for (const field of ["startDate", "serviceDate", "endDate"]) assert.equal(config.warranties[0][field], warranty[field], zone);
+      const raw = await findProjectConfiguration(config.id, database.client);
+      assert.equal(raw.project.end_date, config.estimatedDeliveryDate);
+      assert.equal(raw.stages[0].startDate, config.stages[0].startDate);
+      assert.equal(raw.milestones[0].dueDate, config.milestones[0].dueDate);
+      assert.equal(raw.warranties[0].serviceDate, warranty.serviceDate);
+    }
+  } finally {
+    if (previousZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousZone;
+    await database.client.query("reset datestyle; reset time zone");
+  }
+});
+
+test("Fase 1.1: seguimiento y finalizar concurrentes conservan una configuración e historial coherentes", { skip }, async () => {
+  const tracking = {
+    estimatedDeliveryDate: "2027-02-20", milestones: [],
+    stages: [{ name: "Fase nueva", status: "pending", startDate: "2027-02-01", endDate: "2027-02-10" }],
+  };
+  for (const saveFirst of [true, false]) {
+    const { headers, path, projectId } = await configuredDraft();
+    await database.client.query("begin");
+    await database.client.query("select id from public.projects where id = $1 for update", [projectId]);
+    const save = () => api(`${path}/tracking`, { body: tracking, headers, method: "PUT" });
+    const finalize = () => api(`${path}/finalize`, { headers, method: "POST" });
+    const requests = [];
+    try {
+      requests.push(saveFirst ? save() : finalize());
+      await waitForConfigurationLocks(1);
+      requests.push(saveFirst ? finalize() : save());
+      await waitForConfigurationLocks(2);
+    } finally {
+      await database.client.query("rollback");
+    }
+    const results = await Promise.all(requests);
+    const [saved, finalized] = saveFirst ? results : results.toReversed();
+    assert.equal(finalized.status, 200, JSON.stringify(finalized.body));
+    assert.equal(saved.status, saveFirst ? 200 : 409, JSON.stringify(saved.body));
+    if (!saveFirst) assert.equal(saved.body.code, "PROJECT_NOT_DRAFT");
+    const final = (await api(path, { headers })).body.configuration;
+    assert.equal(final.status, "pending");
+    assert.equal(final.stages[0].startDate, saveFirst ? "2027-02-01" : "2026-12-01");
+    const row = (await database.client.query("select to_char(start_date, 'YYYY-MM-DD') as start_date from public.projects where id = $1", [projectId])).rows[0];
+    assert.equal(row.start_date, final.stages[0].startDate);
+    assert.equal(Number((await database.client.query("select count(*) from public.project_status_history where project_id = $1", [projectId])).rows[0].count), 1);
+  }
+});
+
+/**
+ * Espera a que las peticiones estén bloqueadas en el FOR UPDATE antes de liberar el proyecto.
+ * Fija el orden de ambas carreras y falla si se elimina la serialización del servicio.
+ *
+ * @param {number} expected - Peticiones concurrentes esperadas en espera de bloqueo.
+ * @returns {Promise<void>} Finaliza al observar todas las esperas.
+ */
+async function waitForConfigurationLocks(expected) {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    // Otra conexión evita el snapshot de pg_stat_activity de la transacción bloqueante.
+    const result = await modules.query(`select count(*)::int as total from pg_stat_activity
+      where datname = current_database() and wait_event_type = 'Lock' and query like '%for update%'
+        and query like '%public.projects%'`);
+    if (result.rows[0].total === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`No se observaron ${expected} escrituras de configuración serializadas.`);
+}
+
+test("Fase 1.1: fallos PostgreSQL diferidos en COMMIT se traducen y revierten sin filtrar el mensaje", { skip }, async () => {
+  const { headers, path, projectId } = await configuredDraft();
+  const initial = (await api(path, { headers })).body.configuration;
+  // Trigger exclusivo de la base creada por createIsolatedMigrationDatabase.
+  const statuses = { "23503": 409, "40001": 409, "40P01": 409, "22008": 400, "23514": 400, XX000: 500 };
+  for (const [code, status] of Object.entries(statuses)) {
+    await database.client.query(`create function public.phase11_fail_commit() returns trigger language plpgsql as $$
+      begin raise exception using errcode = '${code}', message = 'detalle_privado_postgresql', constraint = 'chk_projects_dates'; end $$;
+      create constraint trigger phase11_fail_commit after update on public.projects deferrable initially deferred
+      for each row execute function public.phase11_fail_commit();`);
+    try {
+      const result = await api(`${path}/finalize`, { headers, method: "POST" });
+      assert.equal(result.status, status, JSON.stringify(result.body));
+      assert.doesNotMatch(JSON.stringify(result.body), /detalle_privado_postgresql|chk_projects_dates|stack|\bSELECT\b/i);
+      assert.equal(await requestRowStatus(projectId), "draft");
+      assert.deepEqual((await api(path, { headers })).body.configuration, initial);
+      assert.equal(Number((await database.client.query("select count(*) from public.audit_logs where entity_id = $1 and action = 'project.configuration_finalized'", [projectId])).rows[0].count), 0);
+    } finally {
+      await database.client.query("drop trigger phase11_fail_commit on public.projects; drop function public.phase11_fail_commit()");
+    }
+  }
+});
 
 /**
  * Proyecto creado al aprobar una solicitud.

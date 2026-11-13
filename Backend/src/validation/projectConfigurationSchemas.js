@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import { PROJECT_CONFIGURATION_LIMITS, PROJECT_STAGE_STATUSES } from "../domain/projectConfiguration.js";
+import { findTrackingDateErrors, isConfigurationDate, PROJECT_CONFIGURATION_LIMITS, PROJECT_STAGE_STATUSES } from "../domain/projectConfiguration.js";
 
 const positiveId = z.coerce.number().int().positive();
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Usa una fecha válida (AAAA-MM-DD).");
+const isoDate = z.string().refine(isConfigurationDate, "Usa una fecha válida (AAAA-MM-DD).");
 const optionalText = z.string().trim().max(PROJECT_CONFIGURATION_LIMITS.textMax).transform((value) => value || null).nullable().optional()
   .transform((value) => value ?? null);
 // Un borrador puede guardarse incompleto: los campos obligatorios se exigen al finalizar.
@@ -51,10 +51,21 @@ const stageSchema = z.object({
   name: z.string().trim().min(1, "Escribe el nombre de la fase.").max(150),
   startDate: isoDate.nullable(),
   status: z.enum(PROJECT_STAGE_STATUSES),
-}).strict().refine((stage) => !stage.startDate || !stage.endDate || stage.startDate <= stage.endDate, {
-  message: "La fecha final no puede ser anterior a la inicial.",
-  path: ["endDate"],
-});
+}).strict();
+
+/**
+ * Adapta los errores compartidos de seguimiento a las rutas de validación de Zod.
+ * Mantiene una sola regla de fechas para HTTP, guardado del servicio y finalización.
+ *
+ * @param {object} body - Seguimiento recibido con sus campos estructurales validados.
+ * @param {import("zod").RefinementCtx} context - Receptor de errores de Zod.
+ * @returns {void}
+ */
+function validateTrackingDates(body, context) {
+  for (const [field, message] of Object.entries(findTrackingDateErrors(body))) {
+    context.addIssue({ code: "custom", message, path: field.replace(/\.beforeStart$/, "").split(".") });
+  }
+}
 
 export const projectTrackingConfigurationSchema = z.object({
   params: projectParams,
@@ -65,7 +76,7 @@ export const projectTrackingConfigurationSchema = z.object({
       title: z.string().trim().min(1, "Escribe el hito.").max(150),
     }).strict()).max(PROJECT_CONFIGURATION_LIMITS.maxMilestones),
     stages: z.array(stageSchema).max(PROJECT_CONFIGURATION_LIMITS.maxStages),
-  }).strict(),
+  }).strict().superRefine(validateTrackingDates),
 });
 
 export const projectWarrantiesConfigurationSchema = z.object({

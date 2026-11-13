@@ -12,19 +12,6 @@ function toNumberOrNull(value) {
 }
 
 /**
- * Normaliza una columna DATE a texto `AAAA-MM-DD`, el formato del contrato. Evita desplazamientos
- * de zona horaria al serializar un Date de medianoche.
- *
- * @param {Date|string|null} value - Fecha de la fila.
- * @returns {string|null} Fecha ISO o null.
- */
-function toDateText(value) {
-  if (!value) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).slice(0, 10);
-}
-
-/**
  * Bloquea FOR UPDATE el proyecto a configurar y devuelve su estado vigente, o null si no existe.
  * Todas las escrituras de la configuración pasan por este bloqueo, de modo que dos guardados o un
  * guardado y la finalización quedan serializados.
@@ -45,7 +32,8 @@ export async function lockProjectForConfiguration(client, projectId) {
 /**
  * Lee la configuración completa de un proyecto: datos generales, cliente, responsables, fases,
  * hitos, garantías y la solicitud de origen (si el borrador nació de una aprobación) con los
- * responsables que la revisaron. Consulta PostgreSQL con parámetros.
+ * responsables que la revisaron. Lee DATE como texto ISO desde SQL para conservar el día civil
+ * independientemente de DateStyle y de la zona horaria de Node o PostgreSQL.
  *
  * @param {number} projectId - Proyecto.
  * @param {{query: Function}} [executor] - Pool o cliente de una transacción.
@@ -57,7 +45,9 @@ export async function findProjectConfiguration(projectId, executor = { query }) 
       select p.id, p.name, p.status, p.description, p.project_type, p.location, p.formatted_address,
         p.provider_place_id, p.location_latitude, p.location_longitude, p.has_plans, p.general_area,
         p.construction_area, p.area_unit, p.zoning, p.procedures, p.conditions, p.equipment,
-        p.start_date, p.end_date, p.progress, p.client_id, p.updated_at, c.name as client_name
+        to_char(p.start_date, 'YYYY-MM-DD') as start_date,
+        to_char(p.end_date, 'YYYY-MM-DD') as end_date,
+        p.progress, p.client_id, p.updated_at, c.name as client_name
       from public.projects p
       inner join public.clients c on c.id = p.client_id
       where p.id = $1 and p.deleted_at is null
@@ -80,17 +70,20 @@ export async function findProjectConfiguration(projectId, executor = { query }) 
       [projectId],
     ),
     executor.query(
-      `select id, name, status, start_date, end_date, sort_order from public.project_stages
+      `select id, name, status, to_char(start_date, 'YYYY-MM-DD') as start_date,
+         to_char(end_date, 'YYYY-MM-DD') as end_date, sort_order from public.project_stages
        where project_id = $1 and deleted_at is null order by sort_order, id`,
       [projectId],
     ),
     executor.query(
-      `select id, title, due_date from public.project_milestones
+      `select id, title, to_char(due_date, 'YYYY-MM-DD') as due_date from public.project_milestones
        where project_id = $1 and deleted_at is null order by due_date, id`,
       [projectId],
     ),
     executor.query(
-      `select id, product, model, code, start_date, service_date, end_date from public.project_warranties
+      `select id, product, model, code, to_char(start_date, 'YYYY-MM-DD') as start_date,
+         to_char(service_date, 'YYYY-MM-DD') as service_date,
+         to_char(end_date, 'YYYY-MM-DD') as end_date from public.project_warranties
        where project_id = $1 and deleted_at is null order by sort_order, id`,
       [projectId],
     ),
@@ -112,24 +105,24 @@ export async function findProjectConfiguration(projectId, executor = { query }) 
 
   return {
     assignees: assignees.rows.map((row) => ({ id: Number(row.id), name: row.name || "Usuario", roleCode: row.role_code })),
-    milestones: milestones.rows.map((row) => ({ dueDate: toDateText(row.due_date), id: Number(row.id), title: row.title })),
+    milestones: milestones.rows.map((row) => ({ dueDate: row.due_date, id: Number(row.id), title: row.title })),
     project,
     request: request.rows[0] || null,
     stages: stages.rows.map((row) => ({
-      endDate: toDateText(row.end_date),
+      endDate: row.end_date,
       id: Number(row.id),
       name: row.name,
-      startDate: toDateText(row.start_date),
+      startDate: row.start_date,
       status: row.status,
     })),
     warranties: warranties.rows.map((row) => ({
       code: row.code,
-      endDate: toDateText(row.end_date),
+      endDate: row.end_date,
       id: Number(row.id),
       model: row.model,
       product: row.product,
-      serviceDate: toDateText(row.service_date),
-      startDate: toDateText(row.start_date),
+      serviceDate: row.service_date,
+      startDate: row.start_date,
     })),
   };
 }

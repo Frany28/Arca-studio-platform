@@ -4,11 +4,13 @@ import {
   computeProgressFromStages,
   earliestStageStartDate,
   findMissingConfigurationRequirements,
+  findTrackingDateErrors,
 } from "../domain/projectConfiguration.js";
 import { normalizeProjectName } from "../domain/projectName.js";
 import { PROJECT_STATUS } from "../domain/projectStatus.js";
 import { findQuoteClient } from "../repositories/quoteParticipantRepository.js";
 import { createDraftProject } from "./projectService.js";
+import { translateProjectConfigurationError } from "./projectConfigurationErrors.js";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import {
   deleteEmptyProjectFolder,
@@ -73,7 +75,7 @@ function toConfiguration(record) {
     description: project.description,
     editable: project.status === PROJECT_STATUS.DRAFT,
     equipment: project.equipment,
-    estimatedDeliveryDate: project.end_date ? new Date(project.end_date).toISOString().slice(0, 10) : null,
+    estimatedDeliveryDate: project.end_date,
     formattedAddress: project.formatted_address,
     generalArea: toNumber(project.general_area),
     hasPlans: project.has_plans,
@@ -111,25 +113,29 @@ export async function getProjectConfiguration(projectId) {
 }
 
 /**
- * Ejecuta una escritura de la configuración con el proyecto bloqueado y en estado draft, y
- * devuelve la configuración resultante leída en la misma transacción. Solo un borrador se
- * configura: un proyecto pending o posterior conserva sus reglas operativas actuales.
+ * Escribe y relee la configuración en una transacción con el proyecto bloqueado y en draft.
+ * Los estados posteriores rechazan la configuración. Traduce errores PostgreSQL tras el rollback,
+ * incluidos los fallos diferidos del COMMIT, y conserva la liberación del cliente del pool.
  *
  * @param {number} projectId - Proyecto.
  * @param {(client: import("pg").PoolClient, project: object) => Promise<void>} write - Escritura.
  * @returns {Promise<object>} Configuración pública actualizada.
- * @throws {NotFoundError|ConflictError} Si no existe o ya no es un borrador.
+ * @throws {NotFoundError|ConflictError|ValidationError} Si no existe, ya no es draft o los datos incumplen una regla.
  */
 async function writeDraftConfiguration(projectId, write) {
-  return withTransaction(async (client) => {
-    const project = await lockProjectForConfiguration(client, projectId);
-    if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Proyecto no encontrado.");
-    if (project.status !== PROJECT_STATUS.DRAFT) {
-      throw new ConflictError("PROJECT_NOT_DRAFT", "Solo se puede configurar un proyecto en borrador.");
-    }
-    await write(client, project);
-    return toConfiguration(await findProjectConfiguration(projectId, client));
-  });
+  try {
+    return await withTransaction(async (client) => {
+      const project = await lockProjectForConfiguration(client, projectId);
+      if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Proyecto no encontrado.");
+      if (project.status !== PROJECT_STATUS.DRAFT) {
+        throw new ConflictError("PROJECT_NOT_DRAFT", "Solo se puede configurar un proyecto en borrador.");
+      }
+      await write(client, project);
+      return toConfiguration(await findProjectConfiguration(projectId, client));
+    });
+  } catch (error) {
+    throw translateProjectConfigurationError(error);
+  }
 }
 
 /**
@@ -154,18 +160,28 @@ export async function saveProjectGeneralConfiguration({ payload, projectId, user
 
 /**
  * Guarda «Seguimiento»: fases, hitos y entrega estimada, y recalcula el progreso desde las fases.
+ * Valida fechas civiles y su coherencia antes de escribir, con el proyecto bloqueado.
  *
  * @param {{payload: object, projectId: number}} params - Datos validados.
  * @returns {Promise<object>} Configuración actualizada.
+ * @throws {ValidationError} Si hay fechas imposibles o intervalos incoherentes.
  */
 export async function saveProjectTrackingConfiguration({ payload, projectId }) {
-  return writeDraftConfiguration(projectId, (client) => replaceTrackingConfiguration(client, {
-    estimatedDeliveryDate: payload.estimatedDeliveryDate,
-    milestones: payload.milestones,
-    progress: computeProgressFromStages(payload.stages),
-    projectId,
-    stages: payload.stages,
-  }));
+  return writeDraftConfiguration(projectId, async (client) => {
+    const errors = findTrackingDateErrors(payload);
+    if (Object.keys(errors).length) {
+      throw new ValidationError(undefined, Object.fromEntries(Object.entries(errors).map(([field, message]) => [
+        `body.${field.replace(/\.beforeStart$/, "")}`, message,
+      ])));
+    }
+    await replaceTrackingConfiguration(client, {
+      estimatedDeliveryDate: payload.estimatedDeliveryDate,
+      milestones: payload.milestones,
+      progress: computeProgressFromStages(payload.stages),
+      projectId,
+      stages: payload.stages,
+    });
+  });
 }
 
 /**
@@ -184,7 +200,7 @@ export async function saveProjectWarrantiesConfiguration({ payload, projectId, u
 
 /**
  * Confirma «Finalizar configuración»: con el proyecto bloqueado comprueba que sigue en draft y que
- * todos los requisitos obligatorios están completos; entonces lo pasa a pending con la fecha de
+ * los requisitos y fechas guardadas son válidos; entonces lo pasa a pending con la fecha de
  * inicio de su primera fase, registra historial y auditoría y notifica al cliente. Es la única vía
  * draft → pending; no inicia el proyecto (in_process sigue siendo una acción aparte).
  *
@@ -195,10 +211,13 @@ export async function saveProjectWarrantiesConfiguration({ payload, projectId, u
 export async function finalizeProjectDraftConfiguration({ projectId, user }) {
   return writeDraftConfiguration(projectId, async (client) => {
     const current = toConfiguration(await findProjectConfiguration(projectId, client));
+    const dateErrors = findTrackingDateErrors(current);
     if (current.missingRequirements.length) {
       throw new ValidationError(
         "Completa la información obligatoria antes de finalizar la configuración.",
-        Object.fromEntries(current.missingRequirements.map((code) => [code, MISSING_REQUIREMENT_MESSAGES[code] || "Requerido."])),
+        Object.fromEntries(current.missingRequirements.map((code) => [code,
+          MISSING_REQUIREMENT_MESSAGES[code] || dateErrors[code] || "Requerido.",
+        ])),
       );
     }
     await finalizeProjectConfiguration(client, {
@@ -220,14 +239,18 @@ export async function finalizeProjectDraftConfiguration({ projectId, user }) {
  * @throws {ConflictError} PROJECT_NAME_ALREADY_EXISTS si el nombre ya se usa para ese cliente.
  */
 export async function createManualDraftProject({ clientId, name, user }) {
-  return withTransaction(async (client) => {
-    const owner = await findQuoteClient(clientId, client, true);
-    if (!owner?.isAvailable) {
-      throw new ValidationError("Los datos enviados no son válidos.", { "body.clientId": "Selecciona un cliente disponible." });
-    }
-    const project = await createDraftProject(client, { clientId, name: normalizeProjectName(name), origin: "manual", userId: user.id });
-    return { projectId: project.id };
-  });
+  try {
+    return await withTransaction(async (client) => {
+      const owner = await findQuoteClient(clientId, client, true);
+      if (!owner?.isAvailable) {
+        throw new ValidationError("Los datos enviados no son válidos.", { "body.clientId": "Selecciona un cliente disponible." });
+      }
+      const project = await createDraftProject(client, { clientId, name: normalizeProjectName(name), origin: "manual", userId: user.id });
+      return { projectId: project.id };
+    });
+  } catch (error) {
+    throw translateProjectConfigurationError(error);
+  }
 }
 
 /**
@@ -244,21 +267,6 @@ export async function recordFirstContact({ projectRequestId, user }) {
     throw new ConflictError("PROJECT_REQUEST_INVALID_STATE", "Solo se registra el primer contacto de una solicitud aprobada.");
   }
   return { alreadyRecorded: result.outcome === "already_recorded", firstContactAt: result.firstContactAt };
-}
-
-/**
- * Traduce el nombre repetido entre carpetas hermanas (índice uq_project_folders_sibling_name) a
- * un error de validación del campo; cualquier otro error se propaga sin cambios.
- *
- * @param {Error & {code?: string, constraint?: string}} error - Error de PostgreSQL.
- * @returns {never} Siempre lanza.
- * @throws {ValidationError|Error} El error traducido o el original.
- */
-function rethrowFolderError(error) {
-  if (error?.code === "23505" && error.constraint === "uq_project_folders_sibling_name") {
-    throw new ValidationError("Los datos enviados no son válidos.", { "body.name": "Ya existe una carpeta con ese nombre en esta ubicación." });
-  }
-  throw error;
 }
 
 /**
@@ -293,7 +301,7 @@ export async function createProjectFolder({ name, parentId, projectId, user }) {
       return insertProjectFolder(client, { createdBy: user.id, name, parentId, projectId });
     });
   } catch (error) {
-    return rethrowFolderError(error);
+    throw translateProjectConfigurationError(error);
   }
 }
 
@@ -304,15 +312,11 @@ export async function createProjectFolder({ name, parentId, projectId, user }) {
  * @returns {Promise<{folders: object[]}>} Carpetas actualizadas.
  */
 export async function updateProjectFolder({ folderId, name, projectId }) {
-  try {
-    await writeDraftConfiguration(projectId, async (client) => {
-      if (!(await renameProjectFolder(client, { folderId, name, projectId }))) {
-        throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
-      }
-    });
-  } catch (error) {
-    rethrowFolderError(error);
-  }
+  await writeDraftConfiguration(projectId, async (client) => {
+    if (!(await renameProjectFolder(client, { folderId, name, projectId }))) {
+      throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
+    }
+  });
   return { folders: await listProjectFolders(projectId) };
 }
 
