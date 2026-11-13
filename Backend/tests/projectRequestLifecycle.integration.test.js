@@ -980,3 +980,39 @@ test("PostgreSQL y HTTP: «Nuevo proyecto» crea un borrador manual que se confi
   assert.equal(await requestRowStatus(projectId), "pending");
   assert.equal(Number((await database.client.query("select count(*) from public.audit_logs where action = $2 and entity_id = $1", [projectId, "project.create_draft"])).rows[0].count), 1);
 });
+
+test("PostgreSQL y HTTP: el administrador sube archivos y asigna encargados a un draft; los demás siguen sin verlo", { skip }, async () => {
+  await grantProjectRead();
+  await database.client.query(`
+    with permission as (
+      insert into public.permissions (code, name, description, module) values ('projects.files.upload', 'Subir archivos', null, 'projects')
+      on conflict (code) do update set name = excluded.name returning id
+    )
+    insert into public.role_permissions (role_id, permission_id, is_active)
+    select r.id, permission.id, true from public.roles r, permission where r.code in ('admin', 'architect')
+    on conflict do nothing`);
+  const { headers, id } = await reviewedRequest([]);
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
+  const projectId = await convertedProjectId(id);
+  const admin = await authAs(seed.admin);
+
+  const uploaded = await fetch(`${base}/projects/${projectId}/files`, {
+    body: pdf("plano-draft.pdf").bytes,
+    headers: { ...admin, "Content-Type": "application/pdf", "X-File-Name": "plano-draft.pdf" },
+    method: "POST",
+  });
+  assert.equal(uploaded.status, 201, await uploaded.clone().text());
+  const assigned = await api(`/admin/projects/${projectId}/assignees`, { body: { assigneeIds: [seed.architect] }, headers: admin, method: "PUT" });
+  assert.equal(assigned.status, 200, JSON.stringify(assigned.body));
+  assert.equal(await requestRowStatus(projectId), "draft", "subir y asignar no cambian el estado");
+
+  // El draft sigue siendo inexistente para el arquitecto asignado y el cliente; los comentarios siguen bloqueados.
+  const architect = await authAs(seed.architect);
+  assert.equal((await api(`/projects/${projectId}`, { headers: architect })).status, 404);
+  assert.equal((await api(`/projects/${projectId}`, { headers: await authAs(seed.owner) })).status, 404);
+  const architectUpload = await fetch(`${base}/projects/${projectId}/files`, {
+    body: pdf("otro.pdf").bytes, headers: { ...architect, "Content-Type": "application/pdf", "X-File-Name": "otro.pdf" }, method: "POST",
+  });
+  assert.equal(architectUpload.status, 404);
+  assert.equal((await api(`/projects/${projectId}/comments`, { body: { content: "Hola" }, headers: admin, method: "POST" })).status, 409);
+});

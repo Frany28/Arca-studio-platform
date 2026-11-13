@@ -34,6 +34,7 @@ import {
   getProjectReadOnlyMessage,
   isProjectFinalized,
   isProjectOperationallyReadOnly,
+  isProjectPreparationLocked,
 } from "../../utils/projectReadOnly.js";
 import Alert from "../../components/ui/Alert/Alert.jsx";
 import Button from "../../components/ui/Button/Button.jsx";
@@ -144,6 +145,7 @@ export default function ProjectDetailsPage({
     : PROJECT_DETAIL_DATA;
   const projectIsFinalized = isProjectFinalized(presentedProject);
   const projectIsReadOnly = isProjectOperationallyReadOnly(presentedProject);
+  const projectIsDraft = presentedProject?.status === "draft";
   const projectReadOnlyMessage = getProjectReadOnlyMessage(presentedProject);
   const activeProjectPanel = (
     <ProjectActivePanel
@@ -164,6 +166,7 @@ export default function ProjectDetailsPage({
   return (
     <ProjectReadOnlyProvider
       readOnly={projectIsReadOnly}
+      uploadsLocked={isProjectPreparationLocked(presentedProject)}
       message={projectReadOnlyMessage}
     >
     <main className="min-h-screen bg-[var(--color-neutral-bg)] transition-colors duration-200">
@@ -232,13 +235,17 @@ export default function ProjectDetailsPage({
                     visible
                     theme="Warning"
                     layout="Box"
-                    title={projectIsFinalized ? "Proyecto finalizado" : "Proyecto archivado"}
-                    description={projectIsFinalized
-                      ? "Puedes consultar, descargar, publicar o archivar su contenido, pero las operaciones del proyecto están cerradas."
-                      : "Puedes consultar y descargar su contenido, pero debes desarchivarlo para realizar cambios."}
+                    title={projectIsDraft ? "Proyecto en borrador" : projectIsFinalized ? "Proyecto finalizado" : "Proyecto archivado"}
+                    description={projectIsDraft
+                      ? "Puedes subir archivos y asignar encargados. Los comentarios se habilitan al finalizar su configuración."
+                      : projectIsFinalized
+                        ? "Puedes consultar, descargar, publicar o archivar su contenido, pero las operaciones del proyecto están cerradas."
+                        : "Puedes consultar y descargar su contenido, pero debes desarchivarlo para realizar cambios."}
                     showActions={false}
                     showCloseButton={false}
-                    aria-label={`Este proyecto está ${projectIsFinalized ? "finalizado" : "archivado"} y es de solo lectura`}
+                    aria-label={projectIsDraft
+                      ? "Este proyecto está en borrador"
+                      : `Este proyecto está ${projectIsFinalized ? "finalizado" : "archivado"} y es de solo lectura`}
                   />
                 ) : null}
                 <ProjectDetailTabMenu

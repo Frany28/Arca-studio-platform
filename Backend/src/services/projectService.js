@@ -46,14 +46,15 @@ export async function assertProjectMutable(
  * @param {string} projectId - Valor de `projectId` requerido por esta operación.
  * @param {object} [options] - Opciones agrupadas necesarias para ejecutar la operación.
  * @param {unknown} [options.findProjectState] - Valor de `options.findProjectState` requerido por esta operación.
+ * @param {boolean} [options.allowDraft=false] - Admite un draft (subida y encargados del administrador).
  * @returns {Promise<unknown>} Resultado producido por la operación.
  */
 export async function assertProjectOperationallyMutable(
   projectId,
-  { findProjectState = findProjectStateById } = {},
+  { allowDraft = false, findProjectState = findProjectStateById } = {},
 ) {
   const project = await findProjectState(projectId);
-  return assertOperationallyMutableProjectState(project);
+  return assertOperationallyMutableProjectState(project, { allowDraft });
 }
 
 /**

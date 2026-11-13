@@ -115,7 +115,9 @@ export async function uploadProjectAttachment(req, res, next) {
       return;
     }
 
-    await assertProjectOperationallyMutable(projectId);
+    // Solo el administrador sube a un draft: para los demás roles un draft es inexistente (404).
+    const isAdmin = req.user?.role?.code === "admin";
+    await assertProjectOperationallyMutable(projectId, { allowDraft: isAdmin });
 
     const file = await runUpload({ req, policy: uploadPolicies.document,     /**
      * Procesa el valor de operation para completar la responsabilidad asignada al módulo.
@@ -124,7 +126,7 @@ export async function uploadProjectAttachment(req, res, next) {
      * @param {unknown} upload - Valor de `upload` requerido por esta operación.
      * @returns {void} Finalización de la operación.
      */
-operation: (upload) => uploadProjectFile({ ...upload, projectId, user: req.user }) });
+operation: (upload) => uploadProjectFile({ ...upload, configuringDraft: isAdmin, projectId, user: req.user }) });
 
     res.status(201).json({ file });
   } catch (error) {

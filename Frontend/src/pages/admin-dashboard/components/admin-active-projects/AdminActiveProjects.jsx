@@ -26,7 +26,7 @@ import Loader from "../../../../components/ui/Loader/Loader.jsx";
 import ScrollBar from "../../../../components/ui/ScrollBar/ScrollBar.jsx";
 import Tag from "../../../../components/ui/Tag/Tag.jsx";
 import useMobileLayout from "../../../../hooks/useMobileLayout.js";
-import { isProjectOperationallyReadOnly } from "../../../../utils/projectReadOnly.js";
+import { isProjectPreparationLocked } from "../../../../utils/projectReadOnly.js";
 import { getBulkActionAvailability } from "./utils/adminProjectBulkActions.js";
 import { getAdminProjectsPagination } from "./utils/adminProjectPagination.js";
 import { getAssignees, getClient, getStatus, MANAGEMENT_STATUS_FILTER_ITEMS } from "./utils/adminProjectPresentation.js";
@@ -119,7 +119,7 @@ function AdminActiveProjects({
     : null;
   const assigneeUndoUnavailable = Boolean(
     assigneeRemovalFeedback
-      && isProjectOperationallyReadOnly(assigneeFeedbackProject),
+      && isProjectPreparationLocked(assigneeFeedbackProject),
   );
 
   const personnelFilterLabel = "Filtrar por personal";
@@ -441,7 +441,8 @@ function AdminActiveProjects({
                 const viewLabel = project.kind === "request" ? "Ver solicitud" : "Ver proyecto";
                 const editLabel = project.kind === "request" ? "Editar solicitud" : "Editar proyecto";
                 const isSelected = selectedProjectIds.has(String(project.id));
-                const assignmentDisabled = isProjectOperationallyReadOnly(project)
+                // Un draft admite encargados (el backend lo restringe al administrador).
+                const assignmentDisabled = isProjectPreparationLocked(project)
                   || (isManagement && !onProjectAssigneesChange);
 
                 return (

@@ -123,7 +123,8 @@ export async function assignEmployeesToProject({
   assignedBy,
   projectId,
 }) {
-  await assertProjectOperationallyMutable(projectId);
+  // Ruta solo de administración: un draft admite encargados mientras se prepara.
+  await assertProjectOperationallyMutable(projectId, { allowDraft: true });
   const result = await replaceProjectAssignees({
     assigneeIds,
     assignedBy,

@@ -38,6 +38,19 @@ export function isProjectOperationallyReadOnly(projectOrStatus) {
  * @param {Object|string|null} projectOrStatus - Proyecto o código de estado.
  * @returns {string} Mensaje para impedir modificaciones.
  */
+/**
+ * Bloqueo de la preparación del proyecto: subir archivos y asignar encargados. A diferencia de
+ * `isProjectOperationallyReadOnly`, un draft no lo bloquea: el administrador prepara el borrador
+ * (el backend solo lo admite a ese rol). Archivados y finalizados siguen bloqueados.
+ *
+ * @param {Object|string|null|undefined} projectOrStatus - Proyecto o su estado.
+ * @returns {boolean} true si no se pueden subir archivos ni asignar encargados.
+ */
+export function isProjectPreparationLocked(projectOrStatus) {
+  const status = typeof projectOrStatus === "string" ? projectOrStatus : projectOrStatus?.status;
+  return status === "archived" || isProjectFinalized(status);
+}
+
 export function getProjectReadOnlyMessage(projectOrStatus) {
   const status = typeof projectOrStatus === "string" ? projectOrStatus : projectOrStatus?.status;
   if (status === DRAFT_PROJECT_STATUS) return "El proyecto es un borrador (Draft): completa sus datos y actívalo antes de realizar cambios.";

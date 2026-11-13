@@ -62,11 +62,14 @@ test("every operational mutation path enforces closed project states in depth", 
     readFile(new URL("../scripts/seed-project-visibility-examples.mjs", import.meta.url), "utf8"),
   ]);
 
-  assert.match(assignmentService, /assignEmployeesToProject[\s\S]*assertProjectOperationallyMutable\(projectId\)/);
+  // Encargados: solo la ruta de administración admite un draft, y de forma explícita.
+  assert.match(assignmentService, /assignEmployeesToProject[\s\S]*assertProjectOperationallyMutable\(projectId, \{ allowDraft: true \}\)/);
   assert.match(assignmentRepository, /replaceProjectAssignees[\s\S]*status not in[\s\S]*PROJECT_STATUS\.FINISHED/);
   assert.match(commentController, /createProjectComment[\s\S]*assertProjectOperationallyMutable\(projectId\)/);
   assert.equal((commentRepository.match(/status not in/g) || []).length >= 2, true);
-  assert.equal((fileController.match(/assertProjectOperationallyMutable\(projectId\)/g) || []).length >= 2, true);
+  // Subida: draft solo para el administrador; eliminar sigue rechazando un draft.
+  assert.match(fileController, /assertProjectOperationallyMutable\(projectId, \{ allowDraft: isAdmin \}\)/);
+  assert.equal((fileController.match(/assertProjectOperationallyMutable\(projectId\)/g) || []).length >= 1, true);
   assert.match(fileRepository, /PROJECT_FINALIZED/);
   assert.match(projectController, /changeProjectPublication/);
   assert.match(projectRepository, /updateProjectVisibility[\s\S]*status = '\$\{PROJECT_STATUS\.FINISHED\}'/);

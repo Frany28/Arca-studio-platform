@@ -293,11 +293,12 @@ test("API directa: clientes y arquitectos (incluso asignados a la fuerza) recibe
     });
     assert.equal(adminComment.status, 409);
     assert.equal((await adminComment.json()).code, "PROJECT_DRAFT");
+    // El administrador prepara el borrador: puede asignar encargados (los comentarios siguen bloqueados).
     const assignees = await fetch(`${base}/admin/projects/${draftId}/assignees`, {
       body: JSON.stringify({ assigneeIds: [] }), headers: { ...adminHeaders, "Content-Type": "application/json" }, method: "PUT",
     });
-    assert.equal(assignees.status, 409);
-    assert.equal((await assignees.json()).code, "PROJECT_DRAFT");
+    assert.equal(assignees.status, 200);
+    assert.equal((await rows("select status from public.projects where id = $1", [draftId]))[0].status, "draft", "asignar no cambia el estado");
   } finally {
     server.closeAllConnections?.();
     await new Promise((resolve) => server.close(resolve));

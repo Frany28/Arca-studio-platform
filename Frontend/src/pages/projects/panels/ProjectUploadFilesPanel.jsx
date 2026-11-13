@@ -65,7 +65,8 @@ function getFileError(file, existingFiles) {
 }
 
 export default function ProjectUploadFilesPanel({ onFilesChanged, projectId }) {
-  const { message: readOnlyMessage, readOnly } = useProjectReadOnly();
+  // La subida sigue `uploadsLocked`: un draft admite archivos del administrador.
+  const { message: readOnlyMessage, uploadsLocked: readOnly } = useProjectReadOnly();
   const [uploadToastTrigger, setUploadToastTrigger] = useState(null);
   const [files, setFiles] = useState([]);
   const [submitError, setSubmitError] = useState("");

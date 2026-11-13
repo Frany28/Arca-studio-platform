@@ -5,7 +5,23 @@ import test from "node:test";
 import {
   getProjectReadOnlyMessage,
   isProjectOperationallyReadOnly,
+  isProjectPreparationLocked,
 } from "../src/utils/projectReadOnly.js";
+
+test("un draft admite preparar (subir archivos y asignar encargados) pero sigue en solo lectura para comentarios", async () => {
+  assert.equal(isProjectOperationallyReadOnly("draft"), true);
+  assert.equal(isProjectPreparationLocked("draft"), false);
+  assert.equal(isProjectPreparationLocked({ status: "pending" }), false);
+  for (const status of ["archived", "finished"]) assert.equal(isProjectPreparationLocked(status), true, status);
+  const [details, upload, table] = await Promise.all([
+    readFile(new URL("../src/pages/projects/ProjectDetailsPage.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/projects/panels/ProjectUploadFilesPanel.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/admin-dashboard/components/admin-active-projects/AdminActiveProjects.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(details, /uploadsLocked=\{isProjectPreparationLocked\(presentedProject\)\}/);
+  assert.match(upload, /uploadsLocked: readOnly/);
+  assert.match(table, /const assignmentDisabled = isProjectPreparationLocked\(project\)/);
+});
 
 test("archived project details propagate one shared read-only policy", async () => {
   const [

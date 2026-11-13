@@ -29,14 +29,18 @@ export function assertMutableProjectState(project) {
  * o finalizados con finished. Reconoce el alias histórico de finalización y conserva los códigos
  * de conflicto existentes; un draft responde 409 PROJECT_DRAFT.
  *
+ * Con `allowDraft` admite un draft: solo lo usan operaciones administrativas que preparan el
+ * borrador (subir archivos y asignar encargados); los comentarios siguen rechazándolo.
+ *
  * @param {unknown} project - Valor de `project` requerido por esta operación.
+ * @param {{allowDraft?: boolean}} [options] - Admite un draft (solo administración).
  * @returns {unknown} Resultado producido por la operación.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
-export function assertOperationallyMutableProjectState(project) {
+export function assertOperationallyMutableProjectState(project, { allowDraft = false } = {}) {
   const mutableProject = assertMutableProjectState(project);
 
-  if (mutableProject.status === PROJECT_STATUS.DRAFT) {
+  if (mutableProject.status === PROJECT_STATUS.DRAFT && !allowDraft) {
     throw new ConflictError("PROJECT_DRAFT", PROJECT_DRAFT_READ_ONLY_MESSAGE);
   }
 

@@ -54,6 +54,11 @@ test("política: un draft admite archivarse pero rechaza archivos, comentarios y
   const draft = { id: 5, status: "draft" };
   assert.equal(assertMutableProjectState(draft), draft);
   assert.throws(() => assertOperationallyMutableProjectState(draft), (error) => error.code === "PROJECT_DRAFT" && error.status === 409);
+  // Preparación administrativa (subida y encargados): admite el draft solo de forma explícita.
+  assert.equal(assertOperationallyMutableProjectState(draft, { allowDraft: true }), draft);
+  for (const status of ["archived", "finished"]) {
+    assert.throws(() => assertOperationallyMutableProjectState({ id: 6, status }, { allowDraft: true }), (error) => error.status === 409, status);
+  }
 });
 
 test("acceso: clientes y arquitectos nunca reciben drafts; administración sí", async (context) => {

@@ -301,8 +301,8 @@ export async function replaceProjectAssignees({
         from public.projects
         where id = $1
           and deleted_at is null
+          -- Un draft admite encargados (preparación administrativa); archivados y finalizados no.
           and status not in (
-            '${PROJECT_STATUS.DRAFT}'::public.project_status,
             'archived'::public.project_status,
             '${PROJECT_STATUS.FINISHED}'::public.project_status
           )
