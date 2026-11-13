@@ -641,9 +641,9 @@ export async function decideProjectRequest({
         ? "Solicitud rechazada"
         : "Correcciones solicitadas";
     // El proyecto aprobado es un draft que el cliente aún no puede abrir: la notificación no se
-    // enlaza a él y anuncia el siguiente paso real (coordinar la reunión inicial).
+    // enlaza a él y solo anuncia que el equipo contactará al cliente, sin afirmar que el proyecto esté disponible.
     const notificationMessage = nextStatus === "converted"
-      ? `Tu solicitud para ${request.project_name} fue aprobada. Nuestro equipo se comunicará contigo para coordinar la reunión inicial.`
+      ? "Tu solicitud ha sido aprobada. Nuestro equipo se pondrá en contacto contigo para continuar con los siguientes pasos."
       : reason;
     await client.query(
       `

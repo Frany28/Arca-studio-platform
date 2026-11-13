@@ -784,6 +784,7 @@ test("PostgreSQL y HTTP: aprobar crea un único borrador draft con los datos equ
   }
   const notification = (await database.client.query("select project_id, message from public.notifications where entity_type = 'project_request' and entity_id = $1 order by id desc limit 1", [id])).rows[0];
   assert.equal(notification.project_id, null, "la notificación no enlaza un proyecto inaccesible");
+  assert.equal(notification.message, "Tu solicitud ha sido aprobada. Nuestro equipo se pondrá en contacto contigo para continuar con los siguientes pasos.", "no anuncia un proyecto disponible ni un contacto realizado");
 });
 
 test("PostgreSQL y HTTP: configurar el borrador precarga la solicitud, guarda por secciones y solo finalizar lo pasa a pending", { skip }, async () => {

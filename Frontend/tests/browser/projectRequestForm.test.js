@@ -695,18 +695,19 @@ test("Solicitud recibida: pendiente de verificación o revisión, sin motivos ni
 });
 
 const LONG_REJECTION_REASON = `El inmueble no cuenta con la documentación legal necesaria para iniciar el proyecto.\n${"El presupuesto indicado no cubre el alcance solicitado ni los acabados descritos en la solicitud. ".repeat(6)}`.trim();
-const decisionSection = (page) => page.getByRole("region", { name: /Primer contacto|Motivo del rechazo|Información solicitada/ });
+const decisionSection = (page) => page.getByRole("region", { name: /Solicitud aprobada|Motivo del rechazo|Información solicitada/ });
 const stageTexts = (page) => page.getByLabel("Progreso de la solicitud").locator(":scope > div > div").evaluateAll((nodes) => nodes.map((node) => node.textContent));
 
-test("Estado de la solicitud: aprobada muestra el primer contacto sin inventar etapas y abre el proyecto", async (context) => {
+test("Estado de la solicitud: aprobada muestra el primer contacto como etapa actual, sin inventar etapas, y abre el proyecto disponible", async (context) => {
   const { page } = await openRequestPage(context, {
     viewRequest: { ...PERSISTED_REQUEST, status: "converted", convertedProjectAvailable: true, convertedProjectId: 77, correctionReason: "Corrección anterior." },
     readyHeading: "Estado de la solicitud",
   });
   await page.getByText("Verifique el progreso de su solicitud aquí.", { exact: true }).waitFor();
   const section = decisionSection(page);
-  await section.getByRole("heading", { name: "Primer contacto" }).waitFor();
-  await section.getByText(/El siguiente paso es coordinar una reunión inicial/).waitFor();
+  await section.getByRole("heading", { name: "Solicitud aprobada" }).waitFor();
+  await section.getByText("Tu solicitud ha sido aprobada. Nuestro equipo se pondrá en contacto contigo para continuar con los siguientes pasos.", { exact: true }).waitFor();
+  assert.equal(await page.getByText("Proyecto creado", { exact: true }).count(), 0);
   assert.equal(await page.getByText(/Hemos enviado un correo/).count(), 0, "no afirma comunicaciones no registradas");
   assert.equal(await page.getByText("Corrección anterior.", { exact: true }).count(), 0);
   assert.deepEqual(await stageTexts(page), [
@@ -1386,4 +1387,28 @@ test("Adjuntos: los vídeos MOV se suben y un vídeo de más de 4,5 MB se rechaz
   await attachments(page).getByText("largo.mp4: los vídeos admiten hasta 4,5 MB.", { exact: true }).waitFor();
   assert.deepEqual(calls.filter((call) => call.path.endsWith("/files")).map((call) => call.fileName), ["recorrido.mov"]);
   assert.match(await attachments(page).innerText(), /MP4 y MOV\. Hasta 50 MB y vídeos hasta 4,5 MB\./);
+});
+
+test("Estado de la solicitud: aprobada con el proyecto en borrador no ofrece «Ver proyecto» y refleja el primer contacto registrado", async (context) => {
+  const { page } = await openRequestPage(context, {
+    viewRequest: { ...PERSISTED_REQUEST, convertedProjectAvailable: false, convertedProjectId: 77, firstContactAt: null, status: "converted" },
+    readyHeading: "Estado de la solicitud",
+  });
+  await decisionSection(page).getByRole("heading", { name: "Solicitud aprobada" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Ver proyecto", exact: true }).count(), 0, "el borrador interno no se ofrece al cliente");
+  assert.equal(await page.getByText("Proyecto creado", { exact: true }).count(), 0);
+  assert.deepEqual((await stageTexts(page)).slice(3), ["Primer contactoPendiente", "Propuesta inicialPendiente"]);
+});
+
+test("Estado de la solicitud: con el primer contacto registrado esa etapa se completa y la propuesta sigue pendiente", async (context) => {
+  const { page } = await openRequestPage(context, {
+    viewRequest: { ...PERSISTED_REQUEST, convertedProjectAvailable: false, convertedProjectId: 77, firstContactAt: "2026-11-14T10:00:00.000Z", status: "converted" },
+    readyHeading: "Estado de la solicitud",
+  });
+  await decisionSection(page).getByRole("heading", { name: "Solicitud aprobada" }).waitFor();
+  assert.deepEqual(await stageTexts(page), [
+    "Solicitud enviadaCompletado", "Evaluación preliminarCompletado", "RevisiónAprobada",
+    "Primer contactoCompletado", "Propuesta inicialPendiente",
+  ]);
+  assert.equal(await page.getByRole("button", { name: "Ver proyecto", exact: true }).count(), 0);
 });

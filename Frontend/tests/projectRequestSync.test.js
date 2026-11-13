@@ -53,14 +53,14 @@ test("los cambios de otras personas usan un aviso Info, distinto del éxito prop
   assert.equal(statusChange.theme, "Info");
   assert.equal(statusChange.title, "Solicitud actualizada");
   assert.equal(statusChange.content, "Casa Norte");
-  assert.match(statusChange.description, /«Proyecto creado»/);
+  assert.match(statusChange.description, /«Aprobada»/);
   const teamChange = getExternalProjectRequestUpdateFeedback(REQUEST, { ...REQUEST, assignees: [] });
   assert.match(teamChange.description, /responsables o revisiones/);
 });
 
 test("avisos de éxito de decisiones y revisión con los datos confirmados", () => {
   const approved = getProjectRequestDecisionFeedback(REQUEST, "approve", { project: { id: 40, name: "Casa Norte (proyecto)" } });
-  assert.deepEqual(approved, { content: "Casa Norte (proyecto)", description: "Proyecto creado correctamente.", theme: "Success", title: "Solicitud aprobada" });
+  assert.deepEqual(approved, { content: "Casa Norte (proyecto)", description: "El proyecto interno quedó en borrador para configurarlo. El cliente verá su solicitud aprobada.", theme: "Success", title: "Solicitud aprobada" });
   assert.equal(getProjectRequestDecisionFeedback(REQUEST, "approve", {}).content, "Casa Norte");
   assert.equal(getProjectRequestDecisionFeedback(REQUEST, "reject").title, "Solicitud rechazada");
   assert.equal(getProjectRequestDecisionFeedback(REQUEST, "changes_requested").title, "Correcciones solicitadas");

@@ -84,7 +84,8 @@ export function getExternalProjectRequestUpdateFeedback(previous, next) {
 
 /**
  * Aviso de éxito de una decisión administrativa confirmada por la API. La aprobación informa
- * también del proyecto creado por el backend, con el nombre que devolvió la respuesta.
+ * del proyecto interno en borrador que crea el backend (con el nombre de la respuesta), que el
+ * cliente no ve hasta finalizar su configuración: para él, la solicitud está aprobada.
  *
  * @param {Object} request - Solicitud decidida.
  * @param {"approve"|"reject"|"changes_requested"} action - Decisión enviada.
@@ -95,7 +96,7 @@ export function getProjectRequestDecisionFeedback(request, action, result) {
   if (action === "approve") {
     return {
       content: result?.project?.name || request?.projectName || "",
-      description: "Proyecto creado correctamente.",
+      description: "El proyecto interno quedó en borrador para configurarlo. El cliente verá su solicitud aprobada.",
       theme: "Success",
       title: "Solicitud aprobada",
     };

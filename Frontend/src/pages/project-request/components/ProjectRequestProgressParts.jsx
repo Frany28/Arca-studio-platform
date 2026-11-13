@@ -58,10 +58,11 @@ function AnimatedRequestStep({ animationDelay, state, subtext, title }) {
  *
  * @param {Object} props - Estado de la solicitud.
  * @param {string|null|undefined} props.status - Estado vigente de la solicitud.
+ * @param {string|null} [props.firstContactAt] - Registro real del primer contacto (completa esa etapa).
  * @returns {import("react").ReactElement} Sección de progreso.
  */
-export function ProjectRequestCurrentStages({ status }) {
-  const requestSteps = buildProjectRequestStages(status);
+export function ProjectRequestCurrentStages({ firstContactAt = null, status }) {
+  const requestSteps = buildProjectRequestStages(status, { firstContactAt });
   return (
     <section className="flex w-full max-w-[850px] flex-col gap-[16px]">
       <h2 className="text-heading-7 text-[var(--color-text-200)]">

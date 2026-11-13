@@ -41,7 +41,7 @@ export function buildAdminProjectRequestHeader(projectRequest) {
     project: {
       category: typeLabel ? `Proyecto ${typeLabel}` : "Tipo de proyecto no registrado",
       id: projectRequest?.id,
-      stages: buildProjectRequestStages(projectRequest?.status),
+      stages: buildProjectRequestStages(projectRequest?.status, { firstContactAt: projectRequest?.firstContactAt }),
       title: projectRequest?.projectName || "Solicitud de proyecto",
     },
   };

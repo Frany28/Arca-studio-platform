@@ -67,7 +67,7 @@ function ProjectRequestReceivedView({ compatibility, onBackToDashboard, onViewRe
 
       <ProjectRequestSectionDivider />
 
-      <ProjectRequestCurrentStages status={projectRequest?.status} />
+      <ProjectRequestCurrentStages status={projectRequest?.status} firstContactAt={projectRequest?.firstContactAt} />
 
       <ProjectRequestSectionDivider />
 

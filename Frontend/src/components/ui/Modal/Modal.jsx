@@ -139,7 +139,9 @@ function ModalDialog({
       >
         <IconContainer size="M" type="Outline" icon={icon} />
 
-        <div className="flex w-full flex-col gap-[4px] tracking-[-0.5px]">
+        {/* Textos dinámicos (nombres, correos, códigos) pueden ser una sola palabra muy larga: se cortan
+            donde haga falta para no salirse del diálogo de 400 px, que recorta su contenido. */}
+        <div className="flex w-full min-w-0 flex-col gap-[4px] tracking-[-0.5px] [overflow-wrap:anywhere]">
           <p className="text-heading-6 text-[var(--color-text-300)]">
             {title}
           </p>

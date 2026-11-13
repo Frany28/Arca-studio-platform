@@ -68,7 +68,7 @@ function ProjectRequestStatusView({ onBackToDashboard, onPrimaryAction, onViewRe
 
       <ProjectRequestSectionDivider />
 
-      <ProjectRequestCurrentStages status={projectRequest?.status} />
+      <ProjectRequestCurrentStages status={projectRequest?.status} firstContactAt={projectRequest?.firstContactAt} />
 
       <ProjectRequestSectionDivider />
 

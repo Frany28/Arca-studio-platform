@@ -11,11 +11,14 @@ import {
   buildProjectRequestWhatsAppHref,
 } from "../../utils/projectRequestContactLinks.js";
 
-const CONTACT_BUTTON_CLASS_NAME = "h-[34px] min-w-0 px-[8px]";
-const COPY_BUTTON_CLASS_NAME = "h-[34px] w-[34px] p-[7px]";
+const CONTACT_BUTTON_CLASS_NAME = "h-[34px] min-w-0 shrink-0 px-[8px]";
+const COPY_BUTTON_CLASS_NAME = "h-[34px] w-[34px] shrink-0 p-[7px]";
 
 /**
  * Presenta una fila de contacto del diseño (Figma 3727:677375).
+ * La fila nunca se parte: etiqueta y acciones conservan su ancho y el valor ocupa el resto en una
+ * sola línea, recortado con «…» si no cabe (p. ej. un correo largo); el valor completo queda en
+ * `title` y se puede copiar.
  * Los valores proceden del usuario registrado; cada acción es independiente
  * y ninguna envía mensajes ni modifica por sí sola el estado de la solicitud.
  *
@@ -33,11 +36,11 @@ function RequestContactRow({
 }) {
   const available = typeof value === "string" && Boolean(value.trim());
   return (
-    <div className="flex w-full flex-wrap items-center gap-x-[16px] gap-y-[4px]" role="group" aria-label={label}>
-      <span className="text-heading-8 min-w-[55px] text-[var(--color-text-200)]">{label}</span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-[12px]">
+    <div className="flex w-full items-center gap-[16px]" role="group" aria-label={label}>
+      <span className="text-heading-8 min-w-[55px] shrink-0 text-[var(--color-text-200)]">{label}</span>
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-[12px]">
         <span
-          className="text-heading-8 min-w-0 max-w-full break-all text-[var(--color-text-300)]"
+          className="text-heading-8 min-w-0 truncate text-right text-[var(--color-text-300)]"
           title={available ? value : undefined}
         >
           {available ? value : "No registrado"}

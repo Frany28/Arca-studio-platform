@@ -19,6 +19,7 @@ import { buildProjectRequestStages } from "../src/utils/projectRequestStages.js"
 import { getClientProjectRequestPath, parseProjectRequestId } from "../src/utils/projectRequestRoutes.js";
 import {
   getProjectRequestClientReason,
+  getProjectRequestStatus,
   isProjectRequestUnderEvaluation,
 } from "../src/utils/projectRequestStatus.js";
 
@@ -47,17 +48,20 @@ test("solo pending_verification y pending_review son seguimiento («Solicitud re
 
 test("«Estado de la solicitud»: aprobada describe el siguiente paso sin inventar comunicaciones", () => {
   const approved = getProjectRequestDecisionPresentation({ status: "converted", convertedProjectAvailable: true, convertedProjectId: 7 });
-  assert.equal(approved.sectionTitle, "Primer contacto");
+  assert.equal(approved.sectionTitle, "Solicitud aprobada");
   assert.equal(approved.message, APPROVED_NEXT_STEP_MESSAGE);
-  assert.doesNotMatch(approved.message, /hemos enviado|enviamos un correo/i);
+  assert.equal(APPROVED_NEXT_STEP_MESSAGE, "Tu solicitud ha sido aprobada. Nuestro equipo se pondrá en contacto contigo para continuar con los siguientes pasos.");
+  assert.doesNotMatch(approved.message, /hemos enviado|enviamos un correo|proyecto creado|disponible/i);
   assert.deepEqual(approved.primaryAction, { kind: "viewProject", label: "Ver proyecto" });
   assert.equal(getProjectRequestDecisionPresentation({ status: "converted", convertedProjectId: null }).primaryAction, null);
   // Recién aprobada: el proyecto es un borrador interno y no se ofrece al cliente.
   assert.equal(getProjectRequestDecisionPresentation({ status: "converted", convertedProjectAvailable: false, convertedProjectId: 7 }).primaryAction, null);
-  // Revisión aprobada; primer contacto y propuesta siguen pendientes.
+  // Revisión aprobada; el primer contacto es la etapa actual y la propuesta sigue pendiente.
   const stages = buildProjectRequestStages("converted");
   assert.equal(stages[2].status, "Aprobada");
-  assert.deepEqual(stages.slice(3).map((stage) => [stage.status, stage.tone]), [["Pendiente", "upcoming"], ["Pendiente", "upcoming"]]);
+  assert.deepEqual(stages.slice(3).map((stage) => [stage.status, stage.tone]), [["Pendiente", "current"], ["Pendiente", "upcoming"]]);
+  // La etiqueta del estado ya no dice «Proyecto creado» ni presenta la solicitud al 100 %.
+  assert.deepEqual(getProjectRequestStatus("converted"), { badgeTheme: "Success", label: "Aprobada", progress: 60 });
 });
 
 test("«Estado de la solicitud»: rechazo con motivo completo, etapas «No aplica» y nueva solicitud", () => {

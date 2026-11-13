@@ -42,8 +42,19 @@ test("las etapas reflejan el estado real y nunca completan etapas posteriores a 
   assert.deepEqual(tones("pending_review"), ["completed", "completed", "current", "upcoming", "upcoming"]);
   assert.deepEqual(tones("changes_requested"), ["completed", "completed", "current", "upcoming", "upcoming"]);
   assert.equal(buildProjectRequestStages("changes_requested")[2].status, "Correcciones solicitadas");
-  assert.deepEqual(tones("converted"), ["completed", "completed", "completed", "upcoming", "upcoming"]);
+  // Aprobada: el primer contacto es la etapa en curso; nada posterior se completa sin un evento.
+  assert.deepEqual(tones("converted"), ["completed", "completed", "completed", "current", "upcoming"]);
+  assert.deepEqual(tones("approved"), ["completed", "completed", "completed", "current", "upcoming"]);
   assert.equal(buildProjectRequestStages("converted")[2].status, "Aprobada");
+  // Con el primer contacto registrado, esa etapa se completa y la propuesta inicial pasa a estar en curso.
+  const contacted = buildProjectRequestStages("converted", { firstContactAt: "2026-11-14T10:00:00.000Z" });
+  assert.deepEqual(contacted.map((stage) => stage.tone), ["completed", "completed", "completed", "completed", "current"]);
+  assert.deepEqual(contacted.slice(3).map((stage) => stage.status), ["Completado", "Pendiente"]);
+  // Un registro de primer contacto no cambia otros estados.
+  assert.deepEqual(buildProjectRequestStages("rejected", { firstContactAt: "2026-11-14T10:00:00.000Z" }).map((stage) => stage.tone),
+    buildProjectRequestStages("rejected").map((stage) => stage.tone));
+  assert.deepEqual(buildProjectRequestStages("pending_review", { firstContactAt: "2026-11-14T10:00:00.000Z" }).map((stage) => stage.tone),
+    ["completed", "completed", "current", "upcoming", "upcoming"]);
   assert.equal(buildProjectRequestStages("rejected")[2].status, "Rechazada");
   assert.equal(buildProjectRequestStages("rejected")[3].status, "No aplica");
   assert.deepEqual(tones("estado_futuro"), ["completed", "upcoming", "upcoming", "upcoming", "upcoming"]);

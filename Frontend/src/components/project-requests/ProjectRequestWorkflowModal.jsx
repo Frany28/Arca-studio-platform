@@ -305,8 +305,8 @@ function ProjectRequestWorkflowModal({
           title={<span id="project-request-approval-title">¿Deseas aprobar la solicitud?</span>}
           description={(
             <span id="project-request-approval-description">
-              Se creará el proyecto {projectRequest.projectName ? `«${projectRequest.projectName}» ` : ""}y
-              luego podrás coordinar la reunión inicial con el cliente.
+              Se creará el borrador interno del proyecto {projectRequest.projectName ? `«${projectRequest.projectName}» ` : ""}y
+              el cliente verá su solicitud aprobada. Luego podrás coordinar el primer contacto.
               {error ? (
                 <span role="alert" className="mt-[4px] block text-[var(--color-danger-100)] [overflow-wrap:anywhere]">
                   {error}
@@ -339,9 +339,10 @@ function ProjectRequestWorkflowModal({
         />
       ) : (
       // La revisión del arquitecto mide 680 px para que sus tres recomendaciones quepan en una fila (Figma).
+      // overflow-wrap se hereda: nombre, descripción, ubicación, notas y archivos largos se cortan dentro del diálogo.
       <section
         ref={dialogRef}
-        className={`relative flex w-full ${mode === "review" ? "max-w-[680px]" : "max-w-[620px]"} flex-col gap-[20px] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[24px] shadow-[var(--shadow-e2)]`}
+        className={`relative flex w-full ${mode === "review" ? "max-w-[680px]" : "max-w-[620px]"} flex-col gap-[20px] [overflow-wrap:anywhere] rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] p-[24px] shadow-[var(--shadow-e2)]`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-request-workflow-title"

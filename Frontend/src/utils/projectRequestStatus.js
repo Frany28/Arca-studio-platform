@@ -3,7 +3,9 @@
 export const PROJECT_REQUEST_STATUS = {
   approved: { badgeTheme: "Success", label: "Aprobada", progress: 90 },
   changes_requested: { badgeTheme: "Neutral", label: "Requiere correcciones", progress: 40 },
-  converted: { badgeTheme: "Success", label: "Proyecto creado", progress: 100 },
+  // `converted` es la aprobación vista por el cliente: el proyecto interno (draft) no está
+  // disponible todavía y quedan «Primer contacto» y «Propuesta inicial», así que no es un 100 %.
+  converted: { badgeTheme: "Success", label: "Aprobada", progress: 60 },
   pending_review: { badgeTheme: "Brand 2", label: "En revisión", progress: 65 },
   pending_verification: { badgeTheme: "Neutral", label: "En verificación", progress: 30 },
   rejected: { badgeTheme: "Danger", label: "Rechazada", progress: 100 },

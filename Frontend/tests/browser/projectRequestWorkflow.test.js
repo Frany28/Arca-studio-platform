@@ -893,7 +893,7 @@ function countReads(calls, paths) {
 
 for (const [role, label, response, expected] of [
   ["architect", "Enviar", { review: {} }, { title: "Revisión guardada", content: "Casa Norte", theme: "Success" }],
-  ["admin", "Aprobar", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "Proyecto creado correctamente.", theme: "Success" }],
+  ["admin", "Aprobar", { project: { id: 40, name: "Casa Norte" }, projectRequest: { id: 7, status: "converted" } }, { title: "Solicitud aprobada", content: "Casa Norte", description: "El proyecto interno quedó en borrador para configurarlo. El cliente verá su solicitud aprobada.", theme: "Success" }],
 ]) {
   test(`${role}: el aviso de éxito se publica solo tras la confirmación de la API`, async (context) => {
     const { page, mutations } = await openPage(context, { role });
@@ -964,7 +964,7 @@ test("Dashboard admin real: aprobar avisa del proyecto creado y retira la solici
   decided = true;
   await mutations[0].fulfill({ json: { project: { id: 40, name: "Casa Norte", status: "pending" }, projectRequest: { id: 7, status: "converted" } } });
   await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
-  await page.getByText("Proyecto creado correctamente.", { exact: true }).waitFor();
+  await page.getByText("El proyecto interno quedó en borrador para configurarlo. El cliente verá su solicitud aprobada.", { exact: true }).waitFor();
   // Ya aprobada, el modal muestra «Solicitud Aprobada» con el contacto del cliente hasta cerrarlo.
   const approved = page.getByRole("dialog", { name: "Solicitud Aprobada" });
   await approved.getByText("El siguiente paso es coordinar la reunión inicial con el cliente.", { exact: true }).waitFor();

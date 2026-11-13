@@ -2,9 +2,9 @@ import { getProjectRequestClientReason } from "../../../utils/projectRequestStat
 
 // Texto de la columna derecha cuando la solicitud fue aprobada. Figma (3727:543790) afirma que
 // se envió un correo; la solicitud no registra esa comunicación, así que el texto describe el
-// siguiente paso sin dar por hecho un envío, una reunión ni una fecha.
+// siguiente paso sin dar por hecho un envío, un contacto ni que el proyecto esté disponible.
 export const APPROVED_NEXT_STEP_MESSAGE =
-  "Su solicitud fue aprobada por nuestro equipo. El siguiente paso es coordinar una reunión inicial: nos comunicaremos con usted a través de los datos de contacto registrados para acordarla.";
+  "Tu solicitud ha sido aprobada. Nuestro equipo se pondrá en contacto contigo para continuar con los siguientes pasos.";
 export const MISSING_REJECTION_REASON_MESSAGE = "El motivo del rechazo no está disponible en este momento.";
 export const MISSING_CORRECTION_REASON_MESSAGE = "La información solicitada no está disponible en este momento.";
 
@@ -38,7 +38,7 @@ export function getProjectRequestDecisionPresentation(projectRequest) {
       primaryAction: projectRequest.convertedProjectId && projectRequest.convertedProjectAvailable
         ? DECISION_PRIMARY_ACTIONS.viewProject
         : null,
-      sectionTitle: "Primer contacto",
+      sectionTitle: "Solicitud aprobada",
     };
   }
   if (status === "rejected" || status === "changes_requested") {

@@ -241,7 +241,8 @@ test("una solicitud convertida ofrece su proyecto y conserva el contexto de orig
     state: { from: { label: "Gestión", to: "/gestion-proyectos" } },
   });
 
-  await page.getByText("Proyecto creado", { exact: true }).waitFor();
+  await page.getByText("Aprobada", { exact: true }).first().waitFor();
+  assert.equal(await page.getByText("Proyecto creado", { exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Ver proyecto" }).count(), 1);
   assert.equal(await page.getByRole("link", { name: "Gestión" }).getAttribute("href"), "/gestion-proyectos");
 });
@@ -308,7 +309,7 @@ test("al volver a la pestaña revalida en segundo plano y avisa de cambios hecho
 
   held.resolve({ json: { projectRequest: converted } });
   await page.getByText("Solicitud actualizada", { exact: true }).waitFor();
-  await page.getByText(/Ahora está en estado «Proyecto creado»/).waitFor();
+  await page.getByText(/Ahora está en estado «Aprobada»/).waitFor();
   await page.getByRole("button", { name: "Ver proyecto" }).waitFor();
   assert.equal(await page.getByText("Solicitud aprobada", { exact: true }).count(), 0);
 });
@@ -549,7 +550,7 @@ test("aprobar crea el proyecto una sola vez, lo muestra y permite iniciar su cot
 
   held.resolve({ json: { project: { id: 40, name: "Casa Prueba", status: "pending" }, projectRequest: { convertedProjectId: 40, id: 9, reviewedAt: "2026-10-05T12:00:00.000Z", status: "converted" } } });
   await page.getByText("Solicitud aprobada", { exact: true }).waitFor();
-  await page.getByText("Proyecto creado correctamente.", { exact: true }).waitFor();
+  await page.getByText("El proyecto interno quedó en borrador para configurarlo. El cliente verá su solicitud aprobada.", { exact: true }).waitFor();
   // Ya aprobada, Figma 3727:677374 «Solicitud Aprobada» ofrece el contacto para la reunión inicial;
   // «Finalizar» solo cierra (la decisión ya se guardó).
   const approved = page.getByRole("dialog", { name: "Solicitud Aprobada" });
@@ -936,4 +937,60 @@ test("revisiones desactualizadas: el resumen avisa y una copia sin la marca pasa
   await page.getByRole("region", { name: "Gestión de la solicitud" }).getByText("Revisiones desactualizadas", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Ver resumen & recomendación" }).click();
   await page.getByRole("dialog").getByText(/La recomendación mostrada puede no reflejar los datos actuales/).waitFor();
+});
+
+test("contacto: un correo largo no rompe la fila del modal en móvil ni en escritorio", async (context) => {
+  const longEmail = "solicitudes.showcase.departamento.comercial.internacional@arcastudio-ejemplo-largo.com";
+  for (const width of [375, 1440]) {
+    const { page } = await openPage(context, {
+      extraDetails: { "/api/admin/users/11": { json: { user: { email: longEmail, id: 11, name: "Cliente Prueba", phone: null } } } },
+      viewport: { height: 900, width },
+    });
+    await page.getByRole("button", { name: "Solicitar más información", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Solicitar información adicional" });
+    const row = dialog.getByRole("group", { name: "Correo" });
+    const value = row.getByTitle(longEmail);
+    await value.waitFor();
+    const boxes = await row.evaluate((element) => {
+      const rect = (node) => node.getBoundingClientRect();
+      const [label, values] = element.children;
+      return {
+        children: [label, ...values.children].map((node) => ({ bottom: rect(node).bottom, left: rect(node).left, right: rect(node).right, top: rect(node).top })),
+        dialog: rect(element.closest("[role='dialog']")),
+        row: rect(element),
+        truncated: values.children[0].scrollWidth > values.children[0].clientWidth,
+      };
+    });
+    // Etiqueta, correo, «Enviar correo» y copiar comparten una sola línea dentro del diálogo.
+    const [label, ...rest] = boxes.children;
+    for (const box of rest) {
+      assert.ok(box.top < label.bottom && box.bottom > label.top, `${width}px: todo en una línea`);
+      assert.ok(box.right <= boxes.row.right + 0.5 && box.left >= boxes.row.left - 0.5, `${width}px: dentro de la fila`);
+    }
+    assert.ok(boxes.row.right <= boxes.dialog.right, `${width}px: la fila no desborda el diálogo`);
+    assert.equal(boxes.truncated, true, `${width}px: el correo se recorta con «…»`);
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
+  }
+});
+
+test("diálogos: un nombre largo sin espacios se corta dentro del diálogo estándar en móvil y escritorio", async (context) => {
+  const longName = "CasaMiradorDelLagoConTerrazaPiscinaYEstudioIndependienteParaCliente";
+  for (const width of [375, 1440]) {
+    const { page } = await openPage(context, {
+      detail: { json: { projectRequest: { ...REQUEST, projectName: longName } } },
+      viewport: { height: 900, width },
+      waitFor: longName,
+    });
+    await page.getByRole("button", { name: "Aprobar", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "¿Deseas aprobar la solicitud?" });
+    await dialog.waitFor();
+    const overflow = await dialog.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const description = element.querySelector("#project-request-approval-description").getBoundingClientRect();
+      return { description: description.right - box.right, scroll: element.scrollWidth - element.clientWidth };
+    });
+    assert.ok(overflow.scroll <= 0, `${width}px: el diálogo no tiene contenido desbordado (${overflow.scroll}px)`);
+    assert.ok(overflow.description <= 0.5, `${width}px: la descripción queda dentro del diálogo`);
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
+  }
 });
