@@ -10,8 +10,13 @@ test("la miniatura de una solicitud usa su adjunto y, aprobada, la imagen del pr
   );
   // Convertida: los adjuntos ya son del proyecto y su portada puede ser una imagen nueva.
   assert.match(
-    getProjectRequestImageSource({ convertedProjectId: 40, id: 7, imageFileId: 22, imageFileVersionId: 5, status: "converted" }),
+    getProjectRequestImageSource({ convertedProjectAvailable: true, convertedProjectId: 40, id: 7, imageFileId: 22, imageFileVersionId: 5, status: "converted" }),
     /\/api\/projects\/40\/files\/22\/content\?versionId=5$/,
+  );
+  // Borrador interno (draft): el cliente aún no accede al proyecto; se usa la ruta de la solicitud.
+  assert.match(
+    getProjectRequestImageSource({ convertedProjectAvailable: false, convertedProjectId: 40, id: 7, imageFileId: 22, status: "converted" }),
+    /\/api\/project-requests\/7\/files\/22\/content$/,
   );
   assert.equal(getProjectRequestImageSource({ id: 7, imageFileId: null, status: "rejected" }), null, "sin imagen: placeholder");
   assert.equal(getProjectRequestImageSource(null), null);

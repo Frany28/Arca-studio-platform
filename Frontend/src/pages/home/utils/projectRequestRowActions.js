@@ -12,13 +12,14 @@ export const DEFAULT_REQUEST_ROW_MESSAGE = "Puedes consultar el avance y la deci
  * - `rejected`: «Ver motivo» abre «Estado de la solicitud», nunca el formulario directamente.
  * - `changes_requested`: «Corregir solicitud» reabre la misma solicitud en el formulario.
  *
- * @param {{status?: string, convertedProjectId?: number|null}} projectRequest - Solicitud del listado.
+ * @param {{status?: string, convertedProjectId?: number|null, convertedProjectAvailable?: boolean}} projectRequest - Solicitud del listado.
  * @returns {Array<{kind: "status"|"viewProject"|"correct", label: string, type: "Outline"|"Solid"}>} Acciones en orden visual.
  */
 export function getProjectRequestRowActions(projectRequest) {
   switch (projectRequest?.status) {
     case "converted":
-      return projectRequest.convertedProjectId
+      // El proyecto solo se ofrece cuando dejó de ser un borrador interno (convertedProjectAvailable).
+      return projectRequest.convertedProjectId && projectRequest.convertedProjectAvailable
         ? [
           { kind: "status", label: "Ver resultado", type: "Outline" },
           { kind: "viewProject", label: "Ver proyecto", type: "Solid" },

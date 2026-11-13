@@ -130,12 +130,14 @@ export function getProjectDetail({
  * @param {number} options.clientId - Cliente registrado y disponible.
  * @param {string} options.name - Nombre normalizado y validado (normalizeProjectName).
  * @param {number} options.userId - Administrador que guarda la cotización.
- * @param {number} options.quoteId - Cotización que origina el proyecto (auditoría).
+ * @param {number} [options.quoteId] - Cotización que origina el proyecto (auditoría).
+ * @param {"quote"|"manual"} [options.origin="quote"] - Origen del borrador: una cotización o el alta
+ *   manual de «Nuevo proyecto» en la configuración administrativa (distingue la auditoría).
  * @returns {Promise<{ id: number, name: string }>} Proyecto draft creado.
  * @throws {ConflictError} PROJECT_NAME_ALREADY_EXISTS si el nombre ya existe en un proyecto o
  *   en una solicitud activa del cliente.
  */
-export async function createDraftProject(client, { clientId, name, quoteId, userId }) {
+export async function createDraftProject(client, { clientId, name, origin = "quote", quoteId = null, userId }) {
   const existing = await findExistingProjectNameForClient(clientId, name, { executor: client });
   if (existing) {
     throw new ConflictError(
@@ -150,8 +152,8 @@ export async function createDraftProject(client, { clientId, name, quoteId, user
   const publicSlug = `${slugifyProjectName(name).slice(0, DRAFT_SLUG_BASE_MAX_LENGTH).replace(/-+$/, "")}-${id}`;
   const project = await insertDraftProject(client, { clientId, id, name, publicSlug, userId });
   await insertAuditLog({
-    action: "project.create_from_quote",
-    description: "Proyecto draft creado al guardar una cotización",
+    action: origin === "manual" ? "project.create_draft" : "project.create_from_quote",
+    description: origin === "manual" ? "Proyecto draft creado desde «Nuevo proyecto»" : "Proyecto draft creado al guardar una cotización",
     entityId: project.id,
     entityType: "project",
     newValues: { clientId, name: project.name, quoteId, status: PROJECT_STATUS.DRAFT },

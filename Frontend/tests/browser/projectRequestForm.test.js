@@ -700,7 +700,7 @@ const stageTexts = (page) => page.getByLabel("Progreso de la solicitud").locator
 
 test("Estado de la solicitud: aprobada muestra el primer contacto sin inventar etapas y abre el proyecto", async (context) => {
   const { page } = await openRequestPage(context, {
-    viewRequest: { ...PERSISTED_REQUEST, status: "converted", convertedProjectId: 77, correctionReason: "Corrección anterior." },
+    viewRequest: { ...PERSISTED_REQUEST, status: "converted", convertedProjectAvailable: true, convertedProjectId: 77, correctionReason: "Corrección anterior." },
     readyHeading: "Estado de la solicitud",
   });
   await page.getByText("Verifique el progreso de su solicitud aquí.", { exact: true }).waitFor();
@@ -902,7 +902,7 @@ test("Consulta: una solicitud de otro cliente o inexistente no se muestra", asyn
 test("Mis proyectos: cada estado navega a su pantalla por id", async (context) => {
   const rows = [
     { id: REQUEST_ID, projectName: "Rechazada", status: "rejected", correctionReason: "Corrección anterior.", rejectionReason: "Fuera de alcance.", createdAt: "2026-11-01T10:00:00Z" },
-    { id: 32, projectName: "Aprobada", status: "converted", convertedProjectId: 77, createdAt: "2026-11-01T10:00:00Z" },
+    { id: 32, projectName: "Aprobada", status: "converted", convertedProjectAvailable: true, convertedProjectId: 77, createdAt: "2026-11-01T10:00:00Z" },
     { id: 33, projectName: "En revisión", status: "pending_review", createdAt: "2026-11-01T10:00:00Z" },
     { id: 34, projectName: "Devuelta", status: "changes_requested", correctionReason: "Adjunta planos.", createdAt: "2026-11-01T10:00:00Z" },
   ];

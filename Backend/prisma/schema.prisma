@@ -108,6 +108,7 @@ model files {
   project_id         BigInt?
   project_request_id BigInt?
   origin_project_request_id BigInt?
+  folder_id          BigInt?
   uploaded_by        BigInt
   title              String             @db.VarChar(255)
   description        String?            @db.VarChar(255)
@@ -122,6 +123,7 @@ model files {
   projects           projects?          @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_project")
   project_requests   project_requests?  @relation("files_project_request", fields: [project_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_project_request")
   origin_project_requests project_requests? @relation("files_origin_project_request", fields: [origin_project_request_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_origin_project_request")
+  project_folders    project_folders?   @relation(fields: [folder_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_folder")
   users              users              @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_files_uploaded_by")
   project_comments   project_comments[]
 
@@ -434,6 +436,9 @@ model project_requests {
   reviewed_at                                DateTime?              @db.Timestamptz(6)
   rejection_reason                           String?                @db.VarChar(255)
   converted_project_id                       BigInt?
+  /// Registro real del primer contacto con el cliente (solo en solicitudes converted).
+  first_contact_at                           DateTime?              @db.Timestamptz(6)
+  first_contact_by                           BigInt?
   created_at                                 DateTime               @default(now()) @db.Timestamptz(6)
   updated_at                                 DateTime               @default(now()) @db.Timestamptz(6)
   deleted_at                                 DateTime?              @db.Timestamptz(6)
@@ -454,6 +459,7 @@ model project_requests {
   projects                                   projects?              @relation(fields: [converted_project_id], references: [id], map: "fk_project_requests_converted_project")
   users_project_requests_requested_byTousers users                  @relation("project_requests_requested_byTousers", fields: [requested_by], references: [id], map: "fk_project_requests_requested_by")
   users_project_requests_reviewed_byTousers  users?                 @relation("project_requests_reviewed_byTousers", fields: [reviewed_by], references: [id], map: "fk_project_requests_reviewed_by")
+  users_project_requests_first_contact_byTousers users?             @relation("project_requests_first_contact_byTousers", fields: [first_contact_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_project_requests_first_contact_by")
   correction_reason                          String?
   internal_review_notes                      String?
 }
@@ -574,8 +580,15 @@ model projects {
   location_longitude                          Decimal?                           @db.Decimal(10, 7)
   provider_place_id                           String?                            @db.VarChar
   formatted_address                           String?                            @db.VarChar
+  /// Configuración del borrador (Figma «Nuevo Proyecto»): textos libres; zonificación es obligatoria al finalizar.
+  zoning                                      String?
+  procedures                                  String?
+  conditions                                  String?
+  equipment                                   String?
   public_slug                                 String                             @unique(map: "idx_projects_public_slug_active", where: raw("(deleted_at IS NULL)")) @db.VarChar(160)
   files                                       files[]
+  project_folders                             project_folders[]
+  project_warranties                          project_warranties[]
   notifications                               notifications[]
   project_comments                            project_comments[]
   project_milestones                          project_milestones[]
@@ -668,6 +681,9 @@ model users {
   project_request_assignees_project_assigned_by         project_request_assignees[] @relation("project_request_assignees_assigned_by")
   project_requests_project_requests_requested_byTousers project_requests[]         @relation("project_requests_requested_byTousers")
   project_requests_project_requests_reviewed_byTousers  project_requests[]         @relation("project_requests_reviewed_byTousers")
+  project_requests_first_contact                        project_requests[]         @relation("project_requests_first_contact_byTousers")
+  project_folders_created                               project_folders[]          @relation("project_folders_created_by")
+  project_warranties_created                            project_warranties[]       @relation("project_warranties_created_by")
   project_request_reviews                               project_request_reviews[]
   project_status_history                                project_status_history[]
   projects_projects_assigned_architect_idTousers        projects[]                 @relation("projects_assigned_architect_idTousers")
@@ -1177,4 +1193,45 @@ enum user_status {
   blocked
   /// Cliente creado desde una cotización: sin correo verificado ni contraseña hasta su activación.
   pending
+}
+
+/// Carpetas jerárquicas libres de un proyecto (Gestión de archivos). Un archivo sin carpeta queda en la raíz.
+/// Nombre único entre hermanas (uq_project_folders_sibling_name, índice por expresión fuera de Prisma).
+model project_folders {
+  id          BigInt            @id @default(autoincrement())
+  project_id  BigInt
+  parent_id   BigInt?
+  name        String            @db.VarChar(120)
+  created_by  BigInt
+  created_at  DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime          @default(now()) @db.Timestamptz(6)
+  deleted_at  DateTime?         @db.Timestamptz(6)
+  files       files[]
+  children    project_folders[] @relation("project_folders_tree")
+  parent      project_folders?  @relation("project_folders_tree", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_project_folders_parent")
+  projects    projects          @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_project_folders_project")
+  users       users             @relation("project_folders_created_by", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_project_folders_created_by")
+
+  @@index([project_id], map: "idx_project_folders_project")
+}
+
+/// Garantías opcionales de un proyecto (Figma «Garantías»).
+model project_warranties {
+  id           BigInt    @id @default(autoincrement())
+  project_id   BigInt
+  product      String    @db.VarChar(150)
+  model        String    @db.VarChar(100)
+  code         String    @db.VarChar(100)
+  start_date   DateTime  @db.Date
+  service_date DateTime  @db.Date
+  end_date     DateTime  @db.Date
+  sort_order   Int       @default(0)
+  created_by   BigInt
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  deleted_at   DateTime? @db.Timestamptz(6)
+  projects     projects  @relation(fields: [project_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_project_warranties_project")
+  users        users     @relation("project_warranties_created_by", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_project_warranties_created_by")
+
+  @@index([project_id, sort_order], map: "idx_project_warranties_project")
 }

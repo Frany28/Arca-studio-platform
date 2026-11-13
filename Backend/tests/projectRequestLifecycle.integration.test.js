@@ -39,6 +39,8 @@ before(async () => {
     // Las pruebas del ciclo usan el código real; la validación temporal se prueba aparte.
     PROJECT_REQUEST_EMAIL_VERIFICATION: "enabled",
     PROJECT_REQUEST_RATE_LIMIT_MAX: "1000",
+    // Cada prueba envía solicitudes con su código: el límite real (10/h) se probaría en su propia suite.
+    PROJECT_REQUEST_CODE_RATE_LIMIT_MAX: "1000",
     RESEND_API_KEY: "test-key",
     SUPABASE_STORAGE_BUCKET: "test-bucket",
     SUPABASE_STORAGE_S3_ACCESS_KEY_ID: "test-access-key",
@@ -71,6 +73,7 @@ before(async () => {
   const ownerClientId = await insertClient("cliente-ciclo@example.test");
   const strangerClientId = await insertClient("ajeno-ciclo@example.test");
   seed = {
+    ownerClientId,
     admin: await insertUser({ email: "admin-ciclo@example.test", phone: "+584120000011", role: "admin" }),
     architect: await insertUser({ email: "arquitecto-ciclo@example.test", phone: "+584120000012", role: "architect" }),
     owner: await insertUser({ clientId: ownerClientId, email: "cliente-ciclo@example.test", phone: "+584120000013", role: "client" }),
@@ -516,10 +519,48 @@ async function reviewedRequest(attachments) {
   return { fileIds, headers, id };
 }
 
-test("PostgreSQL y HTTP: aprobar con varios adjuntos los pasa al proyecto con trazabilidad y revoca al arquitecto retirado", { skip }, async () => {
-  // Regresión: chk_files_owner hacía fallar (500) la aprobación de solicitudes con adjuntos, y la
-  // ruta de la solicitud daba acceso permanente al arquitecto aunque se le retirara del proyecto.
-  // La ruta de archivos del proyecto exige projects.read (en staging lo concede un script de permisos).
+/**
+ * Configura un borrador con los datos obligatorios por la API administrativa y confirma
+ * «Finalizar configuración» (draft → pending).
+ *
+ * @param {number} projectId - Proyecto draft.
+ * @param {Object} adminHeaders - Autenticación del administrador.
+ * @param {number[]} assigneeIds - Responsables operativos.
+ * @returns {Promise<{status: number, body: Object|null}>} Respuesta de la finalización.
+ */
+async function configureAndFinalize(projectId, adminHeaders, assigneeIds) {
+  const general = await api(`/admin/projects/${projectId}/configuration/general`, {
+    body: {
+      assigneeIds, constructionArea: 80, generalArea: 120, location: "Maracaibo, Estado Zulia",
+      name: `Proyecto ${projectId}`, projectType: "residential", zoning: "Sala, cocina y dos habitaciones.",
+    },
+    headers: adminHeaders, method: "PUT",
+  });
+  assert.equal(general.status, 200, JSON.stringify(general.body));
+  const tracking = await api(`/admin/projects/${projectId}/configuration/tracking`, {
+    body: { estimatedDeliveryDate: "2026-12-20", milestones: [], stages: [{ endDate: "2026-12-10", name: "Propuesta inicial", startDate: "2026-12-01", status: "pending" }] },
+    headers: adminHeaders, method: "PUT",
+  });
+  assert.equal(tracking.status, 200, JSON.stringify(tracking.body));
+  return api(`/admin/projects/${projectId}/configuration/finalize`, { headers: adminHeaders, method: "POST" });
+}
+
+/**
+ * Proyecto creado al aprobar una solicitud.
+ *
+ * @param {number} id - Solicitud.
+ * @returns {Promise<number>} Id del proyecto convertido.
+ */
+async function convertedProjectId(id) {
+  return Number((await database.client.query("select converted_project_id from public.project_requests where id = $1", [id])).rows[0].converted_project_id);
+}
+
+/**
+ * Concede projects.read a clientes y arquitectos (en staging lo concede un script de permisos).
+ *
+ * @returns {Promise<void>}
+ */
+async function grantProjectRead() {
   await database.client.query(`
     with permission as (
       insert into public.permissions (code, name, description, module) values ('projects.read', 'Leer proyectos', null, 'projects')
@@ -528,70 +569,239 @@ test("PostgreSQL y HTTP: aprobar con varios adjuntos los pasa al proyecto con tr
     insert into public.role_permissions (role_id, permission_id, is_active)
     select r.id, permission.id, true from public.roles r, permission where r.code in ('client', 'architect')
     on conflict do nothing`);
+}
+
+test("PostgreSQL y HTTP: aprobar crea un único borrador draft con los datos equivalentes, sin responsables ni acceso del cliente", { skip }, async () => {
+  await grantProjectRead();
   const { fileIds, headers, id } = await reviewedRequest([png("planta.png"), pdf("escritura.pdf")]);
   const versionsBefore = (await database.client.query("select file_id, file_name, file_size from public.file_versions where file_id = any($1) order by file_id", [fileIds])).rows;
   const objectsBefore = storage.size;
 
   const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
   assert.equal(approved.status, 200, JSON.stringify(approved.body));
-  const projectId = Number((await database.client.query("select converted_project_id from public.project_requests where id = $1", [id])).rows[0].converted_project_id);
+  assert.equal(approved.body.project.status, "draft");
+  // Reintento: no crea otro proyecto.
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 409);
+  const projectId = await convertedProjectId(id);
+  const [project] = (await database.client.query("select status, start_date, project_type, location, has_plans, client_id, assigned_architect_id from public.projects where id = $1", [projectId])).rows;
+  assert.equal(project.status, "draft");
+  assert.equal(project.start_date, null, "la fecha esperada del cliente no confirma el inicio");
+  assert.equal(project.project_type, "residential");
+  assert.equal(project.assigned_architect_id, null);
+  assert.equal(Number((await database.client.query("select count(*) from public.project_assignees where project_id = $1", [projectId])).rows[0].count), 0, "quien revisó no pasa a responsable");
+  assert.equal(Number((await database.client.query("select count(*) from public.projects where public_slug = $1", [`solicitud-${id}`])).rows[0].count), 1);
 
   const moved = (await database.client.query("select id, project_id, project_request_id, origin_project_request_id from public.files where id = any($1) order by id", [fileIds])).rows;
   assert.deepEqual(moved.map((row) => [Number(row.project_id), row.project_request_id, Number(row.origin_project_request_id)]), fileIds.map(() => [projectId, null, id]));
   assert.deepEqual((await database.client.query("select file_id, file_name, file_size from public.file_versions where file_id = any($1) order by file_id", [fileIds])).rows, versionsBefore, "versiones y claves intactas");
   assert.equal(storage.size, objectsBefore, "no se duplican objetos en el almacenamiento");
 
-  for (const fileId of fileIds) {
-    const projectContent = `${base}/projects/${projectId}/files/${fileId}/content`;
-    const requestContent = `${base}/project-requests/${id}/files/${fileId}/content`;
-    assert.equal((await fetch(projectContent, { headers: headers.owner })).status, 200, "el cliente lo ve desde el proyecto");
-    assert.equal((await fetch(projectContent, { headers: headers.architect })).status, 200, "el arquitecto asignado lo ve desde el proyecto");
-    assert.equal((await fetch(requestContent, { headers: headers.owner })).status, 200, "el detalle de la solicitud conserva su enlace");
-    assert.equal((await fetch(requestContent, { headers: headers.architect })).status, 404, "el arquitecto ya no usa la ruta de la solicitud");
-  }
+  // Draft: el cliente sigue su solicitud pero no ve el proyecto (listado, detalle ni archivos).
+  assert.equal((await api(`/projects/${projectId}`, { headers: headers.owner })).status, 404);
+  assert.equal((await api("/projects?scope=owned", { headers: headers.owner })).body.projects.some((row) => row.id === projectId), false);
   const detail = await api(`/project-requests/${id}`, { headers: headers.owner });
-  assert.deepEqual(detail.body.projectRequest.files.map((file) => file.id).sort(), [...fileIds].sort(), "la solicitud sigue listando sus adjuntos de origen");
-
-  assert.equal((await api(`/admin/projects/${projectId}/assignees`, { body: { assigneeIds: [seed.admin] }, headers: headers.admin, method: "PUT" })).status, 200);
+  assert.equal(detail.body.projectRequest.convertedProjectAvailable, false);
+  assert.equal(detail.body.projectRequest.firstContactAt, null);
   for (const fileId of fileIds) {
-    assert.equal((await fetch(`${base}/projects/${projectId}/files/${fileId}/content`, { headers: headers.architect })).status, 404, "retirado: sin acceso por el proyecto");
-    assert.equal((await fetch(`${base}/project-requests/${id}/files/${fileId}/content`, { headers: headers.architect })).status, 404, "retirado: sin acceso por la solicitud");
-    assert.equal((await fetch(`${base}/projects/${projectId}/files/${fileId}/content`, { headers: headers.owner })).status, 200);
+    assert.equal((await fetch(`${base}/projects/${projectId}/files/${fileId}/content`, { headers: headers.owner })).status, 404, "draft: sin acceso por el proyecto");
+    assert.equal((await fetch(`${base}/project-requests/${id}/files/${fileId}/content`, { headers: headers.owner })).status, 200, "el detalle de la solicitud conserva su enlace");
+    assert.equal((await fetch(`${base}/project-requests/${id}/files/${fileId}/content`, { headers: headers.architect })).status, 404, "el arquitecto ya no usa la ruta de la solicitud");
   }
+  const notification = (await database.client.query("select project_id, message from public.notifications where entity_type = 'project_request' and entity_id = $1 order by id desc limit 1", [id])).rows[0];
+  assert.equal(notification.project_id, null, "la notificación no enlaza un proyecto inaccesible");
 });
 
-test("PostgreSQL y HTTP: la miniatura del listado es la imagen de la solicitud y cambia a la del proyecto al subir imágenes", { skip }, async () => {
+test("PostgreSQL y HTTP: configurar el borrador precarga la solicitud, guarda por secciones y solo finalizar lo pasa a pending", { skip }, async () => {
+  await grantProjectRead();
+  const { fileIds: [photoId], headers, id } = await reviewedRequest([png("fachada.png")]);
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
+  const projectId = await convertedProjectId(id);
+  const path = `/admin/projects/${projectId}/configuration`;
+
+  // Solo administradores.
+  assert.equal((await api(path, { headers: headers.owner })).status, 403);
+  assert.equal((await api(path, { headers: headers.architect })).status, 403);
+
+  const initial = await api(path, { headers: headers.admin });
+  assert.equal(initial.status, 200, JSON.stringify(initial.body));
+  const config = initial.body.configuration;
+  assert.equal(config.status, "draft");
+  assert.equal(config.editable, true);
+  assert.equal(config.projectType, "residential");
+  assert.equal(config.location, draftPayload().projectLocation);
+  assert.deepEqual(config.request.suggestedAssigneeIds, [seed.architect], "los revisores se sugieren, no se asignan");
+  assert.deepEqual(config.assigneeIds, []);
+  assert.ok(config.request.investmentRange, "el rango de inversión es referencia, no presupuesto");
+  assert.deepEqual(config.missingRequirements, ["assigneeIds", "generalArea", "constructionArea", "zoning", "stages"]);
+
+  // Finalizar con requisitos pendientes no cambia el estado.
+  const early = await api(`${path}/finalize`, { headers: headers.admin, method: "POST" });
+  assert.equal(early.status, 400);
+  assert.ok(early.body.fields.zoning && early.body.fields.stages);
+
+  // Responsables: solo administradores o arquitectos activos.
+  const invalid = await api(`${path}/general`, { body: { assigneeIds: [seed.owner], name: "Casa Lago" }, headers: headers.admin, method: "PUT" });
+  assert.equal(invalid.status, 400);
+  assert.ok(invalid.body.fields["body.assigneeIds"]);
+
+  // Seguimiento: el progreso se calcula de las fases reales.
+  const tracking = await api(`${path}/tracking`, {
+    body: {
+      estimatedDeliveryDate: "2027-01-31",
+      milestones: [{ dueDate: "2026-12-15", title: "Reunión de equipo" }],
+      stages: [
+        { endDate: "2026-12-10", name: "Propuesta inicial", startDate: "2026-12-01", status: "finished" },
+        { endDate: "2027-01-20", name: "Ejecución", startDate: "2026-12-11", status: "pending" },
+      ],
+    },
+    headers: headers.admin, method: "PUT",
+  });
+  assert.equal(tracking.status, 200, JSON.stringify(tracking.body));
+  assert.equal(tracking.body.configuration.progress, 50);
+  assert.equal((await requestRowStatus(projectId)), "draft", "guardar una sección no habilita el proyecto");
+
+  const badWarranty = await api(`${path}/warranties`, {
+    body: { warranties: [{ code: "LGX-1", endDate: "2026-01-01", model: "AC-001", product: "Aire", serviceDate: "2026-06-01", startDate: "2026-03-01" }] },
+    headers: headers.admin, method: "PUT",
+  });
+  assert.equal(badWarranty.status, 400);
+  const warranties = await api(`${path}/warranties`, {
+    body: { warranties: [{ code: "LGX-1", endDate: "2027-12-01", model: "AC-001", product: "Aire acondicionado", serviceDate: "2027-06-01", startDate: "2027-01-01" }] },
+    headers: headers.admin, method: "PUT",
+  });
+  assert.equal(warranties.status, 200);
+  assert.equal(warranties.body.configuration.warranties.length, 1);
+
+  // Carpetas y archivos del borrador.
+  const folder = await api(`${path}/folders`, { body: { name: "Renders e imágenes" }, headers: headers.admin, method: "POST" });
+  assert.equal(folder.status, 201, JSON.stringify(folder.body));
+  const child = await api(`${path}/folders`, { body: { name: "Propuesta inicial", parentId: folder.body.folder.id }, headers: headers.admin, method: "POST" });
+  assert.equal(child.status, 201);
+  assert.equal((await api(`${path}/folders`, { body: { name: "renders e imágenes " }, headers: headers.admin, method: "POST" })).status, 400, "nombre repetido entre hermanas");
+  const uploaded = await fetch(`${base}${path}/files?folderId=${child.body.folder.id}`, {
+    body: png("render-1.png").bytes,
+    headers: { ...headers.admin, "Content-Type": "image/png", "X-File-Name": "render-1.png" },
+    method: "POST",
+  });
+  assert.equal(uploaded.status, 201, await uploaded.clone().text());
+  const files = await api(`${path}/files`, { headers: headers.admin });
+  assert.equal(files.body.files.find((file) => file.name === "render-1.png").folderId, child.body.folder.id);
+  assert.equal(files.body.files.find((file) => file.id === photoId).fromClientRequest, true, "adjuntos de la solicitud = archivos del cliente");
+  assert.equal((await api(`${path}/folders/${folder.body.folder.id}`, { headers: headers.admin, method: "DELETE" })).status, 409, "una carpeta con contenido no se elimina");
+  assert.equal((await api(`${path}/files/${photoId}`, { body: { folderId: folder.body.folder.id }, headers: headers.admin, method: "PATCH" })).status, 200);
+
+  // Finalizar: draft → pending una sola vez, con historial, auditoría y aviso al cliente.
+  const finalized = await configureAndFinalize(projectId, headers.admin, [seed.architect]);
+  assert.equal(finalized.status, 200, JSON.stringify(finalized.body));
+  assert.equal(finalized.body.configuration.status, "pending");
+  assert.equal(finalized.body.configuration.editable, false);
+  const [project] = (await database.client.query("select status, start_date::text as start_date, has_plans from public.projects where id = $1", [projectId])).rows;
+  assert.deepEqual(project, { has_plans: true, start_date: "2026-12-01", status: "pending" }, "inicio = primera fase; nunca in_process");
+  assert.equal((await api(`${path}/finalize`, { headers: headers.admin, method: "POST" })).status, 409, "ya no es un borrador");
+  assert.equal((await api(`${path}/general`, { body: { assigneeIds: [], name: "Otro" }, headers: headers.admin, method: "PUT" })).status, 409);
+  const history = (await database.client.query("select previous_status, new_status from public.project_status_history where project_id = $1", [projectId])).rows;
+  assert.deepEqual(history, [{ new_status: "pending", previous_status: "draft" }]);
+  assert.equal(Number((await database.client.query("select count(*) from public.audit_logs where action = 'project.configuration_finalized' and entity_id = $1", [projectId])).rows[0].count), 1);
+
+  // Pending: el cliente ya accede; el arquitecto asignado en la configuración también.
+  assert.equal((await api(`/projects/${projectId}`, { headers: headers.owner })).status, 200);
+  assert.equal((await fetch(`${base}/projects/${projectId}/files/${photoId}/content`, { headers: headers.architect })).status, 200);
+  assert.equal((await api(`/project-requests/${id}`, { headers: headers.owner })).body.projectRequest.convertedProjectAvailable, true);
+});
+
+/**
+ * Estado vigente de un proyecto.
+ *
+ * @param {number} projectId - Proyecto.
+ * @returns {Promise<string>} Estado.
+ */
+async function requestRowStatus(projectId) {
+  return (await database.client.query("select status from public.projects where id = $1", [projectId])).rows[0].status;
+}
+
+test("PostgreSQL y HTTP: dos finalizaciones simultáneas producen una sola transición", { skip }, async () => {
+  const { headers, id } = await reviewedRequest([]);
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
+  const projectId = await convertedProjectId(id);
+  await configureAndFinalize(projectId, headers.admin, [seed.architect]).catch(() => null);
+  // La primera llamada ya finalizó; repetir en paralelo nunca duplica historial.
+  const results = await Promise.all([1, 2].map(() => api(`/admin/projects/${projectId}/configuration/finalize`, { headers: headers.admin, method: "POST" })));
+  assert.deepEqual(results.map((result) => result.status), [409, 409]);
+  assert.equal(Number((await database.client.query("select count(*) from public.project_status_history where project_id = $1", [projectId])).rows[0].count), 1);
+});
+
+test("PostgreSQL y HTTP: el primer contacto se registra una vez y solo en solicitudes aprobadas", { skip }, async () => {
+  const { headers, id } = await reviewedRequest([]);
+  assert.equal((await api(`/admin/project-requests/${id}/first-contact`, { headers: headers.admin, method: "POST" })).status, 409, "sin aprobar no hay primer contacto");
+  assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
+  assert.equal((await api(`/admin/project-requests/${id}/first-contact`, { headers: headers.owner, method: "POST" })).status, 403);
+  const first = await api(`/admin/project-requests/${id}/first-contact`, { headers: headers.admin, method: "POST" });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.alreadyRecorded, false);
+  const again = await api(`/admin/project-requests/${id}/first-contact`, { headers: headers.admin, method: "POST" });
+  assert.equal(again.body.alreadyRecorded, true);
+  assert.equal(again.body.firstContactAt, first.body.firstContactAt, "conserva la fecha original");
+  assert.ok((await api(`/project-requests/${id}`, { headers: headers.owner })).body.projectRequest.firstContactAt);
+  assert.ok((await api(`/admin/project-requests/${id}`, { headers: headers.admin })).body.projectRequest.firstContactAt);
+});
+
+test("PostgreSQL y HTTP: la miniatura usa la solicitud mientras el proyecto es draft y la del proyecto después", { skip }, async () => {
   const listedRow = async (headers, id) => (await api("/project-requests", { headers })).body.projectRequests.find((row) => row.id === id);
   const { fileIds: [planId, photoId], headers, id } = await reviewedRequest([pdf("plano.pdf"), png("fachada.png")]);
-  // En evaluación: la imagen adjunta (no el PDF), servida por la ruta de la solicitud.
   const pending = await listedRow(headers.owner, id);
   assert.equal(pending.imageFileId, photoId);
   assert.notEqual(pending.imageFileId, planId);
-  assert.equal((await fetch(`${base}/project-requests/${id}/files/${photoId}/content`, { headers: headers.owner })).status, 200);
 
   assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
-  const projectId = Number((await database.client.query("select converted_project_id from public.project_requests where id = $1", [id])).rows[0].converted_project_id);
-  // Aprobada sin imágenes propias: conserva la de la solicitud, ahora archivo del proyecto.
-  const converted = await listedRow(headers.owner, id);
-  assert.equal(converted.imageFileId, photoId);
-  assert.equal((await fetch(`${base}/projects/${projectId}/files/${photoId}/content`, { headers: headers.owner })).status, 200);
+  const projectId = await convertedProjectId(id);
+  const draft = await listedRow(headers.owner, id);
+  assert.equal(draft.imageFileId, photoId);
+  assert.equal(draft.convertedProjectAvailable, false, "draft: la imagen se sirve por la ruta de la solicitud");
+  assert.equal((await fetch(`${base}/project-requests/${id}/files/${photoId}/content`, { headers: headers.owner })).status, 200);
 
-  // Una imagen nueva del proyecto sustituye la miniatura.
-  const newFile = await database.client.query(`
-    insert into public.files (project_id, uploaded_by, title, file_type, file_category, current_version, created_at)
-    values ($1, $2, 'render.png', 'image/png', 'image', 1, now() + interval '1 minute') returning id`, [projectId, seed.admin]);
-  const newFileId = Number(newFile.rows[0].id);
-  const version = await database.client.query(`
-    insert into public.file_versions (file_id, uploaded_by, version_number, file_name, original_name, file_url, file_extension, file_size)
-    values ($1, $2, 1, 'render.png', 'render.png', 'projects/render.png', 'png', 10) returning id`, [newFileId, seed.admin]);
-  const updated = await listedRow(headers.owner, id);
-  assert.equal(updated.imageFileId, newFileId);
-  assert.equal(updated.imageFileVersionId, Number(version.rows[0].id));
+  // Una imagen nueva del proyecto draft no se expone al cliente.
+  const insertImage = async (title) => {
+    const file = await database.client.query(`
+      insert into public.files (project_id, uploaded_by, title, file_type, file_category, current_version, created_at)
+      values ($1, $2, $3, 'image/png', 'image', 1, now() + interval '1 minute') returning id`, [projectId, seed.admin, title]);
+    const fileId = Number(file.rows[0].id);
+    const version = await database.client.query(`
+      insert into public.file_versions (file_id, uploaded_by, version_number, file_name, original_name, file_url, file_extension, file_size)
+      values ($1, $2, 1, $3::text, $3::text, 'projects/' || $3::text, 'png', 10) returning id`, [fileId, seed.admin, title]);
+    return { fileId, versionId: Number(version.rows[0].id) };
+  };
+  await insertImage("render-draft.png");
+  assert.equal((await listedRow(headers.owner, id)).imageFileId, photoId);
+
+  assert.equal((await configureAndFinalize(projectId, headers.admin, [seed.architect])).status, 200);
+  const render = await insertImage("render.png");
+  const available = await listedRow(headers.owner, id);
+  assert.equal(available.convertedProjectAvailable, true);
+  assert.equal(available.imageFileId, render.fileId);
+  assert.equal(available.imageFileVersionId, render.versionId);
 });
 
-test("PostgreSQL y HTTP: aprobar una solicitud sin adjuntos crea el proyecto", { skip }, async () => {
+test("PostgreSQL y HTTP: aprobar una solicitud sin adjuntos crea el borrador", { skip }, async () => {
   const { headers, id } = await reviewedRequest([]);
   const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
   assert.equal(approved.status, 200, JSON.stringify(approved.body));
   assert.equal((await requestRow(id)).status, "converted");
+  assert.equal(await requestRowStatus(await convertedProjectId(id)), "draft");
+});
+
+test("PostgreSQL y HTTP: «Nuevo proyecto» crea un borrador manual que se configura con el mismo flujo", { skip }, async () => {
+  const admin = await authAs(seed.admin);
+  const created = await api("/admin/projects/drafts", { body: { clientId: seed.ownerClientId, name: "Oficina Norte" }, headers: admin, method: "POST" });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const projectId = created.body.projectId;
+  assert.equal(await requestRowStatus(projectId), "draft");
+  assert.equal((await api("/admin/projects/drafts", { body: { clientId: seed.ownerClientId, name: "oficina  norte" }, headers: admin, method: "POST" })).status, 409, "nombre repetido para el cliente");
+  assert.equal((await api("/admin/projects/drafts", { body: { clientId: 999999, name: "Otro" }, headers: admin, method: "POST" })).status, 400);
+  assert.equal((await api("/admin/projects/drafts", { body: { clientId: seed.ownerClientId, name: "Otro" }, headers: await authAs(seed.owner), method: "POST" })).status, 403);
+  const config = await api(`/admin/projects/${projectId}/configuration`, { headers: admin });
+  assert.equal(config.body.configuration.request, null, "sin solicitud de origen");
+  assert.equal(config.body.configuration.client.id, seed.ownerClientId);
+  assert.equal((await configureAndFinalize(projectId, admin, [seed.architect])).status, 200);
+  assert.equal(await requestRowStatus(projectId), "pending");
+  assert.equal(Number((await database.client.query("select count(*) from public.audit_logs where action = $2 and entity_id = $1", [projectId, "project.create_draft"])).rows[0].count), 1);
 });

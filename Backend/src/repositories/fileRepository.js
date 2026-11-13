@@ -672,12 +672,17 @@ export async function findExistingProjectFile({
  * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
  * @param {number} options.size - Valor de `options.size` requerido por esta operación.
  * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
+ * @param {number|null} [options.folderId] - Carpeta destino del proyecto (configuración del borrador).
+ * @param {boolean} [options.configuringDraft] - Admite un proyecto draft (solo la configuración
+ *   administrativa); archivados y finalizados se siguen rechazando.
  * @returns {Promise<object>} Resultado producido por la operación.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
 export async function uploadProjectFile({
   body,
+  configuringDraft = false,
   contentType,
+  folderId = null,
   originalName,
   projectId,
   size,
@@ -776,8 +781,17 @@ export async function uploadProjectFile({
         throw new NotFoundError("PROJECT_NOT_FOUND", "No se encontro el proyecto.");
       }
 
-      if (isProjectOperationallyReadOnly(project.status)) {
+      // La configuración administrativa de un borrador es la única escritura de archivos en draft.
+      const allowedDraft = configuringDraft && project.status === PROJECT_STATUS.DRAFT;
+      if (isProjectOperationallyReadOnly(project.status) && !allowedDraft) {
         throw createProjectReadOnlyError(project.status);
+      }
+      if (folderId) {
+        const folder = await client.query(
+          "select 1 from public.project_folders where id = $1 and project_id = $2 and deleted_at is null",
+          [folderId, projectId],
+        );
+        if (!folder.rowCount) throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
       }
 
       // Bajo el bloqueo del proyecto, las cargas simultáneas con el mismo nombre se serializan aquí.
@@ -795,9 +809,10 @@ export async function uploadProjectFile({
             file_type,
             file_category,
             current_version,
-            status
+            status,
+            folder_id
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8::file_status)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::file_status, $9)
           returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
         `,
         [
@@ -809,6 +824,7 @@ export async function uploadProjectFile({
           getFileCategory(fileType),
           versionNumber,
           DEFAULT_FILE_STATUS,
+          folderId,
         ],
       );
       const versionResult = await client.query(

@@ -1,4 +1,5 @@
 import { pool, query } from "../config/db.js";
+import { mapRequestToDraftProject } from "../domain/projectConfiguration.js";
 import { pageResult } from "../utils/pagination.js";
 
 // Columnas y relaciones de una solicitud en el flujo de revisión. Las comparten la cola técnica
@@ -32,6 +33,7 @@ const WORKFLOW_REQUEST_COLUMNS = `
         request.prior_design_experience,
         request.correction_reason,
         request.rejection_reason,
+        request.first_contact_at,
         request.created_at,
         request.updated_at,
         coalesce(assignment.assignees, '[]'::json) as assignees,
@@ -293,6 +295,7 @@ function toAdminProjectRequestDetail(row) {
           publicSlug: row.converted_project_public_slug || null,
           status: row.converted_project_status,
         },
+    firstContactAt: row.first_contact_at || null,
     formattedAddress: row.formatted_address || null,
     referenceLink: row.reference_link || null,
     reviewedAt: row.reviewed_at || null,
@@ -474,61 +477,40 @@ export async function decideProjectRequest({
     } else if (action === "reject") {
       nextStatus = "rejected";
     } else {
-      const architectResult = await client.query(
-        `
-          select assignment.user_id
-          from public.project_request_assignees assignment
-          inner join public.users employee on employee.id = assignment.user_id
-          inner join public.roles role on role.id = employee.role_id
-          where assignment.project_request_id = $1
-            and role.code = 'architect'
-          order by assignment.created_at, assignment.user_id
-          limit 1
-        `,
-        [projectRequestId],
-      );
-      const assignedArchitectId = architectResult.rows[0]?.user_id || null;
+      // Aprobar crea un borrador interno (draft) que el administrador configura y confirma
+      // después («Finalizar configuración», draft → pending). Solo se copian los datos equivalentes
+      // (mapRequestToDraftProject); fechas, áreas y responsables se completan en la configuración:
+      // quienes revisaron la solicitud no pasan a ser responsables operativos automáticamente.
+      const draft = mapRequestToDraftProject(request);
       const projectResult = await client.query(
         `
           insert into public.projects (
-            client_id, created_by, assigned_architect_id, name, description,
-            status, start_date, progress, project_type, location, has_plans,
-            is_public, location_latitude, location_longitude, provider_place_id,
+            client_id, created_by, name, description, status, progress, project_type, location,
+            has_plans, is_public, location_latitude, location_longitude, provider_place_id,
             formatted_address, public_slug
           ) values (
-            $1, $2, $3, $4, $5,
-            'pending', current_date, 0, $6, $7, coalesce($8, false),
-            false, $9, $10, $11, $12, $13
+            $1, $2, $3, $4, 'draft', 0, $5, $6,
+            $7, false, $8, $9, $10,
+            $11, $12
           )
           returning id, name, status
         `,
         [
-          request.client_id,
+          draft.clientId,
           reviewedBy,
-          assignedArchitectId,
-          request.project_name,
-          request.description,
-          request.project_type,
-          request.location,
-          request.has_plans,
-          request.location_latitude,
-          request.location_longitude,
-          request.provider_place_id,
-          request.formatted_address,
+          draft.name,
+          draft.description,
+          draft.projectType,
+          draft.location,
+          draft.hasPlans,
+          draft.latitude,
+          draft.longitude,
+          draft.providerPlaceId,
+          draft.formattedAddress,
           `solicitud-${request.id}`,
         ],
       );
       project = projectResult.rows[0];
-      await client.query(
-        `
-          insert into public.project_assignees (project_id, user_id, assigned_by)
-          select $1, assignment.user_id, $2
-          from public.project_request_assignees assignment
-          where assignment.project_request_id = $3
-          on conflict (project_id, user_id) do nothing
-        `,
-        [project.id, reviewedBy, projectRequestId],
-      );
       // Los adjuntos pasan al proyecto en la misma transacción. chk_files_owner exige un único dueño:
       // se libera project_request_id y origin_project_request_id conserva la trazabilidad. Es la misma
       // fila (mismas versiones, objetos y comentarios); no se copia nada en el almacenamiento.
@@ -592,8 +574,10 @@ export async function decideProjectRequest({
       : nextStatus === "rejected"
         ? "Solicitud rechazada"
         : "Correcciones solicitadas";
+    // El proyecto aprobado es un draft que el cliente aún no puede abrir: la notificación no se
+    // enlaza a él y anuncia el siguiente paso real (coordinar la reunión inicial).
     const notificationMessage = nextStatus === "converted"
-      ? `Tu solicitud para ${request.project_name} fue aprobada y ya tiene un proyecto.`
+      ? `Tu solicitud para ${request.project_name} fue aprobada. Nuestro equipo se comunicará contigo para coordinar la reunión inicial.`
       : reason;
     await client.query(
       `
@@ -603,7 +587,7 @@ export async function decideProjectRequest({
       `,
       [
         request.requested_by,
-        project?.id || null,
+        null,
         reviewedBy,
         notificationTitle,
         notificationMessage,

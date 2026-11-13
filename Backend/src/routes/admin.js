@@ -35,8 +35,36 @@ import {
   streamAdminUserProfilePhoto,
 } from "../controllers/adminUserController.js";
 import { postAdminUserActivationLink } from "../controllers/accountActivationController.js";
+import {
+  deleteProjectFolderById,
+  getConfiguration,
+  getConfigurationFiles,
+  postDraftProject,
+  patchProjectFileFolder,
+  patchProjectFolder,
+  postConfigurationFile,
+  postFinalizeConfiguration,
+  postFirstContact,
+  postProjectFolder,
+  putGeneralConfiguration,
+  putTrackingConfiguration,
+  putWarrantiesConfiguration,
+} from "../controllers/projectConfigurationController.js";
+import {
+  projectConfigurationParamsSchema,
+  projectConfigurationUploadSchema,
+  projectDraftCreateSchema,
+  projectFileMoveSchema,
+  projectFolderCreateSchema,
+  projectFolderDeleteSchema,
+  projectFolderUpdateSchema,
+  projectGeneralConfigurationSchema,
+  projectRequestFirstContactSchema,
+  projectTrackingConfigurationSchema,
+  projectWarrantiesConfigurationSchema,
+} from "../validation/projectConfigurationSchemas.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
-import { adminRateLimits } from "../middlewares/actionRateLimits.js";
+import { adminRateLimits, uploadRateLimit } from "../middlewares/actionRateLimits.js";
 import { validate } from "../middlewares/validate.js";
 import { adminUserActivationLinkSchema } from "../validation/schemas.js";
 import {
@@ -146,6 +174,21 @@ router.patch(
   validate(adminProjectBulkActionSchema),
   updateAdminProjects,
 );
+// Configuración de proyectos draft (Figma «Nuevo Proyecto»): lectura de cualquier estado; las
+// escrituras exigen draft y «finalize» es la única transición draft → pending.
+router.post("/projects/drafts", validate(projectDraftCreateSchema), postDraftProject);
+router.get("/projects/:projectId/configuration", validate(projectConfigurationParamsSchema), getConfiguration);
+router.put("/projects/:projectId/configuration/general", validate(projectGeneralConfigurationSchema), putGeneralConfiguration);
+router.put("/projects/:projectId/configuration/tracking", validate(projectTrackingConfigurationSchema), putTrackingConfiguration);
+router.put("/projects/:projectId/configuration/warranties", validate(projectWarrantiesConfigurationSchema), putWarrantiesConfiguration);
+router.post("/projects/:projectId/configuration/finalize", validate(projectConfigurationParamsSchema), postFinalizeConfiguration);
+router.get("/projects/:projectId/configuration/files", validate(projectConfigurationParamsSchema), getConfigurationFiles);
+router.post("/projects/:projectId/configuration/files", uploadRateLimit, validate(projectConfigurationUploadSchema), postConfigurationFile);
+router.patch("/projects/:projectId/configuration/files/:fileId", validate(projectFileMoveSchema), patchProjectFileFolder);
+router.post("/projects/:projectId/configuration/folders", validate(projectFolderCreateSchema), postProjectFolder);
+router.patch("/projects/:projectId/configuration/folders/:folderId", validate(projectFolderUpdateSchema), patchProjectFolder);
+router.delete("/projects/:projectId/configuration/folders/:folderId", validate(projectFolderDeleteSchema), deleteProjectFolderById);
+router.post("/project-requests/:projectRequestId/first-contact", validate(projectRequestFirstContactSchema), postFirstContact);
 router.get("/project-requests/:projectRequestId", validate(projectRequestIdSchema), getAdminProjectRequest);
 router.put(
   "/project-requests/:projectRequestId/assignees",

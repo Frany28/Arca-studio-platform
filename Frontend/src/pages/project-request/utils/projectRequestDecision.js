@@ -33,8 +33,11 @@ export function getProjectRequestDecisionPresentation(projectRequest) {
     return {
       isReasonMissing: false,
       message: APPROVED_NEXT_STEP_MESSAGE,
-      // Solo se ofrece el proyecto si sigue vinculado: uno eliminado no tiene destino.
-      primaryAction: projectRequest.convertedProjectId ? DECISION_PRIMARY_ACTIONS.viewProject : null,
+      // Solo se ofrece el proyecto cuando es accesible para el cliente: el borrador (draft) que
+      // crea la aprobación es interno hasta «Finalizar configuración»; uno eliminado no tiene destino.
+      primaryAction: projectRequest.convertedProjectId && projectRequest.convertedProjectAvailable
+        ? DECISION_PRIMARY_ACTIONS.viewProject
+        : null,
       sectionTitle: "Primer contacto",
     };
   }

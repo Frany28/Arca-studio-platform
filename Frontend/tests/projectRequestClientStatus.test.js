@@ -46,12 +46,14 @@ test("solo pending_verification y pending_review son seguimiento («Solicitud re
 });
 
 test("«Estado de la solicitud»: aprobada describe el siguiente paso sin inventar comunicaciones", () => {
-  const approved = getProjectRequestDecisionPresentation({ status: "converted", convertedProjectId: 7 });
+  const approved = getProjectRequestDecisionPresentation({ status: "converted", convertedProjectAvailable: true, convertedProjectId: 7 });
   assert.equal(approved.sectionTitle, "Primer contacto");
   assert.equal(approved.message, APPROVED_NEXT_STEP_MESSAGE);
   assert.doesNotMatch(approved.message, /hemos enviado|enviamos un correo/i);
   assert.deepEqual(approved.primaryAction, { kind: "viewProject", label: "Ver proyecto" });
   assert.equal(getProjectRequestDecisionPresentation({ status: "converted", convertedProjectId: null }).primaryAction, null);
+  // Recién aprobada: el proyecto es un borrador interno y no se ofrece al cliente.
+  assert.equal(getProjectRequestDecisionPresentation({ status: "converted", convertedProjectAvailable: false, convertedProjectId: 7 }).primaryAction, null);
   // Revisión aprobada; primer contacto y propuesta siguen pendientes.
   const stages = buildProjectRequestStages("converted");
   assert.equal(stages[2].status, "Aprobada");
@@ -86,7 +88,8 @@ test("«Mis proyectos»: cada estado ofrece su acción y navega por id", () => {
   const labels = (request) => getProjectRequestRowActions(request).map((action) => `${action.label}:${action.type}`);
   assert.deepEqual(labels({ status: "pending_verification" }), ["Ver solicitud:Solid"]);
   assert.deepEqual(labels({ status: "pending_review" }), ["Ver solicitud:Solid"]);
-  assert.deepEqual(labels({ status: "converted", convertedProjectId: 9 }), ["Ver resultado:Outline", "Ver proyecto:Solid"]);
+  assert.deepEqual(labels({ status: "converted", convertedProjectAvailable: true, convertedProjectId: 9 }), ["Ver resultado:Outline", "Ver proyecto:Solid"]);
+  assert.deepEqual(labels({ status: "converted", convertedProjectAvailable: false, convertedProjectId: 9 }), ["Ver resultado:Solid"], "draft: sin enlace al proyecto");
   assert.deepEqual(labels({ status: "converted", convertedProjectId: null }), ["Ver resultado:Solid"]);
   assert.deepEqual(labels({ status: "rejected" }), ["Ver motivo:Solid"]);
   assert.deepEqual(labels({ status: "changes_requested" }), ["Corregir solicitud:Solid"]);

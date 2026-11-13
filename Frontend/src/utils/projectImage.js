@@ -33,7 +33,8 @@ export function getProjectImageSource(project) {
 export function getProjectRequestImageSource(projectRequest) {
   const fileId = projectRequest?.imageFileId;
   if (!fileId || !projectRequest?.id) return null;
-  if (projectRequest.status === "converted" && projectRequest.convertedProjectId) {
+  // Mientras el proyecto es un borrador interno, la imagen se sirve por la ruta de la solicitud.
+  if (projectRequest.status === "converted" && projectRequest.convertedProjectId && projectRequest.convertedProjectAvailable) {
     return api.projects.getFileContentUrl({
       fileId,
       projectId: projectRequest.convertedProjectId,

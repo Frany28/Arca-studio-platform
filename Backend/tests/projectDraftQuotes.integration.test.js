@@ -110,11 +110,19 @@ after(async () => {
 
 test("migración: el proyecto existente no cambia y las restricciones quedan validadas", { skip }, async () => {
   const [legacyAfter] = await rows("select * from public.projects where id = $1", [ids.legacy]);
-  assert.deepEqual(legacyAfter, legacyProjectBefore);
+  // Migraciones posteriores pueden añadir columnas nulas (p. ej. la configuración del borrador):
+  // se comprueba que ningún dato existente cambia.
+  const legacyAfterOriginalColumns = Object.fromEntries(Object.keys(legacyProjectBefore).map((key) => [key, legacyAfter[key]]));
+  assert.deepEqual(legacyAfterOriginalColumns, legacyProjectBefore);
+  for (const column of ["zoning", "procedures", "conditions", "equipment"]) assert.equal(legacyAfter[column], null, column);
+  // chk_projects_draft_without_end_date se retiró en 20261113120000_project_draft_configuration:
+  // un borrador configurado ya planifica su fecha de entrega.
   const constraints = await rows(`select conname, convalidated from pg_constraint
     where conname in ('chk_projects_draft_requirements', 'chk_projects_draft_without_end_date', 'chk_project_stages_status_not_draft',
       'chk_project_milestones_status_not_draft', 'chk_quotes_submission') order by conname`);
-  assert.equal(constraints.length, 5);
+  assert.deepEqual(constraints.map((constraint) => constraint.conname), [
+    "chk_project_milestones_status_not_draft", "chk_project_stages_status_not_draft", "chk_projects_draft_requirements", "chk_quotes_submission",
+  ]);
   assert.ok(constraints.every((constraint) => constraint.convalidated));
   const [{ labels }] = await rows("select enum_range(null::public.project_status)::text[] as labels");
   assert.deepEqual(labels, ["draft", "pending", "in_process", "finished", "cancelled", "archived"]);
@@ -195,7 +203,9 @@ test("restricciones: solo un draft omite los datos técnicos; draft exclusivo de
   const { quote } = await quotes.createQuote({ payload: draftQuoteBody("Casa por activar"), user: { id: ids.admin } });
   const draftId = quote.project.id;
   await assert.rejects(rows("update public.projects set status = 'pending' where id = $1", [draftId]), { code: "23514", constraint: "chk_projects_draft_requirements" });
-  await assert.rejects(rows("update public.projects set end_date = current_date where id = $1", [draftId]), { code: "23514", constraint: "chk_projects_draft_without_end_date" });
+  // Un borrador puede planificar su entrega (configuración «Seguimiento»).
+  await rows("update public.projects set end_date = current_date where id = $1", [draftId]);
+  await rows("update public.projects set end_date = null where id = $1", [draftId]);
   await assert.rejects(
     rows("insert into public.project_stages (project_id, name, status) values ($1, 'Etapa', 'draft')", [ids.legacy]),
     { code: "23514", constraint: "chk_project_stages_status_not_draft" },

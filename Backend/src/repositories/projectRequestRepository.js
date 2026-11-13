@@ -40,7 +40,14 @@ const SELECT_FIELDS = `
   reviewed_at,
   rejection_reason,
   correction_reason,
-  converted_project_id
+  converted_project_id,
+  first_contact_at,
+  (
+    select converted.status <> 'draft'::public.project_status
+      and converted.archived_from_status is distinct from 'draft'::public.project_status
+    from public.projects converted
+    where converted.id = converted_project_id and converted.deleted_at is null
+  ) as converted_project_available
 `;
 
 /**
@@ -102,6 +109,10 @@ function toProjectRequestRecord(row) {
     convertedProjectId: row.converted_project_id == null
       ? null
       : Number(row.converted_project_id),
+    // El proyecto aprobado solo es accesible para el cliente cuando deja de ser draft
+    // («Finalizar configuración»); hasta entonces no se ofrecen enlaces a él.
+    convertedProjectAvailable: row.converted_project_available === true,
+    firstContactAt: row.first_contact_at || null,
     rejectionReason: row.rejection_reason || null,
     reviewedAt: row.reviewed_at || null,
     requestedBy: Number(row.requested_by),
@@ -161,7 +172,18 @@ export async function listProjectRequestsForUser(user, { cursor, limit }) {
           and file.file_type like 'image/%'
           and (
             file.project_request_id = request.id
-            or (request.status = 'converted' and file.project_id = request.converted_project_id)
+            or file.origin_project_request_id = request.id
+            -- Solo con el proyecto disponible (fuera de draft) entran sus imágenes nuevas.
+            or (
+              request.status = 'converted'
+              and file.project_id = request.converted_project_id
+              and exists (
+                select 1 from public.projects converted
+                where converted.id = request.converted_project_id
+                  and converted.status <> 'draft'::public.project_status
+                  and converted.archived_from_status is distinct from 'draft'::public.project_status
+              )
+            )
           )
         order by file.created_at desc, file.id desc
         limit 1
