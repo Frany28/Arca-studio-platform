@@ -96,6 +96,10 @@ export default function AdminProjectsPage() {
         onProjectAssigneesChange={(row, assignees) => (isProjectRequestRow(row) ? updateRequestAssignees(row, assignees) : updateProjectAssignees(row, assignees))}
         getProjectActions={(row) => (isProjectRequestRow(row) ? [] : getProjectRowActions(row))} onProjectAction={rowActions.handleRowAction}
         onOpenProject={(row) => navigate(isProjectRequestRow(row) ? getAdminProjectRequestPath(row.requestId) : getProjectPath(row))}
+        // «Editar solicitud» abre su consulta administrativa (decisiones). Los proyectos aún no
+        // tienen edición de datos (ni pantalla ni endpoint), así que su lápiz sigue deshabilitado.
+        canEditProject={isProjectRequestRow}
+        onEditProject={(row) => navigate(getAdminProjectRequestPath(row.requestId))}
         onRetry={() => setRequestKey((key) => key + 1)}
       />
       <ProjectSettingsModal

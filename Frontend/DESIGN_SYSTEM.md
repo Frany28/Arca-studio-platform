@@ -529,8 +529,10 @@ a una intervención independiente de la validación del contrato del riel.
   Los errores muestran ayudas y valores no disponibles, nunca estadísticas demo.
   `useAdminDashboardData` permite omitir overview y catálogo de responsables mediante
   opciones compatibles, activadas por defecto para sus consumidores actuales.
-- Nuevo y Ver reutilizan navegación existente. Edición y acciones masivas siguen
-  deshabilitadas en esta página. `showDisabledTags` conserva los nombres del selector
+- Nuevo y Ver reutilizan navegación existente. En las filas de solicitud, el lápiz
+  («Editar solicitud») abre su consulta administrativa; en los proyectos sigue deshabilitado
+  porque no existe edición de datos de proyecto (`canEditProject` de `AdminActiveProjects`).
+  Las acciones masivas siguen deshabilitadas en esta página. `showDisabledTags` conserva los nombres del selector
   bloqueado (proyectos finalizados o archivados) sin habilitar eliminación; su valor por
   defecto es false en Input y AssigneeMultiSelect.
 - Fase 2 (Figma `3727:686867` menú y `3727:686869` modal). Responsables usa el mismo

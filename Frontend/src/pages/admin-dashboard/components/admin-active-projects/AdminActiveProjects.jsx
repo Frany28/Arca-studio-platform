@@ -76,6 +76,9 @@ function TableHeaderLabel({ children, filter = false, fixedIcon = false }) {
  * @param {(project: Object) => Object[]} [props.getProjectActions] - Acciones del menú de fila
  * (ActionMenu). Sin este callback se conserva el botón Más opciones informativo.
  * @param {(project: Object, item: Object) => void} [props.onProjectAction] - Acción elegida en la fila.
+ * @param {(project: Object) => boolean} [props.canEditProject] - Habilita el lápiz de una fila; por
+ * defecto `project.editable`. En management además exige `onEditProject`. Su etiqueta es «Editar
+ * solicitud» o «Editar proyecto» según el tipo de fila.
  * @returns {import("react").ReactElement} Tabla y controles con su presentación actual.
  */
 function AdminActiveProjects({
@@ -85,6 +88,7 @@ function AdminActiveProjects({
   loading,
   onOpenProject,
   onEditProject,
+  canEditProject = (project) => Boolean(project.editable),
   onBulkAction,
   getProjectActions,
   onProjectAction,
@@ -435,6 +439,7 @@ function AdminActiveProjects({
                 // Una fila sin acciones (p. ej. una solicitud) muestra el botón «Más opciones» deshabilitado.
                 const rowMenuItems = getProjectActions && onProjectAction ? getProjectActions(project) : [];
                 const viewLabel = project.kind === "request" ? "Ver solicitud" : "Ver proyecto";
+                const editLabel = project.kind === "request" ? "Editar solicitud" : "Editar proyecto";
                 const isSelected = selectedProjectIds.has(String(project.id));
                 const assignmentDisabled = isProjectOperationallyReadOnly(project)
                   || (isManagement && !onProjectAssigneesChange);
@@ -506,7 +511,7 @@ function AdminActiveProjects({
                     <td className="px-[24px] py-[16px]">
                       <div className="flex items-center gap-[8px]">
                         <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} tooltip={viewLabel} aria-label={`Ver ${projectName}`} onClick={() => onOpenProject(project)} />
-                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Edit2 size="20" color="currentColor" />} showRightIcon={false} tooltip="Editar proyecto" aria-label={`Editar ${projectName}`} disabled={!project.editable || (isManagement && !onEditProject)} onClick={() => (onEditProject || onOpenProject)(project)} />
+                        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Edit2 size="20" color="currentColor" />} showRightIcon={false} tooltip={editLabel} aria-label={`Editar ${projectName}`} disabled={!canEditProject(project) || (isManagement && !onEditProject)} onClick={() => (onEditProject || onOpenProject)(project)} />
                         {rowMenuItems.length ? (
                           // Figma 3727:686867: el "Dropdown button" de la fila mide 183 px.
                           <ActionMenu
