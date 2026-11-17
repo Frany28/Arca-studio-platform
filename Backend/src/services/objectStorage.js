@@ -1,5 +1,12 @@
-import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSupabaseS3Client, getSupabaseStorageConfig } from "../config/storage.js";
+import {
+  CreateBucketCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { createSupabaseS3Client, getSupabaseS3Client, getSupabaseStorageConfig } from "../config/storage.js";
 import { AppError } from "../errors/appError.js";
 
 // Plazos explícitos del almacenamiento (P0-3). En lecturas y borrados el plazo cubre hasta recibir la
@@ -161,3 +168,142 @@ put({ body, bucket = this.config().bucket, contentLength, contentType, ifNoneMat
 }
 
 export const objectStorage = new S3ObjectStorage();
+
+// Únicos comandos que admite el inspector de inventario: listar y leer metadatos. Ninguno transfiere
+// contenido ni modifica objetos, buckets o permisos.
+const READ_ONLY_INSPECTION_COMMANDS = Object.freeze([ListObjectsV2Command, HeadObjectCommand]);
+
+/**
+ * Comprueba que un comando del SDK pertenezca a la lista blanca del inspector de inventario.
+ * Se evalúa antes de contactar el proveedor: un comando de escritura o descarga nunca se envía.
+ *
+ * @param {object} command - Comando del SDK.
+ * @returns {void}
+ * @throws {Error} STORAGE_COMMAND_NOT_ALLOWED si no es ListObjectsV2 ni HeadObject.
+ */
+export function assertReadOnlyStorageCommand(command) {
+  if (!READ_ONLY_INSPECTION_COMMANDS.some((allowed) => command instanceof allowed)) {
+    const error = new Error("El inspector de almacenamiento solo admite listar y consultar metadatos.");
+    error.code = "STORAGE_COMMAND_NOT_ALLOWED";
+    throw error;
+  }
+}
+
+/**
+ * Crea un inspector de almacenamiento que solo puede listar objetos y consultar sus metadatos.
+ * Usa una conexión explícita, independiente del cliente del backend, y rechaza cualquier otro comando
+ * antes de enviarlo, por lo que no puede descargar, crear, copiar, modificar ni eliminar objetos.
+ *
+ * @param {{ accessKeyId: string, endpoint: string, region: string, secretAccessKey: string }} connection -
+ *   Destino elegido explícitamente por quien ejecuta el inventario.
+ * @param {object} [options] - Dependencias y plazos.
+ * @param {{ send: Function, destroy?: Function }} [options.client] - Cliente S3 (simulado en pruebas).
+ * @param {number} [options.timeoutMs] - Plazo de cada petición.
+ * @returns {{ listPage: Function, headObject: Function, close: Function }} Inspector inmutable.
+ */
+export function createReadOnlyStorageInspector(connection, { client = null, timeoutMs = STORAGE_TIMEOUTS.requestMs } = {}) {
+  const s3 = client || createSupabaseS3Client(connection);
+
+  /**
+   * Envía un comando de la lista blanca con plazo propio y rechaza cualquier otro.
+   * La comprobación ocurre antes de contactar el proveedor, así que un uso indebido no produce efectos.
+   *
+   * @param {object} command - Comando del SDK.
+   * @returns {Promise<object>} Respuesta del proveedor.
+   * @throws {Error} STORAGE_COMMAND_NOT_ALLOWED si el comando no es de solo lectura.
+   */
+  async function sendReadOnly(command) {
+    assertReadOnlyStorageCommand(command);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await s3.send(command, { abortSignal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) throw storageTimeoutError(error);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Lista una página de claves de un bucket con sus metadatos básicos (tamaño y fecha).
+   * El llamador recorre las páginas con el token de continuación; no se lee ningún contenido.
+   *
+   * @param {{ bucket: string, continuationToken?: string|null, maxKeys?: number }} options - Bucket,
+   *   token de la página anterior y tamaño de página.
+   * @returns {Promise<{ objects: Array<{ key: string, size: number|null, lastModified: string|null }>,
+   *   nextToken: string|null, isTruncated: boolean }>} Página del listado.
+   */
+  async function listPage({ bucket, continuationToken = null, maxKeys = 1000 }) {
+    const response = await sendReadOnly(new ListObjectsV2Command({
+      Bucket: bucket,
+      ContinuationToken: continuationToken || undefined,
+      MaxKeys: maxKeys,
+    }));
+    return {
+      isTruncated: response.IsTruncated === true,
+      nextToken: response.NextContinuationToken || null,
+      objects: (response.Contents || []).map(toListedObject),
+    };
+  }
+
+  /**
+   * Consulta los metadatos de una clave y clasifica la respuesta sin propagar detalles del proveedor.
+   * Un 404 confirma la ausencia; permisos, plazos y otros fallos quedan como inaccesibles.
+   *
+   * @param {{ bucket: string, key: string }} options - Bucket y clave del objeto.
+   * @returns {Promise<{ status: "present"|"missing"|"inaccessible", size?: number|null, code?: string,
+   *   httpStatus?: number|null }>} Estado verificado del objeto.
+   */
+  async function headObject({ bucket, key }) {
+    try {
+      const response = await sendReadOnly(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      return { size: toSize(response.ContentLength), status: "present" };
+    } catch (error) {
+      const httpStatus = error?.$metadata?.httpStatusCode ?? error?.status ?? null;
+      if (httpStatus === 404 || error?.name === "NotFound" || error?.name === "NoSuchKey") return { status: "missing" };
+      return { code: String(error?.code || error?.name || "UNKNOWN"), httpStatus, status: "inaccessible" };
+    }
+  }
+
+  /**
+   * Libera las conexiones del cliente propio del inspector al terminar el inventario.
+   * Un cliente inyectado sin `destroy` se deja intacto.
+   *
+   * @returns {void}
+   */
+  function close() {
+    s3.destroy?.();
+  }
+
+  return Object.freeze({ close, headObject, listPage });
+}
+
+/**
+ * Reduce una entrada del listado a los metadatos que necesita el inventario.
+ * Descarta propietario, clase de almacenamiento y ETag, que no aportan a la comparación.
+ *
+ * @param {{ Key?: string, Size?: number, LastModified?: Date|string }} entry - Entrada del SDK.
+ * @returns {{ key: string, size: number|null, lastModified: string|null }} Objeto listado.
+ */
+function toListedObject(entry) {
+  const lastModified = entry.LastModified ? new Date(entry.LastModified) : null;
+  return {
+    key: String(entry.Key || ""),
+    lastModified: lastModified && !Number.isNaN(lastModified.getTime()) ? lastModified.toISOString() : null,
+    size: toSize(entry.Size),
+  };
+}
+
+/**
+ * Convierte un tamaño informado por el proveedor en número o null si no es válido.
+ * Evita propagar valores indefinidos o negativos a las comparaciones de tamaño.
+ *
+ * @param {unknown} value - Tamaño recibido.
+ * @returns {number|null} Bytes o null.
+ */
+function toSize(value) {
+  const size = Number(value);
+  return Number.isFinite(size) && size >= 0 ? size : null;
+}

@@ -1,5 +1,6 @@
 import { S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
+import { parseStorageObjectKey } from "../utils/storageObjectKey.js";
 
 let s3Client = null;
 
@@ -48,9 +49,21 @@ export function getSupabaseS3Client() {
     return s3Client;
   }
 
-  const config = getSupabaseStorageConfig();
+  s3Client = createSupabaseS3Client(getSupabaseStorageConfig());
 
-  s3Client = new S3Client({
+  return s3Client;
+}
+
+/**
+ * Crea un cliente S3 compatible con la configuración indicada, sin leer variables de entorno.
+ * Comparte credenciales, estilo de ruta, reintentos y plazo de conexión con el cliente del backend.
+ *
+ * @param {{ accessKeyId: string, endpoint: string, region: string, secretAccessKey: string }} config -
+ *   Conexión explícita al proveedor.
+ * @returns {S3Client} Cliente nuevo, no compartido con el resto del proceso.
+ */
+export function createSupabaseS3Client(config) {
+  return new S3Client({
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
@@ -68,8 +81,6 @@ export function getSupabaseS3Client() {
         : 5000,
     },
   });
-
-  return s3Client;
 }
 
 /**
@@ -256,55 +267,13 @@ export function buildModelStagingObjectKey({
 }
 
 /**
- * Obtiene el valor de almacenamiento objeto key from archivo URL para que el flujo llamador pueda continuar.
- * Centraliza esta decisión para mantener consistente la configuración del backend.
+ * Obtiene la clave del objeto a partir de la referencia guardada (`file_url`, `profile_photo_url`).
+ * Lee bucket y `SUPABASE_URL` del entorno y delega en la regla pura compartida con el inventario.
  *
- * @param {string} fileUrl - Valor de `fileUrl` requerido por esta operación.
- * @returns {object} Resultado producido por la operación.
+ * @param {string} fileUrl - Referencia persistida del archivo.
+ * @returns {string|null} Clave del objeto en el bucket general, o null si no es interpretable.
  */
 export function getStorageObjectKeyFromFileUrl(fileUrl) {
   const { bucket } = getSupabaseStorageConfig();
-  const normalizedFileUrl = String(fileUrl || "").trim();
-
-  if (!normalizedFileUrl || !bucket) {
-    return null;
-  }
-
-  const publicPrefix = process.env.SUPABASE_URL
-    ? `${process.env.SUPABASE_URL.replace(/\/$/, "")}/storage/v1/object/public/${bucket}/`
-    : null;
-
-  if (publicPrefix && normalizedFileUrl.startsWith(publicPrefix)) {
-    return normalizedFileUrl.slice(publicPrefix.length);
-  }
-
-  const s3Prefix = `s3://${bucket}/`;
-
-  if (normalizedFileUrl.startsWith(s3Prefix)) {
-    return normalizedFileUrl.slice(s3Prefix.length);
-  }
-
-  try {
-    const url = new URL(normalizedFileUrl);
-    const pathSegments = url.pathname.split("/").filter(Boolean);
-    const objectSegmentIndex = pathSegments.findIndex(
-      (segment, index) =>
-        segment === "object" && pathSegments[index - 1] === "v1",
-    );
-    const visibility = pathSegments[objectSegmentIndex + 1];
-    const urlBucket = pathSegments[objectSegmentIndex + 2];
-
-    if (
-      objectSegmentIndex >= 0 &&
-      (visibility === "public" || visibility === "sign") &&
-      decodeURIComponent(urlBucket || "") === bucket
-    ) {
-      const encodedKey = pathSegments.slice(objectSegmentIndex + 3).join("/");
-      return encodedKey ? decodeURIComponent(encodedKey) : null;
-    }
-  } catch {
-    // Non-URL values are not valid persisted storage references.
-  }
-
-  return null;
+  return parseStorageObjectKey(fileUrl, { bucket, supabaseUrl: process.env.SUPABASE_URL || null });
 }
