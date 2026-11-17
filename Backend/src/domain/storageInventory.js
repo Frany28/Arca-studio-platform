@@ -498,9 +498,11 @@ function buildPublicBucketImpact(bucket, references, listing) {
  * @param {Array<object>} input.privacy - Resultado de `assessBucketPrivacy`.
  * @param {{ requested: number, performed: number, limitReached: boolean }} input.head - Uso de HEAD.
  * @param {number} [input.maxFindings] - Máximo de elementos por lista de hallazgos.
+ * @param {string[]} [input.acceptedPublicBuckets] - Buckets cuya publicidad aceptó el responsable para
+ *   el entorno inventariado: se registran como característica del entorno, no como hallazgo crítico.
  * @returns {object} Informe serializable y sin datos sensibles.
  */
-export function buildStorageInventoryReport({ head, listings, maxFindings = 500, orphans, privacy, references, run, sources }) {
+export function buildStorageInventoryReport({ acceptedPublicBuckets = [], head, listings, maxFindings = 500, orphans, privacy, references, run, sources }) {
   /**
    * Selecciona y redacta las referencias de un estado concreto.
    * Evita repetir el filtro para cada lista de hallazgos del informe.
@@ -542,9 +544,13 @@ export function buildStorageInventoryReport({ head, listings, maxFindings = 500,
     ...(head.limitReached ? ["head:limit_reached"] : []),
     ...(notChecked.length ? [`references_not_checked:${notChecked.length}`] : []),
   ];
-  const publicBuckets = privacy.filter((bucket) => bucket.status === "public");
+  const accepted = new Set(acceptedPublicBuckets);
+  const privacyWithAcceptance = privacy.map((bucket) => (
+    bucket.status === "public" ? { ...bucket, publicAccepted: accepted.has(bucket.bucket) } : bucket
+  ));
+  const publicBuckets = privacyWithAcceptance.filter((bucket) => bucket.status === "public");
   const critical = [
-    ...publicBuckets.map((bucket) => `public_bucket:${bucket.bucket}`),
+    ...publicBuckets.filter((bucket) => !bucket.publicAccepted).map((bucket) => `public_bucket:${bucket.bucket}`),
     ...(missingActive.length ? [`missing_objects_for_active_rows:${missingActive.length}`] : []),
   ];
 
@@ -554,8 +560,12 @@ export function buildStorageInventoryReport({ head, listings, maxFindings = 500,
       incompleteChecks,
       listings: listingSummary,
       outcome: incompleteChecks.length ? "incomplete" : "complete",
-      privacy,
+      privacy: privacyWithAcceptance,
       sources,
+    },
+    environment: {
+      acceptedPublicBuckets: [...accepted],
+      notes: publicBuckets.filter((bucket) => bucket.publicAccepted).map((bucket) => `public_bucket_accepted:${bucket.bucket}`),
     },
     confirmed: {
       missingObjectsForActiveRows: bounded(missingActive, maxFindings),
@@ -568,7 +578,10 @@ export function buildStorageInventoryReport({ head, listings, maxFindings = 500,
     critical,
     inaccessible: bounded(inaccessible, maxFindings),
     notChecked: bounded(notChecked, maxFindings),
-    publicBucketImpact: publicBuckets.map((bucket) => buildPublicBucketImpact(bucket.bucket, references, listings.get(bucket.bucket))),
+    publicBucketImpact: publicBuckets.map((bucket) => ({
+      ...buildPublicBucketImpact(bucket.bucket, references, listings.get(bucket.bucket)),
+      accepted: bucket.publicAccepted,
+    })),
     readOnly: {
       database: "Transacción READ ONLY con ROLLBACK; solo sentencias SELECT permitidas.",
       notes: "Un objeto sin referencia es un candidato a revisión, nunca una autorización para borrarlo.",

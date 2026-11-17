@@ -10,11 +10,14 @@ import {
   toStorageReferences,
 } from "../domain/storageInventory.js";
 import {
+  BUCKET_PRIVACY_TABLE,
+  SOURCE_TABLES,
   beginReadOnlySnapshot,
   createReadOnlyInventoryClient,
   endReadOnlySnapshot,
   readBucketPrivacy,
   readReferenceSource,
+  readRowSecurityExposure,
 } from "../repositories/storageInventoryRepository.js";
 
 // Valores por defecto del inventario. Son límites de seguridad, no de negocio: si se alcanzan, el
@@ -45,9 +48,15 @@ export const STORAGE_INVENTORY_DEFAULTS = Object.freeze({
  * @param {{ runId: string, target: object }} options.run - Identificación de la ejecución, sin secretos.
  * @param {Partial<typeof STORAGE_INVENTORY_DEFAULTS>} [options.limits] - Límites de la ejecución.
  * @param {() => Date} [options.now] - Reloj (inyectable en pruebas).
+ * @param {string[]} [options.acceptedPublicBuckets] - Buckets cuya publicidad está aceptada para el
+ *   entorno; deben ser buckets configurados.
  * @returns {Promise<object>} Informe del inventario.
+ * @throws {Error} Si se acepta como público un bucket que no está configurado.
  */
-export async function runStorageInventory({ config, limits = {}, now = () => new Date(), openDatabase, run, storage }) {
+export async function runStorageInventory({ acceptedPublicBuckets = [], config, limits = {}, now = () => new Date(), openDatabase, run, storage }) {
+  const configured = new Set(configuredBuckets(config).map(({ bucket }) => bucket));
+  const unknownAccepted = acceptedPublicBuckets.filter((bucket) => !configured.has(bucket));
+  if (unknownAccepted.length) throw new Error("Solo se puede aceptar como público un bucket configurado del destino.");
   const settings = { ...STORAGE_INVENTORY_DEFAULTS, ...limits };
   const startedAt = now().toISOString();
 
@@ -69,6 +78,7 @@ export async function runStorageInventory({ config, limits = {}, now = () => new
   const privacy = assessBucketPrivacy(buckets.map(({ bucket }) => bucket), database.privacy);
 
   return buildStorageInventoryReport({
+    acceptedPublicBuckets,
     head: { limitReached: headResults.limitReached, performed: headResults.performed, requested: toConfirm.length },
     listings,
     maxFindings: settings.maxFindings,
@@ -103,11 +113,15 @@ async function readDatabaseEvidence({ config, openDatabase, settings }) {
     // cierra con ROLLBACK. Un ROLLBACK sin transacción en curso solo produce un aviso en PostgreSQL.
     snapshotOpen = true;
     await beginReadOnlySnapshot(client, settings);
+    // RLS filtra filas sin error: una fuente filtrada parecería completa con menos referencias y
+    // convertiría objetos válidos en falsos huérfanos. Se comprueba antes de leer cada fuente.
+    const rowSecurity = await readRowSecurityExposure(client, [...Object.values(SOURCE_TABLES).flat(), BUCKET_PRIVACY_TABLE]);
     for (const source of STORAGE_REFERENCE_SOURCES) {
-      sources[source] = await readReferenceSource(client, source, { pageSize: settings.sourcePageSize });
+      const blocked = rowSecurityBlock(rowSecurity, SOURCE_TABLES[source]);
+      sources[source] = blocked || await readReferenceSource(client, source, { pageSize: settings.sourcePageSize });
     }
     const bucketNames = configuredBuckets(config).map(({ bucket }) => bucket);
-    privacy = await readBucketPrivacy(client, bucketNames);
+    privacy = rowSecurityBlock(rowSecurity, [BUCKET_PRIVACY_TABLE]) || await readBucketPrivacy(client, bucketNames);
   } catch (error) {
     readError = error;
   }
@@ -133,6 +147,22 @@ async function readDatabaseEvidence({ config, openDatabase, settings }) {
     sourceStates,
     sources,
   };
+}
+
+/**
+ * Decide si una lectura debe omitirse porque RLS filtraría sus tablas o no se pudo comprobar.
+ * Devuelve un resultado fallido con un código explícito; null si la lectura es fiable.
+ *
+ * @param {{ status: string, filtered: Set<string> }} rowSecurity - Resultado de `readRowSecurityExposure`.
+ * @param {string[]} tables - Tablas que usa la lectura.
+ * @returns {{ status: "failed", rows: [], pages: 0, error: { code: string } }|null} Bloqueo o null.
+ */
+function rowSecurityBlock(rowSecurity, tables) {
+  if (rowSecurity.status !== "complete") return { error: { code: "ROW_SECURITY_UNVERIFIED" }, pages: 0, rows: [], status: "failed" };
+  if (tables.some((table) => rowSecurity.filtered.has(table))) {
+    return { error: { code: "ROW_LEVEL_SECURITY_FILTERS_ROWS" }, pages: 0, rows: [], status: "failed" };
+  }
+  return null;
 }
 
 /**

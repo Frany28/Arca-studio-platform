@@ -7,6 +7,7 @@ import {
   updateProjectVisibility,
 } from "../repositories/projectRepository.js";
 import { insertDraftProject, reserveProjectId } from "../repositories/projectDraftRepository.js";
+import { ensureProjectSystemFolders } from "../repositories/projectSystemFolderRepository.js";
 import { findExistingProjectNameForClient } from "../repositories/projectRequestRepository.js";
 import { insertAuditLog } from "../repositories/auditLogRepository.js";
 import { ConflictError } from "../errors/appError.js";
@@ -152,6 +153,9 @@ export async function createDraftProject(client, { clientId, name, origin = "quo
   const id = await reserveProjectId(client);
   const publicSlug = `${slugifyProjectName(name).slice(0, DRAFT_SLUG_BASE_MAX_LENGTH).replace(/-+$/, "")}-${id}`;
   const project = await insertDraftProject(client, { clientId, id, name, publicSlug, userId });
+  // Árbol predeterminado del catálogo en la misma transacción: si algo falla después, el proyecto
+  // y sus carpetas se revierten juntos.
+  await ensureProjectSystemFolders(client, { createdBy: userId, projectId: project.id });
   await insertAuditLog({
     action: origin === "manual" ? "project.create_draft" : "project.create_from_quote",
     description: origin === "manual" ? "Proyecto draft creado desde «Nuevo proyecto»" : "Proyecto draft creado al guardar una cotización",

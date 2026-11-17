@@ -75,7 +75,7 @@ function sampleRows() {
  * @param {Record<string, Array<object>>} [options.rows] - Filas por fuente.
  * @returns {{ query: Function, end: Function, statements: string[], ended: boolean }} Cliente simulado.
  */
-function createFakeDatabase({ failSources = [], privacy = [{ id: GENERAL, public: false }, { id: QUOTES, public: false }], privacyFails = false, rows = sampleRows() } = {}) {
+function createFakeDatabase({ failSources = [], privacy = [{ id: GENERAL, public: false }, { id: QUOTES, public: false }], privacyFails = false, rlsFiltered = [], rows = sampleRows() } = {}) {
   const fake = {
     ended: false,
     statements: [],
@@ -86,6 +86,9 @@ function createFakeDatabase({ failSources = [], privacy = [{ id: GENERAL, public
       const normalized = text.replace(/\s+/g, " ").trim();
       fake.statements.push(normalized);
       if (!/^select\b/i.test(normalized)) return { rows: [] };
+      if (normalized.includes("from pg_class")) {
+        return { rows: params[0].map((name) => ({ filtered: rlsFiltered.includes(name), qualified_name: name })) };
+      }
       if (normalized.includes("storage.buckets")) {
         if (privacyFails) throw Object.assign(new Error("relation storage.buckets does not exist at host db.internal"), { code: "42P01" });
         return { rows: privacy };
@@ -292,10 +295,21 @@ test("una fuente ilegible impide concluir huérfanos en su bucket pero no en los
   assert.equal(report.completeness.outcome, "incomplete");
 });
 
+test("una tabla filtrada por RLS (también la de un JOIN) deja su fuente incompleta sin leerla", async () => {
+  const { database, report } = await runWithFakes({ database: { rlsFiltered: ["public.files", "storage.buckets"] } });
+  assert.deepEqual(report.completeness.sources.file_versions, { errorCode: "ROW_LEVEL_SECURITY_FILTERS_ROWS", status: "failed" });
+  assert.equal(report.completeness.sources.users.status, "complete");
+  assert.ok(!database.statements.some((statement) => statement.includes("from public.file_versions")));
+  assert.equal(report.completeness.privacy[0].reason, "privacy_query_failed:ROW_LEVEL_SECURITY_FILTERS_ROWS");
+  const general = report.confirmed.orphanDetection.find((orphan) => orphan.bucket === GENERAL);
+  assert.equal(general.status, "incomplete");
+  assert.equal(general.orphanCandidates.total, 0);
+});
+
 test("la privacidad solo se confirma con public = false; un bucket público genera impacto y procedimiento sin ejecutarlo", async () => {
   const { report } = await runWithFakes({ database: { privacy: [{ id: GENERAL, public: true }, { id: QUOTES, public: false }] } });
   assert.deepEqual(report.completeness.privacy, [
-    { bucket: GENERAL, reason: null, status: "public" },
+    { bucket: GENERAL, publicAccepted: false, reason: null, status: "public" },
     { bucket: QUOTES, reason: null, status: "private" },
   ]);
   assert.ok(report.critical.includes(`public_bucket:${GENERAL}`));
@@ -304,6 +318,26 @@ test("la privacidad solo se confirma con public = false; un bucket público gene
   assert.equal(impact.procedureExecuted, false);
   assert.ok(impact.procedure.length > 0);
   assert.ok(impact.exposedPersonalDataContexts.includes("profile_photo"));
+
+  // Publicidad aceptada para el entorno: queda registrada, con su impacto, pero no es crítica.
+  const acceptedRun = await runStorageInventory({
+    acceptedPublicBuckets: [GENERAL],
+    config: CONFIG,
+    openDatabase: async () => createFakeDatabase({ privacy: [{ id: GENERAL, public: true }, { id: QUOTES, public: false }] }),
+    run: { runId: "accepted", target: {} },
+    storage: createFakeStorage(),
+  });
+  assert.equal(acceptedRun.completeness.privacy[0].publicAccepted, true);
+  assert.ok(!acceptedRun.critical.some((entry) => entry.startsWith("public_bucket")));
+  assert.deepEqual(acceptedRun.environment.notes, [`public_bucket_accepted:${GENERAL}`]);
+  assert.equal(acceptedRun.publicBucketImpact[0].accepted, true);
+  await assert.rejects(() => runStorageInventory({
+    acceptedPublicBuckets: ["otro-bucket"],
+    config: CONFIG,
+    openDatabase: async () => createFakeDatabase(),
+    run: { runId: "x", target: {} },
+    storage: createFakeStorage(),
+  }), /bucket configurado/);
 
   const unknown = await runWithFakes({ database: { privacyFails: true } });
   assert.equal(unknown.report.completeness.privacy[0].status, "unknown");

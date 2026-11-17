@@ -1,6 +1,7 @@
 import { pool, query } from "../config/db.js";
 import { mapRequestToDraftProject } from "../domain/projectConfiguration.js";
 import { pageResult } from "../utils/pagination.js";
+import { ensureProjectSystemFolders } from "./projectSystemFolderRepository.js";
 
 // Última edición administrativa de cada solicitud que cambió respuestas relevantes para la revisión
 // técnica, según la auditoría (`project_request.admin_update` con `reviewRelevantFields` no vacío).
@@ -574,6 +575,9 @@ export async function decideProjectRequest({
         ],
       );
       project = projectResult.rows[0];
+      // Árbol predeterminado del catálogo en la misma transacción que la aprobación: un fallo posterior
+      // revierte solicitud, proyecto y carpetas juntos.
+      await ensureProjectSystemFolders(client, { createdBy: reviewedBy, projectId: project.id });
       // Los adjuntos pasan al proyecto en la misma transacción. chk_files_owner exige un único dueño:
       // se libera project_request_id y origin_project_request_id conserva la trazabilidad. Es la misma
       // fila (mismas versiones, objetos y comentarios); no se copia nada en el almacenamiento.

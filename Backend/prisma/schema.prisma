@@ -1197,11 +1197,16 @@ enum user_status {
 
 /// Carpetas jerárquicas libres de un proyecto (Gestión de archivos). Un archivo sin carpeta queda en la raíz.
 /// Nombre único entre hermanas (uq_project_folders_sibling_name, índice por expresión fuera de Prisma).
+/// system_key: clave funcional estable de una carpeta predeterminada (NULL en las personalizadas).
+/// uq_project_folders_system_key (parcial, una por proyecto y clave activas) y las restricciones
+/// chk_project_folders_system_key_format y chk_project_folders_system_not_deleted viven en la
+/// migración 20261117120000_project_folder_system_keys.
 model project_folders {
   id          BigInt            @id @default(autoincrement())
   project_id  BigInt
   parent_id   BigInt?
   name        String            @db.VarChar(120)
+  system_key  String?           @db.VarChar(80)
   created_by  BigInt
   created_at  DateTime          @default(now()) @db.Timestamptz(6)
   updated_at  DateTime          @default(now()) @db.Timestamptz(6)

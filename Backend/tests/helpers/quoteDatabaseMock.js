@@ -54,6 +54,7 @@ function createInitialState() {
       [11, { clientId: 3, id: 11, isAvailable: false, name: "Proyecto eliminado" }],
     ]),
     // Solicitudes activas (pending_verification, pending_review, approved) por cliente.
+    projectFolders: [],
     projectRequests: [{ clientId: 3, id: 70, name: "Casa en revisión", status: "pending_review" }],
     quotes: [],
     serviceVersions: new Map([
@@ -171,6 +172,28 @@ export function createQuoteDatabaseMock() {
       if (taken) throw Object.assign(new Error("duplicate key"), { code: "23505", constraint: "uq_projects_client_active_name" });
       state.projects.set(Number(id), { clientId, createdBy, id: Number(id), isAvailable: true, name, publicSlug, status });
       return result([{ id: String(id), name }]);
+    }
+    // Carpetas predeterminadas del draft (ensureProjectSystemFolders): bloqueo, alta por nivel y árbol.
+    if (text.startsWith("select id from public.projects where id = $1 and deleted_at is null for update")) {
+      return result(state.projects.has(Number(params[0])) ? [{ id: String(params[0]) }] : []);
+    }
+    if (text.startsWith("insert into public.project_folders (project_id, parent_id, name, system_key, created_by)")) {
+      const [projectId, , keys, names, parentKeys] = params;
+      let inserted = 0;
+      keys.forEach((key, index) => {
+        const exists = state.projectFolders.some((folder) => folder.projectId === Number(projectId) && folder.systemKey === key);
+        const parentReady = parentKeys[index] === null
+          || state.projectFolders.some((folder) => folder.projectId === Number(projectId) && folder.systemKey === parentKeys[index]);
+        if (exists || !parentReady) return;
+        state.projectFolders.push({ name: names[index], parentKey: parentKeys[index], projectId: Number(projectId), systemKey: key });
+        inserted += 1;
+      });
+      return result([], inserted);
+    }
+    if (text.startsWith("select folder.system_key, parent.system_key as parent_key from public.project_folders folder")) {
+      return result(state.projectFolders
+        .filter((folder) => folder.projectId === Number(params[0]))
+        .map((folder) => ({ parent_key: folder.parentKey, system_key: folder.systemKey })));
     }
     if (text.startsWith("insert into public.audit_logs")) {
       state.auditLogs.push({ action: params[1], entityId: params[3], entityType: params[2], newValues: JSON.parse(params[5]), userId: params[0] });

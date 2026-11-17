@@ -306,31 +306,46 @@ export async function createProjectFolder({ name, parentId, projectId, user }) {
 }
 
 /**
- * Renombra una carpeta de un borrador.
+ * Crea el error público de una operación sobre una carpeta predeterminada del catálogo.
+ * Esas carpetas conservan nombre y ubicación: no se renombran ni se eliminan (Fase 1.2).
+ *
+ * @returns {ConflictError} Error 409 PROJECT_FOLDER_PROTECTED.
+ */
+function createProtectedFolderError() {
+  return new ConflictError("PROJECT_FOLDER_PROTECTED", "Las carpetas predeterminadas del proyecto no se pueden renombrar ni eliminar.");
+}
+
+/**
+ * Renombra una carpeta personalizada de un borrador.
+ * Una carpeta predeterminada responde 409 PROJECT_FOLDER_PROTECTED.
  *
  * @param {{folderId: number, name: string, projectId: number}} params - Carpeta y nombre.
  * @returns {Promise<{folders: object[]}>} Carpetas actualizadas.
+ * @throws {NotFoundError|ConflictError} Si la carpeta no existe o está protegida.
  */
 export async function updateProjectFolder({ folderId, name, projectId }) {
   await writeDraftConfiguration(projectId, async (client) => {
-    if (!(await renameProjectFolder(client, { folderId, name, projectId }))) {
-      throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
-    }
+    const outcome = await renameProjectFolder(client, { folderId, name, projectId });
+    if (outcome === "not_found") throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
+    if (outcome === "protected") throw createProtectedFolderError();
   });
   return { folders: await listProjectFolders(projectId) };
 }
 
 /**
- * Elimina una carpeta vacía de un borrador; con contenido responde 409 PROJECT_FOLDER_NOT_EMPTY.
+ * Elimina una carpeta personalizada vacía de un borrador; con contenido responde 409
+ * PROJECT_FOLDER_NOT_EMPTY y una carpeta predeterminada, 409 PROJECT_FOLDER_PROTECTED.
  *
  * @param {{folderId: number, projectId: number}} params - Carpeta.
  * @returns {Promise<{folders: object[]}>} Carpetas restantes.
+ * @throws {NotFoundError|ConflictError} Si la carpeta no existe, tiene contenido o está protegida.
  */
 export async function deleteProjectFolder({ folderId, projectId }) {
   await writeDraftConfiguration(projectId, async (client) => {
     const outcome = await deleteEmptyProjectFolder(client, { folderId, projectId });
     if (outcome === "not_found") throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
     if (outcome === "not_empty") throw new ConflictError("PROJECT_FOLDER_NOT_EMPTY", "La carpeta tiene archivos o subcarpetas.");
+    if (outcome === "protected") throw createProtectedFolderError();
   });
   return { folders: await listProjectFolders(projectId) };
 }

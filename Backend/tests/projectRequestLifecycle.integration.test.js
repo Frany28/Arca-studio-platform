@@ -848,12 +848,15 @@ test("PostgreSQL y HTTP: configurar el borrador precarga la solicitud, guarda po
   assert.equal(warranties.status, 200);
   assert.equal(warranties.body.configuration.warranties.length, 1);
 
-  // Carpetas y archivos del borrador.
-  const folder = await api(`${path}/folders`, { body: { name: "Renders e imágenes" }, headers: headers.admin, method: "POST" });
+  // Carpetas y archivos del borrador. La aprobación ya creó las 17 carpetas predeterminadas.
+  const initialFolders = await api(`${path}/files`, { headers: headers.admin });
+  assert.equal(initialFolders.body.folders.filter((candidate) => candidate.systemKey).length, 17);
+  assert.equal((await api(`${path}/folders`, { body: { name: "renders e imágenes " }, headers: headers.admin, method: "POST" })).status, 400, "nombre de una carpeta predeterminada hermana");
+  const folder = await api(`${path}/folders`, { body: { name: "Planos del cliente" }, headers: headers.admin, method: "POST" });
   assert.equal(folder.status, 201, JSON.stringify(folder.body));
   const child = await api(`${path}/folders`, { body: { name: "Propuesta inicial", parentId: folder.body.folder.id }, headers: headers.admin, method: "POST" });
   assert.equal(child.status, 201);
-  assert.equal((await api(`${path}/folders`, { body: { name: "renders e imágenes " }, headers: headers.admin, method: "POST" })).status, 400, "nombre repetido entre hermanas");
+  assert.equal((await api(`${path}/folders`, { body: { name: "planos del cliente " }, headers: headers.admin, method: "POST" })).status, 400, "nombre repetido entre hermanas");
   const uploaded = await fetch(`${base}${path}/files?folderId=${child.body.folder.id}`, {
     body: png("render-1.png").bytes,
     headers: { ...headers.admin, "Content-Type": "image/png", "X-File-Name": "render-1.png" },

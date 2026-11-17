@@ -342,7 +342,7 @@ export async function recordProjectRequestFirstContact({ projectRequestId, userI
 export async function listProjectFolders(projectId, executor = { query }) {
   const result = await executor.query(
     `
-      select folder.id, folder.parent_id, folder.name,
+      select folder.id, folder.parent_id, folder.name, folder.system_key,
         (select count(*) from public.files file where file.folder_id = folder.id and file.deleted_at is null and file.status <> 'deleted') as file_count
       from public.project_folders folder
       where folder.project_id = $1 and folder.deleted_at is null
@@ -355,24 +355,26 @@ export async function listProjectFolders(projectId, executor = { query }) {
     id: Number(row.id),
     name: row.name,
     parentId: toNumberOrNull(row.parent_id),
+    systemKey: row.system_key ?? null,
   }));
 }
 
 /**
- * Busca una carpeta vigente del proyecto.
+ * Busca una carpeta vigente del proyecto con su clave funcional, si es predeterminada.
+ * La clave (y no el nombre) decide las reglas de protección de la carpeta.
  *
  * @param {import("pg").PoolClient|{query: Function}} executor - Cliente o pool.
  * @param {number} projectId - Proyecto.
  * @param {number} folderId - Carpeta.
- * @returns {Promise<{id: number, parentId: number|null}|null>} Carpeta o null.
+ * @returns {Promise<{id: number, parentId: number|null, systemKey: string|null}|null>} Carpeta o null.
  */
 export async function findProjectFolder(executor, projectId, folderId) {
   const result = await executor.query(
-    `select id, parent_id from public.project_folders where id = $1 and project_id = $2 and deleted_at is null`,
+    `select id, parent_id, system_key from public.project_folders where id = $1 and project_id = $2 and deleted_at is null`,
     [folderId, projectId],
   );
   const row = result.rows[0];
-  return row ? { id: Number(row.id), parentId: toNumberOrNull(row.parent_id) } : null;
+  return row ? { id: Number(row.id), parentId: toNumberOrNull(row.parent_id), systemKey: row.system_key ?? null } : null;
 }
 
 /**
@@ -389,34 +391,42 @@ export async function insertProjectFolder(client, { createdBy, name, parentId, p
     [projectId, parentId, name, createdBy],
   );
   const row = result.rows[0];
-  return { fileCount: 0, id: Number(row.id), name: row.name, parentId: toNumberOrNull(row.parent_id) };
+  return { fileCount: 0, id: Number(row.id), name: row.name, parentId: toNumberOrNull(row.parent_id), systemKey: null };
 }
 
 /**
- * Renombra una carpeta del proyecto bloqueado.
+ * Renombra una carpeta personalizada del proyecto bloqueado.
+ * Las carpetas predeterminadas (con clave funcional) conservan el nombre del catálogo.
  *
  * @param {import("pg").PoolClient} client - Cliente de la transacción.
  * @param {{folderId: number, name: string, projectId: number}} params - Carpeta y nombre.
- * @returns {Promise<boolean>} false si la carpeta no existe.
+ * @returns {Promise<"renamed"|"not_found"|"protected">} Resultado.
  */
 export async function renameProjectFolder(client, { folderId, name, projectId }) {
+  const folder = await findProjectFolder(client, projectId, folderId);
+  if (!folder) return "not_found";
+  // Toda carpeta con clave funcional es predeterminada, aunque su clave saliera después del catálogo.
+  if (folder.systemKey) return "protected";
   const result = await client.query(
-    `update public.project_folders set name = $3, updated_at = now() where id = $1 and project_id = $2 and deleted_at is null`,
+    `update public.project_folders set name = $3, updated_at = now()
+     where id = $1 and project_id = $2 and deleted_at is null and system_key is null`,
     [folderId, projectId, name],
   );
-  return result.rowCount > 0;
+  return result.rowCount > 0 ? "renamed" : "not_found";
 }
 
 /**
- * Retira una carpeta vacía (sin subcarpetas ni archivos vigentes) del proyecto bloqueado.
+ * Retira una carpeta personalizada vacía (sin subcarpetas ni archivos vigentes) del proyecto bloqueado.
+ * Las carpetas predeterminadas no se retiran; PostgreSQL también lo impide con una restricción.
  *
  * @param {import("pg").PoolClient} client - Cliente de la transacción.
  * @param {{folderId: number, projectId: number}} params - Carpeta.
- * @returns {Promise<"deleted"|"not_found"|"not_empty">} Resultado.
+ * @returns {Promise<"deleted"|"not_found"|"not_empty"|"protected">} Resultado.
  */
 export async function deleteEmptyProjectFolder(client, { folderId, projectId }) {
   const folder = await findProjectFolder(client, projectId, folderId);
   if (!folder) return "not_found";
+  if (folder.systemKey) return "protected";
   const usage = await client.query(
     `
       select exists (select 1 from public.project_folders where parent_id = $1 and deleted_at is null) as has_children,

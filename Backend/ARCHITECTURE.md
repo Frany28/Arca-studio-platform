@@ -158,15 +158,62 @@ Comando de mantenimiento `scripts/storage-inventory.mjs` que contrasta las refer
 - **Capas**: `domain/storageInventory.js` (normalización, comparación, huérfanos, privacidad y redacción del informe; puro) → `repositories/storageInventoryRepository.js` (lecturas sobre un cliente inyectado) → `services/storageInventoryService.js` (orquestación). El acceso a S3 pasa por `services/objectStorage.js#createReadOnlyStorageInspector`.
 - **Solo lectura, con dos barreras por medio**:
   - PostgreSQL: transacción `REPEATABLE READ READ ONLY` que termina siempre con `ROLLBACK`, `statement_timeout`/`lock_timeout`/`idle_in_transaction_session_timeout` locales y una guardia en el cliente (`assertReadOnlyInventoryStatement`) que solo admite `SELECT` y el control de esa transacción. Cada fuente se lee dentro de un punto de guardado: un fallo de permisos o de tabla deja esa fuente como fallida sin abortar las demás.
+  - **RLS**: las tablas de ARCA tienen Row Level Security activo y sin políticas, de modo que un rol que no sea propietario, superusuario ni `BYPASSRLS` lee **cero filas sin error**. Antes de leer, `readRowSecurityExposure` consulta el catálogo (`pg_class`, `pg_roles`) para cada tabla de cada fuente, incluidas las de los JOIN, y para `storage.buckets`; una tabla filtrada deja su fuente como fallida (`ROW_LEVEL_SECURITY_FILTERS_ROWS`) sin leerla, para no convertir objetos válidos en falsos huérfanos. Un rol de solo lectura para este inventario necesita `SELECT` sobre esas tablas y `BYPASSRLS` (o políticas de lectura equivalentes).
   - Almacenamiento: el inspector solo expone `listPage` (ListObjectsV2) y `headObject` (HeadObject), y una lista blanca (`assertReadOnlyStorageCommand`) rechaza cualquier otro comando antes de enviarlo. No se descarga contenido.
 - **Destino explícito**: el comando no importa `dotenv/config` ni `config/db.js`. Lee únicamente el archivo de `--env-file`, que debe estar **fuera del repositorio** (se rechaza `Backend/.env`). Antes de cualquier conexión exige `--confirm-database <base@host>`, `--confirm-storage <host>` y `--confirm-buckets` con todos los buckets configurados; `--describe-target` muestra esos valores sin credenciales ni conectar.
 - **Fuentes de referencias**: `file_versions` (`file_name` y contraste con `file_url`), `support_request_files` (`storage_key` y `file_url`), `users` (`profile_photo_url`, `signature_url`) y `quote_pdf_documents` (`object_key`, en el bucket privado de cotizaciones). Todas se leen completas con paginación por id; los buckets se listan hasta agotar el token de continuación.
 - **Resultados**: separa confirmados (presentes, filas activas sin objeto confirmadas con HEAD 404, tamaños y URLs incoherentes, referencias duplicadas), inaccesibles (HEAD con error) y comprobaciones incompletas (fuente fallida, listado interrumpido, privacidad sin confirmar, límite de HEAD). La privacidad solo se confirma con `storage.buckets.public = false`.
 - **Huérfanos**: solo se concluyen en un bucket con listado completo y todas sus fuentes leídas. Un objeto sin referencia es un **candidato a revisión**, nunca una autorización para borrarlo; los objetos referenciados solo por filas eliminadas se informan aparte. Los marcadores de carpeta de Supabase se cuentan aparte.
-- **Bucket público**: se informa como hallazgo crítico con su impacto por contexto y un procedimiento de corrección documentado (`PUBLIC_BUCKET_CORRECTION_PROCEDURE`) que el comando **no ejecuta**.
+- **Bucket público**: se informa como hallazgo crítico con su impacto por contexto y un procedimiento de corrección documentado (`PUBLIC_BUCKET_CORRECTION_PROCEDURE`) que el comando **no ejecuta**. Con `--accepted-public-buckets <bucket[,bucket]>` (solo buckets configurados) el responsable registra que la publicidad está aceptada para ese entorno, por ejemplo uno de pruebas: el informe la conserva en `environment` y `publicAccepted`, con su impacto, pero no la cuenta como crítica. No cambia ninguna configuración remota.
 - **Privacidad del informe**: se guarda fuera del repositorio (`~/ARCA_PRIVATE_BACKUPS/storage-inventory/` por defecto; se rechaza una ruta dentro). No contiene claves completas, nombres de archivo, URLs, credenciales ni mensajes del proveedor: cada objeto aparece con la huella SHA-256 truncada de `bucket + clave`, la forma de la clave (`projects/<n>/…/<archivo>.pdf`), tamaño, fecha e ids de fila.
 - **Códigos de salida**: 0 completo sin hallazgos críticos; 2 completo con hallazgos críticos; 3 incompleto; 1 error o destino no confirmado.
-- Pruebas con servicios simulados: `tests/storageInventory.test.js`, `tests/storageInventoryTarget.test.js` y `tests/storageInventoryCommand.test.js` (subproceso con un destino ficticio cerrado). Su ejecución contra un entorno real requiere autorización expresa.
+- Pruebas con servicios simulados: `tests/storageInventory.test.js`, `tests/storageInventoryTarget.test.js` y `tests/storageInventoryCommand.test.js` (subproceso con un destino ficticio cerrado). `tests/storageInventoryS3.test.js` usa el SDK real contra un servidor HTTP local que imita S3: HEAD 404 es ausencia confirmada; 403, 400 y 500 son inaccesibles; un listado con 403 deja el bucket incompleto. `tests/storageInventory.integration.test.js` (opcional: `ARCA_STORAGE_INVENTORY_DB_TESTS=1` y `ARCA_STORAGE_INVENTORY_TEST_DATABASE_URL` local) aplica todas las migraciones en una base desechable y comprueba consultas reales, rol de solo lectura, RLS, escritura rechazada por el servidor (25006), permisos denegados (42501), `lock_timeout` (55P03), cierre de sesiones y el comando completo. Su ejecución contra un entorno real requiere autorización expresa.
+
+### Catálogos de archivos y carpetas (E1, Fase 1.2)
+
+Dominio puro, **todavía no conectado** a la creación de proyectos, endpoints ni consultas. Separa cuatro conceptos: ubicación visible (nombres), clasificación funcional (claves y secciones), clave física (diagnóstico, nunca organiza ni concede acceso) y permisos (fuera de estos módulos).
+
+- `domain/fileContexts.js`: los cinco contextos existentes (`project_file`, `project_request_attachment`, `profile_photo`, `support_attachment`, `quote_pdf`) con entidad propietaria, quién aporta el archivo, registro en PostgreSQL, bucket, prefijo de clave actual y política de subida. `ownerChain` define la ubicación visible con entidades nombradas (cliente › proyecto › carpetas; usuario; cliente › solicitud; usuario › soporte; cliente › cotización). `describeVisibleLocation` devuelve etiquetas legibles con sus ids internos y, si falta un nombre, lo informa en lugar de mostrar un número. `findAmbiguousLabels` detecta nombres repetidos sin fijar cómo distinguirlos (D12). `resolveFilesRowContext` aplica la regla de `chk_files_owner`.
+- `domain/projectFolderCatalog.js`: 17 carpetas predeterminadas del árbol de Figma 3727:618978, en su orden, con clave funcional estable (`renders.images.execution`), nombre visible, sección y fase. Reglas confirmadas:
+  - las predeterminadas no se renombran, eliminan ni mueven;
+  - la portada admite una sola imagen JPG o PNG, sin subcarpetas, y se reemplaza;
+  - las personalizadas se renombran y solo se eliminan vacías, y pueden crearse dentro de otra personalizada;
+  - nombres de 1 a 120 caracteres, únicos entre hermanas sin distinguir mayúsculas;
+  - la sección se hereda de la carpeta predeterminada más cercana, nunca del nombre visible;
+  - las colisiones de nombre con carpetas existentes se informan sin adoptarlas.
+- Lo que depende de una decisión abierta se devuelve como `pending_decision` con su identificador (`FOLDER_PENDING_DECISIONS`): D1 (garantías, fuera del catálogo), D2 («Antes»), D6 (contenido de Modelos 3D), D7 (carpetas personalizadas en la raíz), D13 (carpetas personalizadas dentro de las predeterminadas y moverlas) y D14 (contenido admitido por carpeta, salvo la portada).
+- Pruebas: `tests/fileContexts.test.js` (contrasta políticas y prefijos con el código actual) y `tests/projectFolderCatalog.test.js` (árbol de Figma, coherencia, inmutabilidad, protección y decisiones pendientes).
+
+### Carpetas predeterminadas en proyectos draft nuevos (Fase 1.2)
+
+Migración aditiva `20261117120000_project_folder_system_keys` (SHA-256 del archivo con finales de línea LF: `d71840d8b0837aae5b0427ff0555380c452d88060102b633082f869c8e67cefd`):
+
+- `project_folders.system_key VARCHAR(80)` anulable, sin valor por defecto: clave funcional de una carpeta predeterminada; `NULL` en las personalizadas.
+- `chk_project_folders_system_key_format`: formato de la clave (igual que `SYSTEM_FOLDER_KEY_PATTERN`).
+- `chk_project_folders_system_not_deleted`: una carpeta predeterminada no se puede retirar (`deleted_at`).
+- `uq_project_folders_system_key`: índice único parcial `(project_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL`, que actúa de árbitro de la creación idempotente.
+
+No modifica filas: las carpetas existentes quedan como personalizadas y los proyectos existentes no reciben carpetas. Preflight y postcheck de solo lectura en `prisma/checks/20261117120000_project_folder_system_keys/` (la huella de `project_folders` sin la columna nueva debe coincidir). Despliegue: aplicar la migración antes de publicar el backend que la usa; el backend anterior funciona con ella, porque la columna es anulable y no se exige.
+
+- **Operación compartida**: `repositories/projectSystemFolderRepository.js#ensureProjectSystemFolders(client, { projectId, createdBy })`, dentro de la transacción que crea el proyecto:
+  1. bloquea el proyecto `FOR UPDATE`, lo que serializa ejecuciones simultáneas;
+  2. inserta el catálogo nivel a nivel (una sentencia por profundidad, madres antes que hijas, orden de Figma) con `ON CONFLICT … DO NOTHING` sobre `uq_project_folders_system_key`;
+  3. comprueba que cada clave exista con su madre. Si no, lanza `PROJECT_SYSTEM_FOLDERS_INCONSISTENT` y la transacción se revierte.
+
+  Los nombres visibles proceden del catálogo; las relaciones usan las claves. No adopta ni renombra carpetas existentes: un nombre que colisiona con una personalizada falla por `uq_project_folders_sibling_name`, lo que no ocurre en un proyecto nuevo.
+- **Integración**: `projectService.createDraftProject`, que cubre la creación desde una cotización y el alta manual, y `projectRequestWorkflowRepository.decideProjectRequest` (aprobación), justo después de insertar el proyecto. Un fallo en las carpetas revierte proyecto, cotización, decisión y auditoría.
+- **Protección**: `PATCH` y `DELETE` de `/admin/projects/:id/configuration/folders/:folderId` responden 409 `PROJECT_FOLDER_PROTECTED` para cualquier carpeta con `system_key`, aunque su clave saliera después del catálogo. El listado añade `systemKey`.
+- **Sin cambios (dependen de decisiones abiertas)**:
+  - crear carpetas personalizadas en la raíz o dentro de las predeterminadas (D7, D13);
+  - el contenido admitido por carpeta (D14), incluida la regla de la portada, que no se aplica todavía a las subidas;
+  - la ubicación de los adjuntos heredados de la solicitud, que siguen sin carpeta (`folder_id` NULL);
+  - Garantías (D1).
+- **Añadir una carpeta predeterminada más adelante**:
+  1. incorporarla a `PROJECT_SYSTEM_FOLDERS` con una clave nueva y definitiva, derivada de la de su madre (las pruebas del catálogo exigen coherencia, y la de Figma exige actualizar `FIGMA_TREE`). Nunca reutilizar ni renombrar una clave existente;
+  2. los proyectos creados después la reciben automáticamente;
+  3. los existentes no: necesitan un comando de mantenimiento revisable, con `ensureProjectSystemFolders` por proyecto, informe de colisiones de nombre (`findSystemFolderNameCollisions`) y confirmación explícita, sin adoptar carpetas por nombre;
+  4. retirar una carpeta del catálogo no borra filas: la verificación ignora las claves retiradas y PostgreSQL impide retirarlas.
+- Pruebas: `tests/projectSystemFolders.test.js` (operación con simulación) y `tests/projectSystemFolders.integration.test.js`. Esta última es opcional (`ARCA_PROJECT_FOLDERS_DB_TESTS=1` y `ARCA_PROJECT_FOLDERS_TEST_DATABASE_URL` local) y comprueba preflight, migración y postcheck, las tres rutas, repetición, concurrencia, rollback y protección.
 
 ## Paginación
 

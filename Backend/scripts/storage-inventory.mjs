@@ -28,7 +28,10 @@ import {
  *   node scripts/storage-inventory.mjs --env-file <ruta> --describe-target
  *   node scripts/storage-inventory.mjs --env-file <ruta> --confirm-database <base@host>
  *     --confirm-storage <host> --confirm-buckets <bucket[,bucket]> [--report <ruta>]
- *     [--max-head <n>] [--max-findings <n>]
+ *     [--max-head <n>] [--max-findings <n>] [--accepted-public-buckets <bucket[,bucket]>]
+ *
+ * --accepted-public-buckets registra como característica del entorno la publicidad que el responsable
+ * aceptó (por ejemplo, un bucket de pruebas); no cambia ninguna configuración remota.
  *
  * Códigos de salida: 0 completo sin hallazgos críticos; 2 completo con hallazgos críticos (bucket
  * público o filas activas sin objeto); 3 comprobaciones incompletas; 1 error o destino no confirmado.
@@ -38,7 +41,7 @@ const USAGE = `Uso:
   node scripts/storage-inventory.mjs --env-file <ruta> --describe-target
   node scripts/storage-inventory.mjs --env-file <ruta> --confirm-database <base@host> \\
     --confirm-storage <host> --confirm-buckets <bucket[,bucket]> [--report <ruta>] \\
-    [--max-head <n>] [--max-findings <n>]`;
+    [--max-head <n>] [--max-findings <n>] [--accepted-public-buckets <bucket[,bucket]>]`;
 
 /**
  * Lee y valida los argumentos de la línea de comandos sin aceptar opciones desconocidas.
@@ -51,6 +54,7 @@ function parseOptions(args) {
   const { values } = parseArgs({
     args,
     options: {
+      "accepted-public-buckets": { type: "string" },
       "confirm-buckets": { type: "string" },
       "confirm-database": { type: "string" },
       "confirm-storage": { type: "string" },
@@ -101,7 +105,10 @@ async function openDatabase(environment) {
  */
 function printSummary(report, file) {
   console.log(`Resultado: ${report.completeness.outcome}`);
-  for (const bucket of report.completeness.privacy) console.log(`Privacidad ${bucket.bucket}: ${bucket.status}${bucket.reason ? ` (${bucket.reason})` : ""}`);
+  for (const bucket of report.completeness.privacy) {
+    const accepted = bucket.publicAccepted ? " (aceptado para este entorno)" : "";
+    console.log(`Privacidad ${bucket.bucket}: ${bucket.status}${accepted}${bucket.reason ? ` (${bucket.reason})` : ""}`);
+  }
   for (const listing of report.completeness.listings) console.log(`Listado ${listing.bucket}: ${listing.status}, ${listing.objects} objetos en ${listing.pages} páginas`);
   for (const orphan of report.confirmed.orphanDetection) {
     console.log(`Huérfanos ${orphan.bucket}: ${orphan.status}; candidatos ${orphan.orphanCandidates.total}; solo filas eliminadas ${orphan.deletedRowObjects.total}`);
@@ -142,6 +149,8 @@ async function main() {
   const runId = randomUUID();
   try {
     const report = await runStorageInventory({
+      // Publicidad aceptada por el responsable para este entorno: se registra, no se trata como crítica.
+      acceptedPublicBuckets: String(options["accepted-public-buckets"] || "").split(",").map((value) => value.trim()).filter(Boolean),
       config: { buckets: target.buckets, supabaseUrl: environment.SUPABASE_URL || null },
       limits: {
         ...(options["max-findings"] ? { maxFindings: Number(options["max-findings"]) } : {}),

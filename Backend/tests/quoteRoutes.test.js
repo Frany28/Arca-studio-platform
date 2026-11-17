@@ -300,10 +300,17 @@ test("proyecto nuevo: el alta crea el draft del cliente en la misma transacción
     ["project.create_from_quote", "project", 50, quote.id],
   ]);
 
+  // El draft nace con las 17 carpetas predeterminadas del catálogo, en la misma transacción.
+  const folders = server.database.state.projectFolders.filter((folder) => folder.projectId === 50);
+  assert.equal(folders.length, 17);
+  assert.equal(folders.find((folder) => folder.systemKey === "cover").name, "Portada del proyecto");
+
   const statements = server.database.statements;
   assert.equal(statements[0], "begin");
   assert.match(statements[1], /^select pg_advisory_xact_lock/, "El bloqueo del envío precede a cualquier comprobación");
+  const folderInsert = statements.findIndex((sql) => sql.startsWith("insert into public.project_folders"));
   const projectInsert = statements.findIndex((sql) => sql.startsWith("insert into public.projects"));
+  assert.ok(projectInsert < folderInsert && folderInsert < statements.indexOf("commit"), "Carpetas después del draft y antes del COMMIT");
   const quoteInsert = statements.findIndex((sql) => sql.startsWith("insert into public.quotes"));
   const versionInsert = statements.findIndex((sql) => sql.startsWith("insert into public.quote_versions"));
   assert.ok(projectInsert >= 0 && projectInsert < quoteInsert && quoteInsert < versionInsert, "Draft, cotización y versión en la misma transacción");

@@ -85,6 +85,33 @@ const SOURCE_QUERIES = Object.freeze({
 
 const BUCKET_PRIVACY_QUERY = "select id, public from storage.buckets where id = any($1::text[])";
 
+// Tablas que lee cada fuente, incluidas las de los JOIN: si RLS filtra cualquiera de ellas, la fuente
+// devolvería menos filas (o propietarios nulos) sin error y el inventario no sería fiable.
+export const SOURCE_TABLES = Object.freeze({
+  file_versions: ["public.file_versions", "public.files"],
+  quote_pdf_documents: ["public.quote_pdf_documents"],
+  support_request_files: ["public.support_request_files", "public.support_requests"],
+  users: ["public.users"],
+});
+export const BUCKET_PRIVACY_TABLE = "storage.buckets";
+
+// RLS se aplica al rol conectado salvo que sea superusuario, tenga BYPASSRLS o sea el propietario de
+// una tabla sin FORCE ROW LEVEL SECURITY. Es la regla de PostgreSQL para decidir si filtra filas.
+const ROW_SECURITY_QUERY = `
+  select
+    namespace.nspname || '.' || class.relname as qualified_name,
+    (
+      class.relrowsecurity
+      and not role.rolsuper
+      and not role.rolbypassrls
+      and (class.relforcerowsecurity or pg_get_userbyid(class.relowner) <> current_user)
+    ) as filtered
+  from pg_class class
+  inner join pg_namespace namespace on namespace.oid = class.relnamespace
+  inner join pg_roles role on role.rolname = current_user
+  where namespace.nspname || '.' || class.relname = any($1::text[])
+`;
+
 /**
  * Comprueba que una sentencia sea de solo lectura antes de enviarla a PostgreSQL.
  * Normaliza espacios y rechaza varias sentencias, palabras de escritura y cualquier forma no prevista.
@@ -120,7 +147,7 @@ export function createReadOnlyInventoryClient(client) {
    * @param {unknown[]} [params] - Parámetros posicionales.
    * @returns {Promise<{ rows: Array<object> }>} Resultado de PostgreSQL.
    */
-  function guardedQuery(text, params) {
+  async function guardedQuery(text, params) {
     assertReadOnlyInventoryStatement(text);
     return client.query(text, params);
   }
@@ -180,6 +207,29 @@ export async function readReferenceSource(client, source, { pageSize }) {
     }
     return { pages, rows };
   });
+}
+
+/**
+ * Indica qué tablas filtraría Row Level Security para el rol conectado, sin leer sus filas.
+ * Una tabla filtrada devuelve menos filas sin error; ausente del catálogo, no se puede comprobar.
+ *
+ * @param {{ query: Function }} client - Cliente guardado dentro de la instantánea.
+ * @param {string[]} tables - Tablas calificadas (`esquema.tabla`).
+ * @returns {Promise<{ status: "complete"|"failed", filtered: Set<string>, unknown: Set<string>, error?: unknown }>}
+ *   Tablas filtradas y tablas que no aparecen en el catálogo.
+ */
+export async function readRowSecurityExposure(client, tables) {
+  const result = await withSavepoint(client, async () => {
+    const rows = (await client.query(ROW_SECURITY_QUERY, [tables])).rows;
+    return { rows };
+  });
+  if (result.status !== "complete") return { error: result.error, filtered: new Set(), status: "failed", unknown: new Set(tables) };
+  const found = new Map(result.rows.map((row) => [row.qualified_name, row.filtered === true]));
+  return {
+    filtered: new Set(tables.filter((table) => found.get(table) === true)),
+    status: "complete",
+    unknown: new Set(tables.filter((table) => !found.has(table))),
+  };
 }
 
 /**
