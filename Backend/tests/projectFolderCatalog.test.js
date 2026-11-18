@@ -8,6 +8,7 @@ import {
   evaluateFolderOperation,
   findSystemFolderNameCollisions,
   getSystemFolder,
+  orderFolderTree,
   resolveFolderClassification,
   systemFolderCreationOrder,
   validateFolderName,
@@ -188,6 +189,63 @@ test("las colisiones de nombre con carpetas predeterminadas se informan sin adop
     { folderId: "10", systemKey: "documents" },
     { folderId: "11", systemKey: "renders.images.execution" },
   ]);
+});
+
+test("orden de lectura: preorden del árbol, predeterminadas según el catálogo y personalizadas por nombre e id", () => {
+  // Ids asignados en orden inverso al catálogo para que el id no explique el resultado.
+  const system = PROJECT_SYSTEM_FOLDERS.map((folder, index) => ({ id: 100 - index, key: folder.key, name: folder.name, parentKey: folder.parentKey }));
+  const idByKey = new Map(system.map((folder) => [folder.key, folder.id]));
+  const rows = [
+    { id: 300, name: "zeta", parentId: null, systemKey: null },
+    { id: 301, name: "Alfa", parentId: null, systemKey: null },
+    { id: 302, name: "alfa", parentId: null, systemKey: null },
+    { id: 303, name: "Interior", parentId: idByKey.get("renders.images"), systemKey: null },
+    { id: 304, name: "Detalle", parentId: 303, systemKey: null },
+    { id: 305, name: "Retirada", parentId: null, systemKey: "legacy.retired" },
+    ...system.map((folder) => ({ id: folder.id, name: folder.name, parentId: folder.parentKey ? idByKey.get(folder.parentKey) : null, systemKey: folder.key })),
+  ].reverse();
+
+  const ordered = orderFolderTree(rows);
+  const labels = ordered.map((folder) => folder.systemKey ?? `custom:${folder.id}`);
+  assert.deepEqual(labels, [
+    "cover",
+    "renders",
+    "renders.models",
+    "renders.models.initial_proposal",
+    "renders.models.final_proposal",
+    "renders.images",
+    "renders.images.initial_proposal",
+    "renders.images.initial_proposal.before",
+    "renders.images.execution",
+    "renders.images.final_result",
+    "custom:303",
+    "custom:304",
+    "renders.videos",
+    "renders.videos.initial_proposal",
+    "renders.videos.execution",
+    "renders.videos.final_result",
+    "documents",
+    "documents.initial_proposal",
+    "client_files",
+    "legacy.retired",
+    "custom:301",
+    "custom:302",
+    "custom:300",
+  ]);
+  // Mismo resultado con otros órdenes de entrada (invertido y rotado).
+  for (const permutation of [[...rows].reverse(), [...rows.slice(7), ...rows.slice(0, 7)]]) {
+    assert.deepEqual(orderFolderTree(permutation).map((folder) => folder.id), ordered.map((folder) => folder.id));
+  }
+});
+
+test("orden de lectura: madres ausentes y ciclos no ocultan carpetas", () => {
+  const ordered = orderFolderTree([
+    { id: 1, name: "B", parentId: 99, systemKey: null },
+    { id: 2, name: "A", parentId: null, systemKey: null },
+    { id: 3, name: "Ciclo 1", parentId: 4, systemKey: null },
+    { id: 4, name: "Ciclo 2", parentId: 3, systemKey: null },
+  ]);
+  assert.deepEqual(ordered.map((folder) => folder.id), [2, 1, 3, 4]);
 });
 
 test("el catálogo no incluye carpetas que dependen de decisiones abiertas y las documenta", () => {

@@ -58,6 +58,68 @@ export const PROJECT_SYSTEM_FOLDERS = deepFreeze([
 ]);
 
 const FOLDERS_BY_KEY = new Map(PROJECT_SYSTEM_FOLDERS.map((folder) => [folder.key, folder]));
+const CATALOG_POSITION = new Map(PROJECT_SYSTEM_FOLDERS.map((folder, index) => [folder.key, index]));
+
+/**
+ * Compara dos carpetas hermanas para mostrarlas en un orden determinista.
+ * Primero las predeterminadas en el orden del catálogo, después las de claves retiradas por clave
+ * y al final las personalizadas por nombre normalizado; el id desempata en todos los casos.
+ *
+ * @param {{ id: number, name: string, systemKey: string|null }} left - Primera carpeta.
+ * @param {{ id: number, name: string, systemKey: string|null }} right - Segunda carpeta.
+ * @returns {number} Negativo, cero o positivo, como `Array.prototype.sort`.
+ */
+export function compareSiblingFolders(left, right) {
+  /**
+   * Clasifica una carpeta en su grupo de orden entre hermanas.
+   * 0: predeterminada del catálogo; 1: clave retirada del catálogo; 2: personalizada.
+   *
+   * @param {{ systemKey: string|null }} folder - Carpeta.
+   * @returns {0|1|2} Grupo de orden.
+   */
+  const rank = (folder) => (CATALOG_POSITION.has(folder.systemKey) ? 0 : folder.systemKey ? 1 : 2);
+  const byRank = rank(left) - rank(right);
+  if (byRank !== 0) return byRank;
+  if (rank(left) === 0) return CATALOG_POSITION.get(left.systemKey) - CATALOG_POSITION.get(right.systemKey);
+  // Comparación por puntos de código: independiente de la intercalación de PostgreSQL y de la región.
+  const leftKey = rank(left) === 1 ? left.systemKey : folderNameKey(left.name);
+  const rightKey = rank(right) === 1 ? right.systemKey : folderNameKey(right.name);
+  if (leftKey !== rightKey) return leftKey < rightKey ? -1 : 1;
+  return Number(left.id) - Number(right.id);
+}
+
+/**
+ * Ordena una lista plana de carpetas como el recorrido en preorden de su árbol.
+ * Cada carpeta precede a sus descendientes y las hermanas siguen `compareSiblingFolders`; las
+ * carpetas cuya madre no está en la lista se tratan como raíces para no perder ninguna.
+ *
+ * @param {Array<{ id: number, parentId: number|null, name: string, systemKey: string|null }>} folders -
+ *   Carpetas vigentes de un proyecto.
+ * @returns {Array<object>} Las mismas carpetas, en orden de presentación.
+ */
+export function orderFolderTree(folders) {
+  const ids = new Set(folders.map((folder) => Number(folder.id)));
+  const children = new Map();
+  const roots = [];
+  for (const folder of folders) {
+    const parentId = folder.parentId === null || folder.parentId === undefined ? null : Number(folder.parentId);
+    if (parentId === null || !ids.has(parentId)) roots.push(folder);
+    else children.set(parentId, [...(children.get(parentId) || []), folder]);
+  }
+  const ordered = [];
+  const visited = new Set();
+  const stack = roots.sort(compareSiblingFolders).reverse();
+  while (stack.length) {
+    const folder = stack.pop();
+    if (visited.has(Number(folder.id))) continue;
+    visited.add(Number(folder.id));
+    ordered.push(folder);
+    stack.push(...(children.get(Number(folder.id)) || []).sort(compareSiblingFolders).reverse());
+  }
+  // Un ciclo de madres (que PostgreSQL no impide) no debe ocultar carpetas: se añaden al final.
+  ordered.push(...folders.filter((folder) => !visited.has(Number(folder.id))).sort(compareSiblingFolders));
+  return ordered;
+}
 
 /**
  * Devuelve la definición de una carpeta predeterminada por su clave funcional estable.

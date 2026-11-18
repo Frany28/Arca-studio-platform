@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Prisma registra el SHA-256 de los bytes exactos de migration.sql. Las migraciones nuevas se fijan en LF
+# en cualquier sistema (también con core.autocrlf=true) para que su checksum documentado sea reproducible.
+# Las históricas no se cambian: su checksum registrado depende de la copia con la que se aplicaron.
+Backend/prisma/migrations/20261117120000_project_folder_system_keys/migration.sql text eol=lf

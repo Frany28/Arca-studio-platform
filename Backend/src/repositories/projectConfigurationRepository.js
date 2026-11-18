@@ -1,4 +1,5 @@
 import { query } from "../config/db.js";
+import { orderFolderTree } from "../domain/projectFolderCatalog.js";
 
 /**
  * Convierte un identificador o número de PostgreSQL (bigint como texto) a número, conservando
@@ -333,11 +334,13 @@ export async function recordProjectRequestFirstContact({ projectRequestId, userI
 }
 
 /**
- * Lista las carpetas vigentes de un proyecto con el número de archivos de cada una.
+ * Lista las carpetas vigentes de un proyecto con su clave funcional y su número de archivos.
+ * Las devuelve en preorden del árbol: predeterminadas según el catálogo y personalizadas por nombre.
  *
  * @param {number} projectId - Proyecto.
  * @param {{query: Function}} [executor] - Pool o cliente.
- * @returns {Promise<Array<{id: number, parentId: number|null, name: string, fileCount: number}>>} Carpetas.
+ * @returns {Promise<Array<{id: number, parentId: number|null, name: string, fileCount: number,
+ *   systemKey: string|null}>>} Carpetas en orden de presentación.
  */
 export async function listProjectFolders(projectId, executor = { query }) {
   const result = await executor.query(
@@ -346,17 +349,19 @@ export async function listProjectFolders(projectId, executor = { query }) {
         (select count(*) from public.files file where file.folder_id = folder.id and file.deleted_at is null and file.status <> 'deleted') as file_count
       from public.project_folders folder
       where folder.project_id = $1 and folder.deleted_at is null
-      order by lower(folder.name), folder.id
+      order by folder.id
     `,
     [projectId],
   );
-  return result.rows.map((row) => ({
+  // Orden de presentación explícito (orderFolderTree): preorden del árbol, predeterminadas según el
+  // catálogo y personalizadas por nombre normalizado e id. No depende de la intercalación de PostgreSQL.
+  return orderFolderTree(result.rows.map((row) => ({
     fileCount: Number(row.file_count),
     id: Number(row.id),
     name: row.name,
     parentId: toNumberOrNull(row.parent_id),
     systemKey: row.system_key ?? null,
-  }));
+  })));
 }
 
 /**
@@ -395,8 +400,8 @@ export async function insertProjectFolder(client, { createdBy, name, parentId, p
 }
 
 /**
- * Renombra una carpeta personalizada del proyecto bloqueado.
- * Las carpetas predeterminadas (con clave funcional) conservan el nombre del catálogo.
+ * Renombra una carpeta personalizada del proyecto bloqueado. La aplicación rechaza renombrar una
+ * carpeta con clave funcional; PostgreSQL no lo impide, así que esta es la única barrera.
  *
  * @param {import("pg").PoolClient} client - Cliente de la transacción.
  * @param {{folderId: number, name: string, projectId: number}} params - Carpeta y nombre.
@@ -416,8 +421,8 @@ export async function renameProjectFolder(client, { folderId, name, projectId })
 }
 
 /**
- * Retira una carpeta personalizada vacía (sin subcarpetas ni archivos vigentes) del proyecto bloqueado.
- * Las carpetas predeterminadas no se retiran; PostgreSQL también lo impide con una restricción.
+ * Retira (borrado lógico) una carpeta personalizada vacía del proyecto bloqueado. Una carpeta con
+ * clave funcional se rechaza aquí y además chk_project_folders_system_not_deleted impide su deleted_at.
  *
  * @param {import("pg").PoolClient} client - Cliente de la transacción.
  * @param {{folderId: number, projectId: number}} params - Carpeta.

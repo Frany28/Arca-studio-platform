@@ -307,7 +307,7 @@ export async function createProjectFolder({ name, parentId, projectId, user }) {
 
 /**
  * Crea el error público de una operación sobre una carpeta predeterminada del catálogo.
- * Esas carpetas conservan nombre y ubicación: no se renombran ni se eliminan (Fase 1.2).
+ * La API rechaza renombrarlas o eliminarlas (Fase 1.2) y no ofrece ninguna ruta para mover carpetas.
  *
  * @returns {ConflictError} Error 409 PROJECT_FOLDER_PROTECTED.
  */

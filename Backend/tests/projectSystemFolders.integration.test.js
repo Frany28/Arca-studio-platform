@@ -271,6 +271,40 @@ test("rollback: si falla una carpeta, ninguna de las tres rutas deja proyecto, c
   }
 });
 
+test("orden de lectura del flujo de configuración: catálogo y jerarquía; personalizadas por nombre e id", { skip }, async () => {
+  const { projectId } = await configuration.createManualDraftProject({ clientId: ids.client, name: "Casa ordenada", user: { id: ids.admin } });
+  const images = (await systemTree(projectId)).find((folder) => folder.system_key === "renders.images");
+  // Personalizadas creadas en un orden distinto del esperado.
+  const zeta = await configuration.createProjectFolder({ name: "Zeta", parentId: null, projectId, user: { id: ids.admin } });
+  const alfa = await configuration.createProjectFolder({ name: "alfa", parentId: null, projectId, user: { id: ids.admin } });
+  const interior = await configuration.createProjectFolder({ name: "Interior", parentId: images.id, projectId, user: { id: ids.admin } });
+  const detalle = await configuration.createProjectFolder({ name: "Detalle", parentId: interior.id, projectId, user: { id: ids.admin } });
+
+  const { folders } = await configuration.getProjectConfigurationFiles(projectId);
+  const labels = folders.map((folder) => folder.systemKey ?? folder.name);
+  const expected = PROJECT_SYSTEM_FOLDERS.map((folder) => folder.key);
+  expected.splice(expected.indexOf("renders.images.final_result") + 1, 0, "Interior", "Detalle");
+  expected.push("alfa", "Zeta");
+  assert.deepEqual(labels, expected);
+  assert.deepEqual([interior.id, detalle.id, alfa.id, zeta.id].every((id) => folders.some((folder) => folder.id === id)), true);
+  // Cada carpeta aparece después de su madre.
+  const position = new Map(folders.map((folder, index) => [folder.id, index]));
+  for (const folder of folders) if (folder.parentId) assert.ok(position.get(folder.parentId) < position.get(folder.id));
+});
+
+test("protección: una clave retirada del catálogo sigue protegida en la API y en PostgreSQL", { skip }, async () => {
+  const { projectId } = await configuration.createManualDraftProject({ clientId: ids.client, name: "Casa clave retirada", user: { id: ids.admin } });
+  const legacy = await configuration.createProjectFolder({ name: "Antigua", parentId: null, projectId, user: { id: ids.admin } });
+  await rows("update public.project_folders set system_key = 'legacy.retired' where id = $1", [legacy.id]);
+  await assert.rejects(configuration.updateProjectFolder({ folderId: legacy.id, name: "Nueva", projectId }), { code: "PROJECT_FOLDER_PROTECTED" });
+  await assert.rejects(configuration.deleteProjectFolder({ folderId: legacy.id, projectId }), { code: "PROJECT_FOLDER_PROTECTED" });
+  await assert.rejects(rows("update public.project_folders set deleted_at = now() where id = $1", [legacy.id]), { code: "23514" });
+  // Se lista después de las predeterminadas del catálogo de su nivel y antes de las personalizadas.
+  const { folders } = await configuration.getProjectConfigurationFiles(projectId);
+  const roots = folders.filter((folder) => folder.parentId === null).map((folder) => folder.systemKey ?? folder.name);
+  assert.deepEqual(roots, ["cover", "renders", "documents", "client_files", "legacy.retired"]);
+});
+
 test("protección: las carpetas predeterminadas no se renombran ni eliminan; las personalizadas sí", { skip }, async () => {
   const { projectId } = await configuration.createManualDraftProject({ clientId: ids.client, name: "Casa protegida", user: { id: ids.admin } });
   const tree = await systemTree(projectId);

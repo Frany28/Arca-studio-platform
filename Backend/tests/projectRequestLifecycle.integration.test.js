@@ -850,7 +850,18 @@ test("PostgreSQL y HTTP: configurar el borrador precarga la solicitud, guarda po
 
   // Carpetas y archivos del borrador. La aprobación ya creó las 17 carpetas predeterminadas.
   const initialFolders = await api(`${path}/files`, { headers: headers.admin });
-  assert.equal(initialFolders.body.folders.filter((candidate) => candidate.systemKey).length, 17);
+  // Respuesta HTTP real: las 17 carpetas en el orden del catálogo (preorden de Figma).
+  assert.deepEqual(initialFolders.body.folders.map((candidate) => candidate.systemKey), [
+    "cover", "renders", "renders.models", "renders.models.initial_proposal", "renders.models.final_proposal",
+    "renders.images", "renders.images.initial_proposal", "renders.images.initial_proposal.before",
+    "renders.images.execution", "renders.images.final_result", "renders.videos", "renders.videos.initial_proposal",
+    "renders.videos.execution", "renders.videos.final_result", "documents", "documents.initial_proposal", "client_files",
+  ]);
+  const coverFolder = initialFolders.body.folders.find((candidate) => candidate.systemKey === "cover");
+  const renamedCover = await api(`${path}/folders/${coverFolder.id}`, { body: { name: "Otra" }, headers: headers.admin, method: "PATCH" });
+  assert.deepEqual([renamedCover.status, renamedCover.body.code], [409, "PROJECT_FOLDER_PROTECTED"]);
+  const deletedCover = await api(`${path}/folders/${coverFolder.id}`, { headers: headers.admin, method: "DELETE" });
+  assert.deepEqual([deletedCover.status, deletedCover.body.code], [409, "PROJECT_FOLDER_PROTECTED"]);
   assert.equal((await api(`${path}/folders`, { body: { name: "renders e imágenes " }, headers: headers.admin, method: "POST" })).status, 400, "nombre de una carpeta predeterminada hermana");
   const folder = await api(`${path}/folders`, { body: { name: "Planos del cliente" }, headers: headers.admin, method: "POST" });
   assert.equal(folder.status, 201, JSON.stringify(folder.body));

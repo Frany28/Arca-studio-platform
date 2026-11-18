@@ -186,11 +186,19 @@ Dominio puro, **todavía no conectado** a la creación de proyectos, endpoints n
 
 ### Carpetas predeterminadas en proyectos draft nuevos (Fase 1.2)
 
-Migración aditiva `20261117120000_project_folder_system_keys` (SHA-256 del archivo con finales de línea LF: `d71840d8b0837aae5b0427ff0555380c452d88060102b633082f869c8e67cefd`):
+Migración aditiva `20261117120000_project_folder_system_keys`. Checksum que registrará Prisma: `d71840d8b0837aae5b0427ff0555380c452d88060102b633082f869c8e67cefd`.
+
+**Cómo se verificó el checksum.** Prisma registra en `_prisma_migrations.checksum` el SHA-256 de los bytes exactos de `migration.sql` en el disco, sin normalizar finales de línea. Se comprobó con `prisma migrate deploy` (Prisma 7.8) sobre una base local desechable. El valor registrado coincidió con el del archivo en disco, tanto para esta migración (LF) como para `20261113120000_project_draft_configuration` (copia CRLF, `7e5aa94…`).
+
+- **Bytes fijos.** El repositorio usa `* text=auto` y esta máquina `core.autocrlf=true`: una extracción en Windows convertiría el archivo a CRLF y su checksum pasaría a ser `ee6f2484c6cfea5da3435e292844c3963f545e22554fdccea7bfa144018f78e4`. Por eso `.gitattributes` fija `eol=lf` solo para este archivo: cualquier extracción, en cualquier sistema, produce `d71840d8…`. Las migraciones históricas no se tocan, porque su checksum registrado corresponde a la copia con la que se aplicaron.
+- **Prisma no lo comprueba.** `migrate deploy` y `migrate status` no validan el checksum de una migración ya aplicada: no avisaron ni con CRLF ni con un cambio real de contenido. Solo `migrate dev` lo hace, y no debe ejecutarse contra bases compartidas. La única comprobación es el postcheck, que muestra `recorded_checksum`; antes de reabrir el servicio debe coincidir con `d71840d8…`.
+- **Migraciones futuras.** Añadir su propia línea `eol=lf` en `.gitattributes` y documentar su checksum de la misma forma.
+
+Contenido:
 
 - `project_folders.system_key VARCHAR(80)` anulable, sin valor por defecto: clave funcional de una carpeta predeterminada; `NULL` en las personalizadas.
 - `chk_project_folders_system_key_format`: formato de la clave (igual que `SYSTEM_FOLDER_KEY_PATTERN`).
-- `chk_project_folders_system_not_deleted`: una carpeta predeterminada no se puede retirar (`deleted_at`).
+- `chk_project_folders_system_not_deleted`: una carpeta con `system_key` no puede tener `deleted_at` (impide su borrado lógico por cualquier vía).
 - `uq_project_folders_system_key`: índice único parcial `(project_id, system_key) WHERE system_key IS NOT NULL AND deleted_at IS NULL`, que actúa de árbitro de la creación idempotente.
 
 No modifica filas: las carpetas existentes quedan como personalizadas y los proyectos existentes no reciben carpetas. Preflight y postcheck de solo lectura en `prisma/checks/20261117120000_project_folder_system_keys/` (la huella de `project_folders` sin la columna nueva debe coincidir). Despliegue: aplicar la migración antes de publicar el backend que la usa; el backend anterior funciona con ella, porque la columna es anulable y no se exige.
@@ -202,7 +210,20 @@ No modifica filas: las carpetas existentes quedan como personalizadas y los proy
 
   Los nombres visibles proceden del catálogo; las relaciones usan las claves. No adopta ni renombra carpetas existentes: un nombre que colisiona con una personalizada falla por `uq_project_folders_sibling_name`, lo que no ocurre en un proyecto nuevo.
 - **Integración**: `projectService.createDraftProject`, que cubre la creación desde una cotización y el alta manual, y `projectRequestWorkflowRepository.decideProjectRequest` (aprobación), justo después de insertar el proyecto. Un fallo en las carpetas revierte proyecto, cotización, decisión y auditoría.
-- **Protección**: `PATCH` y `DELETE` de `/admin/projects/:id/configuration/folders/:folderId` responden 409 `PROJECT_FOLDER_PROTECTED` para cualquier carpeta con `system_key`, aunque su clave saliera después del catálogo. El listado añade `systemKey`.
+- **Protección: qué la garantiza exactamente.**
+
+  | Operación sobre una carpeta predeterminada | Aplicación | PostgreSQL | Prueba |
+  |---|---|---|---|
+  | Renombrar (`PATCH …/folders/:folderId`) | 409 `PROJECT_FOLDER_PROTECTED` para cualquier carpeta con `system_key`, aunque la clave ya no esté en el catálogo | **No lo impide**: un `UPDATE` directo puede cambiar `name` | integración: servicio y HTTP |
+  | Eliminar (`DELETE …/folders/:folderId`, borrado lógico) | 409 `PROJECT_FOLDER_PROTECTED`, también si está vacía | `chk_project_folders_system_not_deleted` rechaza `deleted_at` no nulo (23514) | integración: servicio, HTTP y `UPDATE` directo |
+  | Mover (cambiar `parent_id`) | La API no tiene ninguna ruta para mover carpetas (`PATCH` solo acepta `{name}`) | **No lo impide** | — |
+  | Cambiar o quitar `system_key` | La API no lo expone | Solo `chk_project_folders_system_key_format` (formato); poner `NULL` o cambiar la clave **no se impide** | integración: formato inválido (23514) |
+  | Dos carpetas activas con la misma clave en un proyecto | `ensureProjectSystemFolders` usa `ON CONFLICT DO NOTHING` | `uq_project_folders_system_key` (23505) | integración: repetición, concurrencia e `INSERT` directo |
+  | Borrado físico (`DELETE FROM`) | La aplicación nunca borra carpetas físicamente | Solo las FK existentes (subcarpetas o archivos que la referencien) | — |
+
+  Las garantías de PostgreSQL cubren cualquier vía de escritura. Las de la aplicación solo cubren las rutas HTTP: un script o una sentencia directa puede renombrar, mover o quitar la clave de una carpeta predeterminada. Cerrar esos casos en PostgreSQL (por ejemplo, con un disparador que haga inmutables `name`, `parent_id` y `system_key` de las carpetas con clave) requeriría una migración nueva.
+- **Orden de lectura**: `listProjectFolders` devuelve las carpetas en preorden del árbol (`orderFolderTree`): cada carpeta precede a sus descendientes; entre hermanas van primero las predeterminadas en el orden del catálogo, luego las de claves retiradas por clave y después las personalizadas por nombre normalizado (minúsculas y comparación por puntos de código, sin depender de la intercalación de PostgreSQL) y por id. Las carpetas con una madre ausente o en un ciclo se conservan al final.
+- El listado añade `systemKey`.
 - **Sin cambios (dependen de decisiones abiertas)**:
   - crear carpetas personalizadas en la raíz o dentro de las predeterminadas (D7, D13);
   - el contenido admitido por carpeta (D14), incluida la regla de la portada, que no se aplica todavía a las subidas;
@@ -212,7 +233,7 @@ No modifica filas: las carpetas existentes quedan como personalizadas y los proy
   1. incorporarla a `PROJECT_SYSTEM_FOLDERS` con una clave nueva y definitiva, derivada de la de su madre (las pruebas del catálogo exigen coherencia, y la de Figma exige actualizar `FIGMA_TREE`). Nunca reutilizar ni renombrar una clave existente;
   2. los proyectos creados después la reciben automáticamente;
   3. los existentes no: necesitan un comando de mantenimiento revisable, con `ensureProjectSystemFolders` por proyecto, informe de colisiones de nombre (`findSystemFolderNameCollisions`) y confirmación explícita, sin adoptar carpetas por nombre;
-  4. retirar una carpeta del catálogo no borra filas: la verificación ignora las claves retiradas y PostgreSQL impide retirarlas.
+  4. retirar una carpeta del catálogo no borra filas: la verificación ignora las claves retiradas, la API las sigue protegiendo y PostgreSQL impide su borrado lógico.
 - Pruebas: `tests/projectSystemFolders.test.js` (operación con simulación) y `tests/projectSystemFolders.integration.test.js`. Esta última es opcional (`ARCA_PROJECT_FOLDERS_DB_TESTS=1` y `ARCA_PROJECT_FOLDERS_TEST_DATABASE_URL` local) y comprueba preflight, migración y postcheck, las tres rutas, repetición, concurrencia, rollback y protección.
 
 ## Paginación
