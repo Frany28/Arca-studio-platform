@@ -144,7 +144,10 @@ function ProjectRequestModal({
     }
   };
 
-  const handleReferenceFileRemove = async (fileItem) => {
+  // Solo se cancela una selección que todavía no se guardó: un adjunto subido se conserva en la
+  // solicitud (Fase 1.2, B1).
+  const handleReferenceFileRemove = (fileItem) => {
+    if (fileItem.uploadResult?.file?.id) return;
     setSubmitError("");
     const controller = uploadControllersRef.current.get(fileItem.id);
 
@@ -156,29 +159,6 @@ function ProjectRequestModal({
     setReferenceFiles((current) =>
       current.filter((item) => item.id !== fileItem.id),
     );
-
-    const uploadedFileId = fileItem.uploadResult?.file?.id;
-    const projectRequestId = formValues.projectRequestId ?? null;
-
-    if (!uploadedFileId || !projectRequestId) {
-      return;
-    }
-
-    try {
-      await api.projectRequests.deleteFile({
-        fileId: uploadedFileId,
-        projectRequestId,
-      });
-    } catch (error) {
-      setSubmitError(error.message || "No se pudo eliminar el archivo.");
-      setReferenceFiles((current) => {
-        if (current.some((item) => item.id === fileItem.id)) {
-          return current;
-        }
-
-        return [...current, fileItem];
-      });
-    }
   };
 
   const handleDetailsNext = async () => {

@@ -36,21 +36,21 @@ test("un adjunto guardado no repite las comprobaciones de formato ni tamaño ind
   assert.deepEqual(getProjectRequestFileErrors([persisted(1, "render.jpg", 0, "image/pjpeg")]), []);
 });
 
-test("los adjuntos subidos solo se pueden eliminar cuando la solicitud lo autoriza", () => {
+test("un adjunto guardado se conserva: solo se cancela la selección que aún no se envió (Fase 1.2, B1)", () => {
   const saved = persisted(7, "Plano.pdf");
   assert.equal(isProjectRequestFileRemovable(saved), false);
-  assert.equal(isProjectRequestFileRemovable(saved, { allowRemoteRemoval: true }), true);
-  assert.equal(isProjectRequestFileRemovable({ ...saved, removing: true }, { allowRemoteRemoval: true }), false);
-  assert.equal(isProjectRequestFileRemovable({ ...saved, remoteId: null }, { allowRemoteRemoval: true }), false);
-  // Uno en curso se puede quitar: quitarlo cancela la transferencia.
-  assert.equal(isProjectRequestFileRemovable({ status: "uploading", remoteId: null }), true);
+  assert.equal(isProjectRequestFileRemovable({ ...saved, persisted: false }), false, "también uno subido en esta sesión");
+  // Lo que todavía no se guardó se puede quitar; quitar uno en curso cancela la transferencia.
+  for (const status of ["pending", "uploading", "error"]) {
+    assert.equal(isProjectRequestFileRemovable({ remoteId: null, status }), true, status);
+  }
 
   const removed = [];
-  const [card] = toProjectRequestFileCards([saved], (id) => removed.push(id), { allowRemoteRemoval: true });
+  const [card, pending] = toProjectRequestFileCards([saved, local("n1", "nuevo.png")], (id) => removed.push(id));
   assert.equal(card.status, "completed");
-  assert.equal(card.removeWhenCompleted, true, "la tarjeta completada ofrece «Eliminar archivo»");
   assert.equal(card.name, "Plano.pdf");
-  card.onRemove();
-  assert.deepEqual(removed, ["persisted-7"]);
-  assert.equal(toProjectRequestFileCards([saved], () => {})[0].onRemove, undefined);
+  assert.equal(card.onRemove, undefined, "la tarjeta guardada no ofrece «Eliminar archivo»");
+  assert.equal(card.removeWhenCompleted, undefined);
+  pending.onRemove();
+  assert.deepEqual(removed, ["n1"]);
 });

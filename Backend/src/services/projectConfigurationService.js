@@ -29,6 +29,7 @@ import {
   replaceTrackingConfiguration,
   updateProjectGeneralConfiguration,
 } from "../repositories/projectConfigurationRepository.js";
+import { evaluateFolderOperation } from "../domain/projectFolderCatalog.js";
 
 const MISSING_REQUIREMENT_MESSAGES = Object.freeze({
   assigneeIds: "Asigna al menos un responsable.",
@@ -284,10 +285,14 @@ export async function getProjectConfigurationFiles(projectId) {
 }
 
 /**
- * Crea una carpeta (en la raíz o dentro de otra del mismo proyecto) en un borrador.
+ * Crea una carpeta personalizada (en la raíz o dentro de otra del mismo proyecto) en un borrador.
+ * Regla confirmada del catálogo: se admite dentro de cualquier carpeta salvo en la portada, que
+ * responde 409 PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED. La raíz depende de D7 y conserva el
+ * comportamiento vigente hasta decidirla.
  *
  * @param {{name: string, parentId: number|null, projectId: number, user: {id: number}}} params - Carpeta.
  * @returns {Promise<object>} Carpeta creada.
+ * @throws {NotFoundError|ConflictError|ValidationError} Si el proyecto o la madre no son válidos.
  */
 export async function createProjectFolder({ name, parentId, projectId, user }) {
   try {
@@ -295,8 +300,12 @@ export async function createProjectFolder({ name, parentId, projectId, user }) {
       const project = await lockProjectForConfiguration(client, projectId);
       if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Proyecto no encontrado.");
       if (project.status !== PROJECT_STATUS.DRAFT) throw new ConflictError("PROJECT_NOT_DRAFT", "Solo se puede configurar un proyecto en borrador.");
-      if (parentId && !(await findProjectFolder(client, projectId, parentId))) {
+      const parent = parentId ? await findProjectFolder(client, projectId, parentId) : null;
+      if (parentId && !parent) {
         throw new ValidationError("Los datos enviados no son válidos.", { "body.parentId": "La carpeta superior no existe." });
+      }
+      if (evaluateFolderOperation({ operation: "create_child", parent }).outcome === "forbidden") {
+        throw new ConflictError("PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED", "Esta carpeta no admite subcarpetas.");
       }
       return insertProjectFolder(client, { createdBy: user.id, name, parentId, projectId });
     });

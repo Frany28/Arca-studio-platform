@@ -17,10 +17,9 @@ export const UPLOADED_PENDING_SUBMIT_LABEL = "Subido · Pendiente de enviar soli
  * no es un `File`: solo aporta nombre, tamaño y tipo para validar y presentar la tarjeta.
  *
  * @param {{id: number, name: string, size: number, fileType: string|null}} file - Adjunto de la API.
- * @param {boolean} [removing=false] - Si su eliminación está en curso.
  * @returns {Object} Item subido con `remoteId` y `persisted`.
  */
-export function toPersistedProjectRequestFileItem(file, removing = false) {
+export function toPersistedProjectRequestFileItem(file) {
   return {
     error: "",
     file: { name: file.name, size: Number(file.size) || 0, type: file.fileType || "" },
@@ -28,24 +27,21 @@ export function toPersistedProjectRequestFileItem(file, removing = false) {
     persisted: true,
     progress: 100,
     remoteId: file.id,
-    removing,
     status: "uploaded",
   };
 }
 
 /**
- * Indica si un adjunto puede quitarse. Los pendientes y fallidos solo existen en la selección
- * local; quitar uno que está subiendo cancela su transferencia. Un adjunto subido (`remoteId`)
- * pertenece a la solicitud y solo se quita cuando el flujo autoriza eliminar en el servidor
- * (existe el borrador), y nunca mientras se está eliminando.
+ * Indica si un adjunto puede quitarse de la selección. Solo se cancela lo que todavía no se
+ * guardó: un pendiente o fallido existe únicamente en la selección local y quitar uno que está
+ * subiendo cancela su transferencia. Un adjunto subido ya está guardado en la solicitud y se
+ * conserva (Fase 1.2, B1): nunca ofrece quitarlo.
  *
- * @param {{status: string, remoteId?: number, removing?: boolean}} item - Adjunto del formulario.
- * @param {{allowRemoteRemoval?: boolean}} [options] - Si la solicitud admite eliminar adjuntos guardados.
+ * @param {{status: string}} item - Adjunto del formulario.
  * @returns {boolean} true si el adjunto puede quitarse.
  */
-export function isProjectRequestFileRemovable(item, { allowRemoteRemoval = false } = {}) {
-  if (item?.status === "pending" || item?.status === "error" || item?.status === "uploading") return true;
-  return allowRemoteRemoval && item?.status === "uploaded" && Boolean(item.remoteId) && !item.removing;
+export function isProjectRequestFileRemovable(item) {
+  return item?.status === "pending" || item?.status === "error" || item?.status === "uploading";
 }
 
 /**
@@ -53,14 +49,14 @@ export function isProjectRequestFileRemovable(item, { allowRemoteRemoval = false
  * Calcula el tamaño cargado a partir del progreso y solo expone `onRemove` en los adjuntos
  * que se pueden quitar. Un adjunto subido muestra «Subido · Pendiente de enviar solicitud» (está
  * guardado, pero la solicitud no se ha enviado); uno con error de subida ofrece «Intenta de
- * nuevo» (`onRetry`) y, además, su papelera para quitarlo.
+ * nuevo» (`onRetry`) y, además, su papelera para quitarlo. Un adjunto guardado no ofrece quitarlo:
+ * su tarjeta completada muestra «Añadir archivo», como cualquier tarjeta completada.
  *
  * @param {Array<{id: string, file: File, status: string, progress: number, error: string}>} files - Adjuntos.
- * Los adjuntos guardados que se pueden eliminar muestran «Eliminar archivo» en su tarjeta completada.
- * @param {(id: string) => void} [onRemove] - Quita un adjunto por id.
- * @param {{allowRemoteRemoval?: boolean, completedLabel?: string, onRetry?: (id: string) => void}} [options] - Ver
- *   isProjectRequestFileRemovable; `onRetry` vuelve a subir un adjunto fallido y `completedLabel`
- *   sustituye el texto de un adjunto subido (la edición de una solicitud enviada no está pendiente de envío).
+ * @param {(id: string) => void} [onRemove] - Quita de la selección un adjunto aún no guardado.
+ * @param {{completedLabel?: string, onRetry?: (id: string) => void}} [options] - `onRetry` vuelve a
+ *   subir un adjunto fallido y `completedLabel` sustituye el texto de un adjunto subido (la edición
+ *   de una solicitud enviada no está pendiente de envío).
  * @returns {Array<Object>} Tarjetas con nombre, tipo, estado, progreso, tamaños y acciones.
  */
 export function toProjectRequestFileCards(files, onRemove, options = {}) {
@@ -74,9 +70,8 @@ export function toProjectRequestFileCards(files, onRemove, options = {}) {
       id: item.id,
       name: item.file?.name || "Archivo",
       completedLabel: options.completedLabel || UPLOADED_PENDING_SUBMIT_LABEL,
-      onRemove: onRemove && isProjectRequestFileRemovable(item, options) ? () => onRemove(item.id) : undefined,
+      onRemove: onRemove && isProjectRequestFileRemovable(item) ? () => onRemove(item.id) : undefined,
       onRetryUpload: item.status === "error" && options.onRetry ? () => options.onRetry(item.id) : undefined,
-      removeWhenCompleted: item.status === "uploaded",
       removeWhenFailed: item.status === "error",
       progress,
       status: FILE_CARD_STATUS[item.status] || "pending",

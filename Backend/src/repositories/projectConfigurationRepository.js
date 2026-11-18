@@ -1,5 +1,5 @@
 import { query } from "../config/db.js";
-import { orderFolderTree } from "../domain/projectFolderCatalog.js";
+import { orderFolderTree, resolveFolderDisplayName } from "../domain/projectFolderCatalog.js";
 
 /**
  * Convierte un identificador o número de PostgreSQL (bigint como texto) a número, conservando
@@ -336,6 +336,8 @@ export async function recordProjectRequestFirstContact({ projectRequestId, userI
 /**
  * Lista las carpetas vigentes de un proyecto con su clave funcional y su número de archivos.
  * Las devuelve en preorden del árbol: predeterminadas según el catálogo y personalizadas por nombre.
+ * Una carpeta predeterminada muestra el nombre vigente del catálogo (p. ej. «Panorámicas» para
+ * `renders.models`), aunque el proyecto guardara el anterior; las personalizadas, su nombre guardado.
  *
  * @param {number} projectId - Proyecto.
  * @param {{query: Function}} [executor] - Pool o cliente.
@@ -358,7 +360,7 @@ export async function listProjectFolders(projectId, executor = { query }) {
   return orderFolderTree(result.rows.map((row) => ({
     fileCount: Number(row.file_count),
     id: Number(row.id),
-    name: row.name,
+    name: resolveFolderDisplayName({ name: row.name, systemKey: row.system_key ?? null }),
     parentId: toNumberOrNull(row.parent_id),
     systemKey: row.system_key ?? null,
   })));

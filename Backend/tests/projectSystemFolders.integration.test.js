@@ -203,7 +203,7 @@ test("migración: preflight y postcheck correctos, datos existentes intactos y s
   assert.deepEqual(await systemTree(ids.legacy), []);
 });
 
-test("alta manual: el draft nace con las 17 carpetas del catálogo", { skip }, async () => {
+test("alta manual: el draft nace con las 18 carpetas del catálogo", { skip }, async () => {
   const { projectId } = await configuration.createManualDraftProject({ clientId: ids.client, name: "Casa manual", user: { id: ids.admin } });
   await assertCatalogTree(projectId);
   const [creator] = await rows("select bool_and(created_by = $2) as ok from public.project_folders where project_id = $1", [projectId, ids.admin]);
@@ -212,12 +212,12 @@ test("alta manual: el draft nace con las 17 carpetas del catálogo", { skip }, a
   assert.equal((await systemTree(projectId))[0].system_key, "cover");
 });
 
-test("cotización: el draft creado al guardar la cotización nace con las 17 carpetas", { skip }, async () => {
+test("cotización: el draft creado al guardar la cotización nace con las 18 carpetas", { skip }, async () => {
   const { quote } = await createDraftQuote("Casa cotizada");
   await assertCatalogTree(quote.project.id);
 });
 
-test("aprobación: el draft de una solicitud aprobada nace con las 17 carpetas y conserva sus adjuntos", { skip }, async () => {
+test("aprobación: el draft de una solicitud aprobada nace con las 18 carpetas y conserva sus adjuntos", { skip }, async () => {
   const requestId = await createPendingRequest("Casa solicitada");
   const result = await workflow.decideProjectRequest({ action: "approve", internalNotes: null, projectRequestId: requestId, reason: null, reviewedBy: ids.admin });
   assert.equal(result.outcome, "updated", JSON.stringify(result));
@@ -240,7 +240,7 @@ test("repetición y concurrencia: una sola carpeta por clave y proyecto", { skip
   const [bare] = await rows(`insert into public.projects (client_id, created_by, name, status, public_slug)
     values ($1, $2, 'Sin carpetas', 'draft', 'sin-carpetas-folders') returning id::int`, [ids.client, ids.admin]);
   const concurrent = await Promise.all([1, 2, 3, 4].map(() => db.withTransaction((client) => systemFolders.ensureProjectSystemFolders(client, { createdBy: ids.admin, projectId: bare.id }))));
-  assert.equal(concurrent.reduce((sum, result) => sum + result.created, 0), 17);
+  assert.equal(concurrent.reduce((sum, result) => sum + result.created, 0), PROJECT_SYSTEM_FOLDERS.length);
   await assertCatalogTree(bare.id);
 
   // El índice único es la última barrera: una segunda carpeta con la misma clave se rechaza.
@@ -326,4 +326,32 @@ test("protección: las carpetas predeterminadas no se renombran ni eliminan; las
   await configuration.deleteProjectFolder({ folderId: custom.id, projectId });
   // Un nombre de carpeta predeterminada en la misma ubicación sigue rechazándose como duplicado.
   await assert.rejects(configuration.createProjectFolder({ name: "documentos", parentId: null, projectId, user: { id: ids.admin } }), { code: "VALIDATION_ERROR" });
+});
+
+test("catálogo B2: «Panorámicas» y «Documentos › Garantías» en las altas; nombre del catálogo y portada sin subcarpetas", { skip }, async () => {
+  const { projectId } = await configuration.createManualDraftProject({ clientId: ids.client, name: "Casa catálogo B2", user: { id: ids.admin } });
+  const tree = await systemTree(projectId);
+  const byKey = new Map(tree.map((folder) => [folder.system_key, folder]));
+  assert.deepEqual([byKey.get("renders.models").name, byKey.get("renders.models").parent_key], ["Panorámicas", "renders"]);
+  assert.deepEqual([byKey.get("documents.warranties").name, byKey.get("documents.warranties").parent_key], ["Garantías", "documents"]);
+
+  // Un proyecto que guardó el nombre anterior conserva su clave y se muestra con el nombre del catálogo.
+  await rows("update public.project_folders set name = 'Modelos 3D' where id = $1", [byKey.get("renders.models").id]);
+  const { folders } = await configuration.getProjectConfigurationFiles(projectId);
+  const panoramas = folders.find((folder) => folder.systemKey === "renders.models");
+  assert.deepEqual([panoramas.id, panoramas.name], [byKey.get("renders.models").id, "Panorámicas"]);
+  const warranties = folders.find((folder) => folder.systemKey === "documents.warranties");
+  const documentsIndex = folders.findIndex((folder) => folder.systemKey === "documents");
+  assert.deepEqual(folders.slice(documentsIndex, documentsIndex + 3).map((folder) => folder.systemKey), ["documents", "documents.initial_proposal", "documents.warranties"]);
+
+  // Regla confirmada: carpetas personalizadas dentro de otras, salvo en la portada.
+  const foldersBefore = (await rows("select count(*)::int as count from public.project_folders where project_id = $1", [projectId]))[0].count;
+  await assert.rejects(
+    configuration.createProjectFolder({ name: "Variantes", parentId: byKey.get("cover").id, projectId, user: { id: ids.admin } }),
+    { code: "PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED", status: 409 },
+  );
+  assert.equal((await rows("select count(*)::int as count from public.project_folders where project_id = $1", [projectId]))[0].count, foldersBefore);
+  const nested = await configuration.createProjectFolder({ name: "Equipos de cocina", parentId: warranties.id, projectId, user: { id: ids.admin } });
+  assert.deepEqual([nested.parentId, nested.systemKey], [warranties.id, null]);
+  await assert.rejects(configuration.updateProjectFolder({ folderId: warranties.id, name: "Otra", projectId }), { code: "PROJECT_FOLDER_PROTECTED" });
 });

@@ -1,29 +1,36 @@
 import { deepFreeze } from "./fileContexts.js";
 
-// Catálogo de carpetas predeterminadas de un proyecto (E1, Fase 1.2). Dominio puro, todavía no
-// conectado a la creación de proyectos ni a los endpoints de carpetas.
+// Catálogo de carpetas predeterminadas de un proyecto (Fase 1.2). Dominio puro: la creación
+// idempotente (`projectSystemFolderRepository`) lo usa en las tres altas de proyectos draft.
 //
-// Fuente: Figma 3727:618978, paso «Gestión de archivos» (árbol, nombres, orden y aviso de la portada),
-// más los requisitos confirmados de la fase: claves funcionales estables, carpetas que no se
-// renombran, eliminan ni mueven, y la jerarquía prevista. Las reglas que dependen de una decisión
-// abierta se devuelven como `pending_decision` con su identificador, nunca con un valor supuesto.
+// Fuentes: Figma 3727:618978 y 3727:682730 (árbol, nombres, orden y aviso de la portada) y las reglas
+// confirmadas de la fase:
+// - claves funcionales estables: la clave clasifica y nunca cambia, aunque cambie el nombre visible
+//   (`renders.models` se muestra como «Panorámicas» y contiene imágenes de 360°);
+// - las carpetas predeterminadas no se renombran, eliminan ni mueven;
+// - se pueden crear carpetas personalizadas dentro de otras, salvo en la portada;
+// - los documentos de garantías se guardan en «Documentos › Garantías» (`documents.warranties`).
+// Las reglas que dependen de una decisión abierta se devuelven como `pending_decision` con su
+// identificador, nunca con un valor supuesto.
 
 export const FOLDER_NAME_MAX_LENGTH = 120;
 export const SYSTEM_FOLDER_KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+export const WARRANTY_DOCUMENTS_FOLDER_KEY = "documents.warranties";
 
-// Decisiones abiertas que afectan a este catálogo. Ver Backend/ARCHITECTURE.md (E1).
+// Decisiones abiertas que afectan a este catálogo. Ver Backend/ARCHITECTURE.md (Fase 1.2).
+// Resueltas: D1 (garantías en documents.warranties), D6 («Panorámicas», imágenes de 360°) y la parte
+// de D13 sobre crear carpetas personalizadas dentro de las predeterminadas.
 export const FOLDER_PENDING_DECISIONS = deepFreeze({
-  D1: "Carpeta de garantías: no figura en Figma y no forma parte del catálogo hasta decidirla.",
   D2: "«Antes»: fase o clasificación de su contenido (render en fase inicial o imagen de referencia).",
-  D6: "«Modelos 3D»: contenido admitido (panorámicas 360, GLB/GLTF o ambos) y visor que lo muestra.",
   D7: "Carpetas personalizadas en la raíz del proyecto.",
-  D13: "Carpetas personalizadas dentro de las carpetas predeterminadas (en cuáles, salvo la portada) y si pueden moverse.",
+  D13: "Mover carpetas personalizadas a otra ubicación.",
   D14: "Contenido admitido por cada carpeta (salvo la portada) y si las carpetas agrupadoras admiten archivos directos.",
 });
 
-// Árbol confirmado por Figma, en su orden visual. `section` es la sección funcional del proyecto a la
-// que pertenece la carpeta; `stage`, la fase que indica su nombre. Los valores nulos con
-// `pendingDecisions` no se han asignado a propósito.
+// Árbol confirmado, en su orden visual. `section` es la sección funcional del proyecto a la que
+// pertenece la carpeta y `stage`, la fase que indica su nombre. Ambos son identificadores estables:
+// `models_3d` se conserva como sección de «Panorámicas». Los valores nulos con `pendingDecisions` no
+// se han asignado a propósito.
 export const PROJECT_SYSTEM_FOLDERS = deepFreeze([
   {
     key: "cover",
@@ -37,24 +44,28 @@ export const PROJECT_SYSTEM_FOLDERS = deepFreeze([
     content: { acceptedExtensions: ["jpeg", "jpg", "png"], allowsSubfolders: false, maxFiles: 1, replaceOnly: true },
     pendingDecisions: [],
   },
-  { key: "renders", name: "Renders e imágenes", parentKey: null, section: "renders", stage: null, content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.models", name: "Modelos 3D", parentKey: "renders", section: "models_3d", stage: null, content: null, pendingDecisions: ["D6", "D13", "D14"] },
-  { key: "renders.models.initial_proposal", name: "Propuesta inicial", parentKey: "renders.models", section: "models_3d", stage: "initial_proposal", content: null, pendingDecisions: ["D6", "D13", "D14"] },
-  { key: "renders.models.final_proposal", name: "Propuesta final", parentKey: "renders.models", section: "models_3d", stage: "final_proposal", content: null, pendingDecisions: ["D6", "D13", "D14"] },
-  { key: "renders.images", name: "Imágenes", parentKey: "renders", section: "images", stage: null, content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.images.initial_proposal", name: "Propuesta inicial", parentKey: "renders.images", section: "images", stage: "initial_proposal", content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.images.initial_proposal.before", name: "Antes", parentKey: "renders.images.initial_proposal", section: "images", stage: null, content: null, pendingDecisions: ["D2", "D13", "D14"] },
-  { key: "renders.images.execution", name: "Ejecución", parentKey: "renders.images", section: "images", stage: "execution", content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.images.final_result", name: "Resultado final", parentKey: "renders.images", section: "images", stage: "final_result", content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.videos", name: "Videos", parentKey: "renders", section: "videos", stage: null, content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.videos.initial_proposal", name: "Propuesta inicial", parentKey: "renders.videos", section: "videos", stage: "initial_proposal", content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.videos.execution", name: "Ejecución", parentKey: "renders.videos", section: "videos", stage: "execution", content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "renders.videos.final_result", name: "Resultado final", parentKey: "renders.videos", section: "videos", stage: "final_result", content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "documents", name: "Documentos", parentKey: null, section: "documents", stage: null, content: null, pendingDecisions: ["D13", "D14"] },
-  { key: "documents.initial_proposal", name: "Propuesta inicial", parentKey: "documents", section: "documents", stage: "initial_proposal", content: null, pendingDecisions: ["D13", "D14"] },
+  { key: "renders", name: "Renders e imágenes", parentKey: null, section: "renders", stage: null, content: null, pendingDecisions: ["D14"] },
+  // Clave conservada de «Modelos 3D»: la sección se llama «Panorámicas» y contiene imágenes de 360°.
+  { key: "renders.models", name: "Panorámicas", parentKey: "renders", section: "models_3d", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "renders.models.initial_proposal", name: "Propuesta inicial", parentKey: "renders.models", section: "models_3d", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.models.final_proposal", name: "Propuesta final", parentKey: "renders.models", section: "models_3d", stage: "final_proposal", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.images", name: "Imágenes", parentKey: "renders", section: "images", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "renders.images.initial_proposal", name: "Propuesta inicial", parentKey: "renders.images", section: "images", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.images.initial_proposal.before", name: "Antes", parentKey: "renders.images.initial_proposal", section: "images", stage: null, content: null, pendingDecisions: ["D2", "D14"] },
+  { key: "renders.images.execution", name: "Ejecución", parentKey: "renders.images", section: "images", stage: "execution", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.images.final_result", name: "Resultado final", parentKey: "renders.images", section: "images", stage: "final_result", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.videos", name: "Videos", parentKey: "renders", section: "videos", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "renders.videos.initial_proposal", name: "Propuesta inicial", parentKey: "renders.videos", section: "videos", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.videos.execution", name: "Ejecución", parentKey: "renders.videos", section: "videos", stage: "execution", content: null, pendingDecisions: ["D14"] },
+  { key: "renders.videos.final_result", name: "Resultado final", parentKey: "renders.videos", section: "videos", stage: "final_result", content: null, pendingDecisions: ["D14"] },
+  { key: "documents", name: "Documentos", parentKey: null, section: "documents", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "documents.initial_proposal", name: "Propuesta inicial", parentKey: "documents", section: "documents", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
+  // Documentos de garantías: se guardan aquí y se vinculan a garantías del mismo proyecto
+  // (domain/projectWarrantyDocuments.js). Sus formatos dependen de D14.
+  { key: WARRANTY_DOCUMENTS_FOLDER_KEY, name: "Garantías", parentKey: "documents", section: "warranties", stage: null, content: null, pendingDecisions: ["D14"] },
   // Los adjuntos de la solicitud de origen se reconocen hoy como «Archivos del cliente»
   // (origin_project_request_id). Qué más puede contener depende de D14.
-  { key: "client_files", name: "Archivos del cliente", parentKey: null, section: "client_files", stage: null, content: null, pendingDecisions: ["D13", "D14"] },
+  { key: "client_files", name: "Archivos del cliente", parentKey: null, section: "client_files", stage: null, content: null, pendingDecisions: ["D14"] },
 ]);
 
 const FOLDERS_BY_KEY = new Map(PROJECT_SYSTEM_FOLDERS.map((folder) => [folder.key, folder]));
@@ -133,6 +144,18 @@ export function getSystemFolder(key) {
 }
 
 /**
+ * Devuelve el nombre visible de una carpeta guardada. Para una carpeta predeterminada del catálogo
+ * usa el nombre vigente del catálogo, así un cambio de nombre (p. ej. «Panorámicas») llega también a
+ * los proyectos que guardaron el anterior; las demás conservan su nombre guardado.
+ *
+ * @param {{ name: string, systemKey: string|null }} folder - Carpeta guardada.
+ * @returns {string} Nombre que se muestra.
+ */
+export function resolveFolderDisplayName(folder) {
+  return getSystemFolder(folder?.systemKey)?.name ?? folder?.name ?? "";
+}
+
+/**
  * Normaliza un nombre de carpeta para compararlo con sus hermanas.
  * Reproduce la regla de `uq_project_folders_sibling_name` (lower(btrim(name))) sobre nombres ya recortados.
  *
@@ -179,7 +202,7 @@ export function validateSystemFolderCatalog(catalog = PROJECT_SYSTEM_FOLDERS) {
 
 /**
  * Lista las carpetas predeterminadas en un orden en que cada padre precede a sus hijas.
- * Es el orden que necesitará la creación idempotente de carpetas en una entrega posterior.
+ * Es el orden que usa la creación idempotente de carpetas en las altas de proyectos.
  *
  * @returns {ReadonlyArray<object>} Carpetas ordenadas por profundidad y luego por orden de Figma.
  */
@@ -246,8 +269,9 @@ export function resolveFolderClassification(chain) {
 
 /**
  * Evalúa si una operación sobre carpetas está permitida, prohibida o pendiente de decisión.
- * Aplica solo reglas confirmadas: carpetas predeterminadas protegidas, portada sin subcarpetas y
- * eliminación solo de carpetas vacías; lo demás se devuelve como `pending_decision`.
+ * Aplica solo reglas confirmadas: carpetas con clave funcional protegidas (también si su clave salió
+ * del catálogo, como hace la API), carpetas personalizadas dentro de otras salvo en la portada y
+ * eliminación solo de carpetas personalizadas vacías; lo demás se devuelve como `pending_decision`.
  *
  * @param {object} request - Operación y contexto.
  * @param {"create_child"|"rename"|"delete"|"move"} request.operation - Operación solicitada.
@@ -260,7 +284,7 @@ export function resolveFolderClassification(chain) {
  * @throws {Error} Si la operación no es conocida.
  */
 export function evaluateFolderOperation({ folder = null, operation, parent = null }) {
-  const isSystem = Boolean(folder?.systemKey && getSystemFolder(folder.systemKey));
+  const isSystem = Boolean(folder?.systemKey);
   switch (operation) {
     case "rename":
       return isSystem
@@ -282,19 +306,20 @@ export function evaluateFolderOperation({ folder = null, operation, parent = nul
 }
 
 /**
- * Decide si se puede crear una carpeta personalizada dentro de una ubicación.
- * Portada: prohibido (admite una sola imagen); dentro de una carpeta personalizada: se conserva la
- * jerarquía libre vigente; raíz y carpetas predeterminadas: pendientes de D7 y D13.
+ * Decide si se puede crear una carpeta personalizada dentro de una ubicación (regla confirmada:
+ * dentro de otras carpetas, respetando las restricciones de las predeterminadas). Portada:
+ * prohibido, porque admite una sola imagen; raíz del proyecto: pendiente de D7.
  *
  * @param {{ systemKey: string|null }|null} parent - Carpeta madre o null para la raíz.
  * @returns {{ outcome: "allowed"|"forbidden"|"pending_decision", reason: string, decision?: string }} Resultado.
  */
 function evaluateCustomFolderLocation(parent) {
   if (!parent) return { decision: "D7", outcome: "pending_decision", reason: "ROOT_CUSTOM_FOLDER_UNDECIDED" };
-  const definition = parent.systemKey ? getSystemFolder(parent.systemKey) : null;
-  if (!definition) return { outcome: "allowed", reason: "INSIDE_CUSTOM_FOLDER" };
-  if (definition.content?.allowsSubfolders === false) return { outcome: "forbidden", reason: "FOLDER_DOES_NOT_ALLOW_SUBFOLDERS" };
-  return { decision: "D13", outcome: "pending_decision", reason: "CUSTOM_FOLDER_IN_SYSTEM_FOLDER_UNDECIDED" };
+  if (!parent.systemKey) return { outcome: "allowed", reason: "INSIDE_CUSTOM_FOLDER" };
+  if (getSystemFolder(parent.systemKey)?.content?.allowsSubfolders === false) {
+    return { outcome: "forbidden", reason: "FOLDER_DOES_NOT_ALLOW_SUBFOLDERS" };
+  }
+  return { outcome: "allowed", reason: "INSIDE_SYSTEM_FOLDER" };
 }
 
 /**

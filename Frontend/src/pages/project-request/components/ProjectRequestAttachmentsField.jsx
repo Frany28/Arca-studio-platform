@@ -29,7 +29,8 @@ const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
  * Campo "Referencias" del formulario: zona de carga del sistema (`FileUploadSection`) con una
  * tarjeta por adjunto que refleja su estado real (pendiente, subiendo, subido y pendiente de
  * enviar la solicitud, o fallido con «Intenta de nuevo»). Los archivos se suben al seleccionarlos
- * (useProjectRequestFiles); quitar uno en curso cancela su transferencia.
+ * (useProjectRequestFiles); quitar uno en curso cancela su transferencia. Un adjunto ya guardado
+ * se conserva en la solicitud (Fase 1.2, B1) y no ofrece quitarlo.
  *
  * Errores: el motivo de un adjunto concreto (formato, tamaño, nombre, vacío, repetido) se muestra
  * en su tarjeta y se asocia a su botón «Eliminar archivo …»; los de la sección (cantidad, tamaño
@@ -40,14 +41,12 @@ const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
  * tarjeta siguiente (o a la anterior, o a la zona de carga) para no perderlo.
  *
  * En una corrección, los adjuntos ya guardados aparecen como completados: mientras se leen se
- * anuncia la carga y, si la lectura falla, se ofrece reintentarla. Con `allowRemoteRemoval` sus
- * tarjetas muestran «Eliminar archivo», que los elimina de la solicitud.
+ * anuncia la carga y, si la lectura falla, se ofrece reintentarla.
  *
  * @param {Object} props - Adjuntos, errores y acciones del hook de archivos.
  * En la edición administrativa (`readOnlyMessage`) los adjuntos guardados se muestran con
  * `completedLabel` y sin acciones: la zona de carga queda deshabilitada y el mensaje explica por qué.
  *
- * @param {boolean} [props.allowRemoteRemoval=false] - Permite eliminar adjuntos ya subidos.
  * @param {string} [props.completedLabel] - Texto de los adjuntos subidos (por defecto, pendiente de enviar).
  * @param {string} [props.readOnlyMessage=""] - Si se indica, los adjuntos son de solo lectura y se explica el motivo.
  * @param {boolean} [props.loadingPersisted=false] - Lectura de los adjuntos guardados en curso.
@@ -57,12 +56,11 @@ const FORMATS_LABEL = UPLOAD_TRANSFER_LIMIT_BYTES
  * @param {Array<string>} props.fileErrors - Errores de validación de adjuntos.
  * @param {boolean} props.disabled - Bloquea cambios durante el envío.
  * @param {(fileList: FileList) => void} props.onFilesSelected - Agrega archivos.
- * @param {(id: string) => void} props.onRemove - Quita un adjunto (cancela, elimina o descarta).
+ * @param {(id: string) => void} props.onRemove - Quita un adjunto aún no guardado (cancela o descarta).
  * @param {(id: string) => void} [props.onRetry] - Vuelve a subir un adjunto fallido.
  * @returns {import("react").ReactElement} Campo de adjuntos.
  */
 function ProjectRequestAttachmentsField({
-  allowRemoteRemoval = false,
   completedLabel,
   disabled: disabledProp,
   fileErrors,
@@ -115,7 +113,6 @@ function ProjectRequestAttachmentsField({
   }
 
   const fileCards = toProjectRequestFileCards(files, disabled ? undefined : removeFile, {
-    allowRemoteRemoval,
     completedLabel,
     onRetry: disabled ? undefined : onRetry,
   })

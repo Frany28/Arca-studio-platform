@@ -1,5 +1,4 @@
 import {
-  deleteProjectFile,
   findProjectForFileUpload,
   findProjectFileForDownload,
   findProjectRequestFileForDownload,
@@ -15,10 +14,11 @@ import {
   uploadPolicies,
 } from "../services/fileUploadService.js";
 import { getAllowedOrigins } from "../config/cors.js";
+import { uploadProjectRequestAttachment as uploadProjectRequestAttachmentService } from "../services/projectRequestFileService.js";
 import {
-  deleteProjectRequestAttachment as deleteProjectRequestAttachmentService,
-  uploadProjectRequestAttachment as uploadProjectRequestAttachmentService,
-} from "../services/projectRequestFileService.js";
+  rejectProjectFileDeletion,
+  rejectProjectRequestFileDeletion,
+} from "../services/storedFileRetentionService.js";
 import { assertProjectOperationallyMutable } from "../services/projectService.js";
 
 /**
@@ -62,23 +62,22 @@ export async function uploadProjectRequestAttachment(req, res, next) {
 }
 
 /**
- * Elimina el adjunto de la solicitud de proyecto después de comprobar acceso y existencia.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Atiende el intento de eliminar un adjunto persistido de una solicitud y lo rechaza siempre.
+ * Los archivos guardados se conservan (Fase 1.2, B1): responde 404 si el adjunto no es alcanzable
+ * para el usuario y 409 FILE_DELETION_NOT_ALLOWED en otro caso, sin modificar datos ni objetos.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
- * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
- * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @param {import("express").Response} _res - Respuesta HTTP; el resultado siempre es un error.
+ * @param {Function} next - Función que entrega el error al middleware central.
  * @returns {Promise<void>} Finalización de la operación.
  */
-export async function deleteProjectRequestAttachment(req, res, next) {
+export async function deleteProjectRequestAttachment(req, _res, next) {
   try {
-    const deletedFile = await deleteProjectRequestAttachmentService({
+    await rejectProjectRequestFileDeletion({
       fileId: req.params.fileId,
       projectRequestId: req.params.projectRequestId,
       user: req.user,
     });
-
-    res.status(200).json(deletedFile);
   } catch (error) {
     next(error);
   }
@@ -143,12 +142,14 @@ operation: (upload) => uploadProjectFile({ ...upload, configuringDraft: isAdmin,
 }
 
 /**
- * Elimina el valor de proyecto attachment después de comprobar acceso y existencia.
- * Coordina la solicitud HTTP, delega la lógica y construye la respuesta correspondiente.
+ * Atiende el intento de eliminar un archivo de proyecto y lo rechaza siempre (Fase 1.2, B1).
+ * Conserva las respuestas previas de validación (400), proyecto inaccesible (404) y solo lectura
+ * (409); si el archivo no es alcanzable responde 404 y, en otro caso, 409 FILE_DELETION_NOT_ALLOWED,
+ * sin modificar el registro, sus versiones ni el objeto almacenado.
  *
  * @param {import("express").Request} req - Solicitud HTTP con los datos previamente validados.
- * @param {import("express").Response} res - Respuesta HTTP utilizada para devolver el resultado.
- * @param {Function} next - Función que entrega errores o continúa la cadena de middlewares.
+ * @param {import("express").Response} res - Respuesta HTTP para los errores de parámetros y proyecto.
+ * @param {Function} next - Función que entrega los demás errores al middleware central.
  * @returns {Promise<void>} Finalización de la operación.
  */
 export async function deleteProjectAttachment(req, res, next) {
@@ -184,21 +185,11 @@ export async function deleteProjectAttachment(req, res, next) {
 
     await assertProjectOperationallyMutable(projectId);
 
-    const deletedFile = await deleteProjectFile({
+    await rejectProjectFileDeletion({
       fileId,
       projectId,
       user: req.user,
     });
-
-    if (!deletedFile) {
-      res.status(404).json({
-        code: "FILE_NOT_FOUND",
-        message: "No se encontro el archivo en este proyecto.",
-      });
-      return;
-    }
-
-    res.status(200).json(deletedFile);
   } catch (error) {
     next(error);
   }

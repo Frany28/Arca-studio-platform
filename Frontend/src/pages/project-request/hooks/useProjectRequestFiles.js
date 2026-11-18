@@ -35,13 +35,14 @@ function isAttachmentsAvailabilityMessage(message) {
  *   una referencia síncrona para que eventos concurrentes no partan de un estado anterior.
  * - Validación: un archivo con problemas propios (formato, tamaño, nombre repetido) o con
  *   problemas de la sección (cantidad o tamaño total) no se sube hasta que se corrige.
- * - Quitar: un pendiente o fallido se quita localmente; uno en curso se cancela (la transferencia
- *   se aborta); uno subido se elimina en el servidor y la tarjeta solo desaparece al confirmarse.
+ * - Quitar: solo se cancela lo que aún no se guardó. Un pendiente o fallido se quita localmente y
+ *   uno en curso se cancela (la transferencia se aborta). Un adjunto subido ya está guardado en la
+ *   solicitud y se conserva (Fase 1.2, B1): no se puede quitar.
  * - Reintentar: solo vuelve a subir ese archivo; el backend reutiliza un reintento idéntico.
  * - Recuperación (`recoveryRequestId`, borrador o solicitud devuelta): los adjuntos guardados se
  *   leen del backend y se muestran como subidos, sin volver a transferirlos.
  * - Limpiar: cancela las subidas en curso y descarta pendientes y fallidos; los subidos siguen en
- *   el borrador (se eliminan con su botón).
+ *   el borrador.
  *
  * @param {Object} params - Estado externo usado para coordinar validación, borrador y envío.
  * @param {number|string|null} params.recoveryRequestId - Solicitud recuperada cuyos adjuntos se cargan.
@@ -61,9 +62,6 @@ export default function useProjectRequestFiles({
 }) {
   const [localFiles, setLocalFiles] = useState([]);
   const [fileErrors, setFileErrors] = useState([]);
-  // Ids remotos eliminados o en eliminación: el detalle leído no se vuelve a pedir tras borrar.
-  const [removedRemoteIds, setRemovedRemoteIds] = useState(() => new Set());
-  const [removingRemoteIds, setRemovingRemoteIds] = useState(() => new Set());
   // Contador local: los metadatos del archivo no son únicos si se agrega dos veces el mismo.
   const nextFileIdRef = useRef(0);
   // Fuente síncrona de la selección local y transferencias en curso (id → AbortController).
@@ -75,20 +73,12 @@ export default function useProjectRequestFiles({
   });
   const persistedFiles = persisted.projectRequest?.files;
   const persistedItems = useMemo(
-    () => (persistedFiles || [])
-      .filter((file) => !removedRemoteIds.has(file.id))
-      .map((file) => toPersistedProjectRequestFileItem(file, removingRemoteIds.has(file.id))),
-    [persistedFiles, removedRemoteIds, removingRemoteIds],
+    () => (persistedFiles || []).map((file) => toPersistedProjectRequestFileItem(file)),
+    [persistedFiles],
   );
-  const files = useMemo(
-    () => [...persistedItems, ...localFiles.map((item) => (
-      item.remoteId && removingRemoteIds.has(item.remoteId) ? { ...item, removing: true } : item
-    ))],
-    [localFiles, persistedItems, removingRemoteIds],
-  );
-  const allowRemoteRemoval = Boolean(draft.draftId);
-  // Guardados vigentes para los manejadores asíncronos (una eliminación o subida termina después
-  // de otros cambios y debe aplicarse sobre la lista actual).
+  const files = useMemo(() => [...persistedItems, ...localFiles], [localFiles, persistedItems]);
+  // Guardados vigentes para los manejadores asíncronos (una subida termina después de otros
+  // cambios y debe aplicarse sobre la lista actual).
   const persistedItemsRef = useRef(persistedItems);
   useEffect(() => {
     persistedItemsRef.current = persistedItems;
@@ -229,52 +219,17 @@ export default function useProjectRequestFiles({
   };
 
   /**
-   * Elimina en el servidor un adjunto subido. Mientras dura, el adjunto no se puede volver a
-   * quitar; la tarjeta solo desaparece al confirmarse y, si falla, se conserva con el motivo.
-   *
-   * @param {Object} target - Adjunto subido con `remoteId`.
-   * @returns {Promise<void>} Finaliza tras actualizar la lista o informar el error.
-   */
-  const removeRemoteFile = async (target) => {
-    const { remoteId } = target;
-    setRemovingRemoteIds((current) => new Set(current).add(remoteId));
-    try {
-      await api.projectRequests.deleteFile({ fileId: remoteId, projectRequestId: draft.draftId });
-      if (target.persisted) {
-        persistedItemsRef.current = persistedItemsRef.current.filter((item) => item.remoteId !== remoteId);
-        setRemovedRemoteIds((current) => new Set(current).add(remoteId));
-      } else {
-        commitLocalFiles((current) => current.filter((item) => item.id !== target.id));
-      }
-      refreshFileErrors();
-      startPendingUploads();
-    } catch (error) {
-      const message = `${target.file?.name || "Un archivo"}: ${error?.message || "no se pudo eliminar."}`;
-      setFileErrors((current) => (current.includes(message) ? current : [...current, message]));
-    } finally {
-      setRemovingRemoteIds((current) => {
-        const next = new Set(current);
-        next.delete(remoteId);
-        return next;
-      });
-    }
-  };
-
-  /**
-   * Quita un adjunto según su estado: cancela la transferencia en curso, lo elimina en el servidor
-   * si ya está subido o lo quita localmente si aún no se subió. Ignora los que no se pueden quitar.
+   * Quita de la selección un adjunto que aún no se guardó: cancela su transferencia si está en
+   * curso o lo descarta si está pendiente o fallido. Ignora los adjuntos ya guardados, que se
+   * conservan en la solicitud.
    *
    * @param {string} id - Identificador del adjunto en el formulario.
    * @returns {void}
    */
   const removeFile = (id) => {
     const target = files.find((item) => item.id === id);
-    if (!isProjectRequestFileRemovable(target, { allowRemoteRemoval })) return;
+    if (!isProjectRequestFileRemovable(target)) return;
 
-    if (target.status === "uploaded") {
-      void removeRemoteFile(target);
-      return;
-    }
     const controller = uploadsRef.current.get(id);
     if (controller) {
       uploadsRef.current.delete(id);
@@ -344,7 +299,7 @@ export default function useProjectRequestFiles({
 
   /**
    * Limpia la selección: cancela las transferencias en curso y descarta pendientes y fallidos.
-   * Los adjuntos subidos siguen en el borrador y en la lista (se eliminan con su botón).
+   * Los adjuntos subidos siguen en el borrador y en la lista.
    *
    * @returns {void}
    */
@@ -356,7 +311,6 @@ export default function useProjectRequestFiles({
   };
 
   return {
-    allowRemoteRemoval,
     attachmentsError: persisted.error,
     attachmentsLoading: persisted.loading,
     fileErrors: visibleFileErrors,

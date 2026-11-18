@@ -5,6 +5,7 @@ import test from "node:test";
 import { startAdminRouterServer } from "./helpers/adminRouterServer.js";
 import { createQuoteDatabaseMock } from "./helpers/quoteDatabaseMock.js";
 import { mockQuotePdfStorage } from "./helpers/quotePdfMock.js";
+import { PROJECT_SYSTEM_FOLDERS } from "../src/domain/projectFolderCatalog.js";
 import { objectStorage } from "../src/services/objectStorage.js";
 
 // El transporte simulado nunca consulta la base configurada ni requiere dotenv.
@@ -300,10 +301,12 @@ test("proyecto nuevo: el alta crea el draft del cliente en la misma transacción
     ["project.create_from_quote", "project", 50, quote.id],
   ]);
 
-  // El draft nace con las 17 carpetas predeterminadas del catálogo, en la misma transacción.
+  // El draft nace con las carpetas predeterminadas del catálogo, en la misma transacción.
   const folders = server.database.state.projectFolders.filter((folder) => folder.projectId === 50);
-  assert.equal(folders.length, 17);
+  assert.equal(folders.length, PROJECT_SYSTEM_FOLDERS.length);
   assert.equal(folders.find((folder) => folder.systemKey === "cover").name, "Portada del proyecto");
+  assert.equal(folders.find((folder) => folder.systemKey === "renders.models").name, "Panorámicas");
+  assert.equal(folders.find((folder) => folder.systemKey === "documents.warranties").name, "Garantías");
 
   const statements = server.database.statements;
   assert.equal(statements[0], "begin");

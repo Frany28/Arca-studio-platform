@@ -1,36 +1,14 @@
-import "dotenv/config";
-import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { pool } from "../src/config/db.js";
-import { getSupabaseS3Client, getSupabaseStorageConfig } from "../src/config/storage.js";
+// Ejecución bloqueada (Fase 1.2, B1: conservación de archivos guardados).
+//
+// Este script eliminaba del almacenamiento los objetos de archivos 3D (GLB/GLTF) registrados en
+// public.file_versions y en public.model_processing_jobs. Borrar el objeto de un archivo registrado
+// está prohibido: los archivos guardados, sus versiones y sus objetos se conservan.
+//
+// El guardián termina antes de cargar .env, conectar con PostgreSQL o crear el cliente del
+// almacenamiento, de modo que ninguna invocación puede borrar nada. Su historial queda en Git. Una
+// limpieza futura de objetos sin registro (A7) necesita un plan propio, revisado y autorizado.
 
-const client = await pool.connect();
-try {
-  const tableResult = await client.query(
-    `select to_regclass('public.model_processing_jobs') is not null as has_jobs,
-            to_regclass('public.files') is not null as has_files`,
-  );
-  const storageKeys = new Set();
-  if (tableResult.rows[0].has_files) {
-    const files = await client.query(`
-      select version.file_name as storage_key
-      from public.file_versions version
-      join public.files file on file.id = version.file_id
-      where file.file_type like 'model/%' or lower(coalesce(file.title, '')) ~ '\\.(glb|glbf|gltf)$'
-    `);
-    files.rows.forEach((row) => row.storage_key && storageKeys.add(row.storage_key));
-  }
-  if (tableResult.rows[0].has_jobs) {
-    const jobs = await client.query(`select source_storage_key as storage_key from public.model_processing_jobs`);
-    jobs.rows.forEach((row) => row.storage_key && storageKeys.add(row.storage_key));
-  }
-  const config = getSupabaseStorageConfig();
-  if (!config.bucket) throw new Error("SUPABASE_STORAGE_BUCKET is required");
-  const storage = getSupabaseS3Client();
-  for (const storageKey of storageKeys) {
-    await storage.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: storageKey }));
-  }
-  console.log(`Objetos 3D eliminados: ${storageKeys.size}. Ya puede aplicarse la migración de panorámicas.`);
-} finally {
-  client.release();
-  await pool.end();
-}
+console.error(
+  "cleanup-legacy-models.mjs está bloqueado: los archivos guardados y sus objetos se conservan (Fase 1.2, B1).",
+);
+process.exitCode = 1;

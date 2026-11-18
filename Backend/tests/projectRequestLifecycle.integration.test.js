@@ -225,6 +225,56 @@ const fileRows = async (id) => (await database.client.query(
   [id],
 )).rows;
 
+/**
+ * Captura la fila de un archivo, todas sus versiones y la presencia de sus objetos, para comprobar
+ * que un intento de eliminación no cambia nada (Fase 1.2, B1).
+ *
+ * @param {number} fileId - Archivo.
+ * @returns {Promise<Object>} Estado conservable del archivo.
+ */
+async function retainedFileSnapshot(fileId) {
+  const file = (await database.client.query(
+    "select id, status::text as status, deleted_at, updated_at, project_id, project_request_id, current_version from public.files where id = $1",
+    [fileId],
+  )).rows[0];
+  const versions = (await database.client.query(
+    "select id, version_number, file_name, is_current, deleted_at from public.file_versions where file_id = $1 order by id",
+    [fileId],
+  )).rows;
+  return { file, objects: versions.map((version) => storage.has(version.file_name)), versions };
+}
+
+/**
+ * Comprueba que el archivo sigue activo y exactamente igual que antes del intento de eliminación.
+ *
+ * @param {number} fileId - Archivo.
+ * @param {Object} before - Resultado previo de retainedFileSnapshot.
+ * @returns {Promise<void>} Finaliza si el archivo se conservó.
+ */
+async function assertFileRetained(fileId, before) {
+  const after = await retainedFileSnapshot(fileId);
+  assert.deepEqual(after, before, "el registro, sus versiones y sus objetos no cambian");
+  assert.equal(after.file.status, "active");
+  assert.equal(after.file.deleted_at, null);
+  assert.ok(after.versions.length > 0 && after.versions.every((version) => version.deleted_at === null));
+  assert.ok(after.objects.every(Boolean), "cada versión conserva su objeto");
+}
+
+/**
+ * Comprueba que el almacenamiento solo borró objetos sin versión registrada (compensaciones de
+ * cargas rechazadas), nunca el objeto de un archivo guardado.
+ *
+ * @returns {Promise<void>} Finaliza si ninguna clave borrada está registrada.
+ */
+async function assertNoRecordedObjectDeleted() {
+  if (!deletedKeys.length) return;
+  const recorded = (await database.client.query(
+    "select file_name from public.file_versions where file_name = any($1::text[])",
+    [deletedKeys],
+  )).rows;
+  assert.deepEqual(recorded, [], "ningún objeto registrado se borró del almacenamiento");
+}
+
 test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permisos y corrección", { skip }, async () => {
   const owner = await authAs(seed.owner);
   const stranger = await authAs(seed.stranger);
@@ -289,10 +339,17 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   assert.equal(draftDetail.body.projectRequest.projectSize, "large_200_500");
   assert.deepEqual(draftDetail.body.projectRequest.files.map((file) => file.name), ["plano-principal.pdf", "fachada.png"]);
 
-  // 6. Eliminar un adjunto del borrador editable lo retira de la consulta y del almacenamiento.
+  // 6. Un adjunto guardado se conserva (Fase 1.2, B1): sin sesión 401, un tercero 404 y el propietario
+  // 409, sin tocar la fila, sus versiones ni el objeto almacenado.
+  const photoBefore = await retainedFileSnapshot(photo.body.file.id);
+  assert.equal((await api(`/project-requests/${id}/files/${photo.body.file.id}`, { method: "DELETE" })).status, 401);
   assert.equal((await api(`/project-requests/${id}/files/${photo.body.file.id}`, { headers: stranger, method: "DELETE" })).status, 404);
-  assert.equal((await api(`/project-requests/${id}/files/${photo.body.file.id}`, { headers: owner, method: "DELETE" })).status, 200);
-  assert.deepEqual((await api(`/project-requests/${id}`, { headers: owner })).body.projectRequest.files.map((file) => file.name), ["plano-principal.pdf"]);
+  const refusedRemoval = await api(`/project-requests/${id}/files/${photo.body.file.id}`, { headers: owner, method: "DELETE" });
+  assert.equal(refusedRemoval.status, 409, JSON.stringify(refusedRemoval.body));
+  assert.deepEqual(refusedRemoval.body, { code: "FILE_DELETION_NOT_ALLOWED", message: "Los archivos guardados se conservan y no se pueden eliminar." });
+  assert.equal((await api(`/project-requests/${id}/files/${photo.body.file.id}`, { headers: admin, method: "DELETE" })).status, 409);
+  await assertFileRetained(photo.body.file.id, photoBefore);
+  assert.deepEqual((await api(`/project-requests/${id}`, { headers: owner })).body.projectRequest.files.map((file) => file.name), ["plano-principal.pdf", "fachada.png"]);
 
   // 7. Código y envío: la solicitud deja de ser editable y conserva sus adjuntos.
   const submitted = await verifyAndSubmit(id, owner);
@@ -307,8 +364,8 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   assert.equal(sent.status, 200);
   assert.equal(sent.body.projectRequest.status, "pending_verification");
   assert.equal(sent.body.projectRequest.projectSize, "large_200_500");
-  const [persisted] = sent.body.projectRequest.files;
-  assert.equal(sent.body.projectRequest.files.length, 1);
+  const persisted = sent.body.projectRequest.files.find((file) => file.name === "plano-principal.pdf");
+  assert.equal(sent.body.projectRequest.files.length, 2, "el adjunto que se intentó eliminar sigue en la solicitud");
   assert.equal(persisted.size, plan.bytes.length);
 
   // 9. Descarga autorizada: los bytes recuperados son los subidos; un tercero recibe 404.
@@ -325,7 +382,7 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   assert.equal(queue.body.projectRequests.find((item) => item.id === id).clientName, "Cliente prueba");
   const adminDetail = await api(`/admin/project-requests/${id}`, { headers: admin });
   assert.equal(adminDetail.status, 200, JSON.stringify(adminDetail.body));
-  assert.deepEqual(adminDetail.body.projectRequest.files.map((file) => file.id), [persisted.id]);
+  assert.deepEqual(adminDetail.body.projectRequest.files.map((file) => file.id), [persisted.id, photo.body.file.id]);
   assert.equal((await api(`/admin/project-requests/${id}`, { headers: owner })).status, 403);
   const adminContent = await fetch(`${base}/project-requests/${id}/files/${persisted.id}/content`, { headers: admin });
   assert.equal(adminContent.status, 200);
@@ -358,15 +415,20 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   });
   assert.equal(decision.status, 200, JSON.stringify(decision.body));
 
-  // 11. Corrección: el cliente ve el motivo, conserva el adjunto previo, elimina, añade y reenvía.
+  // 11. Corrección: el cliente ve el motivo, conserva los adjuntos previos, añade y reenvía. Intentar
+  // eliminar un adjunto también en corrección responde 409 y lo conserva.
   const returned = await api(`/project-requests/${id}`, { headers: owner });
   assert.equal(returned.body.projectRequest.status, "changes_requested");
   assert.equal(returned.body.projectRequest.correctionReason, "Adjunta fotografías actuales del terreno.");
-  assert.equal(returned.body.projectRequest.files.length, 1);
+  assert.equal(returned.body.projectRequest.files.length, 2);
   const terrain = await upload(id, png("terreno.png"), owner);
   assert.equal(terrain.status, 201, JSON.stringify(terrain.body));
   assert.equal((await upload(id, png("terreno.png"), owner)).body.file.id, terrain.body.file.id, "reintento sin duplicar");
-  assert.equal((await api(`/project-requests/${id}/files/${first.body.file.id}`, { headers: owner, method: "DELETE" })).status, 200);
+  const planBefore = await retainedFileSnapshot(first.body.file.id);
+  const refusedCorrection = await api(`/project-requests/${id}/files/${first.body.file.id}`, { headers: owner, method: "DELETE" });
+  assert.equal(refusedCorrection.status, 409);
+  assert.equal(refusedCorrection.body.code, "FILE_DELETION_NOT_ALLOWED");
+  await assertFileRetained(first.body.file.id, planBefore);
   assert.equal((await api(`/project-requests/${id}`, { body: { ...payload, projectName: `${payload.projectName} v2` }, headers: owner, method: "PATCH" })).status, 200);
   await database.client.query("update public.project_requests set verification_sent_at = now() - interval '2 minutes' where id = $1", [id]);
   const resubmitted = await verifyAndSubmit(id, owner);
@@ -376,12 +438,13 @@ test("PostgreSQL y HTTP: borrador, adjuntos, envío, consulta, descarga, permiso
   // 12. El administrador ve la información nueva y el historial de revisiones se conserva.
   const afterCorrection = await api(`/admin/project-requests/${id}`, { headers: admin });
   assert.equal(afterCorrection.body.projectRequest.projectName, `${payload.projectName} v2`);
-  assert.deepEqual(afterCorrection.body.projectRequest.files.map((file) => file.name), ["terreno.png"]);
+  assert.deepEqual(afterCorrection.body.projectRequest.files.map((file) => file.name), ["plano-principal.pdf", "fachada.png", "terreno.png"]);
   const reviews = (await database.client.query("select count(*)::int as total from public.project_request_reviews where project_request_id = $1", [id])).rows[0].total;
   assert.equal(reviews, 1, "la revisión técnica previa no se pierde");
   const activeFiles = (await fileRows(id)).filter((file) => !file.deleted_at && file.status !== "deleted");
-  assert.deepEqual(activeFiles.map((file) => file.title), ["terreno.png"]);
+  assert.deepEqual(activeFiles.map((file) => file.title), ["Plano principal.pdf", "fachada.png", "terreno.png"]);
   for (const file of activeFiles) assert.ok(storage.has(file.file_name), "cada adjunto activo existe en el almacenamiento");
+  await assertNoRecordedObjectDeleted();
 });
 
 const requestRow = async (id) => (await database.client.query(
@@ -848,16 +911,21 @@ test("PostgreSQL y HTTP: configurar el borrador precarga la solicitud, guarda po
   assert.equal(warranties.status, 200);
   assert.equal(warranties.body.configuration.warranties.length, 1);
 
-  // Carpetas y archivos del borrador. La aprobación ya creó las 17 carpetas predeterminadas.
+  // Carpetas y archivos del borrador. La aprobación ya creó las 18 carpetas predeterminadas.
   const initialFolders = await api(`${path}/files`, { headers: headers.admin });
-  // Respuesta HTTP real: las 17 carpetas en el orden del catálogo (preorden de Figma).
+  // Respuesta HTTP real: las 18 carpetas en el orden del catálogo (preorden confirmado).
   assert.deepEqual(initialFolders.body.folders.map((candidate) => candidate.systemKey), [
     "cover", "renders", "renders.models", "renders.models.initial_proposal", "renders.models.final_proposal",
     "renders.images", "renders.images.initial_proposal", "renders.images.initial_proposal.before",
     "renders.images.execution", "renders.images.final_result", "renders.videos", "renders.videos.initial_proposal",
-    "renders.videos.execution", "renders.videos.final_result", "documents", "documents.initial_proposal", "client_files",
+    "renders.videos.execution", "renders.videos.final_result", "documents", "documents.initial_proposal",
+    "documents.warranties", "client_files",
   ]);
+  const byKey = new Map(initialFolders.body.folders.map((candidate) => [candidate.systemKey, candidate]));
+  assert.deepEqual([byKey.get("renders.models").name, byKey.get("documents.warranties").name], ["Panorámicas", "Garantías"]);
   const coverFolder = initialFolders.body.folders.find((candidate) => candidate.systemKey === "cover");
+  const coverChild = await api(`${path}/folders`, { body: { name: "Variantes", parentId: coverFolder.id }, headers: headers.admin, method: "POST" });
+  assert.deepEqual([coverChild.status, coverChild.body.code], [409, "PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED"], "la portada no admite subcarpetas");
   const renamedCover = await api(`${path}/folders/${coverFolder.id}`, { body: { name: "Otra" }, headers: headers.admin, method: "PATCH" });
   assert.deepEqual([renamedCover.status, renamedCover.body.code], [409, "PROJECT_FOLDER_PROTECTED"]);
   const deletedCover = await api(`${path}/folders/${coverFolder.id}`, { headers: headers.admin, method: "DELETE" });
@@ -1291,4 +1359,101 @@ test("PostgreSQL y HTTP: sin revisiones desactualizadas la aprobación y el rech
   assert.equal(approved.status, 200, JSON.stringify(approved.body));
   const decisionAudit = (await database.client.query("select new_values from public.audit_logs where action = 'project_request.approve' and entity_id = $1", [id])).rows[0];
   assert.equal("outdatedReviewsOverride" in decisionAudit.new_values, false);
+});
+
+/**
+ * Concede (o reactiva) permisos a los roles indicados, como el script de permisos de staging.
+ *
+ * @param {string[]} codes - Permisos.
+ * @param {string[]} roleCodes - Roles.
+ * @returns {Promise<void>}
+ */
+async function grantPermissions(codes, roleCodes) {
+  for (const code of codes) {
+    await database.client.query(`
+      with permission as (
+        insert into public.permissions (code, name, description, module) values ($1, $1, null, 'projects')
+        on conflict (code) do update set name = excluded.name returning id
+      )
+      insert into public.role_permissions (role_id, permission_id, is_active)
+      select r.id, permission.id, true from public.roles r, permission where r.code = any($2::text[])
+      on conflict (role_id, permission_id) do update set is_active = true`, [code, roleCodes]);
+  }
+}
+
+/**
+ * Sube un archivo a un proyecto como lo hace uploadRawFile.
+ *
+ * @param {number} projectId - Proyecto destino.
+ * @param {Object} file - Nombre, tipo y bytes.
+ * @param {Object} headers - Autenticación.
+ * @returns {Promise<{status: number, body: Object|null}>} Respuesta.
+ */
+async function uploadToProject(projectId, { bytes, name, type }, headers) {
+  const response = await fetch(`${base}/projects/${projectId}/files`, {
+    body: bytes,
+    headers: { ...headers, "Content-Type": type, "X-File-Name": encodeURIComponent(name) },
+    method: "POST",
+  });
+  const text = await response.text();
+  return { body: text ? JSON.parse(text) : null, status: response.status };
+}
+
+test("Fase 1.2 (B1): eliminar un archivo de proyecto guardado se rechaza y conserva registro, versiones y objeto", { skip }, async () => {
+  await grantProjectRead();
+  await grantPermissions(["projects.files.upload", "projects.files.delete"], ["admin", "architect", "client"]);
+  const admin = await authAs(seed.admin);
+  const created = await api("/admin/projects/drafts", { body: { clientId: seed.ownerClientId, name: `Conservación ${randomUUID()}` }, headers: admin, method: "POST" });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const projectId = created.body.projectId;
+  const finalized = await configureAndFinalize(projectId, admin, [seed.architect]);
+  assert.equal(finalized.status, 200, JSON.stringify(finalized.body));
+
+  const architect = await authAs(seed.architect);
+  const owner = await authAs(seed.owner);
+  const stranger = await authAs(seed.stranger);
+  const report = pdf("memoria-descriptiva.pdf");
+  const architectFile = await uploadToProject(projectId, report, architect);
+  assert.equal(architectFile.status, 201, JSON.stringify(architectFile.body));
+  const ownerFile = await uploadToProject(projectId, png("referencia-cliente.png"), owner);
+  assert.equal(ownerFile.status, 201, JSON.stringify(ownerFile.body));
+  const architectFileId = architectFile.body.file.id;
+  const ownerFileId = ownerFile.body.file.id;
+  const path = (fileId) => `/projects/${projectId}/files/${fileId}`;
+  const architectBefore = await retainedFileSnapshot(architectFileId);
+  const ownerBefore = await retainedFileSnapshot(ownerFileId);
+
+  // Autenticación, permisos y acceso se comprueban antes que la regla de conservación.
+  assert.equal((await api(path(architectFileId), { method: "DELETE" })).status, 401);
+  await database.client.query(`update public.role_permissions rp set is_active = false from public.permissions p, public.roles r
+    where rp.permission_id = p.id and rp.role_id = r.id and p.code = 'projects.files.delete' and r.code = 'client'`);
+  const forbidden = await api(path(ownerFileId), { headers: owner, method: "DELETE" });
+  assert.equal(forbidden.status, 403, JSON.stringify(forbidden.body));
+  await grantPermissions(["projects.files.delete"], ["client"]);
+  assert.equal((await api(path(architectFileId), { headers: stranger, method: "DELETE" })).status, 404, "proyecto ajeno");
+  assert.equal((await api(path(architectFileId), { headers: owner, method: "DELETE" })).status, 404, "archivo de otro autor");
+  assert.equal((await api(path(99_999_999), { headers: admin, method: "DELETE" })).status, 404, "archivo inexistente");
+  assert.equal((await api(`/projects/${projectId}/files/abc`, { headers: admin, method: "DELETE" })).status, 400);
+
+  // Quien podía eliminarlo recibe 409 y nada cambia: ni la fila, ni sus versiones, ni el objeto.
+  for (const [fileId, headers] of [[architectFileId, architect], [architectFileId, admin], [ownerFileId, owner]]) {
+    const refused = await api(path(fileId), { headers, method: "DELETE" });
+    assert.equal(refused.status, 409, JSON.stringify(refused.body));
+    assert.deepEqual(refused.body, { code: "FILE_DELETION_NOT_ALLOWED", message: "Los archivos guardados se conservan y no se pueden eliminar." });
+  }
+  await assertFileRetained(architectFileId, architectBefore);
+  await assertFileRetained(ownerFileId, ownerBefore);
+
+  // El archivo sigue disponible con sus mismos bytes.
+  const content = await fetch(`${base}${path(architectFileId)}/content`, { headers: owner });
+  assert.equal(content.status, 200);
+  assert.ok(Buffer.from(await content.arrayBuffer()).equals(report.bytes));
+
+  // Un proyecto de solo lectura conserva su respuesta previa (409 del estado) sin tocar el archivo.
+  await database.client.query("update public.projects set status = 'archived', archived_from_status = 'pending' where id = $1", [projectId]);
+  const archived = await api(path(architectFileId), { headers: admin, method: "DELETE" });
+  assert.equal(archived.status, 409);
+  assert.equal(archived.body.code, "PROJECT_ARCHIVED");
+  await assertFileRetained(architectFileId, architectBefore);
+  await assertNoRecordedObjectDeleted();
 });

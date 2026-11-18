@@ -5,7 +5,6 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  DeleteObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
@@ -19,6 +18,7 @@ import {
   sanitizeStorageFileName,
 } from "../src/config/storage.js";
 import { pool } from "../src/config/db.js";
+import { discardUnrecordedScriptObjects } from "./lib/discardUnrecordedScriptObjects.mjs";
 
 const IMAGE_CONTENT_TYPES = new Map([
   [".jpeg", "image/jpeg"],
@@ -328,18 +328,8 @@ async function run() {
   } catch (error) {
     await client.query("rollback").catch(() => {});
 
-    await Promise.all(
-      uploadedStorageKeys.map((storageKey) =>
-        s3Client
-          .send(
-            new DeleteObjectCommand({
-              Bucket: storageConfig.bucket,
-              Key: storageKey,
-            }),
-          )
-          .catch(() => {}),
-      ),
-    );
+    // Solo se borran los objetos sin versión registrada (COMMIT de resultado incierto).
+    await discardUnrecordedScriptObjects(uploadedStorageKeys, "maintenance_project_image");
 
     throw error;
   } finally {

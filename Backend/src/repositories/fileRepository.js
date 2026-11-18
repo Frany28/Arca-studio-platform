@@ -7,7 +7,7 @@ import {
   getSupabaseStorageConfig,
   sanitizeStorageFileName,
 } from "../config/storage.js";
-import { pool, query, withTransaction } from "../config/db.js";
+import { query, withTransaction } from "../config/db.js";
 import { getShowcaseFileName } from "../domain/projectPublicView.js";
 import { NotFoundError } from "../errors/appError.js";
 import { storeThenRecord } from "../services/storedUpload.js";
@@ -129,6 +129,19 @@ async function reserveFileId() {
  */
 async function isFileRecorded(fileId) {
   const result = await query("select 1 from public.files where id = $1", [fileId]);
+  return result.rows.length > 0;
+}
+
+/**
+ * Indica si alguna versión registrada apunta a la clave de objeto indicada.
+ * Decide la compensación de las cargas de mantenimiento: solo se elimina un objeto sin registro,
+ * y ante un COMMIT de resultado incierto se consulta con una conexión nueva antes de borrar.
+ *
+ * @param {string} storageKey - Clave del objeto en el almacenamiento.
+ * @returns {Promise<boolean>} true si existe una versión con esa clave.
+ */
+export async function isFileVersionObjectRecorded(storageKey) {
+  const result = await query("select 1 from public.file_versions where file_name = $1 limit 1", [storageKey]);
   return result.rows.length > 0;
 }
 
@@ -467,112 +480,44 @@ export async function uploadProjectRequestFile({
 }
 
 /**
- * Elimina el archivo de la solicitud de proyecto después de comprobar acceso y existencia.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Busca el adjunto de una solicitud que el usuario intenta retirar y lo devuelve si podría hacerlo.
+ * Solo lee PostgreSQL: los archivos guardados se conservan (Fase 1.2, B1), así que nunca modifica
+ * filas ni el almacenamiento. Mantiene las condiciones que tenía la eliminación (solicitud editable,
+ * adjunto vigente, propietario o administrador) para que el rechazo no revele adjuntos ajenos.
  *
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.fileId - Valor de `options.fileId` requerido por esta operación.
- * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<object>} Resultado producido por la operación.
- * @throws {Error} Cuando una validación o dependencia impide completar la operación.
+ * @param {object} options - Adjunto, solicitud y usuario.
+ * @param {number|string} options.fileId - Adjunto que se intenta retirar.
+ * @param {number|string} options.projectRequestId - Solicitud a la que pertenece.
+ * @param {{ id: number, clientId?: number|null, role?: { code?: string } }} options.user - Usuario autenticado.
+ * @returns {Promise<{ id: number }|null>} Adjunto alcanzable, o null si no existe o no es accesible.
  */
-export async function deleteProjectRequestFile({
-  fileId,
-  projectRequestId,
-  user,
-}) {
-  const storageConfig = getSupabaseStorageConfig();
-  const client = await pool.connect();
-  let storageKeys = [];
+export async function findProjectRequestFileForRemoval({ fileId, projectRequestId, user }) {
+  const result = await query(
+    `
+      select f.id, f.uploaded_by, pr.client_id, pr.requested_by
+      from public.files f
+      inner join public.project_requests pr
+        on pr.id = f.project_request_id
+      where f.id = $1
+        and f.project_request_id = $2
+        and f.deleted_at is null
+        and f.status <> 'deleted'
+        and pr.deleted_at is null
+        and pr.status in ('draft', 'changes_requested')
+      limit 1
+    `,
+    [fileId, projectRequestId],
+  );
+  const file = result.rows[0];
+  if (!file) return null;
 
-  try {
-    await client.query("begin");
+  const isOwner =
+    Number(file.requested_by) === Number(user.id) ||
+    Number(file.uploaded_by) === Number(user.id) ||
+    (user.clientId && Number(file.client_id) === Number(user.clientId));
+  const isAdmin = user.role?.code === "admin";
 
-    const fileResult = await client.query(
-      `
-        select f.id, f.uploaded_by, f.project_request_id, pr.client_id, pr.requested_by, pr.status
-        from public.files f
-        inner join public.project_requests pr
-          on pr.id = f.project_request_id
-        where f.id = $1
-          and f.project_request_id = $2
-          and f.deleted_at is null
-          and f.status <> 'deleted'
-          and pr.deleted_at is null
-          and pr.status in ('draft', 'changes_requested')
-        limit 1
-      `,
-      [fileId, projectRequestId],
-    );
-    const file = fileResult.rows[0];
-
-    if (!file) {
-      await client.query("rollback");
-      return null;
-    }
-
-    const isOwner =
-      Number(file.requested_by) === Number(user.id) ||
-      Number(file.uploaded_by) === Number(user.id) ||
-      (user.clientId && Number(file.client_id) === Number(user.clientId));
-    const isAdmin = user.role?.code === "admin";
-
-    if (!isOwner && !isAdmin) {
-      await client.query("rollback");
-      return null;
-    }
-
-    const versionsResult = await client.query(
-      `
-        select file_name
-        from public.file_versions
-        where file_id = $1
-          and deleted_at is null
-      `,
-      [fileId],
-    );
-    storageKeys = versionsResult.rows
-      .map((row) => row.file_name)
-      .filter(Boolean);
-
-    await client.query(
-      `
-        update public.file_versions
-        set deleted_at = now()
-        where file_id = $1
-          and deleted_at is null
-      `,
-      [fileId],
-    );
-
-    await client.query(
-      `
-        update public.files
-        set status = 'deleted'::file_status,
-            deleted_at = now(),
-            updated_at = now()
-        where id = $1
-      `,
-      [fileId],
-    );
-
-    await client.query("commit");
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-
-  if (storageConfig.bucket) {
-    await Promise.all(
-      // objectStorage aplica el plazo del almacenamiento: un borrado colgado no retiene la respuesta.
-      storageKeys.map((storageKey) => objectStorage.delete(storageKey).catch(() => {})),
-    );
-  }
-
-  return { deleted: true, fileId: Number(fileId) };
+  return isOwner || isAdmin ? { id: Number(file.id) } : null;
 }
 
 /**
@@ -875,138 +820,73 @@ export async function uploadProjectFile({
 }
 
 /**
- * Elimina el archivo del proyecto después de comprobar acceso, existencia y estado operativo.
- * Bloquea la fila y rechaza archived y finished antes de modificar PostgreSQL y almacenamiento.
+ * Busca el archivo de un proyecto que el usuario intenta retirar y lo devuelve si podría hacerlo.
+ * Solo lee PostgreSQL: los archivos guardados se conservan (Fase 1.2, B1), así que nunca modifica
+ * filas ni el almacenamiento. Mantiene las condiciones que tenía la eliminación: un draft no existe
+ * para quien no es admin, archived y finished son de solo lectura (409) y solo el admin o el autor,
+ * con acceso al proyecto, alcanzan el archivo; los demás reciben null para no revelar su existencia.
  *
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.fileId - Valor de `options.fileId` requerido por esta operación.
- * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<object>} Resultado producido por la operación.
- * @throws {Error} Cuando una validación o dependencia impide completar la operación.
+ * @param {object} options - Archivo, proyecto y usuario.
+ * @param {number|string} options.fileId - Archivo que se intenta retirar.
+ * @param {number|string} options.projectId - Proyecto al que pertenece.
+ * @param {{ id: number, clientId?: number|null, role?: { code?: string } }} options.user - Usuario autenticado.
+ * @returns {Promise<{ id: number }|null>} Archivo alcanzable, o null si no existe o no es accesible.
+ * @throws {Error} 409 PROJECT_ARCHIVED o PROJECT_FINALIZED si el proyecto es de solo lectura.
  */
-export async function deleteProjectFile({ fileId, projectId, user }) {
-  const storageConfig = getSupabaseStorageConfig();
-  const client = await pool.connect();
-  let storageKeys = [];
+export async function findProjectFileForRemoval({ fileId, projectId, user }) {
+  const result = await query(
+    `
+      select
+        f.id,
+        f.uploaded_by,
+        p.client_id,
+        p.assigned_architect_id,
+        p.is_public,
+        p.status as project_status,
+        p.archived_from_status as project_archived_from_status,
+        exists (
+          select 1 from public.project_assignees assignment
+          where assignment.project_id = p.id
+            and assignment.user_id = $3
+        ) as is_assignee
+      from public.files f
+      inner join public.projects p
+        on p.id = f.project_id
+      where f.id = $1
+        and f.project_id = $2
+        and f.deleted_at is null
+        and f.status <> 'deleted'
+        and p.deleted_at is null
+      limit 1
+    `,
+    [fileId, projectId, user.id],
+  );
+  const file = result.rows[0];
+  if (!file) return null;
 
-  try {
-    await client.query("begin");
-
-    const fileResult = await client.query(
-      `
-        select
-          f.id,
-          f.uploaded_by,
-          f.project_id,
-          p.client_id,
-          p.assigned_architect_id,
-          p.is_public,
-          p.status as project_status,
-          p.archived_from_status as project_archived_from_status,
-          exists (
-            select 1 from public.project_assignees assignment
-            where assignment.project_id = p.id
-              and assignment.user_id = $3
-          ) as is_assignee
-        from public.files f
-        inner join public.projects p
-          on p.id = f.project_id
-        where f.id = $1
-          and f.project_id = $2
-          and f.deleted_at is null
-          and f.status <> 'deleted'
-          and p.deleted_at is null
-        limit 1
-        for update of p, f
-      `,
-      [fileId, projectId, user.id],
-    );
-    const file = fileResult.rows[0];
-
-    if (!file) {
-      await client.query("rollback");
-      return null;
-    }
-
-    const roleCode = user?.role?.code;
-    // El draft se oculta antes de revelar su estado: para otros roles responde como inexistente.
-    if (roleCode !== "admin" && isProjectDraft(file.project_status, file.project_archived_from_status)) {
-      await client.query("rollback");
-      return null;
-    }
-
-    if (isProjectOperationallyReadOnly(file.project_status)) {
-      throw createProjectReadOnlyError(file.project_status);
-    }
-
-    const hasProjectAccess =
-      roleCode === "admin" ||
-      (roleCode === "architect" &&
-        (Number(file.assigned_architect_id) === Number(user.id) ||
-          file.is_assignee === true ||
-          file.is_public === true)) ||
-      (roleCode === "client" &&
-        user.clientId &&
-        Number(file.client_id) === Number(user.clientId));
-    const canDelete =
-      roleCode === "admin" || Number(file.uploaded_by) === Number(user.id);
-
-    if (!hasProjectAccess || !canDelete) {
-      await client.query("rollback");
-      return null;
-    }
-
-    const versionsResult = await client.query(
-      `
-        select file_name
-        from public.file_versions
-        where file_id = $1
-          and deleted_at is null
-      `,
-      [fileId],
-    );
-    storageKeys = versionsResult.rows
-      .map((row) => row.file_name)
-      .filter(Boolean);
-
-    await client.query(
-      `
-        update public.file_versions
-        set deleted_at = now()
-        where file_id = $1
-          and deleted_at is null
-      `,
-      [fileId],
-    );
-
-    await client.query(
-      `
-        update public.files
-        set status = 'deleted'::file_status,
-            deleted_at = now(),
-            updated_at = now()
-        where id = $1
-      `,
-      [fileId],
-    );
-
-    await client.query("commit");
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
+  const roleCode = user?.role?.code;
+  // El draft se oculta antes de revelar su estado: para otros roles responde como inexistente.
+  if (roleCode !== "admin" && isProjectDraft(file.project_status, file.project_archived_from_status)) {
+    return null;
   }
 
-  if (storageConfig.bucket) {
-    await Promise.all(
-      // objectStorage aplica el plazo del almacenamiento: un borrado colgado no retiene la respuesta.
-      storageKeys.map((storageKey) => objectStorage.delete(storageKey).catch(() => {})),
-    );
+  if (isProjectOperationallyReadOnly(file.project_status)) {
+    throw createProjectReadOnlyError(file.project_status);
   }
 
-  return { deleted: true, fileId: Number(fileId) };
+  const hasProjectAccess =
+    roleCode === "admin" ||
+    (roleCode === "architect" &&
+      (Number(file.assigned_architect_id) === Number(user.id) ||
+        file.is_assignee === true ||
+        file.is_public === true)) ||
+    (roleCode === "client" &&
+      user.clientId &&
+      Number(file.client_id) === Number(user.clientId));
+  const wasRemovableByUser =
+    roleCode === "admin" || Number(file.uploaded_by) === Number(user.id);
+
+  return hasProjectAccess && wasRemovableByUser ? { id: Number(file.id) } : null;
 }
 
 /**

@@ -8,7 +8,6 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
-  DeleteObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   UploadPartCommand,
@@ -23,6 +22,7 @@ import {
   sanitizeStorageFileName,
 } from "../src/config/storage.js";
 import { pool } from "../src/config/db.js";
+import { discardUnrecordedScriptObjects } from "./lib/discardUnrecordedScriptObjects.mjs";
 
 const VIDEO_CONTENT_TYPES = new Map([
   [".mov", "video/quicktime"],
@@ -404,18 +404,8 @@ async function run() {
   } catch (error) {
     await client.query("rollback").catch(() => {});
 
-    await Promise.all(
-      uploadedStorageKeys.map((storageKey) =>
-        s3Client
-          .send(
-            new DeleteObjectCommand({
-              Bucket: storageConfig.bucket,
-              Key: storageKey,
-            }),
-          )
-          .catch(() => {}),
-      ),
-    );
+    // Solo se borran los objetos sin versión registrada (COMMIT de resultado incierto).
+    await discardUnrecordedScriptObjects(uploadedStorageKeys, "maintenance_project_video");
 
     throw error;
   } finally {

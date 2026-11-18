@@ -4,22 +4,25 @@ import { test } from "node:test";
 import {
   FOLDER_PENDING_DECISIONS,
   PROJECT_SYSTEM_FOLDERS,
+  WARRANTY_DOCUMENTS_FOLDER_KEY,
   evaluateFolderContent,
   evaluateFolderOperation,
   findSystemFolderNameCollisions,
   getSystemFolder,
   orderFolderTree,
   resolveFolderClassification,
+  resolveFolderDisplayName,
   systemFolderCreationOrder,
   validateFolderName,
   validateSystemFolderCatalog,
 } from "../src/domain/projectFolderCatalog.js";
 
-// Árbol de Figma 3727:618978 («Gestión de archivos»), en orden visual, como nombre por profundidad.
+// Árbol de Figma 3727:618978 y 3727:682730 («Gestión de archivos»), en orden visual, como nombre por
+// profundidad, con «Panorámicas» (clave renders.models) y «Documentos › Garantías» confirmados.
 const FIGMA_TREE = [
   [0, "Portada del proyecto"],
   [0, "Renders e imágenes"],
-  [1, "Modelos 3D"],
+  [1, "Panorámicas"],
   [2, "Propuesta inicial"],
   [2, "Propuesta final"],
   [1, "Imágenes"],
@@ -33,10 +36,11 @@ const FIGMA_TREE = [
   [2, "Resultado final"],
   [0, "Documentos"],
   [1, "Propuesta inicial"],
+  [1, "Garantías"],
   [0, "Archivos del cliente"],
 ];
 
-test("el catálogo reproduce exactamente el árbol, los nombres y el orden de Figma", () => {
+test("el catálogo reproduce exactamente el árbol, los nombres y el orden confirmados", () => {
   assert.deepEqual(
     PROJECT_SYSTEM_FOLDERS.map((folder) => [folder.key.split(".").length - 1, folder.name]),
     FIGMA_TREE,
@@ -135,18 +139,20 @@ test("las carpetas personalizadas se renombran y solo se eliminan vacías; mover
   assert.deepEqual(evaluateFolderOperation({ folder: { ...custom, hasFiles: true }, operation: "delete" }), { outcome: "forbidden", reason: "FOLDER_NOT_EMPTY" });
   assert.deepEqual(evaluateFolderOperation({ folder: { ...custom, hasChildren: true }, operation: "delete" }), { outcome: "forbidden", reason: "FOLDER_NOT_EMPTY" });
   assert.deepEqual(evaluateFolderOperation({ folder: custom, operation: "move", parent: null }), { decision: "D13", outcome: "pending_decision", reason: "CUSTOM_FOLDER_MOVE_UNDECIDED" });
-  // Una clave que no existe en el catálogo no convierte la carpeta en protegida.
-  assert.equal(evaluateFolderOperation({ folder: { systemKey: "inventada" }, operation: "rename" }).outcome, "allowed");
+  // Toda carpeta con clave funcional está protegida, aunque su clave saliera del catálogo (como en la API).
+  for (const operation of ["rename", "delete", "move"]) {
+    assert.deepEqual(evaluateFolderOperation({ folder: { systemKey: "legacy.retired" }, operation }), { outcome: "forbidden", reason: "SYSTEM_FOLDER_PROTECTED" });
+  }
 });
 
-test("crear carpetas personalizadas: dentro de otra personalizada sí; raíz y predeterminadas pendientes de D7 y D13", () => {
+test("crear carpetas personalizadas: dentro de cualquier otra salvo la portada; la raíz depende de D7", () => {
   assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: null } }), { outcome: "allowed", reason: "INSIDE_CUSTOM_FOLDER" });
   assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: null }), { decision: "D7", outcome: "pending_decision", reason: "ROOT_CUSTOM_FOLDER_UNDECIDED" });
-  assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "renders.images.execution" } }), {
-    decision: "D13",
-    outcome: "pending_decision",
-    reason: "CUSTOM_FOLDER_IN_SYSTEM_FOLDER_UNDECIDED",
-  });
+  for (const folder of PROJECT_SYSTEM_FOLDERS.filter((candidate) => candidate.key !== "cover")) {
+    assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: folder.key } }), { outcome: "allowed", reason: "INSIDE_SYSTEM_FOLDER" }, folder.key);
+  }
+  assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "cover" } }).outcome, "forbidden");
+  assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "legacy.retired" } }).outcome, "allowed");
   assert.throws(() => evaluateFolderOperation({ operation: "copy" }), { code: "UNKNOWN_FOLDER_OPERATION" });
 });
 
@@ -162,7 +168,7 @@ test("los nombres se validan como en la API y sin repetir una hermana, incluida 
 
 test("la clasificación se hereda de la carpeta predeterminada más cercana, no del nombre", () => {
   assert.deepEqual(resolveFolderClassification([{ systemKey: "renders" }, { systemKey: "renders.videos" }, { systemKey: "renders.videos.execution" }, { systemKey: null }]), {
-    pendingDecisions: ["D13", "D14"],
+    pendingDecisions: ["D14"],
     section: "videos",
     stage: "execution",
     systemKey: "renders.videos.execution",
@@ -172,9 +178,13 @@ test("la clasificación se hereda de la carpeta predeterminada más cercana, no 
   const before = resolveFolderClassification([{ systemKey: "renders.images.initial_proposal.before" }]);
   assert.equal(before.stage, null);
   assert.ok(before.pendingDecisions.includes("D2"));
-  const models = resolveFolderClassification([{ systemKey: "renders.models.final_proposal" }]);
-  assert.equal(models.section, "models_3d");
-  assert.ok(models.pendingDecisions.includes("D6"));
+  // «Panorámicas» conserva la clave y la sección de «Modelos 3D»; D6 ya está resuelta.
+  const panoramas = resolveFolderClassification([{ systemKey: "renders.models" }, { systemKey: "renders.models.final_proposal" }]);
+  assert.deepEqual(panoramas, { pendingDecisions: ["D14"], section: "models_3d", stage: "final_proposal", systemKey: "renders.models.final_proposal" });
+  // Una subcarpeta personalizada de «Garantías» sigue clasificada como garantías.
+  const warranty = resolveFolderClassification([{ systemKey: "documents" }, { systemKey: "documents.warranties" }, { systemKey: null }]);
+  assert.equal(warranty.section, "warranties");
+  assert.equal(warranty.systemKey, "documents.warranties");
 });
 
 test("las colisiones de nombre con carpetas predeterminadas se informan sin adoptarlas", () => {
@@ -226,6 +236,7 @@ test("orden de lectura: preorden del árbol, predeterminadas según el catálogo
     "renders.videos.final_result",
     "documents",
     "documents.initial_proposal",
+    "documents.warranties",
     "client_files",
     "legacy.retired",
     "custom:301",
@@ -248,9 +259,47 @@ test("orden de lectura: madres ausentes y ciclos no ocultan carpetas", () => {
   assert.deepEqual(ordered.map((folder) => folder.id), [2, 1, 3, 4]);
 });
 
-test("el catálogo no incluye carpetas que dependen de decisiones abiertas y las documenta", () => {
-  assert.equal(PROJECT_SYSTEM_FOLDERS.some((folder) => /garant/i.test(folder.name) || folder.key.includes("warrant")), false);
-  for (const decision of ["D1", "D2", "D6", "D7", "D13", "D14"]) assert.ok(FOLDER_PENDING_DECISIONS[decision], decision);
+test("«Panorámicas» conserva la clave renders.models y sus subcarpetas, con su jerarquía", () => {
+  assert.equal(getSystemFolder("renders.models").name, "Panorámicas");
+  assert.equal(getSystemFolder("renders.models").parentKey, "renders");
+  assert.deepEqual(
+    PROJECT_SYSTEM_FOLDERS.filter((folder) => folder.parentKey === "renders.models").map((folder) => [folder.key, folder.name]),
+    [["renders.models.initial_proposal", "Propuesta inicial"], ["renders.models.final_proposal", "Propuesta final"]],
+  );
+  assert.equal(PROJECT_SYSTEM_FOLDERS.some((folder) => folder.name === "Modelos 3D"), false);
+});
+
+test("«Documentos › Garantías» usa la clave documents.warranties dentro de Documentos", () => {
+  assert.equal(WARRANTY_DOCUMENTS_FOLDER_KEY, "documents.warranties");
+  assert.deepEqual(getSystemFolder("documents.warranties"), {
+    content: null,
+    key: "documents.warranties",
+    name: "Garantías",
+    parentKey: "documents",
+    pendingDecisions: ["D14"],
+    section: "warranties",
+    stage: null,
+  });
+  assert.deepEqual(
+    PROJECT_SYSTEM_FOLDERS.filter((folder) => folder.parentKey === "documents").map((folder) => folder.key),
+    ["documents.initial_proposal", "documents.warranties"],
+  );
+  // Admite subcarpetas personalizadas y está protegida como cualquier predeterminada.
+  assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "documents.warranties" } }).outcome, "allowed");
+  assert.equal(evaluateFolderOperation({ folder: { systemKey: "documents.warranties" }, operation: "delete" }).reason, "SYSTEM_FOLDER_PROTECTED");
+});
+
+test("el nombre visible de una carpeta predeterminada sale del catálogo; el de una personalizada, de su fila", () => {
+  assert.equal(resolveFolderDisplayName({ name: "Modelos 3D", systemKey: "renders.models" }), "Panorámicas");
+  assert.equal(resolveFolderDisplayName({ name: "Planos", systemKey: null }), "Planos");
+  assert.equal(resolveFolderDisplayName({ name: "Retirada", systemKey: "legacy.retired" }), "Retirada");
+});
+
+test("las decisiones de carpetas resueltas salen del registro y las pendientes están documentadas", () => {
+  for (const resolved of ["D1", "D6"]) assert.equal(Object.hasOwn(FOLDER_PENDING_DECISIONS, resolved), false, resolved);
+  for (const decision of ["D2", "D7", "D13", "D14"]) assert.ok(FOLDER_PENDING_DECISIONS[decision], decision);
   const referenced = new Set(PROJECT_SYSTEM_FOLDERS.flatMap((folder) => folder.pendingDecisions));
   for (const decision of referenced) assert.ok(FOLDER_PENDING_DECISIONS[decision], `Decisión sin documentar: ${decision}`);
+  // D13 ya no afecta a cada carpeta: solo describe mover carpetas personalizadas.
+  assert.equal(PROJECT_SYSTEM_FOLDERS.some((folder) => folder.pendingDecisions.includes("D13")), false);
 });

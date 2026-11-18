@@ -62,7 +62,9 @@ export const FILE_CONTEXTS = deepFreeze({
     ownerChain: ["client", "project", "project_folder"],
     ownerEntity: "project",
     ownership: "project",
-    pendingDecisions: ["A1", "D3", "D4", "D5", "D10"],
+    // D5 quedó superada (las subidas del equipo pasan por revisión) y D10 forma parte de DA4.
+    // Las decisiones D y DA del dominio de archivos están en domain/projectFileDecisions.js.
+    pendingDecisions: ["A1", "D3", "D4", "DA1", "DA2", "DA3", "DA4", "DA5"],
     providedBy: ["admin", "architect", "client"],
     registry: { keyColumn: "file_versions.file_name", keyStoredAs: "key", ownerColumn: "files.project_id", table: "files" },
     storageKeyPrefix: "projects",

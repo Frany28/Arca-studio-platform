@@ -10,6 +10,7 @@ import {
   getFileContext,
   resolveFilesRowContext,
 } from "../src/domain/fileContexts.js";
+import { FILE_PENDING_DECISIONS } from "../src/domain/projectFileDecisions.js";
 import { uploadPolicies } from "../src/services/fileUploadService.js";
 
 const BACKEND = new URL("../", import.meta.url);
@@ -134,6 +135,11 @@ test("cada contexto declara las decisiones abiertas que le afectan", () => {
   assert.ok(FILE_CONTEXTS.support_attachment.pendingDecisions.includes("A2"));
   assert.ok(FILE_CONTEXTS.quote_pdf.pendingDecisions.includes("A6"));
   for (const context of Object.values(FILE_CONTEXTS)) {
-    for (const decision of context.pendingDecisions) assert.match(decision, /^(D\d{1,2}|A\d{1,2})$/, context.code);
+    for (const decision of context.pendingDecisions) assert.match(decision, /^(D\d{1,2}|DA\d{1,2}|A\d{1,2})$/, context.code);
   }
+  // Las decisiones de archivos de proyecto existen en el registro del dominio (sin identificadores sueltos).
+  for (const decision of FILE_CONTEXTS.project_file.pendingDecisions.filter((code) => code.startsWith("D"))) {
+    assert.ok(FILE_PENDING_DECISIONS[decision], decision);
+  }
+  assert.equal(FILE_CONTEXTS.project_file.pendingDecisions.includes("D5"), false, "D5 quedó superada");
 });

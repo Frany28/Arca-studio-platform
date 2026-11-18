@@ -3,18 +3,17 @@ import "dotenv/config";
 import { createReadStream } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import path from "node:path";
-import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 import {
   buildStorageFileUrl,
   buildStorageObjectKey,
   getFileExtension,
-  getSupabaseS3Client,
   getSupabaseStorageConfig,
   sanitizeStorageFileName,
 } from "../src/config/storage.js";
 import { pool } from "../src/config/db.js";
 import { objectStorage } from "../src/services/objectStorage.js";
+import { discardUnrecordedScriptObjects } from "./lib/discardUnrecordedScriptObjects.mjs";
 
 const CONTENT_TYPES = new Map([
   [".jpeg", "image/jpeg"], [".jpg", "image/jpeg"],
@@ -87,7 +86,6 @@ async function main() {
 
   const storageConfig = getSupabaseStorageConfig();
   if (!storageConfig.bucket) throw new Error("SUPABASE_STORAGE_BUCKET is required");
-  const s3Client = getSupabaseS3Client();
   const client = await pool.connect();
   let storageKey = null;
   try {
@@ -137,7 +135,8 @@ async function main() {
     console.log(`Panorámica cargada (projectId=${project.id}, fileId=${fileId}, ${dimensions.width}x${dimensions.height}).`);
   } catch (error) {
     await client.query("rollback").catch(() => {});
-    if (storageKey) await s3Client.send(new DeleteObjectCommand({ Bucket: storageConfig.bucket, Key: storageKey })).catch(() => {});
+    // Solo se borra si ninguna versión quedó registrada con esa clave (COMMIT de resultado incierto).
+    if (storageKey) await discardUnrecordedScriptObjects([storageKey], "maintenance_project_panorama");
     throw error;
   } finally {
     client.release();

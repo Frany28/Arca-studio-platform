@@ -224,37 +224,21 @@ export default function ProjectUploadFilesPanel({ onFilesChanged, projectId }) {
       .forEach(uploadFile);
   };
 
-  const handleFileRemove = async (fileItem) => {
-    if (readOnly) return;
+  // Solo se cancela una selección que todavía no se guardó (pendiente, en curso o fallida). Un
+  // archivo subido ya está guardado en el proyecto y se conserva (Fase 1.2, B1): no ofrece quitarlo.
+  const handleFileRemove = (fileItem) => {
+    if (readOnly || fileItem.status === "completed") return;
     setSubmitError("");
     const controller = uploadControllersRef.current.get(fileItem.id);
+
+    setFiles((current) => current.filter((item) => item.id !== fileItem.id));
 
     if (controller) {
       controller.abort();
       uploadControllersRef.current.delete(fileItem.id);
-    }
-
-    setFiles((current) => current.filter((item) => item.id !== fileItem.id));
-
-    const uploadedFileId = fileItem.uploadResult?.file?.id;
-
-    if (!uploadedFileId || !projectId) {
-      return;
-    }
-
-    try {
-      await api.projects.deleteFile({
-        fileId: uploadedFileId,
-        projectId,
-      });
+      // El servidor pudo registrar la carga justo antes de cancelarla: se recargan los archivos del
+      // proyecto para mostrarla si quedó guardada.
       onFilesChanged?.();
-    } catch (error) {
-      setSubmitError(error.message || "No se pudo eliminar el archivo.");
-      setFiles((current) =>
-        current.some((item) => item.id === fileItem.id)
-          ? current
-          : [...current, fileItem],
-      );
     }
   };
 
@@ -271,7 +255,7 @@ export default function ProjectUploadFilesPanel({ onFilesChanged, projectId }) {
       errorMessage: fileItem.errorMessage,
       id: fileItem.id,
       name: file.name || fileItem.name,
-      onRemove: () => handleFileRemove(fileItem),
+      onRemove: fileItem.status === "completed" ? undefined : () => handleFileRemove(fileItem),
       onRetryUpload: () => uploadFile(fileItem),
       progress: fileItem.progress || 0,
       status: fileItem.status || "pending",

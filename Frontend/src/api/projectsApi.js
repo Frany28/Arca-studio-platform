@@ -176,12 +176,6 @@ export const projectsApi = {
     });
   },
 
-  deleteFile({ fileId, projectId }) {
-    return apiRequest(`/projects/${projectId}/files/${fileId}`, {
-      method: "DELETE",
-    });
-  },
-
   uploadFile({ file, onUploadProgress, projectId, signal }) {
     return uploadRawFile({
       file,

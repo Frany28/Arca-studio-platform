@@ -100,12 +100,6 @@ export const projectRequestsApi = {
     });
   },
 
-  deleteFile({ fileId, projectRequestId }) {
-    return apiRequest(`/project-requests/${projectRequestId}/files/${fileId}`, {
-      method: "DELETE",
-    });
-  },
-
   uploadFile({ file, onUploadProgress, projectRequestId, signal }) {
     return uploadRawFile({
       file,

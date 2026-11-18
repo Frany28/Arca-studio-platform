@@ -1,3 +1,4 @@
+import { evaluateStoredFileOperation } from "../domain/projectFileRetention.js";
 import { objectStorage } from "./objectStorage.js";
 
 // Cargas sin conexiones retenidas (P0-1): el objeto se transfiere primero, sin ninguna conexión de
@@ -49,7 +50,9 @@ export async function discardUnrecordedObject({ isRecorded, key, scope }) {
     logOrphanCandidate({ error, key, reason: "record_check_failed", scope });
     return;
   }
-  if (recorded) return;
+  // Regla de conservación (domain/projectFileRetention.js): solo se descarta un objeto sin registro.
+  const discard = evaluateStoredFileOperation({ operation: "discard_unrecorded_object", recorded: Boolean(recorded) });
+  if (discard.outcome !== "allowed") return;
 
   try {
     await objectStorage.delete(key);

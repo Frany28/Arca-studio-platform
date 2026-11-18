@@ -38,9 +38,9 @@ function createClient({ folders = [], projectExists = true } = {}) {
   return client;
 }
 
-test("crea las 17 carpetas con nombres del catálogo, madres antes que hijas y una sentencia por nivel", async () => {
+test("crea las 18 carpetas con nombres del catálogo, madres antes que hijas y una sentencia por nivel", async () => {
   const client = createClient();
-  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 2, projectId: 50 }), { created: 17, total: 17 });
+  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 2, projectId: 50 }), { created: 18, total: 18 });
 
   assert.match(client.statements[0].text, /for update$/, "Primero bloquea el proyecto");
   const inserts = client.statements.filter((statement) => statement.text.startsWith("insert into public.project_folders"));
@@ -48,6 +48,11 @@ test("crea las 17 carpetas con nombres del catálogo, madres antes que hijas y u
   assert.match(inserts[0].text, /on conflict \(project_id, system_key\) where system_key is not null and deleted_at is null do nothing$/);
   for (const insert of inserts) assert.deepEqual(insert.params.slice(0, 2), [50, 2]);
   assert.deepEqual(inserts[0].params[2], ["cover", "renders", "documents", "client_files"]);
+  assert.deepEqual(inserts[1].params[2], ["renders.models", "renders.images", "renders.videos", "documents.initial_proposal", "documents.warranties"]);
+  const panoramas = client.folders.find((folder) => folder.system_key === "renders.models");
+  assert.deepEqual(panoramas, { name: "Panorámicas", parent_key: "renders", system_key: "renders.models" });
+  const warranties = client.folders.find((folder) => folder.system_key === "documents.warranties");
+  assert.deepEqual(warranties, { name: "Garantías", parent_key: "documents", system_key: "documents.warranties" });
 
   assert.deepEqual(
     client.folders.map((folder) => [folder.system_key, folder.name]).sort(),
@@ -58,13 +63,24 @@ test("crea las 17 carpetas con nombres del catálogo, madres antes que hijas y u
 test("es idempotente: una repetición no crea carpetas nuevas", async () => {
   const client = createClient();
   await ensureProjectSystemFolders(client, { createdBy: 2, projectId: 50 });
-  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 3, projectId: 50 }), { created: 0, total: 17 });
-  assert.equal(client.folders.length, 17);
+  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 3, projectId: 50 }), { created: 0, total: 18 });
+  assert.equal(client.folders.length, 18);
 });
 
 test("completa un árbol parcial sin tocar las carpetas que ya existen", async () => {
   const client = createClient({ folders: [{ name: "Portada del proyecto", parent_key: null, system_key: "cover" }] });
-  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 2, projectId: 50 }), { created: 16, total: 17 });
+  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 2, projectId: 50 }), { created: 17, total: 18 });
+});
+
+test("un proyecto creado con el catálogo anterior solo recibe «Garantías» y conserva sus carpetas", async () => {
+  // Árbol de 17 carpetas con el nombre guardado anterior («Modelos 3D»): la clave no cambia.
+  const previous = PROJECT_SYSTEM_FOLDERS
+    .filter((folder) => folder.key !== "documents.warranties")
+    .map((folder) => ({ name: folder.key === "renders.models" ? "Modelos 3D" : folder.name, parent_key: folder.parentKey, system_key: folder.key }));
+  const client = createClient({ folders: previous });
+  assert.deepEqual(await ensureProjectSystemFolders(client, { createdBy: 2, projectId: 50 }), { created: 1, total: 18 });
+  assert.equal(client.folders.find((folder) => folder.system_key === "renders.models").name, "Modelos 3D", "no renombra filas existentes");
+  assert.deepEqual(client.folders.at(-1), { name: "Garantías", parent_key: "documents", system_key: "documents.warranties" });
 });
 
 test("un proyecto inexistente o eliminado responde PROJECT_NOT_FOUND sin insertar", async () => {

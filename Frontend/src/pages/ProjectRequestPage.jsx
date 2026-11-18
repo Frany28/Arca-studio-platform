@@ -111,7 +111,6 @@ export default function ProjectRequestPage() {
     },
   });
   const {
-    allowRemoteRemoval,
     attachmentsError,
     attachmentsLoading,
     fileErrors,
@@ -202,7 +201,6 @@ export default function ProjectRequestPage() {
             <form ref={formRef} noValidate className="flex w-full flex-col items-center gap-[48px]" onSubmit={(event) => { event.preventDefault(); handleFrontendSubmit(); }}>
               <ProjectRequestFormSections
                 attachments={{
-                  allowRemoteRemoval,
                   disabled: isSubmitting,
                   files,
                   loadingPersisted: attachmentsLoading,

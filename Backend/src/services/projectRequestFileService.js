@@ -1,6 +1,5 @@
 import { AppError, NotFoundError } from "../errors/appError.js";
 import {
-  deleteProjectRequestFile,
   findExistingProjectRequestFile,
   findProjectRequestForFileUpload,
   getProjectRequestFileUsage,
@@ -103,26 +102,4 @@ export async function uploadProjectRequestAttachment({ projectRequestId, upload,
     projectRequestId,
     user,
   });
-}
-
-/**
- * Elimina el adjunto de la solicitud de proyecto después de comprobar acceso y existencia.
- * Aplica las reglas de negocio y coordina las dependencias necesarias para la operación.
- *
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.fileId - Valor de `options.fileId` requerido por esta operación.
- * @param {string} options.projectRequestId - Valor de `options.projectRequestId` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<unknown>} Resultado producido por la operación.
- * @throws {Error} Cuando una validación o dependencia impide completar la operación.
- */
-export async function deleteProjectRequestAttachment({ fileId, projectRequestId, user }) {
-  const deleted = await deleteProjectRequestFile({ fileId, projectRequestId, user });
-  if (!deleted) {
-    throw new NotFoundError(
-      "FILE_NOT_FOUND",
-      "No se encontró el archivo en este borrador.",
-    );
-  }
-  return deleted;
 }
