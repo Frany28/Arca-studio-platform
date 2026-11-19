@@ -82,7 +82,10 @@ export const projectTrackingConfigurationSchema = z.object({
 export const projectWarrantiesConfigurationSchema = z.object({
   params: projectParams,
   body: z.object({
+    // Fase 1.2 (B8): `id` identifica una garantía existente (se actualiza conservándolo); sin `id`, es
+    // nueva. Las omitidas se retiran. Nunca se asocian por posición (domain/projectWarrantySave.js).
     warranties: z.array(z.object({
+      id: positiveId.optional(),
       code: z.string().trim().min(1, "Escribe el código.").max(100),
       endDate: isoDate,
       model: z.string().trim().min(1, "Escribe el modelo.").max(100),

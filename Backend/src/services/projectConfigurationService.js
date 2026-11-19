@@ -25,11 +25,11 @@ import {
   recordProjectRequestFirstContact,
   renameProjectFolder,
   replaceConfigurationAssignees,
-  replaceProjectWarranties,
   replaceTrackingConfiguration,
   updateProjectGeneralConfiguration,
 } from "../repositories/projectConfigurationRepository.js";
 import { evaluateFolderOperation } from "../domain/projectFolderCatalog.js";
+import { assertWarrantyDocumentMove, saveStableProjectWarranties } from "./projectWarrantyService.js";
 
 const MISSING_REQUIREMENT_MESSAGES = Object.freeze({
   assigneeIds: "Asigna al menos un responsable.",
@@ -186,13 +186,14 @@ export async function saveProjectTrackingConfiguration({ payload, projectId }) {
 }
 
 /**
- * Guarda «Garantías» (opcionales) del borrador.
+ * Guarda «Garantías» (opcionales) del borrador con identificadores estables (Fase 1.2, B8): actualiza
+ * por id, inserta las nuevas y retira las omitidas conservando su historial y sus documentos.
  *
  * @param {{payload: {warranties: object[]}, projectId: number, user: {id: number}}} params - Datos.
  * @returns {Promise<object>} Configuración actualizada.
  */
 export async function saveProjectWarrantiesConfiguration({ payload, projectId, user }) {
-  return writeDraftConfiguration(projectId, (client) => replaceProjectWarranties(client, {
+  return writeDraftConfiguration(projectId, (client) => saveStableProjectWarranties(client, {
     createdBy: user.id,
     projectId,
     warranties: payload.warranties,
@@ -370,6 +371,8 @@ export async function moveProjectFile({ fileId, folderId, projectId }) {
     if (folderId && !(await findProjectFolder(client, projectId, folderId))) {
       throw new ValidationError("Los datos enviados no son válidos.", { "body.folderId": "La carpeta no existe." });
     }
+    // B8: un documento que respalda garantías vigentes debe seguir en «Documentos › Garantías».
+    await assertWarrantyDocumentMove(client, { fileId, targetFolderId: folderId });
     if (!(await moveProjectFileToFolder(client, { fileId, folderId, projectId }))) {
       throw new NotFoundError("FILE_NOT_FOUND", "Archivo no encontrado.");
     }

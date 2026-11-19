@@ -231,24 +231,6 @@ export async function replaceTrackingConfiguration(client, { estimatedDeliveryDa
 }
 
 /**
- * Sustituye las garantías del proyecto bloqueado (las anteriores quedan con deleted_at).
- *
- * @param {import("pg").PoolClient} client - Cliente de la transacción.
- * @param {{createdBy: number, projectId: number, warranties: object[]}} params - Garantías validadas.
- * @returns {Promise<void>} Finaliza al guardar.
- */
-export async function replaceProjectWarranties(client, { createdBy, projectId, warranties }) {
-  await client.query(`update public.project_warranties set deleted_at = now(), updated_at = now() where project_id = $1 and deleted_at is null`, [projectId]);
-  for (const [index, warranty] of warranties.entries()) {
-    await client.query(
-      `insert into public.project_warranties (project_id, product, model, code, start_date, service_date, end_date, sort_order, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [projectId, warranty.product, warranty.model, warranty.code, warranty.startDate, warranty.serviceDate, warranty.endDate, index + 1, createdBy],
-    );
-  }
-}
-
-/**
  * Confirma la configuración: draft → pending con la fecha de inicio indicada, planos «no» si nunca
  * se informaron (PostgreSQL los exige fuera de draft), historial de estado y auditoría. Si el
  * borrador procede de una solicitud, notifica al cliente que su proyecto ya está disponible.

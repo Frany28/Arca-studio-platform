@@ -112,7 +112,7 @@ export function buildVisibleFileVersionSql({
   return {
     fileTypeSql: `coalesce(${v}.content_type, ${f}.file_type)`,
     join: `left join lateral (
-        select visible.id, visible.version_number, visible.file_name, visible.file_extension,
+        select visible.id, visible.version_number, visible.file_name, visible.original_name, visible.file_extension,
           visible.file_size, visible.created_at, visible.content_type
         from public.file_versions visible
         where visible.file_id = ${f}.id

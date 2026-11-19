@@ -167,7 +167,9 @@ export function toWarrantiesForm(configuration) {
 
 /**
  * Cuerpo de `PUT …/configuration/warranties`. Cada garantía agregada se envía completa: la API
- * exige todos sus campos (son opcionales como conjunto, no por campo).
+ * exige todos sus campos (son opcionales como conjunto, no por campo). Las existentes llevan su `id`
+ * (Fase 1.2, B8): la API las actualiza conservándolo, crea las que no lo tienen y retira las omitidas.
+ * La clave local (`key`) nunca se envía.
  *
  * @param {Object[]} warranties - Estado de «Garantías».
  * @returns {{warranties: Object[]}} Payload de la API.
@@ -175,6 +177,7 @@ export function toWarrantiesForm(configuration) {
 export function toWarrantiesPayload(warranties) {
   return {
     warranties: warranties.map((warranty) => ({
+      ...(Number.isInteger(Number(warranty.id)) && Number(warranty.id) > 0 ? { id: Number(warranty.id) } : {}),
       code: String(warranty.code ?? "").trim(),
       endDate: warranty.endDate || null,
       model: String(warranty.model ?? "").trim(),

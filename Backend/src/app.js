@@ -10,6 +10,7 @@ import { sanitizePublicResponse } from "./middlewares/sanitizePublicResponse.js"
 import adminRoutes from "./routes/admin.js";
 import authRoutes from "./routes/auth.js";
 import environmentCommentRoutes from "./routes/environmentComments.js";
+import fileManagerRoutes from "./routes/fileManager.js";
 import geoapifyRoutes from "./routes/geoapify.js";
 import projectRequestRoutes from "./routes/projectRequests.js";
 import projectRoutes from "./routes/projects.js";
@@ -37,6 +38,8 @@ app.use("/api/admin/services", serviceCatalogRoutes);
 app.use("/api/admin/quotes", quoteRoutes);
 app.use("/api/admin/measurement-units", measurementUnitRouter);
 app.use("/api/admin/measurement-unit-denominations", measurementUnitDenominationRouter);
+// Fase 1.2 (B7): antes de /api/admin, para responder 404 sin autenticar con la revisión apagada.
+app.use("/api/admin/files", fileManagerRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/environment-comments", environmentCommentRoutes);
 app.use("/api/geoapify", geoapifyRoutes);

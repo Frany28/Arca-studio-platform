@@ -462,6 +462,14 @@ El archivo comentado se resuelve con `file_id` (documentos e imágenes desde B6)
 
 **Contadores.** Los puntos de panorámica se numeran por destino y versión, y la migración `20261119120000_project_comment_version_points` lleva la unicidad al mismo criterio (con versión NULL es idéntica a la anterior). Los de documento ya eran por versión. Los de imagen y video los calcula el frontend sobre los comentarios visibles. Así ningún número revela comentarios ocultos.
 
+**Comentarios históricos sin versión y puntos existentes.**
+- **Qué son.** Comentarios de imagen, video y panorámica creados antes de B6 (o con la activación apagada): identifican el archivo solo por `target_id` y tienen `file_version_id` NULL. Los de documento siempre tuvieron versión.
+- **Cómo se leen.** Se resuelve el archivo por `target_id` (`<id>` o `project-file-<id>`, solo del mismo proyecto). Si no hay archivo, o es heredado, conservan su significado histórico: los ve todo el proyecto, como antes. Si su archivo sigue la política 1.2 no hay versión inequívoca, así que solo los ven el equipo y su autor; nunca se les asigna una versión supuesta.
+- **Cómo se numeran.** Sus puntos siguen en el grupo «sin versión» de su destino (`coalesce(file_version_id, 0)` = 0), con la misma unicidad que antes. Los comentarios nuevos con versión empiezan en 1 en su propia versión y no chocan con ellos.
+- **Conservación.** La migración no escribe filas: la huella completa de `project_comments` es idéntica antes y después, y ningún punto existente cambia de número.
+- **Comprobaciones completadas.** Duplicados con versión NULL rechazados; comentarios retirados y respuestas fuera del índice; numeración aislada por versión (cada versión empieza en 1, sin chocar con NULL ni con otra versión); reversión bloqueada (23505) mientras existan puntos repetidos entre versiones.
+- **En B9.** Si un archivo heredado pasa a la política 1.2, sus comentarios históricos deberán recibir versión (por ejemplo, la vigente en la fecha del comentario) antes de dejar de ser ambiguos; su número de punto puede conservarse en el grupo de esa versión solo si no choca.
+
 **Concurrencia y orden de bloqueos.** Cambiar una autorización bloquea el proyecto FOR SHARE y crear un comentario FOR UPDATE: la comprobación de la versión, hecha después del bloqueo, ve siempre las autorizaciones confirmadas (una revocación en curso hace esperar al comentario, que después responde 404). La prueba de concurrencia encontró un interbloqueo (40P01): las escrituras de versiones y audiencias tomaban el archivo FOR UPDATE y el proyecto FOR SHARE en la misma sentencia, mientras el comentario, con el proyecto bloqueado, esperaba el FOR KEY SHARE de su clave foránea sobre el archivo. `findProjectFileContext` bloquea ahora primero el proyecto y después el archivo: proyecto → archivo es el orden único de todas estas escrituras.
 
 **SSE** (`services/projectEvents.js`, `services/projectCommentEvents.js`).
@@ -471,7 +479,7 @@ El archivo comentado se resuelve con `file_id` (documentos e imágenes desde B6)
 - Publicación después del commit: el controlador responde y después publica. Un rollback lanza antes y no publica nada. Un fallo al publicar se registra (`project_event_publish_failed`, solo código, evento y proyecto) y no cambia la respuesta: el estado está en PostgreSQL y el frontend lo recupera con sus lecturas incrementales y de respaldo. Los eventos de un destinatario pueden llegar desordenados entre sí; el frontend ordena por fecha y deduplica por id.
 - Los comentarios de documento siguen sin evento propio, como antes.
 
-**Pendiente para B9 (compatibilidad de archivos heredados).**
+**Pendiente para B9 (compatibilidad de archivos heredados).** Resuelto por la herramienta de B9 (sección «Compatibilidad de archivos heredados»): comentarios históricos, clientes con varios usuarios y referencia temporal.
 1. **Comentarios históricos sin versión.** Los comentarios de imagen, video y panorámica anteriores a B6 identifican el archivo por `target_id` y no tienen versión. Mientras su archivo sea heredado conservan su significado (todo el proyecto). Si B9 convierte ese archivo a la política 1.2, pasarían a ser ambiguos (solo el equipo y su autor): B9 debe asignarles una versión, por ejemplo la vigente en la fecha del comentario, o decidir otra regla. Los comentarios de documento ya tienen versión.
 2. **Clientes con varios usuarios.** La política reconoce como «suyas» las versiones y los comentarios ambiguos por usuario (`uploaded_by`, `user_id`), no por cliente. Otro usuario del mismo cliente no ve las versiones que subió su compañero, ni sus comentarios ambiguos, ni la portada de su solicitud si apunta a ellas (el ensayo lo comprueba con `coOwner`). B9 debe decidir si la autoría se extiende al cliente.
 3. **Referencia temporal de los adjuntos transferidos.** La ruta de solicitudes sirve la versión creada hasta `project_requests.reviewed_at` (B5). B9 no debe cambiar ese valor en solicitudes convertidas ni recrear versiones anteriores con fechas nuevas. Si una conversión pudiera repetirse, la referencia debe guardarse aparte (por ejemplo, la versión de origen en el archivo).
@@ -488,6 +496,218 @@ El archivo comentado se resuelve con `file_id` (documentos e imágenes desde B6)
   - rollback de comentarios y autorizaciones sin eventos, y fallo de publicación tras confirmar;
   - la activación apagada.
 - `Frontend/tests/projectCommentFeed.test.js`: el aviso de acceso recarga completo y retira lo que ya no devuelve el backend.
+- `tests/projectCommentVersionPoints.integration.test.js` (opcional: `ARCA_COMMENT_VERSION_POINTS_DB_TESTS=1` y `ARCA_COMMENT_VERSION_POINTS_TEST_DATABASE_URL` local): la migración sobre puntos existentes (ver `PRISMA_MIGRATIONS.md`).
+
+### Administrador de archivos (B7, Fase 1.2)
+
+API de la pantalla «Gestión de archivos» (Figma 3727:682730): métricas, árbol de proyectos y carpetas, búsqueda, pestañas «Aprobados», «Pendientes por aprobación» y «Rechazados», tabla con filtros y orden, y carpetas personalizadas. Rutas en `/api/admin/files` (`routes/fileManager.js`, `controllers/fileManagerController.js`, `services/fileManagerService.js`, `repositories/fileManagerRepository.js`, `validation/fileManagerSchemas.js`). Contrato en `docs/API_CONTRACT.md`.
+
+**Activación y permisos.** Bajo `PROJECT_FILE_REVIEW_ENABLED`: apagada, 404 `API_ROUTE_NOT_FOUND` antes de autenticar (el router se monta antes de `/api/admin`). Solo el administrador. Es equipo de todos los proyectos con la política común (B4/B5): ve todas las versiones, también pendientes, rechazadas y de drafts, con los datos de revisión. Arquitectos y clientes reciben 403; su acceso al administrador es una decisión pendiente. Clasificación (carpeta), revisión (pestaña) y visibilidad (audiencias) siguen siendo independientes: el administrador no comparte ni publica nada. Las respuestas son `private, no-store`, porque cambian con cada revisión.
+
+**Ámbito.** Archivos de proyectos vigentes (`files.project_id`, sin `deleted_at` ni estado `deleted`). Quedan fuera los proyectos eliminados y los adjuntos que siguen en su solicitud (entran al pasar al proyecto).
+
+**Métricas** (`GET /metrics`, todo, un proyecto o una carpeta con sus subcarpetas):
+- **Archivos:** archivos vigentes (no versiones).
+- **Espacio usado:** suma de los objetos almacenados distintos de sus versiones no retiradas. Un objeto reutilizado por restauraciones (misma clave `file_versions.file_name`) cuenta una sola vez. `objectCount` informa cuántos objetos se sumaron. Los tamaños son los registrados al subir (`file_size`); no se consulta el almacenamiento.
+- **Última carga:** la versión más reciente con objeto propio. Las restauraciones no son cargas, porque no transfieren nada.
+
+**Árbol** (`GET /tree`). Proyectos ordenados por nombre e id con cursor, con cliente, estado y número de archivos. Cada uno lleva sus carpetas en preorden (`orderFolderTree`) con su número de archivos directos. Los nombres son legibles: las predeterminadas muestran el nombre vigente del catálogo (`renders.models` → «Panorámicas» aunque el proyecto guardara el anterior). La búsqueda opcional compara el nombre del proyecto o del cliente.
+
+**Búsqueda de carpetas** (`GET /folders`). Por el nombre visible (el del catálogo para las predeterminadas), sin distinguir mayúsculas y con `%`, `_` y `\` literales. Devuelve proyecto, cliente y la ruta legible de antecesoras, paginado por nombre, proyecto e id.
+
+**Pestañas** (`GET /items`). Cada fila es una versión:
+- **Aprobados:** la versión vigente de cada archivo, aprobada (política 1.2) o heredada (`review.status: "legacy"`, que cuenta como aprobada hasta B9).
+- **Pendientes y rechazados:** cada versión pendiente o rechazada, aunque el archivo tenga otra vigente (un archivo puede aparecer en «Aprobados» con v2 y en «Pendientes» con v3).
+- **Filtros:** proyecto, carpeta (sola o con `includeSubfolders`), texto en el nombre y extensiones.
+- **Orden:** fecha (por defecto, descendente), nombre o peso, con la versión como desempate. Todos los filtros van antes del `LIMIT`. El cursor guarda pestaña, orden, sentido, valor e id, y reutilizarlo en otra consulta responde 400.
+
+**Carpetas** (`POST`, `PATCH` y `DELETE /projects/:projectId/folders`). Fuera de draft, y también en draft, que prepara el administrador. Con el proyecto bloqueado y solo reglas confirmadas del catálogo:
+- personalizadas anidadas a cualquier nivel dentro de otras carpetas, salvo la portada (409 `PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED`);
+- predeterminadas protegidas (409 `PROJECT_FOLDER_PROTECTED`);
+- se retiran solo las personalizadas vacías (borrado lógico; con contenido, 409 `PROJECT_FOLDER_NOT_EMPTY`); nunca se tocan archivos;
+- nombre repetido entre hermanas: 400 con `body.name`;
+- archivado o finalizado: 409 `PROJECT_ARCHIVED` o `PROJECT_FINALIZED`.
+
+Crear en la raíz depende de D7 y responde 409 `PROJECT_FOLDER_DECISION_PENDING`. La configuración del draft conserva su comportamiento anterior, que sí lo permite, hasta decidir D7. Mover carpetas depende de D13 y no se ofrece. Cada cambio se audita (`project_folder.created`, `renamed` y `deleted`) en la misma transacción.
+
+**Fuera de B7.**
+- Subida, reemplazo, aprobación, rechazo, historial, restauración y descarga: ya existen en las rutas de versiones de B4. La tabla las usa por `fileId` y `versionId`.
+- Mover archivos entre carpetas fuera de draft: hoy solo en la configuración del draft, que desde B8 aplica la regla de los documentos de garantía.
+- Interfaz (U1 a U3 del plan).
+
+**Pruebas.** `tests/fileManager.integration.test.js` (opcional: `ARCA_FILE_MANAGER_DB_TESTS=1` y `ARCA_FILE_MANAGER_TEST_DATABASE_URL` local). Cubre:
+- métricas globales, por proyecto y por carpeta con subcarpetas, con un objeto reutilizado por una restauración contado una vez y la restauración excluida de la última carga;
+- exclusión de proyectos eliminados y de adjuntos de solicitudes;
+- árbol paginado con nombre vigente del catálogo y preorden;
+- búsqueda de carpetas con ruta, cursor y caracteres literales;
+- las tres pestañas, con heredados y versiones pendientes de archivos aprobados;
+- filtros de ámbito, texto y extensiones;
+- los tres órdenes en ambos sentidos recorriendo páginas de uno en uno;
+- cursores de otra consulta (400);
+- carpetas anidadas en tres niveles, D7, portada, nombre repetido, protegidas, no vacías, estados del proyecto y auditoría;
+- altas simultáneas con el mismo nombre;
+- permisos y activación apagada.
+
+### Garantías con ids estables y documentos vinculados (B8, Fase 1.2)
+
+Reutiliza la tabla `project_warranty_documents` (B3), el dominio `domain/projectWarrantyDocuments.js` (B2) y la política común de versiones (B4/B5). Módulos nuevos: `domain/projectWarrantySave.js`, `repositories/projectWarrantyRepository.js`, `services/projectWarrantyService.js` y `controllers/projectWarrantyController.js`. Contrato en `docs/API_CONTRACT.md`.
+
+**Guardado estable** (`PUT /admin/projects/:projectId/configuration/warranties`, solo en draft, con el proyecto bloqueado):
+- una entrada con `id` actualiza esa garantía vigente del proyecto y conserva su id; solo escribe si algo cambió, así que repetir el mismo guardado no toca filas;
+- una entrada sin `id` es nueva; el orden enviado solo fija `sort_order`;
+- las vigentes omitidas se retiran (`deleted_at`): conservan su fila, sus vínculos y los archivos, versiones y objetos de sus documentos;
+- un `id` de otro proyecto, retirado, inexistente o repetido responde 400 en `body.warranties.<n>.id`, sin cambiar nada.
+
+**Compatibilidad.** Antes el guardado retiraba todas las garantías y las creaba de nuevo, y el esquema rechazaba `id`. Ahora `id` es opcional y el frontend lo envía para las existentes (`toWarrantiesPayload`).
+- **Envíos anteriores, sin ningún `id`.** Sin documentos vinculados se comportan como antes: retiran y crean de nuevo, y no hay referencias que perder. Si retirarían una garantía con documentos vinculados, responden 409 `WARRANTY_REFERENCES_REQUIRED` sin cambiar nada: el cliente debe recargar y enviar los ids.
+- **Nunca se asocia por posición ni por contenido.** Dos garantías iguales sin `id` son dos registros. Una garantía editada sin `id` es una nueva y la anterior se retira.
+- **Con la activación apagada**, el guardado estable funciona igual (solo usa columnas anteriores a la Fase 1.2), pero no consulta vínculos: esa protección existe solo encendida, que es cuando se pueden crear.
+
+**Vínculos** (`PUT` y `DELETE /admin/files/projects/:projectId/warranties/:warrantyId/documents/:fileId`, solo administrador y con la activación encendida). Con el proyecto bloqueado y operativo: draft sí, archivado y finalizado no.
+- Garantía y documento deben ser del mismo proyecto. Lo exigen la consulta, que responde 404 `WARRANTY_NOT_FOUND` o `FILE_NOT_FOUND`, y las claves compuestas de B3.
+- El documento debe estar en «Documentos › Garantías» o en una subcarpeta personalizada suya (409 `WARRANTY_DOCUMENT_OUTSIDE_FOLDER`) y activo; si está archivado, depende de DA1.
+- Un documento puede respaldar varias garantías.
+- Vincular de nuevo no cambia nada (`changed:false`).
+- Desvincular cierra el vínculo (`unlinked_at`, `unlinked_by`) y lo conserva como historial; después se puede volver a vincular.
+- Las garantías retiradas no admiten vínculos nuevos ni desvinculaciones (409 `WARRANTY_RETIRED`).
+- Auditoría `project_warranty_document.linked` y `unlinked` en la misma transacción: si falla, no hay vínculo.
+
+**Vínculo activo y evidencia.**
+- **Vínculo activo:** fila de `project_warranty_documents` con `unlinked_at` NULL y garantía vigente (`deleted_at` NULL).
+- **Vínculo deshecho:** fila con `unlinked_at`.
+- **Evidencia:** fila abierta de una garantía retirada. Registra qué respaldaba al retirarse y no se modifica.
+
+Solo los vínculos activos cuentan para retener un documento, para leer garantías y para la protección del guardado.
+
+**Movimiento.** La única operación que cambia la carpeta de un archivo es `PATCH /admin/projects/:projectId/configuration/files/:fileId`; las altas crean archivos nuevos, los reemplazos conservan la carpeta, mover carpetas no existe (D13) y solo se eliminan carpetas vacías. Con el proyecto bloqueado aplica `evaluateWarrantyDocumentMove`: un documento con vínculos activos debe seguir dentro del subárbol de Garantías (409 `WARRANTY_DOCUMENT_MOVE_FORBIDDEN`). La evidencia de garantías retiradas no lo retiene. Cualquier operación futura que mueva archivos debe llamar a `assertWarrantyDocumentMove`.
+
+**Lectura** (`GET /projects/:projectId/warranties`, con la activación encendida). Acceso directo al proyecto: administrador; arquitecto asignado o responsable y cliente propietario fuera de draft; el escaparate no expone garantías.
+- Devuelve las garantías vigentes y, en cada una, sus documentos con vínculo activo en la versión que el usuario puede ver, con la política común en SQL (`buildVisibleFileVersionSql`), la misma que las descargas.
+- El equipo recibe la vigente; el cliente, la versión autorizada para él (o una que subió él); los heredados, su vigente.
+- Un documento sin versión visible no aparece, sin revelar por qué. La garantía sí aparece, aunque no tenga documentos visibles.
+- Si se revoca el acceso, el documento desaparece de la respuesta y el vínculo se conserva.
+
+**Conservación.** Retirar una garantía o desvincular un documento no toca archivos, versiones ni objetos: la prueba compara sus recuentos antes y después.
+
+**Concurrencia.** Guardar garantías, vincular, desvincular y mover archivos bloquean el mismo proyecto FOR UPDATE y se serializan:
+- vínculos simultáneos iguales dejan una sola fila;
+- un movimiento y un vínculo simultáneos nunca dejan un documento vinculado fuera de Garantías;
+- un guardado sin ids frente a un vínculo responde 200 o 409, según cuál llegue antes.
+
+**Pruebas**
+- `tests/projectWarrantySave.test.js`: plan del guardado (ids, posiciones, gemelas, ids inválidos y compatibilidad).
+- `tests/projectWarranties.integration.test.js` (opcional: `ARCA_WARRANTIES_DB_TESTS=1` y `ARCA_WARRANTIES_TEST_DATABASE_URL` local). Cubre:
+  - ids estables, reordenación y guardados repetidos sin escrituras;
+  - gemelas e ids de otro proyecto, retirados, inexistentes o repetidos;
+  - compatibilidad sin ids, con y sin vínculos, y con la activación apagada;
+  - vínculos en la carpeta y en una subcarpeta, fuera del subárbol y entre proyectos; varias garantías por documento; idempotencia, desvinculación con historial y revinculación;
+  - garantías retiradas con evidencia intacta, auditoría, permisos, activación apagada y estado finalizado;
+  - movimientos permitidos y prohibidos, también tras retirar la garantía;
+  - lectura por actor con la versión autorizada y sin documentos internos, coherente con la descarga y tras revocar;
+  - concurrencia de vínculos, de movimiento con vínculo y de guardado con vínculo;
+  - rollback por fallo de auditoría.
+- `Frontend/tests/projectConfigurationWarranties.test.js`: el envío lleva el id de las existentes y nunca la clave local.
+
+**Dependencias para B9 y la interfaz**
+- **B9 (resuelto):** la conversión de un documento de garantía heredado crea la autorización del cliente para su versión vigente, así que todos los usuarios del cliente siguen recibiéndolo.
+- **B9 (resuelto para lo heredado):** clientes con varios usuarios. La autorización del cliente es por cliente. «Subida por él» sigue siendo por usuario y solo amplía el acceso de su autor.
+- **B9 / DA1:** documentos archivados (vínculo pendiente de DA1).
+- **Interfaz:**
+  - pantalla de garantías del cliente: hoy `ProjectWarrantiesPanel` usa datos de ejemplo (`projectWarrantyData.js`) y debe leer `GET /projects/:projectId/warranties`;
+  - paso «Garantías» de la configuración: debe usar `toWarrantiesForm` y `toWarrantiesPayload`, conservando los ids, y tratar el 409 `WARRANTY_REFERENCES_REQUIRED` recargando;
+  - vinculación desde el administrador de archivos;
+  - recarga al recibir `project.access.changed`.
+- **Decisión pendiente:** gestionar vínculos en proyectos finalizados (hoy de solo lectura, como las carpetas de B7).
+- **Deuda existente, no relacionada:** `findProjectConfiguration` lanza consultas en paralelo sobre el cliente de la transacción, y `pg` 8 avisa que dejará de admitirlo en `pg@9`.
+
+### Compatibilidad de archivos heredados (B9, Fase 1.2)
+
+Herramienta de mantenimiento que pasa archivos heredados (`access_policy` NULL) a la política 1.2 sin cambiar lo que cada persona puede ver:
+- comando: `scripts/project-file-compatibility.mjs`;
+- lógica: `services/projectFileCompatibilityService.js`, `domain/projectFileCompatibility.js` y `repositories/projectFileCompatibilityRepository.js`;
+- comprobaciones: `scripts/project-file-compatibility/preflight.sql` y `postcheck.sql`.
+
+No depende de `PROJECT_FILE_REVIEW_ENABLED`: con la revisión apagada, el backend sigue tratando los archivos convertidos con la consulta anterior (versión vigente). Solo se ha ensayado en PostgreSQL local desechable. **Su ejecución en entornos compartidos requiere autorización.**
+
+**Qué hace la conversión de un archivo.** Solo cambia lo necesario:
+1. `files.access_policy = 1`. Las versiones no cambian: una versión heredada (estado NULL) ya cuenta como aprobada, así que no se inventan aprobaciones ni revisores.
+2. Una autorización activa del cliente para la versión vigente, firmada por el operador. Es por cliente: **todos los usuarios del cliente** conservan el acceso que tenían, también a los documentos de garantía.
+3. Una autorización del escaparate solo si hoy se ve en él: proyecto público y finalizado, con una imagen o un video vigente.
+4. Comentarios históricos de imagen, video o panorámica sin versión: reciben `file_id` y `file_version_id` de la versión vigente cuando es inequívoca. Un hilo sigue a su raíz. Es inequívoca si el archivo tiene una sola versión o si, al crearse la raíz, la última versión existente ya era la vigente. Los números de punto se conservan.
+5. Una marca de auditoría `project_file.compatibility_converted` (`user_agent` `maintenance:project-file-compatibility`) con la huella del plan.
+
+No toca:
+- versiones, objetos almacenados, `current_version` ni la carpeta;
+- `origin_project_request_id` ni `project_requests.reviewed_at`, que son la procedencia y la referencia temporal de los adjuntos transferidos;
+- vínculos de garantías, claves funcionales de carpetas ni el contenido de los comentarios.
+
+**Equivalencia de acceso.** Se mide con las funciones de la aplicación: `evaluateFileVersionAccess` para versiones y la audiencia de B6 para comentarios.
+- **Actores:** administrador, arquitecto asignado y responsables, cada usuario del cliente y dos ajenos (arquitecto y cliente), que representan el escaparate.
+- **Qué se compara:** cada versión y cada comentario, en el estado actual del proyecto y, si es draft, también tras finalizar su configuración.
+- **Diferencias esperadas** (no bloquean y se cuentan en el informe): el equipo pasa a ver el historial de versiones (`TEAM_VERSION_HISTORY`) y el autor sus propias versiones anteriores (`AUTHOR_OWN_VERSION`).
+- **Revisión:** cualquier pérdida, el paso de directo a anonimizado o una ganancia de otro tipo deja el archivo en revisión.
+
+**Casos que quedan en revisión.** Siguen con su política actual hasta resolverlos:
+- `NO_CURRENT_VERSION`: sin versión vigente.
+- `CURRENT_VERSION_MISMATCH`: la vigente heredada no es la de mayor número no retirada.
+- `FILE_ARCHIVED_DA1` y `PROJECT_ARCHIVED_DA1`: pendientes de DA1.
+- `EXISTING_AUDIENCE_GRANTS`: ya tiene autorizaciones.
+- `COMMENT_ON_PREVIOUS_VERSION` y `COMMENT_BEFORE_FIRST_VERSION`: comentario histórico sin versión inequívoca.
+- `DOCUMENT_COMMENT_ON_PREVIOUS_VERSION`: comentario de documento sobre una versión que no es la vigente.
+- `POINT_COLLISION`: un número de punto chocaría.
+- `ACCESS_LOSS`: por ejemplo, un proyecto público sin finalizar, cuyo escaparate exige finalizar en la política 1.2.
+- `ACCESS_GAIN_UNEXPECTED` y `COMMENT_ACCESS_LOSS`.
+
+**Ejecución segura**
+- **Plan (`--plan`)**:
+  - en una instantánea `REPEATABLE READ READ ONLY`, sin escrituras;
+  - cada entrada lleva la huella SHA-256 de todo lo que decide la conversión (archivo, proyecto, equipo, usuarios del cliente, versiones con su clave, comentarios, autorizaciones y vínculos) y, si se convierte, la visión anterior de cada actor;
+  - el comando muestra el SHA-256 del archivo del plan.
+- **Aplicación (`--apply`)**:
+  - exige el plan, su SHA-256, el mismo destino y un administrador activo como operador;
+  - cada archivo va en su propia transacción: bloquea el proyecto (FOR SHARE) y el archivo (FOR UPDATE), en el orden de las demás escrituras;
+  - omite el archivo si ya tiene la marca de este plan (`already_applied`), si ya no es heredado (`not_legacy`), si su huella cambió (`stale`) o si hoy ya no es convertible (`review_now`);
+  - después aplica, vuelve a verificar la equivalencia con los datos ya escritos y registra la marca;
+  - cualquier fallo revierte ese archivo (`error`) y continúa con los demás;
+  - la marca, leída con el archivo bloqueado, hace la aplicación idempotente: repetir, reanudar tras una interrupción (`--max-files` permite tandas) o ejecutar dos procesos a la vez no convierte nada dos veces.
+- **Verificación (`--verify`)**, de solo lectura:
+  - cada archivo convertido contra su visión anterior y su integridad (versiones y claves, vínculos, carpeta, procedencia y fecha de aprobación);
+  - los que quedaron en revisión siguen heredados.
+- **Informe:** por modo, en `~/ARCA_PRIVATE_BACKUPS/project-file-compatibility/` o en `--report`, siempre fuera del repositorio. Contiene la huella y los recuentos del plan, el resultado por estado y la lista revisable (ids y motivos), sin nombres, correos, títulos ni claves de almacenamiento. El plan contiene ids y la visión de acceso: también se guarda fuera del repositorio.
+
+**Sin estructura nueva.** No hace falta migración:
+- la idempotencia la da la marca de auditoría, leída tras bloquear el archivo;
+- la detección de cambios la dan las huellas del plan;
+- la lista revisable vive en el plan y en el informe, y sus archivos no cambian.
+
+Una tabla de revisión solo haría falta si se quisiera gestionar los casos ambiguos desde la aplicación; queda como decisión para la interfaz.
+
+**Limitaciones**
+- La marca se busca en `audit_logs` sin índice específico: es una consulta por archivo, aceptable para un mantenimiento, no para uso frecuente.
+- El escaparate de un archivo convertido ya no aparece solo al publicar un proyecto más tarde: la política 1.2 exige autorizarlo. Hoy no cambia nada, porque solo se convierte lo que ya se ve.
+- La autoría (`AUTHOR_OWN_VERSION`) sigue siendo por usuario.
+- Los comentarios en revisión necesitan una decisión explícita: asignarles una versión anterior, que el cliente dejaría de ver salvo que se le comparta, o compartir esa versión.
+
+**Procedimiento propuesto para una ejecución autorizada.** Pendiente de autorización.
+1. Respaldo verificado de la base y archivo de entorno privado fuera del repositorio.
+2. `--describe-target` y confirmación del destino.
+3. `psql -X -f scripts/project-file-compatibility/preflight.sql`: todos los `ok_*` verdaderos; guardar el resultado fuera del repositorio.
+4. `--plan --out <ruta privada>` y revisión de los recuentos, motivos y lista revisable. Anotar el SHA-256.
+5. Ventana sin despliegues; `--apply --plan-file … --plan-sha256 … --operator-user-id <admin>` (opcionalmente por tandas).
+6. `postcheck.sql`: todos los `ok_*` verdaderos y huellas idénticas a las del preflight.
+7. `--verify`: solo `verified` y `review_unchanged`. Si hay `stale`, preparar un plan nuevo y repetir 4 a 7.
+8. Revisar la lista y decidir cada caso pendiente.
+
+**Pruebas**
+- `tests/projectFileCompatibility.test.js`: autorizaciones, escaparate, draft antes y después de finalizar, ganancias esperadas, asignación de comentarios y motivos de revisión.
+- `tests/projectFileCompatibility.integration.test.js` (opcional: `ARCA_FILE_COMPATIBILITY_DB_TESTS=1` y `ARCA_FILE_COMPATIBILITY_TEST_DATABASE_URL` local). Cubre:
+  - preflight, plan sin escrituras y clasificación de diez casos con sus motivos;
+  - aplicación con postcheck (huellas idénticas) y verificación;
+  - acceso por HTTP antes y después para dos usuarios del mismo cliente y un ajeno: descargas, escaparate, versión del autor, adjunto transferido en draft (por la solicitud) y tras finalizar (por el proyecto), garantías y comentarios históricos con respuesta y punto de panorámica;
+  - repetición idempotente, plan obsoleto, interrupción y reanudación, y dos aplicaciones simultáneas;
+  - rollback por fallo y reintento;
+  - plan con otra huella u otro formato, otro destino u operador no administrador;
+  - el comando completo: destino confirmado, plan e informes fuera del repositorio, informe sin datos sensibles.
 
 ## Paginación
 

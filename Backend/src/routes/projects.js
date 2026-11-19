@@ -27,6 +27,8 @@ import {
 } from "../controllers/projectFileVersionController.js";
 import { requireAuth, requirePermissions, requireRoles } from "../middlewares/auth.js";
 import { requireProjectFileReviewEnabled } from "../middlewares/projectFileReview.js";
+import { getProjectWarrantiesHandler } from "../controllers/projectWarrantyController.js";
+import { projectWarrantiesReadSchema } from "../validation/fileManagerSchemas.js";
 import {
   deleteProjectFileAudience,
   getProjectFileAudienceState,
@@ -148,6 +150,16 @@ router.post(
   requireRoles("admin"),
   validate(projectFileVersionRejectSchema),
   postProjectFileVersionRejection,
+);
+// Garantías con sus documentos (Fase 1.2, B8): acceso directo al proyecto y versión visible de cada
+// documento según la política común.
+router.get(
+  "/:projectId/warranties",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requirePermissions("projects.read"),
+  validate(projectWarrantiesReadSchema),
+  getProjectWarrantiesHandler,
 );
 // Audiencias (Fase 1.2, B5): solo el administrador comparte con el cliente y autoriza el escaparate.
 router.get(

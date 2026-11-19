@@ -3,7 +3,9 @@ import { FILE_STATUS, evaluateFileVersionAccess, hasProjectStaffAccess } from ".
 import { fileRuleResult, pendingFileDecision } from "./projectFileDecisions.js";
 import { resolveCurrentVersion } from "./projectFileReview.js";
 
-// Documentos de garantías (Fase 1.2, B2). Dominio puro; ningún flujo lo usa todavía.
+// Documentos de garantías (Fase 1.2, B2). Dominio puro. Desde B8 lo aplican el vínculo y el movimiento
+// de archivos (services/projectWarrantyService.js); la lectura usa la política común en SQL
+// (utils/projectFileAudienceSql.js), que elige la misma versión que resolveWarrantyDocumentVersion.
 //
 // Reglas:
 // - los documentos se guardan en el árbol del proyecto, en «Documentos › Garantías»
