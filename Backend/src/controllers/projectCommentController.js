@@ -6,10 +6,10 @@ import {
 import { getProjectCommentAuthorProfilePhoto } from "../services/profilePhotoService.js";
 import { loadSessionUser } from "../services/sessionService.js";
 import {
-  publishProjectEvent,
   subscribeToProjectEvents,
   assertProjectEventCapacity,
 } from "../services/projectEvents.js";
+import { publishCommentCreated } from "../services/projectCommentEvents.js";
 import { decodeCursor, parsePageLimit } from "../utils/pagination.js";
 import { sanitizeCommentMetadata } from "../utils/commentMetadata.js";
 import {
@@ -267,6 +267,8 @@ export async function createProjectComment(req, res, next) {
       : await createProjectCommentRecord({
       commentType,
       content,
+      // Solo cuenta en comentarios de imagen de archivos 1.2 con la revisión activada (B6).
+      fileVersionId: Number.isInteger(fileVersionId) && fileVersionId > 0 ? fileVersionId : null,
       parentCommentId,
       projectId,
       targetId,
@@ -288,15 +290,10 @@ export async function createProjectComment(req, res, next) {
       return;
     }
 
-    if (commentType !== "document") {
-      publishProjectEvent({
-        eventName: "project.comment.created",
-        payload: { comment },
-        projectId,
-      });
-    }
-
     res.status(201).json({ comment });
+    // El comentario ya está confirmado: el evento se publica después y por destinatario (B6); un
+    // fallo de publicación se registra sin afectar a la respuesta. Los de documento no se publican.
+    if (commentType !== "document") void publishCommentCreated({ comment, projectId });
   } catch (error) {
     if (error.code === "23505") {
       res.status(409).json({ code: "COMMENT_CONFLICT", message: "Otra observación fue creada simultáneamente. Intenta de nuevo." });
@@ -337,19 +334,32 @@ export async function getProjectDocumentComments(req, res, next) {
 }
 
 /**
- * Construye la revalidación periódica de una suscripción SSE: la sesión debe seguir activa (no
- * revocada ni vencida, usuario activo, rol vigente) y el usuario actual debe conservar acceso al
- * proyecto. Sin `sid` (bypass local de pruebas) solo se revalida el acceso con el usuario de la petición.
+ * Construye la resolución del destinatario vigente de una suscripción SSE: la sesión debe seguir
+ * activa (no revocada ni vencida, usuario activo, rol vigente) y el usuario actual debe conservar
+ * acceso al proyecto. Sin `sid` (bypass local de pruebas) se usa el usuario de la petición.
  *
  * @param {import("express").Request} req - Petición autenticada que abrió el stream.
  * @param {number} projectId - Proyecto suscrito.
- * @returns {() => Promise<boolean>} Comprobación que devuelve true mientras el acceso sea vigente.
+ * @returns {() => Promise<object|null>} Usuario vigente con acceso, o null.
  */
-function createStreamReauthorization(req, projectId) {
+function createStreamRecipient(req, projectId) {
   const sessionPayload = req.session?.payload;
   return async () => {
     const currentUser = sessionPayload?.sid ? await loadSessionUser(sessionPayload) : req.user;
-    return Boolean(currentUser) && (await canAccessProjectComments(projectId, currentUser));
+    return currentUser && (await canAccessProjectComments(projectId, currentUser)) ? currentUser : null;
+  };
+}
+
+/**
+ * Convierte la resolución del destinatario en la revalidación periódica del stream: el acceso es
+ * vigente mientras haya un usuario actual con acceso al proyecto.
+ *
+ * @param {() => Promise<object|null>} resolveRecipient - Destinatario vigente o null.
+ * @returns {() => Promise<boolean>} Comprobación periódica.
+ */
+function toReauthorization(resolveRecipient) {
+  return async function reauthorizeStream() {
+    return Boolean(await resolveRecipient());
   };
 }
 
@@ -405,10 +415,13 @@ export async function streamProjectCommentEvents(req, res, next) {
     res.flushHeaders?.();
 
     let unsubscribe;
+    const resolveRecipient = createStreamRecipient(req, projectId);
     try {
       unsubscribe = subscribeToProjectEvents({
         projectId,
-        reauthorize: createStreamReauthorization(req, projectId),
+        // Revalidación periódica (cierra el stream) y, al publicar, destinatario vigente (B6).
+        reauthorize: toReauthorization(resolveRecipient),
+        resolveRecipient,
         response: res,
         userId: req.user.id,
       });

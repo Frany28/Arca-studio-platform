@@ -33,3 +33,15 @@ export const projectFileVersionRejectSchema = z.object({
   params: versionParams,
   body: z.object({ reason: z.string() }).strict(),
 });
+
+// Audiencias (Fase 1.2, B5): `client` (cliente propietario) o `showcase` (escaparate).
+const audienceParams = fileParams.extend({ audience: z.enum(["client", "showcase"]) });
+
+export const projectFileAudienceListSchema = z.object({ params: fileParams });
+
+export const projectFileAudienceGrantSchema = z.object({
+  params: audienceParams,
+  body: z.object({ versionId: positiveId }).strict(),
+});
+
+export const projectFileAudienceRevokeSchema = z.object({ params: audienceParams });

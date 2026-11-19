@@ -97,14 +97,18 @@ function toVersion(row) {
 
 /**
  * Lee un archivo de proyecto con los datos de su proyecto necesarios para decidir acceso y estado.
- * Con `lock`, bloquea la fila del archivo (FOR UPDATE) y la del proyecto (FOR SHARE) para
- * serializar versiones y revisiones del mismo archivo frente a cambios de estado del proyecto.
+ * Con `lock`, bloquea la fila del proyecto (FOR SHARE) y después la del archivo (FOR UPDATE) para
+ * serializar versiones, revisiones y audiencias frente a cambios de estado y a los comentarios.
+ * El orden importa (B6): crear un comentario bloquea el proyecto FOR UPDATE y, al insertar, su clave
+ * foránea toma FOR KEY SHARE sobre el archivo. Si aquí se tomara antes el archivo, ambos caminos se
+ * esperarían en ciclo (40P01). Proyecto → archivo es el orden único de todas estas escrituras.
  *
  * @param {{ fileId: number, projectId: number, userId: number, lock?: boolean }} options - Archivo, proyecto y usuario.
  * @param {{ query: Function }} [executor] - Cliente de la transacción (obligatorio con `lock`).
  * @returns {Promise<{ file: object, project: object }|null>} Contexto o null si no existe.
  */
 export async function findProjectFileContext({ fileId, lock = false, projectId, userId }, executor = poolExecutor) {
+  if (lock) await executor.query("select id from public.projects where id = $1 for share", [projectId]);
   const sql = lock ? `${FILE_CONTEXT_SQL} for update of f for share of p` : FILE_CONTEXT_SQL;
   const result = await executor.query(sql, [fileId, projectId, userId]);
   return result.rows[0] ? toFileContext(result.rows[0]) : null;

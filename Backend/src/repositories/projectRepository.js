@@ -3,6 +3,7 @@ import { toPublicProjectView } from "../domain/projectPublicView.js";
 import { normalizeProjectStatus, PROJECT_STATUS } from "../domain/projectStatus.js";
 import { pageResult } from "../utils/pagination.js";
 import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
+import { buildVisibleFileVersionSql } from "../utils/projectFileAudienceSql.js";
 
 /**
  * Transforma el valor de number a la representación pública esperada.
@@ -137,6 +138,34 @@ function toRecentProjectDocument(file) {
     ...file,
     created_at: file.file_created_at,
   });
+}
+
+/**
+ * Construye la unión de la miniatura de un proyecto: la imagen más reciente que el usuario puede ver
+ * según la política común de audiencias (utils/projectFileAudienceSql.js), con su versión visible.
+ * Con la activación apagada equivale a la unión anterior (imagen vigente más reciente).
+ *
+ * @param {object} user - Usuario autenticado.
+ * @param {number} firstParam - Primer parámetro posicional libre de la consulta.
+ * @returns {{ sql: string, params: unknown[] }} Fragmento SQL y sus parámetros.
+ */
+function buildProjectThumbnailSql(user, firstParam) {
+  const audience = buildVisibleFileVersionSql({ firstParam, user });
+  return {
+    params: audience.params,
+    sql: `left join lateral (
+        select file.id as file_id, version.id as version_id
+        from public.files file
+        ${audience.join}
+        where file.project_id = p.id
+          and file.deleted_at is null
+          and file.status <> 'deleted'
+          and ${audience.requireVersion}
+          and ${audience.fileTypeSql} like 'image/%'
+        order by file.created_at desc, file.id desc
+        limit 1
+      ) image_version on true`,
+  };
 }
 
 /**
@@ -352,6 +381,7 @@ export async function listProjectsForUser(
   const cursorDateParam = params.length + 1;
   const cursorIdParam = params.length + 2;
   const limitParam = params.length + 3;
+  const thumbnail = buildProjectThumbnailSql(user, params.length + 4);
 
   const result = await query(
     `
@@ -410,20 +440,7 @@ export async function listProjectsForUser(
         where assignment.project_id = p.id
           and employee.deleted_at is null
       ) employee_assignment on true
-      left join lateral (
-        select file.id as file_id, version.id as version_id
-        from public.files file
-        inner join public.file_versions version
-          on version.file_id = file.id
-          and version.version_number = file.current_version
-          and version.deleted_at is null
-        where file.project_id = p.id
-          and file.deleted_at is null
-          and file.status <> 'deleted'
-          and file.file_type like 'image/%'
-        order by file.created_at desc, file.id desc
-        limit 1
-      ) image_version on true
+      ${thumbnail.sql}
       where p.deleted_at is null
         and c.deleted_at is null
         and (${accessCondition})
@@ -431,7 +448,7 @@ export async function listProjectsForUser(
       order by p.updated_at desc, p.id desc
       limit $${limitParam}
     `,
-    [...params, cursor?.[0] || null, cursor?.[1] || null, limit + 1],
+    [...params, cursor?.[0] || null, cursor?.[1] || null, limit + 1, ...thumbnail.params],
   );
 
   return pageResult(
@@ -465,6 +482,7 @@ async function findProjectDetailByConditionForUser({
   const { condition: accessCondition, params } = getProjectAccess(user);
   params.push(conditionValue);
   const conditionParameter = `$${params.length}`;
+  const thumbnail = buildProjectThumbnailSql(user, params.length + 1);
 
   const projectResult = await query(
     `
@@ -523,27 +541,14 @@ async function findProjectDetailByConditionForUser({
         where assignment.project_id = p.id
           and employee.deleted_at is null
       ) employee_assignment on true
-      left join lateral (
-        select file.id as file_id, version.id as version_id
-        from public.files file
-        inner join public.file_versions version
-          on version.file_id = file.id
-          and version.version_number = file.current_version
-          and version.deleted_at is null
-        where file.project_id = p.id
-          and file.deleted_at is null
-          and file.status <> 'deleted'
-          and file.file_type like 'image/%'
-        order by file.created_at desc, file.id desc
-        limit 1
-      ) image_version on true
+      ${thumbnail.sql}
       where ${conditionSql(conditionParameter)}
         and p.deleted_at is null
         and c.deleted_at is null
         and (${accessCondition})
       limit 1
     `,
-    params,
+    [...params, ...thumbnail.params],
   );
 
   if (!projectResult.rows[0]) {
@@ -552,6 +557,9 @@ async function findProjectDetailByConditionForUser({
 
   const projectId = Number(projectResult.rows[0].id);
   const hasDirectAccess = hasDirectProjectAccess(projectResult.rows[0], user);
+  // Política común de audiencias: versión visible por archivo y usuario, filtrada antes del LIMIT.
+  const galleryAudience = buildVisibleFileVersionSql({ firstParam: 6, user });
+  const recentAudience = buildVisibleFileVersionSql({ firstParam: 2, user });
   // Requisitos, especificaciones y documentos recientes no forman parte de la vista
   // pública: sin acceso directo ni siquiera se consultan.
 
@@ -608,9 +616,9 @@ async function findProjectDetailByConditionForUser({
             file.id,
             file.title,
             file.description,
-            file.file_type,
+            ${galleryAudience.fileTypeSql} as file_type,
             file.file_category,
-            file.current_version,
+            ${galleryAudience.versionNumberSql} as current_version,
             version.id as current_version_id,
             version.file_extension,
             version.file_name,
@@ -622,10 +630,8 @@ async function findProjectDetailByConditionForUser({
             uploader.last_name as uploader_last_name,
             uploader.profile_photo_url as uploader_profile_photo_url
           from public.files file
-          left join public.file_versions version
-            on version.file_id = file.id
-            and version.version_number = file.current_version
-            and version.deleted_at is null
+          join public.projects p on p.id = file.project_id
+          ${galleryAudience.join}
           left join public.users uploader
             on uploader.id = file.uploaded_by
             and uploader.deleted_at is null
@@ -633,13 +639,14 @@ async function findProjectDetailByConditionForUser({
             and file.deleted_at is null
             and file.status <> 'deleted'
             and ($2::timestamptz is null or (file.created_at, file.id) < ($2::timestamptz, $3::bigint))
-            -- Sin acceso directo solo hay imágenes y videos. Filtrar antes del LIMIT
-            -- mantiene páginas completas y un cursor correcto.
-            and ($5::boolean or file.file_type like 'image/%' or file.file_type like 'video/%')
+            -- Sin acceso directo solo hay imágenes y videos. La política de audiencias también se
+            -- aplica antes del LIMIT: páginas completas y un cursor correcto.
+            and ($5::boolean or ${galleryAudience.fileTypeSql} like 'image/%' or ${galleryAudience.fileTypeSql} like 'video/%')
+            and ${galleryAudience.visibleCondition}
           order by file.created_at desc, file.id desc
           limit $4
         `,
-        [projectId, fileCursor?.[0] || null, fileCursor?.[1] || null, fileLimit + 1, hasDirectAccess],
+        [projectId, fileCursor?.[0] || null, fileCursor?.[1] || null, fileLimit + 1, hasDirectAccess, ...galleryAudience.params],
       ),
       queryWhen(hasDirectAccess, () => query(
         `
@@ -647,9 +654,9 @@ async function findProjectDetailByConditionForUser({
             file.id,
             file.title,
             file.description,
-            file.file_type,
+            ${recentAudience.fileTypeSql} as file_type,
             file.file_category,
-            file.current_version,
+            ${recentAudience.versionNumberSql} as current_version,
             version.id as current_version_id,
             version.file_extension,
             version.file_name,
@@ -661,22 +668,21 @@ async function findProjectDetailByConditionForUser({
             uploader.last_name as uploader_last_name,
             uploader.profile_photo_url as uploader_profile_photo_url
           from public.files file
-          left join public.file_versions version
-            on version.file_id = file.id
-            and version.version_number = file.current_version
-            and version.deleted_at is null
+          join public.projects p on p.id = file.project_id
+          ${recentAudience.join}
           left join public.users uploader
             on uploader.id = file.uploaded_by
             and uploader.deleted_at is null
           where file.project_id = $1
             and file.deleted_at is null
             and file.status <> 'deleted'
-            and file.file_type not like 'image/%'
-            and file.file_type not like 'video/%'
+            and ${recentAudience.fileTypeSql} not like 'image/%'
+            and ${recentAudience.fileTypeSql} not like 'video/%'
+            and ${recentAudience.visibleCondition}
           order by file.created_at desc, file.id desc
           limit 3
         `,
-        [projectId],
+        [projectId, ...recentAudience.params],
       )),
     ]);
 
@@ -779,6 +785,7 @@ export async function updateProjectVisibility(projectId, isPublic, user) {
   const { condition, params } = getDirectProjectAccess(user);
   const projectIdParam = params.length + 1;
   const visibilityParam = params.length + 2;
+  const thumbnail = buildProjectThumbnailSql(user, params.length + 3);
   const result = await query(
     `
       with updated_project as (
@@ -847,22 +854,9 @@ export async function updateProjectVisibility(projectId, isPublic, user) {
         where assignment.project_id = p.id
           and employee.deleted_at is null
       ) employee_assignment on true
-      left join lateral (
-        select file.id as file_id, version.id as version_id
-        from public.files file
-        inner join public.file_versions version
-          on version.file_id = file.id
-          and version.version_number = file.current_version
-          and version.deleted_at is null
-        where file.project_id = p.id
-          and file.deleted_at is null
-          and file.status <> 'deleted'
-          and file.file_type like 'image/%'
-        order by file.created_at desc, file.id desc
-        limit 1
-      ) image_version on true
+      ${thumbnail.sql}
     `,
-    [...params, projectId, isPublic],
+    [...params, projectId, isPublic, ...thumbnail.params],
   );
 
   return result.rows[0] ? toProject(result.rows[0]) : null;

@@ -52,6 +52,7 @@ const FILE_NOT_FOUND_MESSAGE = "No se encontro el archivo en este proyecto.";
 
 /**
  * Crea el 404 público de un archivo inexistente o inaccesible, sin revelar cuál de los dos es.
+ * Lo usan todas las operaciones de versiones, igual que la descarga y la retirada de archivos.
  *
  * @returns {NotFoundError} Error 404 FILE_NOT_FOUND.
  */
@@ -116,6 +117,7 @@ function assertCanAuthorVersion(context, user) {
 
 /**
  * Adapta el usuario autenticado al actor de las reglas del dominio.
+ * Las reglas de acceso solo necesitan su id, su rol y, en un cliente, su cliente.
  *
  * @param {{ id: number, clientId?: number|null, role?: { code?: string } }} user - Usuario autenticado.
  * @returns {{ id: number, role: string, clientId: number|null }} Actor.
@@ -126,9 +128,16 @@ function toActor(user) {
 
 /**
  * Registra en auditoría una operación sobre una versión, dentro de la transacción en curso.
+ * Si la auditoría falla, la transacción entera se revierte y la operación no se aplica.
  *
  * @param {{ query: Function }} client - Cliente de la transacción.
- * @param {object} entry - Acción, usuario, versión y valores.
+ * @param {object} entry - Registro de auditoría.
+ * @param {string} entry.action - Acción (`project_file.version_*`).
+ * @param {string} entry.description - Descripción legible.
+ * @param {object} entry.newValues - Valores resultantes.
+ * @param {object|null} [entry.oldValues] - Valores anteriores.
+ * @param {number} entry.userId - Usuario responsable.
+ * @param {number} entry.versionId - Versión afectada.
  * @returns {Promise<number>} Id del registro.
  */
 function auditVersion(client, { action, description, newValues, oldValues = null, userId, versionId }) {
@@ -456,8 +465,31 @@ export async function listProjectFileVersions({ cursor, fileId, limit, projectId
 }
 
 /**
+ * Ordena las versiones candidatas a la descarga sin `versionId`, igual que la política SQL común
+ * (utils/projectFileAudienceSql.js): heredado y equipo, la vigente; el resto, la autorizada al
+ * cliente y después las demás de mayor a menor número (la primera visible es la que se sirve).
+ *
+ * @param {object} request - Actor, contexto, autorizaciones activas y versiones.
+ * @param {object} request.actor - Actor del dominio.
+ * @param {{ file: object, project: object }} request.context - Archivo y proyecto.
+ * @param {{ clientVersionId: number|null }} request.grants - Autorizaciones activas.
+ * @param {object[]} request.versions - Versiones del archivo.
+ * @returns {object[]} Versiones en orden de preferencia.
+ */
+function defaultDownloadCandidates({ actor, context, grants, versions }) {
+  const current = resolveFileCurrentVersion(context, versions);
+  if (context.file.accessPolicy !== FILE_ACCESS_POLICY.PHASE_1_2 || hasProjectStaffAccess(actor, context.project)) {
+    return current ? [current] : [];
+  }
+  const byNumber = [...versions].sort((left, right) => right.versionNumber - left.versionNumber);
+  const shared = byNumber.find((version) => version.id === grants.clientVersionId);
+  return shared ? [shared, ...byNumber.filter((version) => version !== shared)] : byNumber;
+}
+
+/**
  * Resuelve qué versión se descarga y con qué metadatos, con la política del archivo: sin
- * `versionId`, la vigente; con él, esa versión si el usuario puede verla. Sirve el formato propio
+ * `versionId`, la visible preferente (vigente para el equipo, compartida para el cliente);
+ * con él, esa versión si el usuario puede verla. Sirve el formato propio
  * de la versión (o el del archivo en las heredadas) y anonimiza el nombre en el escaparate.
  *
  * @param {{ fileId: number, projectId: number, user: object, versionId?: number }} request - Descarga.
@@ -468,12 +500,20 @@ export async function resolveProjectFileDownload({ fileId, projectId, user, vers
   const context = await findProjectFileContext({ fileId, projectId, userId: actor.id });
   if (!context) return null;
   const versions = await listFileVersions(fileId);
-  const target = versionId
-    ? versions.find((version) => version.id === Number(versionId))
-    : resolveFileCurrentVersion(context, versions);
+  const grants = await findActiveAudienceGrants(fileId);
+  const candidates = versionId
+    ? versions.filter((version) => version.id === Number(versionId))
+    : defaultDownloadCandidates({ actor, context, grants, versions });
+  let target = null;
+  let access = false;
+  for (const candidate of candidates) {
+    access = await canViewVersion({ actor, context, grants, version: candidate, versions });
+    if (access) {
+      target = candidate;
+      break;
+    }
+  }
   if (!target) return null;
-  const access = await canViewVersion({ actor, context, version: target, versions });
-  if (!access) return null;
   const fileType = target.contentType ?? context.file.fileType;
   const showcaseName = getShowcaseFileName({ extension: target.extension, fileType, id: context.file.id });
   return {

@@ -1,8 +1,20 @@
-import { pool, query } from "../config/db.js";
+import { pool, query, withTransaction } from "../config/db.js";
+import { isProjectFileReviewEnabled } from "../config/projectFileReview.js";
 import { PROJECT_STATUS } from "../domain/projectStatus.js";
 import { sanitizeCommentMetadata } from "../utils/commentMetadata.js";
 import { encodeCursor, pageResult } from "../utils/pagination.js";
-import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
+import { getProjectAccessCondition } from "../utils/projectCommentAccessSql.js";
+import { buildCommentVisibilitySql } from "../utils/projectCommentAudienceSql.js";
+import {
+  canUserAccessCommentVersion,
+  isCommentVisibleTo,
+  lockCommentableProject,
+  resolveCommentFileTarget,
+} from "./projectCommentAudienceRepository.js";
+
+// Fase 1.2 (B6): con PROJECT_FILE_REVIEW_ENABLED, listados, creación y autores aplican la audiencia
+// de la versión comentada (utils/projectCommentAudienceSql.js) además del acceso al proyecto.
+// Apagada, las consultas y sus resultados son los anteriores.
 
 // Ventana que el cursor de sincronización vuelve a leer (P1-1). Supera statement_timeout (10 s), que
 // acota cuánto puede esperar el bloqueo un comentario antes de confirmarse.
@@ -47,6 +59,10 @@ function toProjectComment(row) {
     selection: targetMetadata?.selection || null,
     targetId: row.target_id || null,
     type: row.parent_comment_id ? "reply" : "comment",
+    // Aditivo (B6): los comentarios de imagen de un archivo 1.2 identifican la versión comentada.
+    ...(row.file_version_id && commentType !== "document"
+      ? { fileId: Number(row.file_id), fileVersionId: Number(row.file_version_id) }
+      : {}),
   };
 }
 
@@ -79,48 +95,6 @@ function toDocumentComment(row) {
             normalizedY: Number(row.pos_y),
             ...(row.page_number === null ? {} : { pageNumber: Number(row.page_number) }),
           },
-  };
-}
-
-/**
- * Obtiene la condición SQL de acceso al proyecto para que el flujo llamador pueda continuar.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
- *
- * @param {unknown} user - Usuario autenticado que ejecuta la operación.
- * @param {unknown} [projectAlias] - Valor de `projectAlias` requerido por esta operación.
- * @returns {object} Resultado producido por la operación.
- */
-function getProjectAccessCondition(user, projectAlias = "p") {
-  const roleCode = user?.role?.code;
-
-  if (roleCode === "admin") {
-    return {
-      params: [],
-      sql: "true",
-    };
-  }
-
-  if (roleCode === "architect") {
-    return {
-      params: [user.id],
-      sql: `((${projectAlias}.assigned_architect_id = $1 or exists (
-        select 1 from public.project_assignees assignment
-        where assignment.project_id = ${projectAlias}.id
-          and assignment.user_id = $1
-      )) and ${nonDraftProjectCondition(projectAlias)})`,
-    };
-  }
-
-  if (roleCode === "client" && user.clientId) {
-    return {
-      params: [user.clientId],
-      sql: `(${projectAlias}.client_id = $1 and ${nonDraftProjectCondition(projectAlias)})`,
-    };
-  }
-
-  return {
-    params: [],
-    sql: "false",
   };
 }
 
@@ -167,6 +141,8 @@ export async function findProjectCommentAuthorProfilePhoto(
   const projectIdParam = access.params.length + 1;
   const authorUserIdParam = access.params.length + 2;
   const statusParam = access.params.length + 3;
+  // Solo autores de comentarios que el usuario puede ver: no revela quién comentó versiones internas.
+  const visibility = buildCommentVisibilitySql({ firstParam: access.params.length + 4, user });
   const result = await query(
     `
       select u.profile_photo_url
@@ -180,14 +156,16 @@ export async function findProjectCommentAuthorProfilePhoto(
         and exists (
           select 1
           from public.project_comments pc
+          ${visibility.join}
           where pc.project_id = p.id
             and pc.user_id = u.id
             and pc.deleted_at is null
             and pc.status = $${statusParam}::comment_status
+            and ${visibility.condition}
         )
       limit 1
     `,
-    [...access.params, projectId, authorUserId, ACTIVE_COMMENT_STATUS],
+    [...access.params, projectId, authorUserId, ACTIVE_COMMENT_STATUS, ...visibility.params],
   );
 
   return result.rows[0]?.profile_photo_url || null;
@@ -206,6 +184,8 @@ export async function findProjectCommentAuthorProfilePhoto(
  */
 export async function listProjectComments(projectId, user, { cursor = null, limit = 25 } = {}) {
   const access = getProjectAccessCondition(user);
+  // La audiencia de cada versión se filtra antes del LIMIT: páginas y syncCursor sin huecos ocultos.
+  const visibility = buildCommentVisibilitySql({ firstParam: access.params.length + 6, user });
   const result = await query(
     `
       select
@@ -246,16 +226,18 @@ export async function listProjectComments(projectId, user, { cursor = null, limi
         on fv.id = pc.file_version_id
        and fv.file_id = f.id
        and fv.deleted_at is null
+      ${visibility.join}
       where pc.project_id = $${access.params.length + 1}
         and pc.deleted_at is null
         and pc.status = $${access.params.length + 2}::comment_status
         and p.deleted_at is null
         and (${access.sql})
+        and ${visibility.condition}
         and ($${access.params.length + 3}::timestamptz is null or (pc.created_at, pc.id) > ($${access.params.length + 3}::timestamptz, $${access.params.length + 4}::bigint))
       order by pc.created_at asc, pc.id asc
       limit $${access.params.length + 5}
     `,
-    [...access.params, projectId, ACTIVE_COMMENT_STATUS, cursor?.[0] || null, cursor?.[1] || null, limit + 1],
+    [...access.params, projectId, ACTIVE_COMMENT_STATUS, cursor?.[0] || null, cursor?.[1] || null, limit + 1, ...visibility.params],
   );
 
   const page = pageResult(
@@ -283,21 +265,59 @@ function buildCommentSyncCursor(row) {
 
 /**
  * Crea un comentario únicamente en proyectos accesibles y operativamente abiertos.
- * Bloquea la fila en PostgreSQL y excluye archivados y finished para evitar carreras de cierre.
+ * Con la revisión activada (B6), en una transacción con el proyecto bloqueado: la respuesta exige un
+ * comentario visible y un comentario de imagen de un archivo 1.2 guarda la versión que comenta.
  *
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} [options.commentType] - Valor de `options.commentType` requerido por esta operación.
- * @param {string} options.content - Valor de `options.content` requerido por esta operación.
- * @param {string} [options.parentCommentId] - Valor de `options.parentCommentId` requerido por esta operación.
- * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
- * @param {string} [options.targetId] - Valor de `options.targetId` requerido por esta operación.
- * @param {unknown} [options.targetMetadata] - Valor de `options.targetMetadata` requerido por esta operación.
- * @param {unknown} options.user - Valor de `options.user` requerido por esta operación.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @param {object} options - Comentario y usuario.
+ * @param {string} [options.commentType] - Tipo del comentario.
+ * @param {string} options.content - Texto.
+ * @param {number|null} [options.parentCommentId] - Comentario al que responde.
+ * @param {number} options.projectId - Proyecto.
+ * @param {string|null} [options.targetId] - Destino de la galería.
+ * @param {unknown} [options.targetMetadata] - Metadatos del destino.
+ * @param {number|null} [options.fileVersionId] - Versión comentada pedida (opcional, solo archivos 1.2).
+ * @param {object} options.user - Usuario autenticado.
+ * @returns {Promise<object|null>} Comentario creado o null si el destino no es accesible.
  */
-export async function createProjectCommentRecord({
+export async function createProjectCommentRecord(options) {
+  if (!isProjectFileReviewEnabled()) return insertTargetComment({ query }, { ...options, fileId: null, fileVersionId: null });
+  const { commentType = GENERAL_COMMENT_TYPE, fileVersionId = null, parentCommentId = null, projectId, targetId = null, user } = options;
+  return withTransaction(async (client) => {
+    if (!(await lockCommentableProject(client, { projectId, user }))) return null;
+    if (parentCommentId) {
+      // Una respuesta hereda el destino de su raíz; solo se admite si el usuario ve el comentario.
+      if (!(await isCommentVisibleTo(client, { commentId: parentCommentId, projectId, user }))) return null;
+      return insertTargetComment(client, { ...options, fileId: null, fileVersionId: null });
+    }
+    const target = await resolveCommentFileTarget(client, { commentType, fileVersionId, projectId, targetId, user });
+    if (!target) return null;
+    return insertTargetComment(client, { ...options, ...target });
+  });
+}
+
+/**
+ * Inserta un comentario no documental con su número de punto, bloqueando el proyecto y el destino.
+ * Una respuesta copia tipo, destino, metadatos, archivo y versión de su raíz. La numeración es por
+ * destino y versión comentada: los puntos visibles no dejan huecos de comentarios de otras versiones.
+ *
+ * @param {{ query: Function }} executor - Pool o cliente de la transacción.
+ * @param {object} options - Comentario, referencias de archivo y usuario.
+ * @param {string} [options.commentType] - Tipo del comentario raíz.
+ * @param {string} options.content - Texto.
+ * @param {number|null} [options.fileId] - Archivo 1.2 comentado (null en heredados y generales).
+ * @param {number|null} [options.fileVersionId] - Versión comentada (null en heredados y generales).
+ * @param {number|null} [options.parentCommentId] - Comentario al que responde.
+ * @param {number} options.projectId - Proyecto.
+ * @param {string|null} [options.targetId] - Destino de la galería.
+ * @param {unknown} [options.targetMetadata] - Metadatos del destino.
+ * @param {object} options.user - Usuario autenticado.
+ * @returns {Promise<object|null>} Comentario creado o null si el proyecto o la raíz no son accesibles.
+ */
+async function insertTargetComment(executor, {
   commentType = GENERAL_COMMENT_TYPE,
   content,
+  fileId = null,
+  fileVersionId = null,
   parentCommentId = null,
   projectId,
   targetId = null,
@@ -315,7 +335,11 @@ export async function createProjectCommentRecord({
     ACTIVE_COMMENT_STATUS,
     targetId,
     targetMetadata,
+    fileId,
+    fileVersionId,
   ];
+  const fileIdParam = access.params.length + 9;
+  const fileVersionIdParam = access.params.length + 10;
   const projectIdParam = access.params.length + 1;
   const userIdParam = access.params.length + 2;
   const parentIdParam = access.params.length + 3;
@@ -325,7 +349,7 @@ export async function createProjectCommentRecord({
   const targetIdParam = access.params.length + 7;
   const targetMetadataParam = access.params.length + 8;
 
-  const result = await query(
+  const result = await executor.query(
     `
       with accessible_project as (
         select p.id
@@ -346,25 +370,28 @@ export async function createProjectCommentRecord({
           coalesce(parent_pc.id, pc.id) as id,
           coalesce(parent_pc.comment_type, pc.comment_type) as comment_type,
           coalesce(parent_pc.target_id, pc.target_id) as target_id,
-          coalesce(parent_pc.target_metadata, pc.target_metadata) as target_metadata
+          coalesce(parent_pc.target_metadata, pc.target_metadata) as target_metadata,
+          case when parent_pc.id is null then pc.file_id else parent_pc.file_id end as file_id,
+          case when parent_pc.id is null then pc.file_version_id else parent_pc.file_version_id end as file_version_id
         from public.project_comments pc
+        -- Los comentarios de documento tienen su propia ruta: aquí solo raíces no documentales (antes
+        -- se distinguían por file_id NULL; desde B6 un comentario de imagen puede tener versión).
         left join public.project_comments parent_pc
           on parent_pc.id = pc.parent_comment_id
           and parent_pc.project_id = pc.project_id
           and parent_pc.deleted_at is null
           and parent_pc.status = $${statusParam}::comment_status
-          and parent_pc.file_id is null
-          and parent_pc.file_version_id is null
+          and parent_pc.comment_type <> 'document'::comment_type
         where pc.id = $${parentIdParam}
           and pc.project_id = $${projectIdParam}
           and pc.deleted_at is null
           and pc.status = $${statusParam}::comment_status
-          and pc.file_id is null
-          and pc.file_version_id is null
+          and pc.comment_type <> 'document'::comment_type
       ),
       target_lock as materialized (
+        -- Con versión NULL, concat_ws la omite: la clave es la misma que antes de B6.
         select pg_advisory_xact_lock(
-          hashtextextended(concat_ws(':', $${projectIdParam}::text, $${typeParam}::text, coalesce($${targetIdParam}::text, '')), 0)
+          hashtextextended(concat_ws(':', $${projectIdParam}::text, $${typeParam}::text, coalesce($${targetIdParam}::text, ''), $${fileVersionIdParam}::bigint::text), 0)
         )
       ),
       target_point_number as (
@@ -376,8 +403,7 @@ export async function createProjectCommentRecord({
           and existing_pc.target_id is not distinct from $${targetIdParam}::text
           and existing_pc.deleted_at is null
           and existing_pc.status = $${statusParam}::comment_status
-          and existing_pc.file_id is null
-          and existing_pc.file_version_id is null
+          and existing_pc.file_version_id is not distinct from $${fileVersionIdParam}::bigint
       ),
       inserted_comment as (
         insert into public.project_comments (
@@ -388,7 +414,9 @@ export async function createProjectCommentRecord({
           content,
           target_id,
           target_metadata,
-          status
+          status,
+          file_id,
+          file_version_id
         )
         select
           ap.id,
@@ -417,7 +445,9 @@ export async function createProjectCommentRecord({
             when $${parentIdParam}::bigint is null then $${targetMetadataParam}::jsonb
             else pc.target_metadata
           end,
-          $${statusParam}::comment_status
+          $${statusParam}::comment_status,
+          case when $${parentIdParam}::bigint is null then $${fileIdParam}::bigint else pc.file_id end,
+          case when $${parentIdParam}::bigint is null then $${fileVersionIdParam}::bigint else pc.file_version_id end
         from accessible_project ap
         left join parent_comment pc on true
         cross join target_lock
@@ -434,6 +464,8 @@ export async function createProjectCommentRecord({
         ic.content,
         ic.target_id,
         ic.target_metadata,
+        ic.file_id,
+        ic.file_version_id,
         ic.created_at,
         u.first_name,
         u.last_name,
@@ -474,6 +506,8 @@ export async function listDocumentComments({
 }) {
   const access = getProjectAccessCondition(user);
   const offset = access.params.length;
+  // El servicio ya rechaza versiones no visibles; la condición repite la política en la consulta.
+  const visibility = buildCommentVisibilitySql({ firstParam: offset + 8, user });
   const result = await query(
     `
       select pc.*, ca.page_number, ca.pos_x, ca.pos_y, ca.anchor_context_json,
@@ -487,7 +521,9 @@ export async function listDocumentComments({
       left join public.comment_anchors ca
         on ca.comment_id = coalesce(pc.parent_comment_id, pc.id)
        and ca.anchor_type = 'document'::anchor_type
-      where pc.project_id = $${offset + 1}
+      ${visibility.join}
+      where ${visibility.condition}
+        and pc.project_id = $${offset + 1}
         and pc.file_id = $${offset + 2}
         and pc.file_version_id = $${offset + 3}
         and pc.comment_type = 'document'::comment_type
@@ -508,6 +544,7 @@ export async function listDocumentComments({
       cursor?.[0] || null,
       cursor?.[1] || null,
       limit + 1,
+      ...visibility.params,
     ],
   );
   return pageResult(result.rows, limit, toDocumentComment, (row) => [row.created_at, String(row.id)]);
@@ -566,6 +603,12 @@ export async function createDocumentCommentRecord({
       params,
     );
     if (!target.rows[0]) {
+      await client.query("rollback");
+      return null;
+    }
+    // B6: tras bloquear el proyecto, en una sentencia nueva (ve las autorizaciones confirmadas),
+    // la versión concreta debe ser visible para el usuario.
+    if (isProjectFileReviewEnabled() && !(await canUserAccessCommentVersion(client, { fileId, fileVersionId, projectId, user }))) {
       await client.query("rollback");
       return null;
     }

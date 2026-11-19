@@ -1,5 +1,37 @@
 import { query } from "../config/db.js";
+import { isProjectFileReviewEnabled } from "../config/projectFileReview.js";
 import { pageResult, preciseCursorTimestampSql } from "../utils/pagination.js";
+import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
+
+/**
+ * Une la versión de portada de una solicitud: en sus adjuntos (también transferidos), la que aportó
+ * el cliente, igual que la ruta de la solicitud; en imágenes nuevas del proyecto, la política de
+ * audiencias (1.2: compartida o suya, `$2`). Apagada la activación, la unión anterior (vigente).
+ *
+ * @returns {string} Fragmento SQL `inner join` con alias `version`.
+ */
+function projectRequestCoverVersionJoin() {
+  if (!isProjectFileReviewEnabled()) {
+    return `inner join public.file_versions version
+          on version.file_id = file.id
+          and version.version_number = file.current_version
+          and version.deleted_at is null`;
+  }
+  return `inner join public.file_versions version
+          on version.file_id = file.id
+          and version.deleted_at is null
+          and case
+            when file.project_request_id is not distinct from request.id
+              or file.origin_project_request_id is not distinct from request.id
+              then version.id = ${requestAttachmentVersionIdSql("file")}
+            else (file.access_policy is null and version.version_number = file.current_version)
+              or (file.access_policy = 1 and (
+                version.id = (select audience_grant.file_version_id from public.project_file_audience_grants audience_grant
+                  where audience_grant.file_id = file.id and audience_grant.audience = 'client_owner' and audience_grant.ended_at is null)
+                or version.uploaded_by = $2::bigint
+              ))
+          end`;
+}
 
 const SELECT_FIELDS = `
   id,
@@ -163,10 +195,7 @@ export async function listProjectRequestsForUser(user, { cursor, limit }) {
       left join lateral (
         select file.id as cover_file_id, version.id as cover_file_version_id
         from public.files file
-        inner join public.file_versions version
-          on version.file_id = file.id
-          and version.version_number = file.current_version
-          and version.deleted_at is null
+        ${projectRequestCoverVersionJoin()}
         where file.deleted_at is null
           and file.status <> 'deleted'
           and file.file_type like 'image/%'

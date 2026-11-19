@@ -204,21 +204,21 @@ Dominio puro. El catálogo de carpetas participa en las altas de proyectos (ver 
 
 Dominio puro, sin PostgreSQL ni almacenamiento. La conservación ya se aplica (`storedUpload` y `storedFileRetentionService` consultan la regla); revisión, versiones, audiencias y garantías todavía no los usa ningún flujo y no cambian comportamiento. Clasificación (carpeta), aprobación (versión) y visibilidad (audiencias) son independientes.
 
-- `domain/projectFileDecisions.js`: registro de decisiones abiertas (`FILE_PENDING_DECISIONS`): D3 (quién comparte y autoriza el escaparate), D4 (versiones compartidas antes), DA1 (archivado y sus efectos), DA2 (aprobación automática), DA3 (publicar al aprobar), DA4 (restricciones nuevas por estado del proyecto: D10 y D8) y DA5 (quién aprueba). `pendingFileDecision` rechaza identificadores no registrados. Un resultado `pending_decision` no autoriza ni prohíbe nada: el flujo que lo reciba debe esperar la decisión.
+- `domain/projectFileDecisions.js`: registro de decisiones abiertas (`FILE_PENDING_DECISIONS`): DA1 (archivado y sus efectos) y DA4 (restricciones nuevas por estado del proyecto: D10 y D8). DA2, DA3 y DA5 se resolvieron en B4, y D3 y D4 en B5 (`FILE_CONFIRMED_RULES`). `pendingFileDecision` rechaza identificadores no registrados. Un resultado `pending_decision` no autoriza ni prohíbe nada: el flujo que lo reciba debe esperar la decisión.
 - `domain/projectFileRetention.js` (`evaluateStoredFileOperation`): borrar el objeto, borrar una versión o retirar un archivo guardado está prohibido; cancelar una selección sin enviar está permitido; descartar un objeto solo si se comprobó que no tiene registro (registrado o sin verificar: se conserva); archivar y reactivar dependen de DA1.
 - `domain/projectFileReview.js`:
-  - estados `pending`, `approved` y `rejected`; una versión se revisa una sola vez y el rechazo exige motivo (hasta 500 caracteres: **propuesta PR4**). Las versiones heredadas (sin estado) cuentan como vigentes y no se revisan;
+  - estados `pending`, `approved` y `rejected`; una versión se revisa una sola vez y el rechazo exige motivo (hasta 500 caracteres: PR4, confirmada en B4). Las versiones heredadas (sin estado) cuentan como vigentes y no se revisan;
   - versión vigente: la aprobada o heredada de mayor número (`resolveCurrentVersion`); una pendiente o rechazada nunca la desplaza;
-  - `planNewVersion`: reemplazar y restaurar crean una versión nueva con motivo del cambio (hasta 255, como `change_note`), con el número siguiente y como máximo una pendiente por archivo (**propuesta PR1**). Restaurar solo admite una versión aprobada distinta de la vigente (**propuesta PR2**) y **reutiliza su objeto** (`storage.mode = "reuse_object"`), conservando todo el historial;
-  - revisar exige acceso de equipo; qué roles revisan depende de DA5. La subida del arquitecto nace pendiente; las del administrador y del cliente dependen de DA2.
+  - `planNewVersion`: reemplazar y restaurar crean una versión nueva con motivo del cambio (hasta 255, como `change_note`), con el número siguiente y como máximo una pendiente por archivo (PR1, confirmada en B4). Restaurar solo admite una versión aprobada (PR2, confirmada en B4) y **reutiliza su objeto** (`storage.mode = "reuse_object"`), conservando todo el historial;
+  - solo el administrador aprueba y rechaza (DA5, confirmada en B4) y toda versión nueva nace pendiente, también la del administrador y la del cliente (DA2, confirmada en B4).
 - `domain/projectFileAccess.js` (`evaluateFileVersionAccess`):
   - política heredada (`accessPolicy` NULL): reproduce el acceso actual (solo la versión vigente; administrador siempre; equipo y propietario fuera de draft; imágenes y videos de proyectos públicos, anonimizados);
-  - política 1.2: el equipo ve todas las versiones; el cliente propietario, la compartida (`clientVersionId`); las compartidas antes dependen de D4; el escaparate, solo la versión autorizada de una imagen o video de un proyecto público finalizado, anonimizada;
+  - política 1.2: el equipo ve todas las versiones; el cliente propietario, la compartida (`clientVersionId`); las compartidas antes no dan acceso (D4, confirmada en B5); el escaparate, solo la versión autorizada de una imagen o video de un proyecto público finalizado, anonimizada;
   - **regla unificada de versiones pendientes y rechazadas**: las ve quien tiene acceso de equipo (`hasProjectStaffAccess`: administrador, también en draft; arquitecto asignado o responsable fuera de draft) o su autor mientras conserve el acceso al proyecto. Lo público nunca da acceso de equipo y un draft no existe para quien no es administrador;
   - archivos archivados: DA1; retirados heredados: sin acceso;
-  - `evaluateFileAudienceChange`: compartir o autorizar el escaparate exige acceso de equipo y versión aprobada; el escaparate, además, proyecto público finalizado, imagen o video y una versión ya compartida con el cliente (**propuesta PR3**). Quién lo hace depende de D3, y aprobar no comparte nada (`resolveClientAudienceOnApproval`, DA3).
+  - `evaluateFileAudienceChange`: solo el administrador comparte o autoriza el escaparate (D3), con una versión aprobada (AU2); el escaparate exige además proyecto público finalizado e imagen o video, y es independiente del cliente (AU1). Aprobar no comparte nada (`resolveClientAudienceOnApproval`, DA3 confirmada en B4). La propuesta PR3 se retiró en B5.
 - `domain/projectWarrantyDocuments.js`: un documento de garantía vive en «Documentos › Garantías» (o en una subcarpeta suya) y se vincula solo con garantías vigentes del mismo proyecto; puede respaldar varias. Mientras tenga vínculos no sale de esa ubicación. Se resuelve con la política común: el equipo recibe la versión vigente y el cliente, la compartida; sin versión compartida o tras retirar el acceso, la garantía sigue visible y el documento se omite. El escaparate nunca lo expone. Retirar una garantía conserva sus vínculos como historial.
-- **Propuestas sin confirmar** (`FILE_PROPOSED_RULES`): PR1 (una sola versión pendiente por archivo), PR2 (restaurar solo versiones aprobadas distintas de la vigente), PR3 (el escaparate exige una versión compartida con el cliente) y PR4 (motivo de rechazo de hasta 500 caracteres). El dominio las aplica y marca su resultado con `proposal`; siguen pendientes de aprobación y PostgreSQL no las impone.
+- **Reglas confirmadas en B4** (`FILE_CONFIRMED_RULES`): PR1 (una sola versión pendiente por archivo), PR2 (restaurar exige una versión aprobada; restaurar la vigente no se prohíbe), PR4 (motivo de rechazo de hasta 500 caracteres), DA2, DA3 y DA5; en B5, D3, D4, AU1 y AU2. **Propuestas sin confirmar** (`FILE_PROPOSED_RULES`, resultado marcado con `proposal`): PR5 (reemplazan y restauran el equipo o el autor del archivo) y PR6 (una sola versión activa en el escaparate: autorizar otra sustituye la anterior). PostgreSQL no impone ninguna propuesta.
 - Pruebas: `tests/projectFileDomain.test.js`.
 
 ### Expansión estructural: revisión, versiones, audiencias y garantías (B3, Fase 1.2)
@@ -302,6 +302,192 @@ No modifica filas: las carpetas existentes quedan como personalizadas y los proy
   3. los existentes no: necesitan un comando de mantenimiento revisable, con `ensureProjectSystemFolders` por proyecto, informe de colisiones de nombre (`findSystemFolderNameCollisions`) y confirmación explícita, sin adoptar carpetas por nombre;
   4. retirar una carpeta del catálogo no borra filas: la verificación ignora las claves retiradas, la API las sigue protegiendo y PostgreSQL impide su borrado lógico.
 - Pruebas: `tests/projectSystemFolders.test.js` (operación con simulación) y `tests/projectSystemFolders.integration.test.js`. Esta última es opcional (`ARCA_PROJECT_FOLDERS_DB_TESTS=1` y `ARCA_PROJECT_FOLDERS_TEST_DATABASE_URL` local) y comprueba preflight, migración y postcheck, las tres rutas, repetición, concurrencia, rollback y protección.
+
+### Versiones y revisión de archivos de proyecto (B4, Fase 1.2)
+
+**Activación coordinada.** `PROJECT_FILE_REVIEW_ENABLED=true` (`config/projectFileReview.js`), apagada por defecto y leída en cada petición. Apagada, el backend conserva exactamente su comportamiento anterior:
+- la carga ejecuta las mismas sentencias de siempre, sin las columnas de B3: v1 vigente y `access_policy` NULL;
+- la descarga usa `findProjectFileForDownload` e ignora `versionId`;
+- las rutas nuevas responden 404 `API_ROUTE_NOT_FOUND` antes de autenticar (`middlewares/projectFileReview.js`).
+
+Lo comprueban `tests/projectFileVersions.test.js`, que compara el SQL literal de la carga, y la integración.
+
+**Reglas aprobadas para B4** (`FILE_CONFIRMED_RULES`):
+- solo el administrador aprueba y rechaza (DA5);
+- toda versión nueva nace pendiente, también las subidas del administrador y del cliente (DA2);
+- una sola pendiente por archivo (PR1);
+- reemplazar exige motivo y conserva las versiones anteriores;
+- restaurar una versión aprobada crea una pendiente nueva, registra `restored_from_version_id` y reutiliza el objeto almacenado (PR2). Restaurar la vigente no está prohibido;
+- rechazar exige motivo de 1 a 500 caracteres (PR4);
+- aprobar no comparte con el cliente (DA3): no crea autorizaciones y la respuesta devuelve `sharedWithClient: false`.
+
+**Regla aplicada sin confirmación expresa (PR5).** Pueden reemplazar y restaurar quienes tienen acceso de equipo al proyecto, o el autor del archivo mientras conserve el acceso. Un draft solo existe para el administrador.
+
+**Módulos**
+- `repositories/projectFileVersionRepository.js`: contexto del archivo y su proyecto. En las escrituras bloquea `FOR UPDATE` la fila del archivo y `FOR SHARE` la del proyecto. Además: versiones con autor y revisor, autorizaciones activas, alta de una versión pendiente (siempre `is_current = false`) y aprobación o rechazo.
+- `services/projectFileVersionService.js`: aplica el dominio (`projectFileReview`, `projectFileAccess`), las transacciones, la auditoría y el almacenamiento.
+- `controllers/projectFileVersionController.js`, `validation/projectFileVersionSchemas.js` y las rutas en `routes/projects.js`. Contrato en `docs/API_CONTRACT.md`.
+
+**Comportamiento con la activación encendida**
+- **Carga nueva.** El archivo usa `access_policy = 1` y su v1 nace pendiente: `current_version` NULL, `is_current = false` y `content_type` informado.
+- **Reemplazo.**
+  - Se comprueba todo antes de transferir.
+  - El objeto se transfiere sin conexiones abiertas, con una **clave única por intento** (`buildStorageObjectKey({ attemptId })`, segmento `v<n>-<id>`). Así dos reemplazos simultáneos nunca escriben la misma clave; sin esto, el segundo podría sobrescribir el objeto del primero ya registrado.
+  - Con el archivo bloqueado se repiten permisos, estado, «una sola pendiente» y número de versión.
+  - Si el registro falla, `storeThenRecord` descarta el objeto solo si ninguna versión registró su clave.
+- **Revisión.** Aprobar convierte la versión en vigente: primero se retira `is_current` de la anterior, después se marca la nueva y se actualiza `files.current_version`. Rechazar conserva la vigente.
+- **Proyectos de solo lectura.** Ni versiones nuevas ni revisión en proyectos archivados o finalizados (409). En un draft, solo el administrador.
+- **Historial.** Se lee con la política del archivo y las autorizaciones activas: el equipo ve todas las versiones, el autor las suyas y el cliente la compartida. El motivo del rechazo y el revisor solo se muestran al equipo y al autor. La paginación usa un cursor por número de versión sobre las versiones visibles de un archivo (son pocas y se filtran en el servicio).
+- **Descarga.**
+  - Sin `versionId`, sirve la versión visible preferente (desde B5: la vigente para el equipo, la compartida para el cliente); con él, esa versión si el usuario puede verla, con su `content_type`.
+  - En un archivo heredado, la vigente es exactamente la de `files.current_version`, como en la consulta anterior. Un `versionId` distinto responde 404, mientras que con la activación apagada se ignoraba.
+  - La ETag usa la versión servida.
+- **Archivos heredados.** No admiten versiones nuevas (409 `FILE_VERSIONING_UNAVAILABLE`) hasta su compatibilidad. Convertirlos ahora cambiaría su audiencia: con la regla heredada, aprobar una versión nueva la haría visible al cliente al instante, y eso contradice DA3.
+- **Auditoría.** `project_file.version_submitted`, `version_restored`, `version_approved` y `version_rejected`, en la misma transacción. Si la auditoría falla, la operación se revierte.
+- **Conservación.** Ninguna operación borra versiones ni objetos; retirar un archivo sigue respondiendo 409 (B1).
+
+**Dependencias antes de encender la activación en un entorno compartido**
+1. Migración `20261118120000_project_file_review_audience_expand` aplicada, con su procedimiento.
+2. ~~Audiencias en todas las lecturas~~ y ~~compartir con el cliente y escaparate~~: resueltas en B5 (sección siguiente).
+3. **Comentarios y SSE por audiencia (B6).**
+4. **Compatibilidad de archivos heredados (B9).** Hasta entonces no admiten versiones.
+5. **Scripts de subida.** Deben escribir la política explícitamente o negarse a ejecutarse.
+6. **Frontend.** Debe mostrar que una carga queda pendiente, la revisión, el historial y la restauración.
+7. **Notificaciones de aprobación y rechazo** (Figma: «será notificado»): todavía no se envían.
+8. **Opcional:** una restricción única parcial en PostgreSQL para PR1. Hoy la garantiza el bloqueo de la fila del archivo en todas las rutas de la aplicación.
+
+**Pruebas**
+- `tests/projectFileVersions.test.js`.
+- `tests/projectFileDomain.test.js`.
+- `tests/projectFileVersions.integration.test.js` (opcional: `ARCA_FILE_VERSIONS_DB_TESTS=1` y `ARCA_FILE_VERSIONS_TEST_DATABASE_URL` local). Cubre la activación apagada, la subida pendiente, permisos, rechazo con motivo, aprobación sin compartir, reemplazo con formato propio, restauración que reutiliza el objeto, historial con cursor, autor cliente, archivos heredados, draft y solo lectura, concurrencia (tres reemplazos con las transferencias sincronizadas y dos aprobaciones), rollback por fallo de auditoría y compensación del objeto.
+
+### Audiencias y controles de acceso de archivos de proyecto (B5, Fase 1.2)
+
+Bajo la misma activación coordinada (`PROJECT_FILE_REVIEW_ENABLED`, apagada por defecto). Apagada, todas las lecturas usan exactamente las uniones anteriores, sin columnas ni tablas de B3, y las rutas de audiencias responden 404 `API_ROUTE_NOT_FOUND`.
+
+**Reglas aprobadas** (`FILE_CONFIRMED_RULES`):
+- solo el administrador comparte versiones con el cliente y autoriza su publicación en el escaparate (D3);
+- el cliente consulta la versión con autorización activa; las sustituidas quedan como historial (D4);
+- las dos audiencias tienen autorizaciones independientes (AU1);
+- compartir exige una versión aprobada del mismo archivo (AU2); aprobar sigue sin compartir (DA3);
+- se mantiene el acceso del autor a sus propias versiones.
+
+**Gestión** (`services/projectFileAudienceService.js`, `repositories/projectFileAudienceRepository.js`, `controllers/projectFileAudienceController.js`). En una transacción se bloquea la fila del archivo y se comprueban:
+- el estado del proyecto (archivado: 409);
+- la política del archivo (heredado: 409 `FILE_AUDIENCE_UNAVAILABLE`, hasta B9);
+- la versión, que debe ser del archivo;
+- el dominio (`evaluateFileAudienceChange`).
+
+Autorizar la misma versión es idempotente. Autorizar otra cierra la activa como `superseded`; revocar la cierra como `revoked`. Las filas nunca se borran. Las fechas usan `clock_timestamp()` tras el bloqueo: `now()` es el inicio de la transacción y podía ser anterior a la autorización que otra transacción acababa de confirmar, lo que violaba `chk_project_file_audience_grants_end` (lo detectó la prueba de concurrencia). Auditoría `project_file.audience_granted` y `project_file.audience_revoked` en la misma transacción. **PR6 (propuesta, pendiente de aprobación).** Definición (`FILE_PROPOSED_RULES.PR6`): «Una sola versión autorizada por audiencia: autorizar otra versión en el escaparate sustituye la anterior, como en el cliente».
+- **Comportamiento que introduce:** `PUT …/audiences/showcase` con otra versión cierra la activa como `superseded` en lugar de añadir una segunda; la respuesta expone `showcase` como una sola autorización. En el cliente la misma sustitución es D4, confirmada.
+- **Código que depende de ella:** solo `SUPERSEDE_RULE.showcase` en `services/projectFileAudienceService.js` (cierre previo a la nueva autorización, registrado en la auditoría como `oldValues.rule = "PR6"`), y la forma de `showcase` en la respuesta (`toAudienceState`).
+- **Lo que no depende de ella:** PostgreSQL (solo hay índice único de autorización activa para el cliente), las lecturas (`showcaseVersionIds` y la política SQL admiten varias versiones activas y eligen la de mayor número) y la caché.
+- **Si no se aprueba:** se elimina la sustitución del escaparate en ese punto y `showcase` pasa a ser una lista; no hace falta migración.
+
+**Política común de lectura** (`utils/projectFileAudienceSql.js`, traducción SQL de `domain/projectFileAccess.js`). `buildVisibleFileVersionSql` añade una unión `LATERAL` que elige la versión visible de cada archivo para el usuario:
+- heredado: la vigente;
+- equipo: la vigente aprobada;
+- propietario: la autorizada al cliente o las que subió él;
+- resto: la autorizada al escaparate, en proyectos públicos finalizados e imágenes o videos.
+
+Su condición va en el `WHERE`, antes del `LIMIT` y del cursor. La aplican:
+- la galería del detalle;
+- los documentos recientes;
+- las miniaturas del listado, del detalle y de la publicación (`buildProjectThumbnailSql`);
+- la portada de las solicitudes (`projectRequestCoverVersionJoin`).
+
+La descarga y el historial usan el dominio en el servicio. Sin `versionId`, `defaultDownloadCandidates` elige la misma versión que el SQL. El acceso al proyecto y la restricción de los drafts siguen en cada consulta; la política repite la de los drafts, que solo existen para el administrador.
+
+**Caché y revocación** (`utils/projectFileCache.js`, `controllers/fileController.js`). Encendida:
+- `private, no-cache` con ETag por versión servida y representación (`direct`/`showcase`) y `Vary: Cookie, Authorization`;
+- el 304 se decide **después** de resolver la autorización y **antes** de leer el almacenamiento;
+- una autorización sustituida o revocada responde 200 con otra ETag o 404, nunca 304;
+- sin `immutable`: una revocación surte efecto en la siguiente petición.
+
+Apagada, se mantiene la caché anterior.
+
+**Rutas de solicitudes** (revisión de B5). Los adjuntos de solicitud se crean siempre con la regla heredada y pasan al proyecto al aprobar la solicitud (`origin_project_request_id`), que nace en draft: durante la configuración el cliente solo los consulta por la ruta de la solicitud. La primera versión de B5 excluía de esa ruta los archivos 1.2 (404) porque la ruta servía la versión vigente sin la política de audiencias: una versión interna posterior, aprobada pero no compartida, habría llegado al cliente. Hoy no afectaba a ningún adjunto real, pero tras la compatibilidad (B9) habría cortado el acceso legítimo del cliente a lo que él mismo aportó.
+
+Se sustituyó por una regla por versión (`requestAttachmentVersionIdSql` en `utils/projectFileAudienceSql.js`): la ruta sirve la versión vigente mientras el adjunto pertenece a la solicitud y, tras transferirlo, la que aportó el cliente (la más reciente creada hasta `project_requests.reviewed_at`, o la v1). Las versiones posteriores del equipo nunca se sirven por esta ruta, ni a los clientes ni al administrador. La misma versión da nombre y tamaño en `listProjectRequestFiles` (detalle del cliente) y en el flujo de trabajo (`workflowRequestRelations`), y es la portada de la solicitud para sus adjuntos. Con la activación apagada todas estas consultas usan exactamente las uniones anteriores.
+
+**Contadores.** `file_count` de las carpetas en la configuración solo lo ve el administrador (equipo completo) y no cambia. No hay otros contadores de archivos expuestos al cliente.
+
+**Dependencias restantes antes de encender la activación en un entorno compartido**
+1. ~~Comentarios y SSE (B6)~~: resueltos en B6 (sección siguiente).
+2. **Compatibilidad de archivos heredados (B9):** versiones y audiencias para los archivos `access_policy` NULL.
+3. **Scripts de subida:** deben escribir la política explícitamente o negarse a ejecutarse.
+4. **Frontend:** carga pendiente, revisión, historial, restauración y gestión de audiencias para el administrador.
+5. **Notificaciones** de aprobación, rechazo y compartición.
+6. **Confirmación de PR5 y PR6**, y decisiones DA1 (archivado y sus efectos sobre las audiencias) y DA4 (restricciones por estado).
+
+**Pruebas**
+- `tests/projectFileCache.test.js`: cabeceras de revalidación, `If-None-Match` y SQL común (apagada, la unión anterior sin parámetros).
+- `tests/projectFileDomain.test.js` y `tests/fileContexts.test.js`: reglas D3, D4, AU1 y AU2.
+- `tests/projectFileAudiences.integration.test.js` (opcional: `ARCA_FILE_AUDIENCES_DB_TESTS=1` y `ARCA_FILE_AUDIENCES_TEST_DATABASE_URL` local). Cubre:
+  - la matriz de actores (administrador, arquitecto asignado y ajeno, cliente propietario y ajeno);
+  - proyectos privado en curso, público finalizado y draft;
+  - archivos compartidos, no compartidos, pendientes, rechazados, del propio cliente y heredados;
+  - detalle, documentos recientes, historial y descarga;
+  - revocación con ETag y 304 sin leer el almacenamiento;
+  - escaparate independiente y anonimizado;
+  - permisos y errores;
+  - paginación con filtro previo al límite;
+  - miniatura y portada de solicitud;
+  - descarga por la ruta de solicitudes de la versión aportada, nunca de una interna posterior;
+  - autorizaciones concurrentes (seis simultáneas: una sola activa, regla D4 en la auditoría);
+  - sustitución en el escaparate con la regla PR6 registrada en la auditoría;
+  - conservación de versiones y objetos;
+  - la activación apagada.
+- `tests/projectRequestLifecycle.integration.test.js`, prueba «Fase 1.2 (B5)», con el recorrido completo:
+  - el cliente aporta una imagen y un PDF, el arquitecto revisa y el administrador aprueba;
+  - en draft, el cliente consulta sus adjuntos por la solicitud y el proyecto le responde 404;
+  - el archivo heredado no admite versiones (409);
+  - simulación de B9: la foto pasa a 1.2 y el equipo incorpora una versión interna aprobada;
+  - la solicitud sigue sirviendo y nombrando lo aportado, también en el flujo de trabajo y la portada;
+  - draft → pending: la portada se lee por el proyecto con la versión del cliente, igual que el detalle, la miniatura del listado y la descarga sin `versionId`; la interna responde 404;
+  - compartir la interna la entrega por el proyecto, mientras la solicitud mantiene la aportada.
+
+### Comentarios y SSE según la audiencia de cada versión (B6, Fase 1.2)
+
+Bajo la misma activación coordinada. Apagada, las consultas no añaden uniones ni condiciones y los eventos se difunden como antes.
+
+**Política** (`domain/projectCommentAudience.js` y su traducción SQL `utils/projectCommentAudienceSql.js`). Sobre el acceso al proyecto (`utils/projectCommentAccessSql.js`, que ya excluye drafts salvo al administrador), cada comentario sigue la audiencia de la versión que comenta, con la misma regla que las descargas de B5:
+- sin archivo (general, o `target_id` que no identifica un archivo del proyecto) y archivos heredados: todo el proyecto, su significado histórico;
+- versión concreta de un archivo 1.2: el equipo; el cliente si es la versión con autorización activa del cliente o la subió él;
+- comentario de imagen de un archivo 1.2 sin versión inequívoca: el equipo y su autor.
+
+El archivo comentado se resuelve con `file_id` (documentos e imágenes desde B6) o, en los comentarios anteriores de imagen, video y panorámica, con el `target_id` numérico de la galería (`<id>` o `project-file-<id>`, siempre del mismo proyecto). Se aplica en el listado general (antes del `LIMIT`, el cursor y el `syncCursor`), en el listado y la creación de comentarios de documento (acceso a la versión concreta), en las respuestas (la raíz debe ser visible), en la creación de comentarios de galería y en la foto del autor (solo autores de comentarios visibles).
+
+**Creación** (`createProjectCommentRecord`, `projectCommentAudienceRepository`). Encendida, en una transacción: bloqueo del proyecto (FOR UPDATE), comprobación de la raíz, resolución de la versión y alta. Un comentario de galería de un archivo 1.2 guarda `file_id` y `file_version_id`: la versión pedida, si es visible, o la que la galería muestra a ese usuario (`buildVisibleFileVersionSql`). Las respuestas heredan archivo y versión de la raíz. Los comentarios de documento comprueban la versión tras bloquear el proyecto, en una sentencia nueva.
+
+**Contadores.** Los puntos de panorámica se numeran por destino y versión, y la migración `20261119120000_project_comment_version_points` lleva la unicidad al mismo criterio (con versión NULL es idéntica a la anterior). Los de documento ya eran por versión. Los de imagen y video los calcula el frontend sobre los comentarios visibles. Así ningún número revela comentarios ocultos.
+
+**Concurrencia y orden de bloqueos.** Cambiar una autorización bloquea el proyecto FOR SHARE y crear un comentario FOR UPDATE: la comprobación de la versión, hecha después del bloqueo, ve siempre las autorizaciones confirmadas (una revocación en curso hace esperar al comentario, que después responde 404). La prueba de concurrencia encontró un interbloqueo (40P01): las escrituras de versiones y audiencias tomaban el archivo FOR UPDATE y el proyecto FOR SHARE en la misma sentencia, mientras el comentario, con el proyecto bloqueado, esperaba el FOR KEY SHARE de su clave foránea sobre el archivo. `findProjectFileContext` bloquea ahora primero el proyecto y después el archivo: proyecto → archivo es el orden único de todas estas escrituras.
+
+**SSE** (`services/projectEvents.js`, `services/projectCommentEvents.js`).
+- Cada stream registra cómo resolver su destinatario vigente (sesión y acceso al proyecto). `publishProjectEventToRecipients` lo resuelve justo antes de escribir: si ya no tiene acceso (por ejemplo, un arquitecto desasignado), cierra el stream sin esperar a la revalidación periódica de 30 s.
+- `project.comment.created` lee la audiencia del comentario al publicar y lo entrega solo a quien puede verlo. Los streams sin destinatario identificable no reciben eventos filtrados.
+- `project.access.changed` `{projectId, timestamp}` se publica al compartir, sustituir o revocar. No contiene archivos, versiones, nombres ni contadores. El frontend (`projectCommentFeed`) responde con una recarga completa que reemplaza la lista (si había una incremental en curso, espera a que termine y recarga después), y así retira lo que el usuario dejó de ver. La galería y el detalle del proyecto deben recargarse con el mismo aviso: queda para el frontend de la Fase 1.2.
+- Publicación después del commit: el controlador responde y después publica. Un rollback lanza antes y no publica nada. Un fallo al publicar se registra (`project_event_publish_failed`, solo código, evento y proyecto) y no cambia la respuesta: el estado está en PostgreSQL y el frontend lo recupera con sus lecturas incrementales y de respaldo. Los eventos de un destinatario pueden llegar desordenados entre sí; el frontend ordena por fecha y deduplica por id.
+- Los comentarios de documento siguen sin evento propio, como antes.
+
+**Pendiente para B9 (compatibilidad de archivos heredados).**
+1. **Comentarios históricos sin versión.** Los comentarios de imagen, video y panorámica anteriores a B6 identifican el archivo por `target_id` y no tienen versión. Mientras su archivo sea heredado conservan su significado (todo el proyecto). Si B9 convierte ese archivo a la política 1.2, pasarían a ser ambiguos (solo el equipo y su autor): B9 debe asignarles una versión, por ejemplo la vigente en la fecha del comentario, o decidir otra regla. Los comentarios de documento ya tienen versión.
+2. **Clientes con varios usuarios.** La política reconoce como «suyas» las versiones y los comentarios ambiguos por usuario (`uploaded_by`, `user_id`), no por cliente. Otro usuario del mismo cliente no ve las versiones que subió su compañero, ni sus comentarios ambiguos, ni la portada de su solicitud si apunta a ellas (el ensayo lo comprueba con `coOwner`). B9 debe decidir si la autoría se extiende al cliente.
+3. **Referencia temporal de los adjuntos transferidos.** La ruta de solicitudes sirve la versión creada hasta `project_requests.reviewed_at` (B5). B9 no debe cambiar ese valor en solicitudes convertidas ni recrear versiones anteriores con fechas nuevas. Si una conversión pudiera repetirse, la referencia debe guardarse aparte (por ejemplo, la versión de origen en el archivo).
+
+**Pruebas**
+- `tests/projectCommentAudience.test.js`: clasificación y destinatarios, patrón del destino de galería, SQL apagado, publicación por destinatario (cierre de quien perdió el acceso, aislamiento de fallos, streams sin identidad).
+- `tests/projectCommentAudience.integration.test.js` (opcional: `ARCA_COMMENT_AUDIENCE_DB_TESTS=1` y `ARCA_COMMENT_AUDIENCE_TEST_DATABASE_URL` local). Cubre:
+  - actores: administrador, arquitecto asignado y ajeno, cliente propietario y otro usuario del mismo cliente;
+  - versiones compartidas, internas, propias y heredadas; comentarios de documento por versión; históricos ambiguos, heredados y sin archivo; drafts;
+  - puntos por versión, respuestas y fotos de autor;
+  - eventos iguales al listado de cada actor y coherentes con las descargas;
+  - revocación, sustitución y desasignación con streams abiertos;
+  - un comentario que espera a una revocación en curso (404) y comentarios simultáneos a compartir y revocar (sin 500 ni interbloqueos);
+  - rollback de comentarios y autorizaciones sin eventos, y fallo de publicación tras confirmar;
+  - la activación apagada.
+- `Frontend/tests/projectCommentFeed.test.js`: el aviso de acceso recarga completo y retira lo que ya no devuelve el backend.
 
 ## Paginación
 

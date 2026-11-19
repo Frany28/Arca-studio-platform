@@ -6,3 +6,4 @@
 # Las históricas no se cambian: su checksum registrado depende de la copia con la que se aplicaron.
 Backend/prisma/migrations/20261117120000_project_folder_system_keys/migration.sql text eol=lf
 Backend/prisma/migrations/20261118120000_project_file_review_audience_expand/migration.sql text eol=lf
+Backend/prisma/migrations/20261119120000_project_comment_version_points/migration.sql text eol=lf

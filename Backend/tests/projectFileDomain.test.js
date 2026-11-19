@@ -7,11 +7,12 @@ import { fileURLToPath } from "node:url";
 import {
   evaluateFileAudienceChange,
   evaluateFileVersionAccess,
+  evaluateVersionAuthoring,
   hasProjectStaffAccess,
   isProjectOwnerClient,
   resolveClientAudienceOnApproval,
 } from "../src/domain/projectFileAccess.js";
-import { FILE_PENDING_DECISIONS, FILE_PROPOSED_RULES, pendingFileDecision } from "../src/domain/projectFileDecisions.js";
+import { FILE_CONFIRMED_RULES, FILE_PENDING_DECISIONS, FILE_PROPOSED_RULES, pendingFileDecision } from "../src/domain/projectFileDecisions.js";
 import { STORED_FILE_OPERATIONS, evaluateStoredFileOperation } from "../src/domain/projectFileRetention.js";
 import {
   evaluateReviewTransition,
@@ -49,7 +50,9 @@ const version = (id, overrides = {}) => ({ deletedAt: null, id, reviewStatus: "a
 const file = (overrides = {}) => ({ accessPolicy: 1, clientVersionId: null, fileType: "application/pdf", id: 50, projectId: 3, showcaseVersionId: null, status: "active", ...overrides });
 
 test("las decisiones pendientes están registradas y ninguna regla apunta a un identificador inventado", async () => {
-  for (const decision of ["D3", "D4", "DA1", "DA2", "DA3", "DA4", "DA5"]) assert.ok(FILE_PENDING_DECISIONS[decision], decision);
+  for (const decision of ["DA1", "DA4"]) assert.ok(FILE_PENDING_DECISIONS[decision], decision);
+  // Resueltas en B4 (DA2, DA3, DA5) y B5 (D3, D4): ya no son decisiones pendientes.
+  for (const resolved of ["DA2", "DA3", "DA5", "D3", "D4"]) assert.equal(Object.hasOwn(FILE_PENDING_DECISIONS, resolved), false, resolved);
   assert.throws(() => pendingFileDecision("DA99", "X"), { code: "UNKNOWN_FILE_DECISION" });
   const sources = (await readdir(DOMAIN_DIR)).filter((name) => /^project(File|Warranty)/.test(name));
   for (const name of sources) {
@@ -58,17 +61,30 @@ test("las decisiones pendientes están registradas y ninguna regla apunta a un i
   }
 });
 
-test("las cuatro reglas sin confirmar quedan identificadas como propuestas PR1–PR4", () => {
-  assert.deepEqual(Object.keys(FILE_PROPOSED_RULES), ["PR1", "PR2", "PR3", "PR4"]);
+test("reglas confirmadas en B4 y B5; PR5 y PR6 siguen como propuestas y PR3 se retiró", () => {
+  assert.deepEqual(Object.keys(FILE_CONFIRMED_RULES).sort(), ["AU1", "AU2", "D3", "D4", "DA2", "DA3", "DA5", "PR1", "PR2", "PR4"]);
+  assert.deepEqual(Object.keys(FILE_PROPOSED_RULES), ["PR5", "PR6"]);
   const history = [version(1), version(2, { reviewStatus: "rejected" }), version(3)];
-  assert.equal(planNewVersion({ changeNote: "x", kind: "replace", versions: [...history, version(4, { reviewStatus: "pending" })] }).proposal, "PR1");
-  assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 2, versions: history }).proposal, "PR2");
-  assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 3, versions: history }).proposal, "PR2");
+  // Las confirmadas ya no se marcan como propuesta.
+  assert.equal(planNewVersion({ changeNote: "x", kind: "replace", versions: [...history, version(4, { reviewStatus: "pending" })] }).proposal, undefined);
+  assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 2, versions: history }).proposal, undefined);
+  assert.equal(evaluateReviewTransition({ action: "reject", reason: "x".repeat(501), version: { reviewStatus: "pending" } }).proposal, undefined);
   const showcase = evaluateFileAudienceChange({
     action: "set_showcase", actor: admin, file: file({ fileType: "image/png" }), project: project({ isPublic: true, status: "finished" }), version: version(2),
   });
-  assert.equal(showcase.proposal, "PR3");
-  assert.equal(evaluateReviewTransition({ action: "reject", reason: "x".repeat(501), version: { reviewStatus: "pending" } }).proposal, "PR4");
+  assert.equal(showcase.proposal, undefined, "el escaparate ya no depende del cliente (AU1)");
+  assert.equal(showcase.outcome, "allowed");
+  assert.equal(evaluateVersionAuthoring(architect, project(), file({ uploadedBy: 99 })).proposal, "PR5");
+});
+
+test("reemplazar y restaurar (PR5): equipo con acceso o autor del archivo que conserva el acceso", () => {
+  assert.equal(evaluateVersionAuthoring(admin, project({ status: "draft" }), file({ uploadedBy: 99 })).reason, "TEAM_ACCESS");
+  assert.equal(evaluateVersionAuthoring(architect, project(), file({ uploadedBy: 99 })).reason, "TEAM_ACCESS");
+  assert.equal(evaluateVersionAuthoring(owner, project(), file({ uploadedBy: 31 })).reason, "FILE_AUTHOR");
+  assert.equal(evaluateVersionAuthoring(owner, project(), file({ uploadedBy: 7 })).outcome, "forbidden", "el cliente no reemplaza archivos ajenos");
+  assert.equal(evaluateVersionAuthoring(owner, project({ status: "draft" }), file({ uploadedBy: 31 })).outcome, "forbidden", "un draft no existe para el cliente");
+  assert.equal(evaluateVersionAuthoring(otherArchitect, project({ isPublic: true }), file({ uploadedBy: 8 })).outcome, "forbidden", "autor sin acceso");
+  assert.equal(evaluateVersionAuthoring(strangerClient, project(), file({ uploadedBy: 41 })).outcome, "forbidden");
 });
 
 test("conservación: nada guardado se borra ni se retira; solo se descarta lo que nunca se registró", () => {
@@ -106,12 +122,12 @@ test("revisión: solo una versión pendiente se aprueba o rechaza, y el rechazo 
   assert.throws(() => evaluateReviewTransition({ action: "publish", version: pending }), { code: "UNKNOWN_REVIEW_ACTION" });
 });
 
-test("revisión: quién revisa y la aprobación automática siguen pendientes (DA5 y DA2)", () => {
-  assert.deepEqual(evaluateReviewer({ hasStaffAccess: false }), { outcome: "forbidden", reason: "REVIEWER_WITHOUT_PROJECT_ACCESS" });
-  assert.deepEqual(evaluateReviewer({ hasStaffAccess: true }), { decision: "DA5", outcome: "pending_decision", reason: "REVIEWER_ROLE_UNDECIDED" });
-  assert.deepEqual(resolveInitialReviewStatus({ uploaderRole: "architect" }), { outcome: "allowed", reason: "TEAM_UPLOAD_REQUIRES_REVIEW", status: "pending" });
-  for (const uploaderRole of ["admin", "client"]) {
-    assert.deepEqual(resolveInitialReviewStatus({ uploaderRole }), { decision: "DA2", outcome: "pending_decision", reason: "AUTOMATIC_APPROVAL_UNDECIDED" });
+test("revisión: solo el administrador revisa (DA5) y toda versión nueva nace pendiente (DA2)", () => {
+  assert.deepEqual(evaluateReviewer({ hasStaffAccess: true, role: "admin" }), { outcome: "allowed", reason: "ADMIN_REVIEWER" });
+  assert.deepEqual(evaluateReviewer({ hasStaffAccess: true, role: "architect" }), { outcome: "forbidden", reason: "REVIEWER_NOT_ADMIN" });
+  assert.deepEqual(evaluateReviewer({ hasStaffAccess: false, role: "client" }), { outcome: "forbidden", reason: "REVIEWER_NOT_ADMIN" });
+  for (const uploaderRole of ["admin", "architect", "client"]) {
+    assert.deepEqual(resolveInitialReviewStatus({ uploaderRole }), { outcome: "allowed", reason: "NEW_VERSION_REQUIRES_REVIEW", status: "pending" }, uploaderRole);
   }
   assert.equal(resolveInitialReviewStatus({ uploaderRole: "guest" }).outcome, "forbidden");
 });
@@ -151,7 +167,8 @@ test("restaurar: versión nueva que reutiliza el objeto de una versión aprobada
     versionNumber: 4,
   });
   assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 2, versions: history }).reason, "RESTORE_SOURCE_NOT_APPROVED");
-  assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 3, versions: history }).reason, "RESTORE_SOURCE_IS_CURRENT");
+  // Restaurar la vigente no está prohibido: solo se exige una versión aprobada (PR2 confirmada).
+  assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 3, versions: history }).outcome, "allowed");
   assert.equal(planNewVersion({ changeNote: "x", kind: "restore", restoreFromVersionId: 99, versions: history }).reason, "RESTORE_SOURCE_NOT_FOUND");
   assert.equal(planNewVersion({ changeNote: "", kind: "restore", restoreFromVersionId: 1, versions: history }).reason, "CHANGE_NOTE_REQUIRED");
   // Una versión heredada aprobada (sin estado de revisión) también se puede restaurar.
@@ -205,14 +222,14 @@ test("versiones pendientes y rechazadas: equipo con acceso o autor con acceso al
   }
 });
 
-test("versiones aprobadas: el cliente recibe la compartida; las anteriores dependen de D4", () => {
+test("versiones aprobadas: el cliente recibe la compartida; las sustituidas no dan acceso (D4)", () => {
   const shared = file({ clientVersionId: 2 });
   const evaluate = (actor, versionId, extra = {}) => evaluateFileVersionAccess({
     actor, currentVersionId: 3, file: shared, project: project(), version: version(versionId), ...extra,
   });
   assert.equal(evaluate(owner, 2).reason, "SHARED_WITH_CLIENT");
   assert.equal(evaluate(owner, 3).reason, "NOT_SHARED_WITH_CLIENT", "una versión aprobada más reciente no se comparte sola");
-  assert.deepEqual(evaluate(owner, 1, { previouslySharedVersionIds: [1] }), { decision: "D4", outcome: "pending_decision", reason: "PREVIOUSLY_SHARED_VERSION_UNDECIDED" });
+  assert.deepEqual(evaluate(owner, 1, { previouslySharedVersionIds: [1] }), { outcome: "forbidden", reason: "PREVIOUS_CLIENT_SHARE_NOT_ACTIVE" });
   assert.equal(evaluate(architect, 1).reason, "TEAM_ACCESS");
   assert.equal(evaluate(strangerClient, 2).reason, "NO_PROJECT_ACCESS");
 });
@@ -236,23 +253,28 @@ test("archivos archivados dependen de DA1 y los retirados heredados no son acces
   assert.equal(evaluateFileVersionAccess({ ...base, file: file(), version: version(1, { deletedAt: new Date() }) }).reason, "VERSION_RETIRED_LEGACY");
 });
 
-test("cambios de audiencia: condiciones confirmadas y quién los hace pendiente de D3; aprobar no comparte (DA3)", () => {
+test("cambios de audiencia: solo el administrador (D3), versión aprobada (AU2) y audiencias independientes (AU1)", () => {
   const approved = version(2);
   const change = (action, overrides = {}) => evaluateFileAudienceChange({
     action, actor: overrides.actor ?? admin, file: overrides.file ?? file(), project: overrides.project ?? project(), version: overrides.version ?? approved,
   });
-  assert.equal(change("share_with_client", { actor: owner }).reason, "NO_TEAM_ACCESS");
+  for (const actor of [owner, architect, strangerClient]) {
+    assert.equal(change("share_with_client", { actor }).reason, "AUDIENCE_MANAGER_NOT_ADMIN", actor.role);
+  }
   assert.equal(change("share_with_client", { version: version(2, { reviewStatus: "pending" }) }).reason, "VERSION_NOT_APPROVED");
-  assert.deepEqual(change("share_with_client"), { decision: "D3", outcome: "pending_decision", reason: "AUDIENCE_MANAGER_UNDECIDED" });
-  assert.equal(change("unshare_with_client", { version: null }).decision, "D3");
+  assert.equal(change("share_with_client", { version: version(2, { reviewStatus: "rejected" }) }).reason, "VERSION_NOT_APPROVED");
+  assert.deepEqual(change("share_with_client"), { outcome: "allowed", reason: "ADMIN_AUDIENCE_CHANGE" });
+  assert.equal(change("unshare_with_client", { version: null }).outcome, "allowed");
   assert.equal(change("set_showcase").reason, "SHOWCASE_REQUIRES_PUBLIC_FINISHED_PROJECT");
   const publicFinished = project({ isPublic: true, status: "finished" });
   assert.equal(change("set_showcase", { project: publicFinished }).reason, "SHOWCASE_MEDIA_ONLY");
-  assert.equal(change("set_showcase", { file: file({ fileType: "image/png" }), project: publicFinished }).reason, "SHOWCASE_REQUIRES_CLIENT_SHARE");
-  assert.equal(change("set_showcase", { file: file({ clientVersionId: 2, fileType: "image/png" }), project: publicFinished }).decision, "D3");
+  // Independiente del cliente: no exige ninguna versión compartida con él.
+  assert.equal(change("set_showcase", { file: file({ fileType: "image/png" }), project: publicFinished }).outcome, "allowed");
+  // El formato es el de la versión: una versión PNG de un archivo PDF puede ir al escaparate.
+  assert.equal(change("set_showcase", { project: publicFinished, version: version(2, { contentType: "image/png" }) }).outcome, "allowed");
   assert.equal(change("share_with_client", { file: file({ status: "archived" }) }).decision, "DA1");
   assert.throws(() => change("publish"), { code: "UNKNOWN_AUDIENCE_ACTION" });
-  assert.deepEqual(resolveClientAudienceOnApproval(), { decision: "DA3", outcome: "pending_decision", reason: "PUBLISH_ON_APPROVAL_UNDECIDED" });
+  assert.deepEqual(resolveClientAudienceOnApproval(), { outcome: "allowed", reason: "APPROVAL_DOES_NOT_SHARE", sharesWithClient: false });
 });
 
 test("garantías: el documento vive en «Documentos › Garantías» y se vincula a varias garantías del mismo proyecto", () => {

@@ -5,16 +5,14 @@ import { deepFreeze } from "./fileContexts.js";
 // identificador, y ningún flujo debe interpretar ese resultado como permitido ni como prohibido sin
 // la aprobación correspondiente. Las decisiones de carpetas viven en `projectFolderCatalog.js`.
 
-// Resueltas en B4: DA2 (toda versión nueva pasa por revisión, también la del administrador), DA3
-// (aprobar no comparte) y DA5 (solo el administrador aprueba y rechaza).
+// Resueltas en B4: DA2, DA3 y DA5. Resueltas en B5: D3 (solo el administrador gestiona audiencias)
+// y D4 (el cliente solo consulta la autorización activa).
 export const FILE_PENDING_DECISIONS = deepFreeze({
-  D3: "Quién comparte una versión con el cliente propietario y quién la autoriza en el escaparate.",
-  D4: "Si el cliente conserva el acceso a las versiones que se le compartieron antes de la vigente.",
   DA1: "Archivado: si existe archivar y reactivar, quién puede hacerlo, si exige motivo y si retira o conserva el acceso del cliente y del escaparate.",
   DA4: "Restricciones nuevas por estado del proyecto: proyecto cancelado de solo lectura para archivos (D10) y bloqueo de «Finalizar configuración» con archivos heredados sin resolver (D8).",
 });
 
-// Reglas aprobadas para B4 (antes propuestas PR1, PR2 y PR4, y decisiones DA2, DA3 y DA5).
+// Reglas aprobadas: B4 (PR1, PR2, PR4, DA2, DA3, DA5) y B5 (D3, D4, AU1, AU2).
 export const FILE_CONFIRMED_RULES = deepFreeze({
   PR1: "Cada archivo admite una sola versión pendiente de revisión.",
   PR2: "Restaurar exige una versión aprobada (o heredada): crea una versión nueva pendiente, registra su procedencia y reutiliza el objeto almacenado.",
@@ -22,14 +20,17 @@ export const FILE_CONFIRMED_RULES = deepFreeze({
   DA2: "Toda versión nueva pasa por revisión, incluidas las subidas del administrador.",
   DA3: "Aprobar no comparte: la autorización del cliente es independiente.",
   DA5: "Solo el administrador aprueba y rechaza versiones.",
+  D3: "Solo el administrador comparte versiones con el cliente y autoriza su publicación en el escaparate.",
+  D4: "El cliente consulta la versión con autorización activa; las autorizaciones sustituidas quedan como historial sin dar acceso.",
+  AU1: "Cliente propietario y escaparate tienen autorizaciones independientes.",
+  AU2: "Compartir exige una versión aprobada del mismo archivo.",
 });
 
 // Reglas propuestas sin confirmación expresa. El código las identifica con estos códigos y
-// PostgreSQL no las impone. PR5 es la regla de permisos que B4 aplica para reemplazar y restaurar,
-// a falta de una decisión explícita.
+// PostgreSQL no las impone. PR3 (el escaparate dependía del cliente) se retiró en B5 por AU1.
 export const FILE_PROPOSED_RULES = deepFreeze({
-  PR3: "El escaparate exige que el archivo tenga una versión compartida con el cliente propietario.",
   PR5: "Reemplazar y restaurar: quien tiene acceso de equipo al proyecto o el autor del archivo mientras conserve el acceso al proyecto.",
+  PR6: "Una sola versión autorizada por audiencia: autorizar otra versión en el escaparate sustituye la anterior, como en el cliente.",
 });
 
 /**

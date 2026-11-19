@@ -115,8 +115,9 @@ export function evaluateFileVersionAccess({ actor, currentVersionId, file, previ
     if (Number(version.id) === Number(file.clientVersionId)) {
       return fileRuleResult("allowed", "SHARED_WITH_CLIENT", { anonymized: false, audience: "client" });
     }
+    // Regla confirmada D4: una autorización sustituida o revocada queda como historial sin dar acceso.
     if (previouslySharedVersionIds.map(Number).includes(Number(version.id))) {
-      return pendingFileDecision("D4", "PREVIOUSLY_SHARED_VERSION_UNDECIDED");
+      return fileRuleResult("forbidden", "PREVIOUS_CLIENT_SHARE_NOT_ACTIVE");
     }
     return fileRuleResult("forbidden", "NOT_SHARED_WITH_CLIENT");
   }
@@ -124,17 +125,16 @@ export function evaluateFileVersionAccess({ actor, currentVersionId, file, previ
   const showcaseVisible = project.isPublic === true
     && isProjectFinalized(project.status)
     && Number(version.id) === Number(file.showcaseVersionId)
-    && SHOWCASE_MEDIA.test(String(file.fileType ?? ""));
+    && SHOWCASE_MEDIA.test(String(version.contentType ?? file.fileType ?? ""));
   if (showcaseVisible) return fileRuleResult("allowed", "SHOWCASE_VERSION", { anonymized: true, audience: "showcase" });
   return fileRuleResult("forbidden", "NO_PROJECT_ACCESS");
 }
 
 /**
  * Evalúa un cambio de audiencia: compartir o dejar de compartir con el cliente propietario y
- * autorizar o retirar el escaparate. Aplica las condiciones confirmadas del plan (acceso de equipo,
- * versión aprobada del mismo archivo, escaparate solo para imágenes y videos de proyectos públicos
- * finalizados y ya compartidos con el cliente); quién puede hacerlo depende de D3 y los archivos
- * archivados, de DA1.
+ * autorizar o retirar el escaparate. Reglas confirmadas: solo el administrador (D3); compartir o
+ * autorizar exige una versión aprobada (AU2); cliente y escaparate son independientes (AU1); el
+ * escaparate solo muestra imágenes y videos de proyectos públicos finalizados. Archivados: DA1.
  *
  * @param {object} request - Datos del cambio.
  * @param {"share_with_client"|"unshare_with_client"|"set_showcase"|"remove_showcase"} request.action - Cambio.
@@ -150,18 +150,16 @@ export function evaluateFileAudienceChange({ action, actor, file, project, versi
   if (!actions.includes(action)) {
     throw Object.assign(new Error(`Cambio de audiencia desconocido: ${action}`), { code: "UNKNOWN_AUDIENCE_ACTION" });
   }
-  if (!hasProjectStaffAccess(actor, project)) return fileRuleResult("forbidden", "NO_TEAM_ACCESS");
+  if (actor?.role !== "admin") return fileRuleResult("forbidden", "AUDIENCE_MANAGER_NOT_ADMIN");
   if (file.status === FILE_STATUS.DELETED) return fileRuleResult("forbidden", "FILE_RETIRED_LEGACY");
   if (file.status === FILE_STATUS.ARCHIVED) return pendingFileDecision("DA1", "ARCHIVED_FILE_AUDIENCE_UNDECIDED");
   const grants = action === "share_with_client" || action === "set_showcase";
   if (grants && !isVersionEffectivelyApproved(version)) return fileRuleResult("forbidden", "VERSION_NOT_APPROVED");
   if (action === "set_showcase") {
     if (!(project.isPublic === true && isProjectFinalized(project.status))) return fileRuleResult("forbidden", "SHOWCASE_REQUIRES_PUBLIC_FINISHED_PROJECT");
-    if (!SHOWCASE_MEDIA.test(String(file.fileType ?? ""))) return fileRuleResult("forbidden", "SHOWCASE_MEDIA_ONLY");
-    // Propuesta PR3 (pendiente de aprobación): el escaparate depende de una autorización del cliente.
-    if (!file.clientVersionId) return fileRuleResult("forbidden", "SHOWCASE_REQUIRES_CLIENT_SHARE", { proposal: "PR3" });
+    if (!SHOWCASE_MEDIA.test(String(version?.contentType ?? file.fileType ?? ""))) return fileRuleResult("forbidden", "SHOWCASE_MEDIA_ONLY");
   }
-  return pendingFileDecision("D3", "AUDIENCE_MANAGER_UNDECIDED");
+  return fileRuleResult("allowed", "ADMIN_AUDIENCE_CHANGE");
 }
 
 /**

@@ -82,11 +82,16 @@ export const projectsApi = {
     );
   },
 
-  subscribeToEvents({ projectId, onCommentCreated, onError, onOpen }) {
+  subscribeToEvents({ projectId, onAccessChanged, onCommentCreated, onError, onOpen }) {
     const eventSource = new EventSource(
       getApiUrl(`/projects/${projectId}/events`),
       { withCredentials: true },
     );
+
+    // Fase 1.2 (B6): aviso sin datos de que cambió el acceso a versiones del proyecto.
+    eventSource.addEventListener("project.access.changed", () => {
+      onAccessChanged?.();
+    });
 
     eventSource.addEventListener("project.comment.created", (event) => {
       try {

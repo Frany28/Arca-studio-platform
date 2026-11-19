@@ -20,12 +20,14 @@ import {
   isProjectOperationallyReadOnly,
 } from "../domain/projectStatus.js";
 import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
+import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
 
 const DEFAULT_FILE_STATUS = "active";
 
 // Alta de un archivo de proyecto y su v1. Las variantes heredadas son las sentencias de siempre; las
 // de revisión (Fase 1.2, B4) solo se usan con PROJECT_FILE_REVIEW_ENABLED y requieren la migración
 // 20261118120000_project_file_review_audience_expand.
+
 const INSERT_LEGACY_PROJECT_FILE_SQL = `
   insert into public.files (id, project_id, uploaded_by, title, file_type, file_category, current_version, status, folder_id)
   values ($1, $2, $3, $4, $5, $6, $7, $8::file_status, $9)
@@ -252,8 +254,9 @@ export async function listProjectRequestFiles(projectRequestId, executor = poolE
         coalesce(fv.file_size, 0)::bigint as file_size,
         f.created_at
       from public.files f
-      left join public.file_versions fv
-        on fv.file_id = f.id and fv.is_current = true and fv.deleted_at is null
+      ${isProjectFileReviewEnabled()
+        ? `left join public.file_versions fv on fv.id = ${requestAttachmentVersionIdSql("f")}`
+        : "left join public.file_versions fv on fv.file_id = f.id and fv.is_current = true and fv.deleted_at is null"}
       where (f.project_request_id = $1 or f.origin_project_request_id = $1)
         and f.deleted_at is null
         and f.status <> 'deleted'
@@ -976,6 +979,25 @@ export async function findProjectFileForDownload({ fileId, projectId, user }) {
 }
 
 /**
+ * Une la versión de un adjunto que sirve la ruta de la solicitud. Apagada la revisión, la vigente,
+ * exactamente como antes. Encendida (B5), la que aportó el cliente (`requestAttachmentVersionIdSql`):
+ * las versiones que el equipo incorpore después de aprobar la solicitud no se sirven por esta ruta.
+ *
+ * @param {string} fileAlias - Alias de public.files.
+ * @param {string} versionAlias - Alias de la versión unida.
+ * @returns {string} Fragmento SQL `left join`.
+ */
+function requestAttachmentVersionJoin(fileAlias, versionAlias) {
+  if (!isProjectFileReviewEnabled()) {
+    return `left join public.file_versions ${versionAlias}
+        on ${versionAlias}.file_id = ${fileAlias}.id
+        and ${versionAlias}.version_number = ${fileAlias}.current_version
+        and ${versionAlias}.deleted_at is null`;
+  }
+  return `left join public.file_versions ${versionAlias} on ${versionAlias}.id = ${requestAttachmentVersionIdSql(fileAlias)}`;
+}
+
+/**
  * Busca un adjunto de solicitud (incluidos los que pasaron a su proyecto al aprobarla) para descargarlo.
  * Admin y cliente dueño: siempre; arquitecto: solo asignado y mientras la solicitud no esté convertida,
  * porque después su acceso lo decide el proyecto (que el admin puede revocar). Null si no es accesible.
@@ -1019,10 +1041,7 @@ export async function findProjectRequestFileForDownload({ fileId, projectRequest
       from public.files file
       inner join public.project_requests request
         on request.id = coalesce(file.project_request_id, file.origin_project_request_id)
-      left join public.file_versions version
-        on version.file_id = file.id
-        and version.version_number = file.current_version
-        and version.deleted_at is null
+      ${requestAttachmentVersionJoin("file", "version")}
       where (file.project_request_id = $1 or file.origin_project_request_id = $1)
         and file.id = $2
         and file.deleted_at is null

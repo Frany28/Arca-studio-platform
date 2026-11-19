@@ -18,7 +18,30 @@ import {
   streamProjectCommentAuthorProfilePhoto,
   streamProjectCommentEvents,
 } from "../controllers/projectCommentController.js";
-import { requireAuth, requirePermissions } from "../middlewares/auth.js";
+import {
+  getProjectFileVersions,
+  postProjectFileVersion,
+  postProjectFileVersionApproval,
+  postProjectFileVersionRejection,
+  postProjectFileVersionRestore,
+} from "../controllers/projectFileVersionController.js";
+import { requireAuth, requirePermissions, requireRoles } from "../middlewares/auth.js";
+import { requireProjectFileReviewEnabled } from "../middlewares/projectFileReview.js";
+import {
+  deleteProjectFileAudience,
+  getProjectFileAudienceState,
+  putProjectFileAudience,
+} from "../controllers/projectFileAudienceController.js";
+import {
+  projectFileAudienceGrantSchema,
+  projectFileAudienceListSchema,
+  projectFileAudienceRevokeSchema,
+  projectFileVersionApproveSchema,
+  projectFileVersionListSchema,
+  projectFileVersionRejectSchema,
+  projectFileVersionRestoreSchema,
+  projectFileVersionUploadSchema,
+} from "../validation/projectFileVersionSchemas.js";
 import { commentRateLimit, uploadRateLimit } from "../middlewares/actionRateLimits.js";
 import { validate } from "../middlewares/validate.js";
 import {
@@ -82,6 +105,74 @@ router.get(
   requirePermissions("projects.read"),
   validate(projectFileContentSchema),
   streamProjectFile,
+);
+// Versiones y revisión (Fase 1.2, B4). Con la activación coordinada apagada responden 404 antes de
+// autenticar, como una ruta inexistente. Aprobar y rechazar: solo el administrador.
+router.get(
+  "/:projectId/files/:fileId/versions",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requirePermissions("projects.read"),
+  validate(projectFileVersionListSchema),
+  getProjectFileVersions,
+);
+router.post(
+  "/:projectId/files/:fileId/versions",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requirePermissions("projects.files.upload"),
+  uploadRateLimit,
+  validate(projectFileVersionUploadSchema),
+  postProjectFileVersion,
+);
+router.post(
+  "/:projectId/files/:fileId/versions/:versionId/restore",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requirePermissions("projects.files.upload"),
+  validate(projectFileVersionRestoreSchema),
+  postProjectFileVersionRestore,
+);
+router.post(
+  "/:projectId/files/:fileId/versions/:versionId/approve",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requireRoles("admin"),
+  validate(projectFileVersionApproveSchema),
+  postProjectFileVersionApproval,
+);
+router.post(
+  "/:projectId/files/:fileId/versions/:versionId/reject",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requireRoles("admin"),
+  validate(projectFileVersionRejectSchema),
+  postProjectFileVersionRejection,
+);
+// Audiencias (Fase 1.2, B5): solo el administrador comparte con el cliente y autoriza el escaparate.
+router.get(
+  "/:projectId/files/:fileId/audiences",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requireRoles("admin"),
+  validate(projectFileAudienceListSchema),
+  getProjectFileAudienceState,
+);
+router.put(
+  "/:projectId/files/:fileId/audiences/:audience",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requireRoles("admin"),
+  validate(projectFileAudienceGrantSchema),
+  putProjectFileAudience,
+);
+router.delete(
+  "/:projectId/files/:fileId/audiences/:audience",
+  requireProjectFileReviewEnabled,
+  requireAuth,
+  requireRoles("admin"),
+  validate(projectFileAudienceRevokeSchema),
+  deleteProjectFileAudience,
 );
 router.patch(
   "/:projectId/publication",

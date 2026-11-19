@@ -7,7 +7,11 @@ import {
 } from "../repositories/fileRepository.js";
 import { getFileResponseSecurity } from "../utils/fileResponseSecurity.js";
 import { streamStoredObject } from "../utils/streamResponse.js";
-import { getProjectFileCacheHeaders } from "../utils/projectFileCache.js";
+import {
+  getProjectFileCacheHeaders,
+  getProjectFileRevalidationHeaders,
+  matchesIfNoneMatch,
+} from "../utils/projectFileCache.js";
 import {
   prepareProjectRequestUpload,
   runUpload,
@@ -20,6 +24,8 @@ import {
   rejectProjectRequestFileDeletion,
 } from "../services/storedFileRetentionService.js";
 import { assertProjectOperationallyMutable } from "../services/projectService.js";
+import { isProjectFileReviewEnabled } from "../config/projectFileReview.js";
+import { resolveProjectFileDownload } from "../services/projectFileVersionService.js";
 
 /**
  * Carga el adjunto de la solicitud de proyecto coordinando la persistencia y el almacenamiento.
@@ -225,11 +231,16 @@ export async function streamProjectFile(req, res, next) {
       return;
     }
 
-    const file = await findProjectFileForDownload({
-      fileId,
-      projectId,
-      user: req.user,
-    });
+    // Activación apagada: la consulta de siempre (versión vigente, `versionId` solo decide la caché).
+    // Encendida (Fase 1.2, B4/B5): la versión pedida si el usuario puede verla, con su propio formato.
+    const reviewEnabled = isProjectFileReviewEnabled();
+    const file = reviewEnabled
+      ? await resolveProjectFileDownload({ fileId, projectId, user: req.user, versionId: req.validatedQuery?.versionId })
+      : await findProjectFileForDownload({
+        fileId,
+        projectId,
+        user: req.user,
+      });
 
     if (!file) {
       res.status(404).json({
@@ -239,11 +250,26 @@ export async function streamProjectFile(req, res, next) {
       return;
     }
 
-    const cacheHeaders = getProjectFileCacheHeaders({
-      currentVersionId: file.currentVersionId,
-      fileId: file.id,
-      requestedVersionId: req.validatedQuery?.versionId,
-    });
+    // Con la activación encendida, la autorización anterior es la única puerta: solo después se
+    // compara If-None-Match (304) y solo después se consulta el almacenamiento. `no-cache` obliga a
+    // revalidar cada uso, así que una revocación surte efecto en la siguiente petición.
+    const cacheHeaders = reviewEnabled
+      ? getProjectFileRevalidationHeaders({ anonymized: !file.directAccess, fileId: file.id, versionId: file.currentVersionId })
+      : getProjectFileCacheHeaders({
+        currentVersionId: file.currentVersionId,
+        fileId: file.id,
+        requestedVersionId: req.validatedQuery?.versionId,
+      });
+    if (reviewEnabled) {
+      res.vary("Authorization");
+      if (matchesIfNoneMatch(req.headers["if-none-match"], cacheHeaders.etag)) {
+        res.setHeader("Cache-Control", cacheHeaders.cacheControl);
+        res.vary("Cookie");
+        res.setHeader("ETag", cacheHeaders.etag);
+        res.status(304).end();
+        return;
+      }
+    }
 
     const range = req.headers.range;
     const object = await getProjectFileObject({

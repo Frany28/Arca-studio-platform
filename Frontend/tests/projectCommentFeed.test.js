@@ -90,13 +90,17 @@ function createApi({ historySize = 3 } = {}) {
         const fromIndex = since ? Number(since.split(":")[1]) : 0;
         return { comments: history.slice(fromIndex), nextCursor: null, syncCursor: `sync:${Math.max(0, history.length - 1)}` };
       },
-      subscribeToEvents({ projectId, onCommentCreated, onError, onOpen }) {
-        const socket = { closed: false, onCommentCreated, onError, onOpen, projectId: String(projectId) };
+      subscribeToEvents({ projectId, onAccessChanged, onCommentCreated, onError, onOpen }) {
+        const socket = { closed: false, onAccessChanged, onCommentCreated, onError, onOpen, projectId: String(projectId) };
         sockets.push(socket);
         return () => { socket.closed = true; };
       },
     },
     addComment(projectId, comment) { historyOf(projectId).push(comment); },
+    removeComment(projectId, commentId) {
+      const history = historyOf(projectId);
+      history.splice(history.findIndex((comment) => comment.id === commentId), 1);
+    },
     calls,
     failNextRequests(count) { failNext = count; },
     openSockets: () => sockets.filter((socket) => !socket.closed),
@@ -277,4 +281,26 @@ test("sin suscriptores la entrada se destruye tras el periodo de gracia y cierra
   const calls = backend.calls.length;
   await environment.advance(60000);
   assert.equal(backend.calls.length, calls, "ningún sondeo tras desmontar");
+});
+
+test("Fase 1.2 (B6): un cambio de acceso recarga completo y retira lo que el backend ya no devuelve", async () => {
+  const environment = createEnvironment();
+  const backend = createApi();
+  const feed = createProjectCommentFeed({ environment, getApi: () => backend.api });
+  const snapshots = [];
+  const first = feed.subscribe(7, { intervalMs: 15000, onChange: (snapshot) => snapshots.push(snapshot) });
+  await flush();
+  assert.ok(snapshots.at(-1).comments.some((comment) => comment.id === 7001));
+
+  // El administrador revoca la versión comentada: el backend deja de devolver ese comentario.
+  backend.removeComment(7, 7001);
+  // Una lectura incremental ya en curso no lo retiraría: la recarga completa espera y la sigue.
+  first();
+  feed.subscribe(7, { intervalMs: 5000, onChange: (snapshot) => snapshots.push(snapshot) });
+  backend.openSockets()[0].onAccessChanged();
+  await flush();
+  await flush();
+  assert.deepEqual(backend.calls.map((call) => call.since), [null, "sync:2", null], "inicial, incremental y completa");
+  assert.equal(snapshots.at(-1).comments.some((comment) => comment.id === 7001), false);
+  assert.equal(snapshots.at(-1).comments.length, 2);
 });

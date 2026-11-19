@@ -63,9 +63,9 @@ export const FILE_CONTEXTS = deepFreeze({
     ownerEntity: "project",
     ownership: "project",
     // D5 quedó superada (las subidas del equipo pasan por revisión) y D10 forma parte de DA4. DA2,
-    // DA3 y DA5 se resolvieron en B4. Las decisiones del dominio de archivos están en
+    // DA3 y DA5 se resolvieron en B4; D3 y D4, en B5. Las decisiones del dominio de archivos están en
     // domain/projectFileDecisions.js.
-    pendingDecisions: ["A1", "D3", "D4", "DA1", "DA4"],
+    pendingDecisions: ["A1", "DA1", "DA4"],
     providedBy: ["admin", "architect", "client"],
     registry: { keyColumn: "file_versions.file_name", keyStoredAs: "key", ownerColumn: "files.project_id", table: "files" },
     storageKeyPrefix: "projects",

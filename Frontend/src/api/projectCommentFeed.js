@@ -152,16 +152,19 @@ export function createProjectCommentFeed({
 
   /**
    * Lee observaciones: completas la primera vez y con `refresh`, incrementales después.
-   * Las lecturas simultáneas de un mismo proyecto se comparten, también las recargas: la lectura en
-   * curso ya devuelve la lista completa y actual (la API solo añade observaciones, no las edita).
+   * Las lecturas simultáneas se comparten. Una recarga completa pedida mientras corre una incremental
+   * espera a que termine y después lee completo: tras un cambio de acceso (Fase 1.2, B6) la lista debe
+   * reemplazarse para retirar lo que el usuario ya no puede ver, y una incremental no lo retira.
    *
    * @param {Object} entry - Entrada del proyecto.
    * @param {{ full?: boolean }} [options] - Fuerza una lectura completa que reemplaza la lista.
    * @returns {Promise<Object>} Instantánea tras la lectura.
    */
   function load(entry, { full = false } = {}) {
-    if (entry.inFlight) return entry.inFlight;
+    if (entry.inFlight && (!full || entry.inFlightFull)) return entry.inFlight;
+    if (entry.inFlight) return entry.inFlight.catch(() => {}).then(() => load(entry, { full: true }));
     const since = full ? null : entry.syncCursor;
+    entry.inFlightFull = !since;
     const run = Promise.resolve().then(async () => {
       const wasLoaded = entry.loaded;
       if (!wasLoaded || full) {
@@ -231,6 +234,11 @@ export function createProjectCommentFeed({
     realtimeConnections += 1;
     entry.sse.state = "connecting";
     entry.sse.unsubscribe = getApi().subscribeToEvents({
+      // Cambió qué versiones puede ver alguien (compartir, sustituir o revocar): el evento no trae
+      // datos; se recarga la lista completa y desaparece lo que el backend ya no devuelve.
+      onAccessChanged() {
+        load(entry, { full: true }).catch(() => {});
+      },
       onCommentCreated(comment) {
         upsert(entry, [comment]);
         notify(entry);
@@ -322,6 +330,7 @@ export function createProjectCommentFeed({
         error: "",
         failures: 0,
         inFlight: null,
+        inFlightFull: false,
         key,
         listeners: new Map(),
         loaded: false,

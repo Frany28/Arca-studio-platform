@@ -1039,6 +1039,89 @@ test("PostgreSQL y HTTP: la miniatura usa la solicitud mientras el proyecto es d
   assert.equal(available.imageFileVersionId, render.versionId);
 });
 
+test("Fase 1.2 (B5): el cliente conserva sus adjuntos en draft y después; una versión interna posterior solo sigue la política del proyecto", { skip }, async () => {
+  process.env.PROJECT_FILE_REVIEW_ENABLED = "true";
+  try {
+    await grantProjectRead();
+    const photo = png("fachada-cliente.png");
+    const { fileIds: [photoId, planId], headers, id } = await reviewedRequest([photo, pdf("plano-cliente.pdf")]);
+    const bytesOf = async (response) => Buffer.from(await response.arrayBuffer());
+    const viaRequest = (fileId, auth = headers.owner) => fetch(`${base}/project-requests/${id}/files/${fileId}/content`, { headers: auth });
+    const viaProject = (projectId, fileId, auth, versionId) => fetch(`${base}/projects/${projectId}/files/${fileId}/content${versionId ? `?versionId=${versionId}` : ""}`, { headers: auth });
+    const listedRequest = async () => (await api("/project-requests", { headers: headers.owner })).body.projectRequests.find((row) => row.id === id);
+    const [origin] = (await database.client.query("select id::int, file_name from public.file_versions where file_id = $1", [photoId])).rows;
+    assert.deepEqual((await database.client.query("select access_policy from public.files where id = any($1)", [[photoId, planId]])).rows, [{ access_policy: null }, { access_policy: null }],
+      "los adjuntos de solicitud se crean con la regla heredada");
+
+    assert.equal((await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" })).status, 200);
+    const projectId = await convertedProjectId(id);
+
+    // Draft: el cliente consulta sus adjuntos por la solicitud; el proyecto todavía no existe para él.
+    for (const fileId of [photoId, planId]) {
+      assert.equal((await viaRequest(fileId)).status, 200);
+      assert.equal((await viaProject(projectId, fileId, headers.owner)).status, 404);
+    }
+    assert.deepEqual(await bytesOf(await viaRequest(photoId)), photo.bytes);
+    let listed = await listedRequest();
+    assert.deepEqual([listed.convertedProjectAvailable, listed.imageFileId, listed.imageFileVersionId], [false, photoId, origin.id]);
+
+    // Hoy un archivo heredado no admite versiones; se simula la compatibilidad posterior (B9): la
+    // foto pasa a la política 1.2 y el equipo incorpora una versión interna aprobada, sin compartir.
+    await database.client.query(`
+      with permission as (
+        insert into public.permissions (code, name, description, module) values ('projects.files.upload', 'Subir archivos', null, 'projects')
+        on conflict (code) do update set name = excluded.name returning id
+      )
+      insert into public.role_permissions (role_id, permission_id, is_active)
+      select r.id, permission.id, true from public.roles r, permission where r.code = 'admin'
+      on conflict do nothing`);
+    const replace = await fetch(`${base}/projects/${projectId}/files/${photoId}/versions`, {
+      body: Buffer.from("interna"), headers: { ...headers.admin, "Content-Type": "image/png", "X-Change-Note": "render", "X-File-Name": "render.png" }, method: "POST",
+    });
+    assert.deepEqual([replace.status, (await replace.json()).code], [409, "FILE_VERSIONING_UNAVAILABLE"]);
+    const internalKey = `projects/${projectId}/files/${photoId}/v2-interna/render-interno.png`;
+    storage.set(internalKey, { body: Buffer.from("render interno"), contentType: "image/png" });
+    await database.client.query("update public.files set access_policy = 1 where id = $1", [photoId]);
+    await database.client.query("update public.file_versions set is_current = false where file_id = $1", [photoId]);
+    const [internal] = (await database.client.query(`insert into public.file_versions (file_id, uploaded_by, version_number, file_name, original_name, file_url,
+        file_extension, file_size, is_current, content_type, review_status, reviewed_by, reviewed_at)
+      values ($1, $2, 2, $3, 'render-interno.png', 's3://ficticio', 'png', 14, true, 'image/png', 'approved', $2, now()) returning id::int`, [photoId, seed.admin, internalKey])).rows;
+    await database.client.query("update public.files set current_version = 2 where id = $1", [photoId]);
+
+    // Draft con la versión interna: la solicitud sigue sirviendo y nombrando lo que aportó el cliente.
+    for (const auth of [headers.owner, headers.admin]) assert.deepEqual(await bytesOf(await viaRequest(photoId, auth)), photo.bytes);
+    const attachments = (await api(`/project-requests/${id}`, { headers: headers.owner })).body.projectRequest.files;
+    assert.deepEqual(attachments.find((file) => file.id === photoId).name, "fachada-cliente.png");
+    assert.equal(attachments.find((file) => file.id === photoId).size, photo.bytes.length);
+    const workflow = await api(`/admin/project-requests/${id}`, { headers: headers.admin });
+    assert.equal(JSON.stringify(workflow.body).includes("render-interno"), false, "el flujo de la solicitud tampoco nombra la versión interna");
+    assert.equal((await listedRequest()).imageFileVersionId, origin.id);
+
+    // draft → pending: la portada pasa a leerse por el proyecto con la versión del cliente.
+    assert.equal((await configureAndFinalize(projectId, headers.admin, [seed.architect])).status, 200);
+    listed = await listedRequest();
+    assert.deepEqual([listed.convertedProjectAvailable, listed.imageFileId, listed.imageFileVersionId], [true, photoId, origin.id]);
+    assert.deepEqual(await bytesOf(await viaProject(projectId, photoId, headers.owner, listed.imageFileVersionId)), photo.bytes, "el enlace de la portada");
+    assert.deepEqual(await bytesOf(await viaProject(projectId, photoId, headers.owner)), photo.bytes, "sin versionId, su propia versión");
+    assert.equal((await viaProject(projectId, photoId, headers.owner, internal.id)).status, 404, "la versión interna no compartida");
+    assert.deepEqual(await bytesOf(await viaRequest(photoId)), photo.bytes, "el detalle de la solicitud conserva su enlace");
+    const detail = (await api(`/projects/${projectId}`, { headers: headers.owner })).body.project;
+    assert.equal(detail.files.find((file) => file.id === photoId).currentVersionId, origin.id);
+    assert.deepEqual([detail.imageFileId, detail.imageFileVersionId], [photoId, origin.id], "miniatura del detalle");
+    const projectRow = (await api("/projects?scope=owned", { headers: headers.owner })).body.projects.find((row) => row.id === projectId);
+    assert.deepEqual([projectRow.imageFileId, projectRow.imageFileVersionId], [photoId, origin.id], "miniatura del listado");
+    assert.deepEqual(await bytesOf(await viaProject(projectId, photoId, headers.architect)), Buffer.from("render interno"), "el equipo ve la vigente");
+
+    // Compartir la interna la entrega por el proyecto; la ruta de la solicitud sigue con la aportada.
+    assert.equal((await api(`/projects/${projectId}/files/${photoId}/audiences/client`, { body: { versionId: internal.id }, headers: headers.admin, method: "PUT" })).status, 200);
+    assert.deepEqual(await bytesOf(await viaProject(projectId, photoId, headers.owner)), Buffer.from("render interno"));
+    assert.deepEqual(await bytesOf(await viaRequest(photoId)), photo.bytes);
+    assert.equal(deletedKeys.includes(origin.file_name), false, "conservación del objeto aportado");
+  } finally {
+    process.env.PROJECT_FILE_REVIEW_ENABLED = "false";
+  }
+});
+
 test("PostgreSQL y HTTP: aprobar una solicitud sin adjuntos crea el borrador", { skip }, async () => {
   const { headers, id } = await reviewedRequest([]);
   const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });

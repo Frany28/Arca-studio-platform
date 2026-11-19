@@ -131,7 +131,8 @@ test("los nombres repetidos se detectan sin decidir todavía cómo distinguirlos
 });
 
 test("cada contexto declara las decisiones abiertas que le afectan", () => {
-  assert.ok(FILE_CONTEXTS.project_file.pendingDecisions.includes("D3"));
+  assert.ok(FILE_CONTEXTS.project_file.pendingDecisions.includes("DA1"));
+  for (const resolved of ["D3", "D4", "DA2", "DA3", "DA5"]) assert.equal(FILE_CONTEXTS.project_file.pendingDecisions.includes(resolved), false, resolved);
   assert.ok(FILE_CONTEXTS.support_attachment.pendingDecisions.includes("A2"));
   assert.ok(FILE_CONTEXTS.quote_pdf.pendingDecisions.includes("A6"));
   for (const context of Object.values(FILE_CONTEXTS)) {

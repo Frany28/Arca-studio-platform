@@ -2,6 +2,8 @@ import { sanitizePublicPayload } from "../utils/publicPayload.js";
 
 const projectClients = new Map();
 const userConnectionCounts = new Map();
+// Datos de cada stream abierto: cómo obtener su destinatario vigente y cómo cerrarlo (B6).
+const subscriptions = new WeakMap();
 let eventSequence = 0;
 
 /**
@@ -54,10 +56,12 @@ function getReauthorizeIntervalMs() {
  * @param {import("express").Response} options.response - Respuesta SSE abierta.
  * @param {string} options.userId - Usuario suscrito, para el límite de conexiones.
  * @param {() => Promise<boolean>} [options.reauthorize] - Comprobación periódica de acceso vigente.
+ * @param {() => Promise<object|null>} [options.resolveRecipient] - Usuario vigente con acceso al
+ *   proyecto, o null. Lo usan los eventos filtrados por destinatario; sin él, el stream no los recibe.
  * @returns {() => void} Función que cancela la suscripción.
  * @throws {Error} `SSE_CONNECTION_LIMIT` cuando se supera el límite por usuario o por proyecto.
  */
-export function subscribeToProjectEvents({ projectId, response, userId, reauthorize }) {
+export function subscribeToProjectEvents({ projectId, response, userId, reauthorize, resolveRecipient }) {
   const projectKey = getProjectKey(projectId);
   const clients = projectClients.get(projectKey) || new Set();
   const userKey = String(userId);
@@ -132,8 +136,63 @@ const unsubscribe = () => {
   if (typeof reauthorize === "function") {
     reauthorization = setInterval(revalidateSubscription, getReauthorizeIntervalMs());
   }
+  /**
+   * Cancela la suscripción y termina el stream cuando el destinatario perdió el acceso al publicar.
+   * El cliente SSE reconecta y la nueva conexión vuelve a comprobar el acceso desde cero.
+   *
+   * @returns {void}
+   */
+  const closeStream = () => {
+    unsubscribe();
+    if (!response.writableEnded) response.end();
+  };
+  subscriptions.set(response, {
+    close: closeStream,
+    resolveRecipient: typeof resolveRecipient === "function" ? resolveRecipient : null,
+  });
   response.on("error", unsubscribe);
   return unsubscribe;
+}
+
+/**
+ * Publica un evento eligiendo el contenido para cada destinatario (Fase 1.2, B6). Antes de escribir,
+ * resuelve el usuario vigente del stream (sesión y acceso al proyecto en ese momento): si ya no lo
+ * tiene, cierra la conexión; así un cambio de asignación no espera a la revalidación periódica.
+ * `selectPayload` decide qué recibe cada uno (null: nada). Falla cerrado por destinatario: un error al
+ * resolverlo o al elegir el contenido no envía nada a ese stream. Los errores se propagan al final.
+ *
+ * @param {object} options - Evento y selector.
+ * @param {string} options.eventName - Nombre del evento SSE.
+ * @param {number|string} options.projectId - Proyecto.
+ * @param {(recipient: object) => Promise<object|null>|object|null} options.selectPayload - Contenido por destinatario.
+ * @returns {Promise<{ delivered: number }>} Streams que recibieron el evento.
+ * @throws {Error} El primer error encontrado, después de atender a todos los destinatarios.
+ */
+export async function publishProjectEventToRecipients({ eventName, projectId, selectPayload }) {
+  const clients = projectClients.get(getProjectKey(projectId));
+  if (!clients || clients.size === 0) return { delivered: 0 };
+  const failures = [];
+  let delivered = 0;
+  await Promise.all([...clients].map(async (response) => {
+    const subscription = subscriptions.get(response);
+    if (!subscription?.resolveRecipient || response.destroyed || response.writableEnded) return;
+    try {
+      const recipient = await subscription.resolveRecipient();
+      if (!recipient) {
+        subscription.close();
+        return;
+      }
+      const payload = await selectPayload(recipient);
+      if (payload && !response.destroyed && !response.writableEnded) {
+        sendEvent(response, eventName, payload);
+        delivered += 1;
+      }
+    } catch (error) {
+      failures.push(error);
+    }
+  }));
+  if (failures.length) throw failures[0];
+  return { delivered };
 }
 
 /**
@@ -196,5 +255,6 @@ export function closeAllProjectEventConnections() {
 export const projectEventBus = {
   close: closeAllProjectEventConnections,
   publish: publishProjectEvent,
+  publishToRecipients: publishProjectEventToRecipients,
   subscribe: subscribeToProjectEvents,
 };

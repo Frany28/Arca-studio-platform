@@ -1,6 +1,8 @@
 import { pool, query } from "../config/db.js";
+import { isProjectFileReviewEnabled } from "../config/projectFileReview.js";
 import { mapRequestToDraftProject } from "../domain/projectConfiguration.js";
 import { pageResult } from "../utils/pagination.js";
+import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
 import { ensureProjectSystemFolders } from "./projectSystemFolderRepository.js";
 
 // Última edición administrativa de cada solicitud que cambió respuestas relevantes para la revisión
@@ -55,7 +57,21 @@ const WORKFLOW_REQUEST_COLUMNS = `
         coalesce(review.reviews, '[]'::json) as reviews,
         coalesce(attachment.files, '[]'::json) as files`;
 
-const WORKFLOW_REQUEST_RELATIONS = `
+/**
+ * Relaciones del flujo de trabajo de una solicitud: responsables, revisiones y adjuntos. El nombre de
+ * cada adjunto es el de la versión que sirve la ruta de la solicitud: con la revisión activada (B5),
+ * la que aportó el cliente aunque el equipo haya incorporado versiones después.
+ *
+ * @returns {string} Fragmento SQL de uniones laterales.
+ */
+function workflowRequestRelations() {
+  const attachmentVersionJoin = isProjectFileReviewEnabled()
+    ? `left join public.file_versions version on version.id = ${requestAttachmentVersionIdSql("file")}`
+    : `left join public.file_versions version
+          on version.file_id = file.id
+          and version.version_number = file.current_version
+          and version.deleted_at is null`;
+  return `
       left join public.clients request_client on request_client.id = request.client_id
       left join (${ANSWERS_REVISION_SOURCE}
       ) answers_revision on answers_revision.entity_id = request.id
@@ -107,16 +123,14 @@ const WORKFLOW_REQUEST_RELATIONS = `
           ) order by file.created_at, file.id
         ) as files
         from public.files file
-        left join public.file_versions version
-          on version.file_id = file.id
-          and version.version_number = file.current_version
-          and version.deleted_at is null
+        ${attachmentVersionJoin}
         -- Tras convertir la solicitud, sus adjuntos pertenecen al proyecto pero siguen listándose aquí
         -- por su origen, para conservar la trazabilidad en el detalle de la solicitud.
         where (file.project_request_id = request.id or file.origin_project_request_id = request.id)
           and file.deleted_at is null
           and file.status <> 'deleted'
       ) attachment on true`;
+}
 
 /**
  * Transforma el valor de person a la representación pública esperada.
@@ -270,7 +284,7 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
       select
 ${WORKFLOW_REQUEST_COLUMNS}
       from public.project_requests request
-${WORKFLOW_REQUEST_RELATIONS}
+${workflowRequestRelations()}
       where request.deleted_at is null
         and request.status in ('pending_verification', 'pending_review')
         and (
@@ -348,7 +362,7 @@ ${WORKFLOW_REQUEST_COLUMNS},
         converted_project.status as converted_project_status,
         converted_project.public_slug as converted_project_public_slug
       from public.project_requests request
-${WORKFLOW_REQUEST_RELATIONS}
+${workflowRequestRelations()}
       left join public.projects converted_project
         on converted_project.id = request.converted_project_id
         and converted_project.deleted_at is null

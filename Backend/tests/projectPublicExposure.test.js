@@ -177,7 +177,9 @@ test("P-1: imágenes y videos se filtran antes del LIMIT y el cursor no pierde p
   assert.notEqual(detail.filesNextCursor, null, "queda un video después de esta página");
 
   const fileQuery = calls.find(({ sql }) => sql.includes("limit $4"));
-  assert.match(fileQuery.sql, /and \(\$5::boolean or file\.file_type like 'image\/%' or file\.file_type like 'video\/%'\)\s+order by file\.created_at desc, file\.id desc\s+limit \$4/);
+  // Tras el filtro de medios va la condición de la política de audiencias (B5): `true` con la
+  // revisión apagada. Ambas preceden al ORDER BY y al LIMIT.
+  assert.match(fileQuery.sql, /and \(\$5::boolean or file\.file_type like 'image\/%' or file\.file_type like 'video\/%'\)\s+and true\s+order by file\.created_at desc, file\.id desc\s+limit \$4/);
   assert.equal(fileQuery.params[4], false);
 
   const owners = mockDatabase(context, { files });
