@@ -8,6 +8,7 @@ import {
   sanitizeStorageFileName,
 } from "../config/storage.js";
 import { query, withTransaction } from "../config/db.js";
+import { isProjectFileReviewEnabled } from "../config/projectFileReview.js";
 import { getShowcaseFileName } from "../domain/projectPublicView.js";
 import { NotFoundError } from "../errors/appError.js";
 import { storeThenRecord } from "../services/storedUpload.js";
@@ -21,6 +22,30 @@ import {
 import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
 
 const DEFAULT_FILE_STATUS = "active";
+
+// Alta de un archivo de proyecto y su v1. Las variantes heredadas son las sentencias de siempre; las
+// de revisión (Fase 1.2, B4) solo se usan con PROJECT_FILE_REVIEW_ENABLED y requieren la migración
+// 20261118120000_project_file_review_audience_expand.
+const INSERT_LEGACY_PROJECT_FILE_SQL = `
+  insert into public.files (id, project_id, uploaded_by, title, file_type, file_category, current_version, status, folder_id)
+  values ($1, $2, $3, $4, $5, $6, $7, $8::file_status, $9)
+  returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
+`;
+const INSERT_REVIEWED_PROJECT_FILE_SQL = `
+  insert into public.files (id, project_id, uploaded_by, title, file_type, file_category, current_version, status, folder_id, access_policy)
+  values ($1, $2, $3, $4, $5, $6, null, $7::file_status, $8, 1)
+  returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
+`;
+const INSERT_LEGACY_FIRST_VERSION_SQL = `
+  insert into public.file_versions (file_id, uploaded_by, version_number, file_name, original_name, file_url, file_extension, file_size, is_current)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, true)
+  returning id, version_number, file_name, original_name, file_url, file_size, created_at
+`;
+const INSERT_PENDING_FIRST_VERSION_SQL = `
+  insert into public.file_versions (file_id, uploaded_by, version_number, file_name, original_name, file_url, file_extension, file_size, is_current, content_type, review_status)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, false, $9, 'pending')
+  returning id, version_number, file_name, original_name, file_url, file_size, created_at, review_status
+`;
 
 /**
  * Distingue los conflictos operativos de proyectos draft, archivados y finalizados con finished.
@@ -53,7 +78,7 @@ function createProjectReadOnlyError(status) {
  * @param {string} originalName - Valor de `originalName` requerido por esta operación.
  * @returns {unknown} Resultado producido por la operación.
  */
-function getFileType(contentType, originalName) {
+export function getFileType(contentType, originalName) {
   if (contentType) {
     return String(contentType).split(";")[0].trim().toLowerCase();
   }
@@ -620,6 +645,10 @@ export async function findExistingProjectFile({
  * @param {number|null} [options.folderId] - Carpeta destino del proyecto (configuración del borrador).
  * @param {boolean} [options.configuringDraft] - Admite un proyecto draft (solo la configuración
  *   administrativa); archivados y finalizados se siguen rechazando.
+ * @param {boolean} [options.reviewRequired] - Revisión de versiones activada (Fase 1.2, B4). Apagada,
+ *   la v1 nace vigente con la regla de acceso heredada, como siempre. Encendida, el archivo usa la
+ *   política 1.2 (`access_policy = 1`) y su v1 nace pendiente, sin versión vigente (`current_version`
+ *   NULL, `is_current = false`), con su formato en `content_type`; también la del administrador.
  * @returns {Promise<object>} Resultado producido por la operación.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
@@ -630,6 +659,7 @@ export async function uploadProjectFile({
   folderId = null,
   originalName,
   projectId,
+  reviewRequired = isProjectFileReviewEnabled(),
   size,
   user,
 }) {
@@ -744,64 +774,29 @@ export async function uploadProjectFile({
         throw createDuplicateFileError("DUPLICATE_PROJECT_FILE");
       }
 
-      const fileResult = await client.query(
-        `
-          insert into public.files (
-            id,
-            project_id,
-            uploaded_by,
-            title,
-            file_type,
-            file_category,
-            current_version,
-            status,
-            folder_id
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8::file_status, $9)
-          returning id, project_id, project_request_id, uploaded_by, file_type, file_category, current_version
-        `,
-        [
-          fileId,
-          projectId,
-          user.id,
-          safeOriginalName,
-          fileType,
-          getFileCategory(fileType),
-          versionNumber,
-          DEFAULT_FILE_STATUS,
-          folderId,
-        ],
-      );
-      const versionResult = await client.query(
-        `
-          insert into public.file_versions (
-            file_id,
-            uploaded_by,
-            version_number,
-            file_name,
-            original_name,
-            file_url,
-            file_extension,
-            file_size,
-            is_current
-          )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, true)
-          returning id, version_number, file_name, original_name, file_url, file_size, created_at
-        `,
-        [
-          fileId,
-          user.id,
-          versionNumber,
-          storageKey,
-          sanitizeStorageFileName(safeOriginalName),
-          fileUrl,
-          fileExtension,
-          size,
-        ],
-      );
+      const fileIdentity = [fileId, projectId, user.id, safeOriginalName, fileType, getFileCategory(fileType)];
+      const versionValues = [
+        fileId,
+        user.id,
+        versionNumber,
+        storageKey,
+        sanitizeStorageFileName(safeOriginalName),
+        fileUrl,
+        fileExtension,
+        size,
+      ];
+      // Activación apagada: exactamente las sentencias anteriores (no dependen de las columnas de B3).
+      // Encendida: política 1.2 y v1 pendiente, sin versión vigente hasta que el administrador la apruebe.
+      const fileResult = reviewRequired
+        ? await client.query(INSERT_REVIEWED_PROJECT_FILE_SQL, [...fileIdentity, DEFAULT_FILE_STATUS, folderId])
+        : await client.query(INSERT_LEGACY_PROJECT_FILE_SQL, [...fileIdentity, versionNumber, DEFAULT_FILE_STATUS, folderId]);
+      const versionResult = reviewRequired
+        ? await client.query(INSERT_PENDING_FIRST_VERSION_SQL, [...versionValues, fileType])
+        : await client.query(INSERT_LEGACY_FIRST_VERSION_SQL, versionValues);
       const version = versionResult.rows[0];
 
       return {
+        ...(reviewRequired ? { reviewStatus: version.review_status, versionId: Number(version.id) } : {}),
         ...toFileUpload({
           ...fileResult.rows[0],
           file_name: version.file_name,

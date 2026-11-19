@@ -166,10 +166,27 @@ export function evaluateFileAudienceChange({ action, actor, file, project, versi
 
 /**
  * Describe qué ocurre con la audiencia del cliente al aprobar una versión.
- * No se comparte nada implícitamente: depende de DA3.
+ * Regla confirmada (DA3): aprobar no comparte; la autorización del cliente es una acción aparte.
  *
- * @returns {{ outcome: "pending_decision", reason: string, decision: string }} Resultado pendiente.
+ * @returns {{ outcome: "allowed", reason: string, sharesWithClient: false }} Resultado confirmado.
  */
 export function resolveClientAudienceOnApproval() {
-  return pendingFileDecision("DA3", "PUBLISH_ON_APPROVAL_UNDECIDED");
+  return fileRuleResult("allowed", "APPROVAL_DOES_NOT_SHARE", { sharesWithClient: false });
+}
+
+/**
+ * Evalúa si un usuario puede crear una versión nueva de un archivo (reemplazar o restaurar).
+ * Aplica la propuesta PR5 (sin confirmar): quien tiene acceso de equipo al proyecto, o el autor del
+ * archivo mientras conserve el acceso al proyecto. Un draft solo existe para el administrador.
+ *
+ * @param {{ id: number, role: string, clientId?: number|null }} actor - Usuario autenticado.
+ * @param {object} project - Proyecto (ver `hasProjectStaffAccess`).
+ * @param {{ uploadedBy: number }} file - Archivo.
+ * @returns {{ outcome: "allowed"|"forbidden", reason: string, proposal?: string }} Resultado.
+ */
+export function evaluateVersionAuthoring(actor, project, file) {
+  if (hasProjectStaffAccess(actor, project)) return fileRuleResult("allowed", "TEAM_ACCESS", { proposal: "PR5" });
+  const keepsAccess = isProjectOwnerClient(actor, project) || hasProjectStaffAccess(actor, project);
+  if (keepsAccess && Number(file.uploadedBy) === Number(actor?.id)) return fileRuleResult("allowed", "FILE_AUTHOR", { proposal: "PR5" });
+  return fileRuleResult("forbidden", "NOT_TEAM_OR_FILE_AUTHOR", { proposal: "PR5" });
 }

@@ -1,21 +1,21 @@
-import { fileRuleResult, pendingFileDecision } from "./projectFileDecisions.js";
+import { fileRuleResult } from "./projectFileDecisions.js";
 
-// Revisión y versiones de archivos de proyecto (Fase 1.2, B2). Dominio puro, sin PostgreSQL ni
-// almacenamiento; ningún flujo lo usa todavía. Clasificación, aprobación y visibilidad son
-// independientes: este módulo solo decide estados de revisión y versiones; quién ve cada versión lo
-// decide `projectFileAccess.js`.
+// Revisión y versiones de archivos de proyecto (Fase 1.2). Dominio puro, sin PostgreSQL ni
+// almacenamiento; lo aplica `services/projectFileVersionService.js` (B4). Clasificación, aprobación y
+// visibilidad son independientes: este módulo solo decide estados de revisión y versiones; quién ve
+// cada versión lo decide `projectFileAccess.js`.
 //
-// Reglas:
-// - una versión se revisa una sola vez: pending → approved o pending → rejected (motivo obligatorio);
+// Reglas confirmadas (FILE_CONFIRMED_RULES):
+// - una versión se revisa una sola vez: pending → approved o pending → rejected;
+// - solo el administrador aprueba y rechaza (DA5); rechazar exige un motivo de hasta 500 caracteres (PR4);
+// - toda versión nueva nace pendiente, también la del administrador (DA2);
+// - cada archivo admite una sola versión pendiente (PR1);
+// - reemplazar exige motivo y conserva las versiones anteriores;
+// - restaurar una versión aprobada crea una versión nueva pendiente, registra su procedencia y
+//   reutiliza el objeto almacenado (PR2);
+// - aprobar no comparte con el cliente (DA3);
 // - las versiones anteriores a la revisión (review_status NULL, «heredadas») cuentan como vigentes y
-//   no se revisan;
-// - la versión vigente es la aprobada (o heredada) de mayor número;
-// - reemplazar y restaurar crean una versión nueva con motivo del cambio (Figma «Motivo del
-//   cambio *»); restaurar reutiliza el objeto almacenado y conserva el historial completo;
-// - propuestas pendientes de aprobación (FILE_PROPOSED_RULES): como máximo una versión pendiente
-//   por archivo (PR1), solo se restauran versiones aprobadas distintas de la vigente (PR2) y el
-//   motivo de rechazo admite hasta 500 caracteres (PR4);
-// - quién aprueba (DA5) y la aprobación automática (DA2) siguen pendientes de decisión.
+//   no se revisan; la versión vigente es la aprobada (o heredada) de mayor número.
 
 export const FILE_VERSION_REVIEW_STATUS = Object.freeze({
   APPROVED: "approved",
@@ -23,8 +23,8 @@ export const FILE_VERSION_REVIEW_STATUS = Object.freeze({
   REJECTED: "rejected",
 });
 
-// Longitudes: `change_note` es VARCHAR(255) en file_versions. El límite de 500 del motivo de rechazo
-// es la propuesta PR4: `review_reason` es TEXT en PostgreSQL y no impone ningún máximo.
+// Longitudes: `change_note` es VARCHAR(255) en file_versions. El motivo de rechazo admite 500
+// caracteres (regla confirmada PR4); `review_reason` es TEXT y la aplicación impone el máximo.
 export const CHANGE_NOTE_MAX_LENGTH = 255;
 export const REVIEW_REASON_MAX_LENGTH = 500;
 
@@ -72,7 +72,7 @@ function normalizeRequiredText(value, maxLength) {
 
 /**
  * Evalúa aprobar o rechazar una versión según su estado de revisión.
- * Solo una versión pendiente se revisa; rechazar exige un motivo. No decide quién revisa (DA5).
+ * Solo una versión pendiente se revisa; rechazar exige un motivo. Quién revisa lo decide `evaluateReviewer`.
  *
  * @param {object} request - Versión, acción y motivo.
  * @param {{ reviewStatus?: string|null }} request.version - Versión que se revisa.
@@ -92,43 +92,42 @@ export function evaluateReviewTransition({ action, reason, version }) {
 
   const { error, text } = normalizeRequiredText(reason, REVIEW_REASON_MAX_LENGTH);
   if (error === "required") return fileRuleResult("forbidden", "REJECTION_REASON_REQUIRED");
-  if (error === "too_long") return fileRuleResult("forbidden", "REJECTION_REASON_TOO_LONG", { proposal: "PR4" });
+  if (error === "too_long") return fileRuleResult("forbidden", "REJECTION_REASON_TOO_LONG");
   return fileRuleResult("allowed", "VERSION_REJECTED", { nextStatus: FILE_VERSION_REVIEW_STATUS.REJECTED, rejectionReason: text });
 }
 
 /**
- * Evalúa si un usuario puede revisar versiones de un proyecto.
- * Confirmado: hace falta acceso de equipo al proyecto (ver `hasProjectStaffAccess`). Con él, qué
- * roles revisan depende de DA5.
+ * Evalúa si un usuario puede aprobar o rechazar versiones de un proyecto.
+ * Regla confirmada (DA5): solo el administrador, que siempre tiene acceso de equipo.
  *
- * @param {{ hasStaffAccess: boolean }} reviewer - Acceso de equipo del revisor al proyecto.
- * @returns {{ outcome: "forbidden"|"pending_decision", reason: string, decision?: string }} Resultado.
+ * @param {{ role: string, hasStaffAccess: boolean }} reviewer - Rol y acceso de equipo del revisor.
+ * @returns {{ outcome: "allowed"|"forbidden", reason: string }} Resultado.
  */
-export function evaluateReviewer({ hasStaffAccess }) {
+export function evaluateReviewer({ hasStaffAccess, role }) {
+  if (role !== "admin") return fileRuleResult("forbidden", "REVIEWER_NOT_ADMIN");
   if (!hasStaffAccess) return fileRuleResult("forbidden", "REVIEWER_WITHOUT_PROJECT_ACCESS");
-  return pendingFileDecision("DA5", "REVIEWER_ROLE_UNDECIDED");
+  return fileRuleResult("allowed", "ADMIN_REVIEWER");
 }
 
 /**
  * Decide el estado de revisión con que nace una versión según el rol de quien la sube.
- * La subida del arquitecto pasa por revisión (Figma, pestaña «Pendientes»); que las del
- * administrador o del cliente nazcan aprobadas depende de DA2.
+ * Regla confirmada (DA2): toda versión nueva nace pendiente, también la del administrador y la del
+ * cliente; no hay aprobación automática.
  *
  * @param {{ uploaderRole: string }} upload - Rol de quien sube, reemplaza o restaura.
- * @returns {{ outcome: "allowed"|"forbidden"|"pending_decision", reason: string, status?: string, decision?: string }} Resultado.
+ * @returns {{ outcome: "allowed"|"forbidden", reason: string, status?: string }} Resultado.
  */
 export function resolveInitialReviewStatus({ uploaderRole }) {
-  if (uploaderRole === "architect") {
-    return fileRuleResult("allowed", "TEAM_UPLOAD_REQUIRES_REVIEW", { status: FILE_VERSION_REVIEW_STATUS.PENDING });
+  if (["admin", "architect", "client"].includes(uploaderRole)) {
+    return fileRuleResult("allowed", "NEW_VERSION_REQUIRES_REVIEW", { status: FILE_VERSION_REVIEW_STATUS.PENDING });
   }
-  if (uploaderRole === "admin" || uploaderRole === "client") return pendingFileDecision("DA2", "AUTOMATIC_APPROVAL_UNDECIDED");
   return fileRuleResult("forbidden", "UPLOADER_ROLE_NOT_ALLOWED");
 }
 
 /**
  * Planifica la versión que crea una subida, un reemplazo o una restauración, sin escribir nada.
- * Reemplazar y restaurar exigen motivo y que no haya otra versión pendiente; restaurar solo admite
- * una versión aprobada distinta de la vigente y reutiliza su objeto almacenado (no lo copia).
+ * Reemplazar y restaurar exigen motivo y que no haya otra versión pendiente (PR1); restaurar solo
+ * admite una versión aprobada o heredada (PR2) y reutiliza su objeto almacenado (no lo copia).
  *
  * @param {object} request - Versiones existentes y operación.
  * @param {Array<{ id: number, versionNumber: number, reviewStatus?: string|null, storageKey?: string, deletedAt?: unknown }>} request.versions -
@@ -155,9 +154,9 @@ export function planNewVersion({ changeNote, kind, restoreFromVersionId, version
   const note = normalizeRequiredText(changeNote, CHANGE_NOTE_MAX_LENGTH);
   if (note.error === "required") return fileRuleResult("forbidden", "CHANGE_NOTE_REQUIRED");
   if (note.error === "too_long") return fileRuleResult("forbidden", "CHANGE_NOTE_TOO_LONG");
-  // Propuesta PR1 (pendiente de aprobación): una sola versión pendiente por archivo.
+  // Regla confirmada PR1: una sola versión pendiente por archivo.
   const hasPending = versions.some((version) => !version.deletedAt && version.reviewStatus === FILE_VERSION_REVIEW_STATUS.PENDING);
-  if (hasPending) return fileRuleResult("forbidden", "VERSION_PENDING_REVIEW", { proposal: "PR1" });
+  if (hasPending) return fileRuleResult("forbidden", "VERSION_PENDING_REVIEW");
   // La numeración cuenta todas las versiones: (file_id, version_number) es único y nada se reutiliza.
   const versionNumber = Math.max(...versions.map((version) => Number(version.versionNumber))) + 1;
 
@@ -167,9 +166,8 @@ export function planNewVersion({ changeNote, kind, restoreFromVersionId, version
 
   const source = versions.find((version) => Number(version.id) === Number(restoreFromVersionId));
   if (!source) return fileRuleResult("forbidden", "RESTORE_SOURCE_NOT_FOUND");
-  // Propuesta PR2 (pendiente de aprobación): solo versiones aprobadas y distintas de la vigente.
-  if (!isVersionEffectivelyApproved(source)) return fileRuleResult("forbidden", "RESTORE_SOURCE_NOT_APPROVED", { proposal: "PR2" });
-  if (Number(resolveCurrentVersion(versions)?.id) === Number(source.id)) return fileRuleResult("forbidden", "RESTORE_SOURCE_IS_CURRENT", { proposal: "PR2" });
+  // Regla confirmada PR2: solo se restaura una versión aprobada (o heredada), aunque sea la vigente.
+  if (!isVersionEffectivelyApproved(source)) return fileRuleResult("forbidden", "RESTORE_SOURCE_NOT_APPROVED");
   return fileRuleResult("allowed", "RESTORED_VERSION", {
     changeNote: note.text,
     restoredFromVersionId: Number(source.id),

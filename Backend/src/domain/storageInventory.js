@@ -97,6 +97,8 @@ export function describeStorageKeyShape(key) {
 function describeKeySegment(segment) {
   if (/^\d+$/.test(segment)) return "<n>";
   if (/^v\d+$/.test(segment)) return "v<n>";
+  // Versiones nuevas de la Fase 1.2 (B4): número más identificador del intento de carga.
+  if (/^v\d+-[a-z0-9]+$/.test(segment)) return "v<n>-<id>";
   if (UUID_PATTERN.test(segment)) return "<uuid>";
   return STRUCTURAL_KEY_SEGMENTS.has(segment) ? segment : "<texto>";
 }

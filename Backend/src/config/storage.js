@@ -154,6 +154,9 @@ export function getFileExtension(fileName) {
  * @param {unknown} options.versionNumber - Valor de `options.versionNumber` requerido por esta operación.
  * @param {string} options.originalName - Valor de `options.originalName` requerido por esta operación.
  * @param {unknown} [options.uploadedAt] - Valor de `options.uploadedAt` requerido por esta operación.
+ * @param {string} [options.attemptId] - Identificador único del intento de carga (minúsculas y
+ *   dígitos). Las versiones nuevas de un archivo existente lo usan para que dos cargas simultáneas
+ *   del mismo número de versión nunca escriban la misma clave; sin él, la clave no cambia.
  * @returns {unknown} Resultado producido por la operación.
  */
 export function buildStorageObjectKey({
@@ -164,6 +167,7 @@ export function buildStorageObjectKey({
   versionNumber,
   originalName,
   uploadedAt = new Date(),
+  attemptId = null,
 }) {
   const date = uploadedAt instanceof Date ? uploadedAt : new Date(uploadedAt);
   const year = String(date.getUTCFullYear());
@@ -179,7 +183,7 @@ export function buildStorageObjectKey({
     month,
     "files",
     String(fileId),
-    `v${Number(versionNumber) || 1}`,
+    `v${Number(versionNumber) || 1}${attemptId ? `-${String(attemptId).toLowerCase().replace(/[^a-z0-9]/g, "")}` : ""}`,
     safeName,
   ].join("/");
 }
