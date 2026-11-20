@@ -1,0 +1,3 @@
+import {open} from './.phase12-runtime.mjs';
+const c=await open();
+try {console.log(JSON.stringify({role:(await c.query("select rolsuper,rolcreatedb,rolbypassrls from pg_roles where rolname=current_user")).rows[0],extensionCapabilities:(await c.query("select name,superuser,trusted from pg_available_extension_versions where name='supabase_vault' and installed")).rows,settings:(await c.query("select name,setting from pg_settings where name in ('supautils.privileged_role','supautils.privileged_extensions','supautils.enable_event_trigger')")).rows,createTriggersSource:(await c.query('select evtname,pg_get_userbyid(evtowner) as owner from pg_event_trigger')).rows}));}finally{await c.end();}

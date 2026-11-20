@@ -1,0 +1,2 @@
+import {open} from './.phase12-runtime.mjs';
+const c=await open();try{console.log(JSON.stringify((await c.query("select application_name,state,wait_event_type,wait_event,extract(epoch from now()-query_start)::int as query_seconds,extract(epoch from now()-xact_start)::int as transaction_seconds,left(ltrim(query),6) as operation from pg_stat_activity where datname=current_database() and pid<>pg_backend_pid() and state <> 'idle' order by backend_start")).rows));}finally{await c.end();}
