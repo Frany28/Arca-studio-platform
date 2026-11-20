@@ -65,6 +65,11 @@ async function openDashboard(context, width) {
     const payload = path === "/api/auth/me"
       ? { user: { id: 1, firstName: "Leonel", lastName: "Pérez", email: "leonel@example.test", role: "admin", status: "active" } }
       : PAYLOADS[path];
+    // Revisión de archivos apagada por defecto: el administrador de archivos responde como el backend.
+    if (path.startsWith("/api/admin/files/")) {
+      await route.fulfill({ status: 404, json: { code: "API_ROUTE_NOT_FOUND", message: "Ruta no encontrada" } });
+      return;
+    }
     if (!payload) {
       errors.push(`Petición no prevista: ${route.request().method()} ${path}`);
       await route.fulfill({ status: 404, json: { code: "TEST_ROUTE_MISSING", message: "Fixture no definida" } });

@@ -961,6 +961,41 @@ Validación, capturas y diferencias respecto a Figma:
   cambios de tamaño del ancla y el fin de transiciones y animaciones (p. ej. la entrada con
   `transform` del `Modal`), para no quedar anclados a una geometría intermedia.
 
+### Gestión de archivos (administrador)
+
+- Referencia: Figma `3727:682730` (escritorio `3727:683873`, tablet `3727:683881`, móvil
+  `3727:683883`; Pendientes `3727:683877`; Rechazados `3727:683880`/`4273:683806`). Ruta
+  `/archivos`, solo administradores; `pages/admin-files/AdminFilesPage.jsx` dentro de
+  `InternalDashboardLayout` (`activeItemId="files"`).
+- Datos reales de `GET /admin/files/*` (`api.fileManager`, contrato B7); nunca cifras ni filas de
+  Figma. Con `PROJECT_FILE_REVIEW_ENABLED` apagada esas rutas responden 404
+  `API_ROUTE_NOT_FOUND`: las métricas se leen del resumen del dashboard y el resto se presenta
+  como no disponible (`EmptyState`), sin datos de demostración (`useAdminFilesMetrics`).
+- Pestañas `HorizontalTabMenu` `Underlined` solo con texto (Aprobados, Pendientes por aprobación,
+  Rechazados) dentro de `TabPanel`. El árbol «Proyectos» solo aparece en Aprobados; Pendientes y
+  Rechazados listan todos los proyectos y añaden la columna Proyecto. Rechazados muestra el motivo
+  bajo el nombre.
+- Árbol: filas de 39 px separadas 9 px, sangría de 17 px por nivel, icono `Folder2` y chevron.
+  Seleccionar un proyecto o carpeta acota la tabla (`includeSubfolders=true`); pulsar de nuevo el
+  proyecto seleccionado quita el ámbito. «Buscar carpeta...» consulta carpetas por nombre visible
+  (con su ruta proyecto › carpetas) y proyectos por nombre o cliente.
+- Dos columnas (árbol 280–340 px + tabla) cuando el contenedor mide al menos 800 px (container
+  query); por debajo el árbol se apila encima con altura máxima y desplazamiento propio. La tabla
+  desplaza en horizontal dentro de `HorizontalScrollViewport`; la página nunca desborda.
+- Tabla: geometría en `config/adminFilesTable.js`, compartida con el skeleton (`Loader`
+  `adminFilesTable`, variante `withProject`; el árbol usa `adminFilesTree`). Orden real por
+  Nombre, Peso y Fecha (`aria-sort`); el embudo de Tipo remite al filtro múltiple de la barra.
+  Paginación por cursor de 10 filas (el cursor pertenece a la pestaña y el orden). Sin columna de
+  selección: no hay acciones masivas.
+- Carpetas: «+» crea una subcarpeta en la carpeta seleccionada; está deshabilitado sin carpeta,
+  en la raíz del proyecto (decisión D7 pendiente) y en la portada. Solo las carpetas
+  personalizadas ofrecen «Renombrar» y «Retirar carpeta» (solo vacías, lo comprueba el backend);
+  las predeterminadas («Panorámicas», «Documentos › Garantías», etc.) no tienen acciones. No se
+  ofrece mover carpetas (D13). El formulario reutiliza el patrón Modal + Input (Figma no lo diseña).
+- Conservación: los archivos guardados y sus versiones no se eliminan, así que la acción
+  «Eliminar» de Figma no se ofrece. En U1 cada fila descarga su versión; el visor, la revisión
+  (aprobar o rechazar), «+ Nuevo», reemplazo e historial pertenecen a U2 y U3.
+
 ### Dashboard administrativo móvil
 
 El dashboard administrativo sigue Figma `3727:678728` por debajo de 768 px; tablet y escritorio conservan su presentación. `pages/admin-dashboard/utils/adminDashboardMobilePresentation.js` centraliza los tamaños móviles de botones (44 px de icono, 41 px de texto) y tags (Body/b3, 25 px).

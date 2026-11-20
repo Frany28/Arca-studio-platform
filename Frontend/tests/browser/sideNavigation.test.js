@@ -105,6 +105,11 @@ async function openPage(context, role, options = {}) {
     const payload = path === "/api/auth/me"
       ? { user: { id: 1, firstName: "Sidebar", lastName: "Test", email: "sidebar@example.test", role, status: "active" } }
       : API_FIXTURES[path];
+    // Revisión de archivos apagada por defecto: el administrador de archivos responde como el backend.
+    if (path.startsWith("/api/admin/files/")) {
+      await route.fulfill({ status: 404, json: { code: "API_ROUTE_NOT_FOUND", message: "Ruta no encontrada" } });
+      return;
+    }
     if (!payload || request.method() !== "GET") {
       errors.push(`Petición de API no prevista: ${request.method()} ${path}`);
       await route.fulfill({ status: 404, json: { code: "TEST_ROUTE_MISSING", message: "Fixture no definida" } });

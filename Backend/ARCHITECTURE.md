@@ -533,7 +533,7 @@ Crear en la raíz depende de D7 y responde 409 `PROJECT_FOLDER_DECISION_PENDING`
 **Fuera de B7.**
 - Subida, reemplazo, aprobación, rechazo, historial, restauración y descarga: ya existen en las rutas de versiones de B4. La tabla las usa por `fileId` y `versionId`.
 - Mover archivos entre carpetas fuera de draft: hoy solo en la configuración del draft, que desde B8 aplica la regla de los documentos de garantía.
-- Interfaz (U1 a U3 del plan).
+- Interfaz: U1 (pantalla principal) consume estas rutas desde `Frontend/src/pages/admin-files` (`api.fileManager`); con la activación apagada presenta el administrador como no disponible y lee las métricas generales de `/admin/dashboard-metrics`. Visor, revisión, carga, reemplazo e historial quedan para U2 y U3. Detalle de interfaz en `Frontend/DESIGN_SYSTEM.md`, «Gestión de archivos (administrador)».
 
 **Pruebas.** `tests/fileManager.integration.test.js` (opcional: `ARCA_FILE_MANAGER_DB_TESTS=1` y `ARCA_FILE_MANAGER_TEST_DATABASE_URL` local). Cubre:
 - métricas globales, por proyecto y por carpeta con subcarpetas, con un objeto reutilizado por una restauración contado una vez y la restauración excluida de la última carga;
