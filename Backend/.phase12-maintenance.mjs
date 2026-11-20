@@ -56,7 +56,7 @@ export async function configureScopedLimits(database) {
 }
 export async function restoreScopedLimits(database) {
  const original=read(`limits-original-${database}.json`);assert.equal(original.database,database);assert(database==='postgres'||/^arca_phase12_[a-z_0-9]+$/.test(database));
- const c=await open(database);try{for(const key of ['lock_timeout','statement_timeout']){if(original.values[key]===undefined)await c.query(`alter role postgres in database "${database}" reset ${key}`);else await c.query(`alter role postgres in database "${database}" set ${key}='${original.values[key].replaceAll("'","''")}'`);}save(`limits-restored-${database}.json`,{...original,restoredAt:new Date().toISOString()});}finally{await c.end();}
+ const c=await open(database);try{for(const key of ['lock_timeout','statement_timeout']){if(original.values[key]===undefined)await c.query(`alter role postgres in database "${database}" reset ${key}`);else await c.query(`alter role postgres in database "${database}" set ${key}='${original.values[key].replaceAll("'","''")}'`);}const row=(await c.query("select setconfig from pg_db_role_setting where setdatabase=(select oid from pg_database where datname=current_database()) and setrole=(select oid from pg_roles where rolname=current_user)")).rows[0];const actual=Object.fromEntries((row?.setconfig||[]).filter(v=>/^(lock_timeout|statement_timeout)=/.test(v)).map(v=>[v.slice(0,v.indexOf('=')),v.slice(v.indexOf('=')+1)]));assert.deepEqual(actual,original.values);save(`limits-restored-${database}.json`,{...original,verified:true,restoredAt:new Date().toISOString()});}finally{await c.end();}
 }
 export async function recycleIdleMigrationConnections(database) {
  const publicClone='arca_phase12_public_20261120';
@@ -65,7 +65,7 @@ export async function recycleIdleMigrationConnections(database) {
  // Decisión operativa: renovar únicamente backends inactivos del pooler propio; nunca cerrar transacciones.
  const control=await open(database==='postgres'?publicClone:'postgres');
  try {
-  const sessions=(await control.query("select pid,state,xact_start from pg_stat_activity where datname=$1 and usename=current_user and application_name='Supavisor'",[database])).rows;
+  let sessions=[];for(let attempt=0;attempt<30;attempt++){sessions=(await control.query("select pid,state,xact_start from pg_stat_activity where datname=$1 and usename=current_user and application_name='Supavisor'",[database])).rows;if(sessions.every(s=>s.state==='idle'&&s.xact_start===null))break;await new Promise(resolve=>setTimeout(resolve,500));}
   assert(sessions.every(s=>s.state==='idle'&&s.xact_start===null),'An active session prevents recycling');
   const rows=(await control.query("select pid,pg_terminate_backend(pid) as recycled from pg_stat_activity where datname=$1 and usename=current_user and application_name='Supavisor' and state='idle' and xact_start is null and pid<>pg_backend_pid()",[database])).rows;
   assert(rows.every(r=>r.recycled===true),'Idle backend recycling failed');

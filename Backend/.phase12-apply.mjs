@@ -19,8 +19,8 @@ async function publicApi(cookie) {
 async function pause() {
  const project=await vercel(`/v9/projects/${projectId}${suffix}`);assert(!project.paused,'Project already paused outside this operation');
  await vercel(`/v1/projects/${projectId}/pause${suffix}`,'POST');save('maintenance-state.json',{paused:true,projectId,createdAt:new Date().toISOString()});
- const response=await fetch('https://sistema-web-arca-studio.vercel.app/api/health');const body=await response.text();assert.equal(response.status,503);assert(body.includes('DEPLOYMENT_PAUSED')||response.headers.get('x-vercel-error')==='DEPLOYMENT_PAUSED','Maintenance pause not verified');
- console.log(JSON.stringify({maintenancePaused:true,status:response.status}));
+ let verified=false;for(let attempt=0;attempt<30;attempt++){const response=await fetch('https://sistema-web-arca-studio.vercel.app/api/health');const body=await response.text();if(response.status===503&&(body.includes('DEPLOYMENT_PAUSED')||response.headers.get('x-vercel-error')==='DEPLOYMENT_PAUSED')){verified=true;break;}await new Promise(resolve=>setTimeout(resolve,1000));}assert(verified,'Maintenance pause not verified');
+ console.log(JSON.stringify({maintenancePaused:true,status:503}));
 }
 async function resume() {
  await vercel(`/v1/projects/${projectId}/unpause${suffix}`,'POST');save('maintenance-state.json',{paused:false,projectId,resumedAt:new Date().toISOString()});console.log(JSON.stringify({maintenancePaused:false}));
@@ -45,6 +45,7 @@ async function apply() {
  await resume();assertBackup();
 }
 async function after() {
+ for(let attempt=0;attempt<60;attempt++){const r=await fetch('https://sistema-web-arca-studio.vercel.app/api/health');if(r.status===200)break;await new Promise(resolve=>setTimeout(resolve,1000));}
  const {result,cookie}=await inspect();assert.equal(result.pending.length,0);assert.equal(result.unfinished.length,0);assert.equal(result.mismatches.length,0);
  const results=await publicApi(cookie);save('http-after.json',results);save('target-after.json',result);
  console.log(JSON.stringify({target:result.target,historyCount:result.historyCount,pending:result.pending,routes:results.map(({route,status,code,keys,body})=>({route,status,code,keys,counts:Array.isArray(body.items)?body.items.length:Array.isArray(body.projects)?body.projects.length:undefined,metrics:route.endsWith('/metrics')?body:undefined}))}));
@@ -53,7 +54,7 @@ async function after() {
 async function plan() {
  assert(read('staging-applied.json').checksPassed);assertBackup();
  const client=await open();try{const sql=fs.readFileSync('scripts/project-file-compatibility/preflight.sql','utf8').replace(/^\\.*$/gm,'');const rows=(await client.query(sql)).flatMap(r=>r.rows);save('b9-preflight.json',rows);assert(rows.flatMap(Object.entries).filter(([k])=>k.startsWith('ok_')).every(([,v])=>v===true));}finally{await client.end();}
- const envFile=path.join(root,'b9-private.env');fs.writeFileSync(envFile,`DATABASE_URL=${JSON.stringify(selectedUrl.toString())}\nDATABASE_SSL_REJECT_UNAUTHORIZED=true\nDATABASE_SSL_CA_CERT=${JSON.stringify(environment.DATABASE_SSL_CA_CERT)}\n`,{mode:0o600});
+ const envFile=path.join(root,'b9-private.env');const ca=environment.DATABASE_SSL_CA_CERT.replace(/\\n/g,'\n');fs.writeFileSync(envFile,`DATABASE_URL=${JSON.stringify(selectedUrl.toString())}\nDATABASE_SSL_REJECT_UNAUTHORIZED=true\nDATABASE_SSL_CA_CERT=${JSON.stringify(ca)}\n`,{mode:0o600});
  const common=['scripts/project-file-compatibility.mjs','--env-file',envFile];await run('b9-describe',process.execPath,[...common,'--describe-target']);
  const out=await run('b9-plan-command',process.execPath,[...common,'--confirm-database',target,'--plan','--out',path.join(root,'b9-plan.json'),'--report',path.join(root,'b9-report.json')]);
  console.log(out.trim());const report=read('b9-report.json');console.log(JSON.stringify(report));assertBackup();
