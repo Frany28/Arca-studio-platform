@@ -7,9 +7,11 @@ import Button from "../../../components/ui/Button/Button.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import Input from "../../../components/ui/Input/Input.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
+import ScrollBar from "../../../components/ui/ScrollBar/ScrollBar.jsx";
+import { useVerticalScrollBar } from "../../../hooks/useVerticalScrollBar.js";
 import { FOLDER_RULE_MESSAGES, buildFolderTree, formatFolderPath, getFolderCapabilities } from "../utils/adminFilesPresentation.js";
 
-// Figma 3727:683873: filas de 39 px separadas 9 px y sangría de 17 px por nivel.
+// Figma 3727:683873: superficies de 36 px cada 48 px, margen de 8 px y sangría de 17 px.
 const INDENT_PX = 17;
 const FOLDER_ACTIONS = Object.freeze([
   { icon: Edit2, id: "rename", label: "Renombrar" },
@@ -23,20 +25,24 @@ const FOLDER_ACTIONS = Object.freeze([
  * @param {Object} props - Nodo, nivel, estado y callbacks.
  * @returns {import("react").ReactElement} Elemento de lista.
  */
-function TreeRow({ actionsDisabled, children, depth, expanded, hasChildren, label, menu, onSelect, onToggle, selected }) {
+function TreeRow({ actionsDisabled, activeBranch = false, children, depth, expanded, hasChildren, label, menu, onSelect, onToggle, selected }) {
+  const highlighted = selected || activeBranch;
   return (
-    <li className="flex flex-col gap-[9px]">
+    <li className="flex flex-col gap-[12px]">
       <div
         className={clsx(
-          "group flex h-[39px] items-center gap-[4px] rounded-[var(--radius-2)] pr-[4px] transition-colors duration-150",
-          selected ? "bg-[var(--color-neutral-300)]" : "hover:bg-[var(--color-neutral-200)]",
+          "group mr-[8px] flex h-[36px] items-center gap-[4px] rounded-[var(--radius-2)] pr-[4px] transition-colors duration-150 motion-reduce:transition-none",
+          highlighted ? "bg-[var(--color-neutral-200)]" : "hover:bg-[var(--color-neutral-200)]",
         )}
-        style={{ marginLeft: depth * INDENT_PX }}
+        style={{ marginLeft: 8 + depth * INDENT_PX }}
         data-tree-row
       >
         <button
           type="button"
-          className="flex h-full min-w-0 flex-1 items-center gap-[12px] rounded-[var(--radius-2)] pl-[8px] text-left text-heading-8 text-[var(--color-text-300)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]"
+          className={clsx(
+            "flex h-full min-w-0 flex-1 items-center gap-[12px] rounded-[var(--radius-2)] pl-[8px] text-left text-heading-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]",
+            highlighted ? "text-[var(--color-text-300)]" : "text-[var(--color-text-200)]",
+          )}
           aria-current={selected ? "true" : undefined}
           onClick={onSelect}
         >
@@ -60,7 +66,7 @@ function TreeRow({ actionsDisabled, children, depth, expanded, hasChildren, labe
           />
         ) : <span className="size-[32px] shrink-0" aria-hidden="true" />}
       </div>
-      {hasChildren && expanded ? <ul className="flex flex-col gap-[9px]">{children}</ul> : null}
+      {hasChildren && expanded ? <ul className="flex flex-col gap-[12px]">{children}</ul> : null}
     </li>
   );
 }
@@ -164,6 +170,7 @@ function FolderSearchResults({ onSelect, results, selection }) {
  * @returns {import("react").ReactElement} Columna del árbol.
  */
 function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFolder, onRenameFolder, onSelect, onSelectSearchResult, onToggle, selection, tree }) {
+  const { viewportRef, scrollState, hasOverflow, syncScrollState, handlePositionChange } = useVerticalScrollBar();
   const project = tree.projects.find((candidate) => candidate.id === selection.projectId) || null;
   const selectedFolder = project?.folders.find((folder) => folder.id === selection.folderId) || null;
   // Con un proyecto seleccionado sin carpeta, la creación sería en la raíz: pendiente de decisión (D7).
@@ -200,7 +207,7 @@ function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFol
     );
   } else {
     content = (
-      <ul className="flex flex-col gap-[9px]" aria-label="Proyectos y carpetas">
+      <ul className="flex flex-col gap-[12px] pt-[4px]" aria-label="Proyectos y carpetas">
         {projectNodes.map(({ project: node, roots }) => {
           const key = `p:${node.id}`;
           const selected = selection.projectId === node.id && !selection.folderId;
@@ -210,6 +217,7 @@ function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFol
               depth={0}
               label={node.name}
               selected={selected}
+              activeBranch={selection.projectId === node.id}
               expanded={expanded.has(key)}
               hasChildren={roots.length > 0}
               actionsDisabled={actionsDisabled}
@@ -260,14 +268,35 @@ function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFol
         />
       </div>
 
-      <div className="flex max-h-[420px] min-h-0 flex-col gap-[16px] overflow-y-auto overscroll-contain pr-[8px] [scrollbar-color:var(--color-neutral-400)_transparent] [scrollbar-width:thin] min-[1024px]:max-h-[720px]">
-        {tree.search.applied ? <FolderSearchResults results={tree.folderResults} selection={selection} onSelect={onSelectSearchResult} /> : null}
-        {content}
-        {tree.error && tree.projects.length ? <p className="text-body-3 m-0 px-[8px] text-[var(--color-danger-100)]" role="alert">{tree.error}</p> : null}
-        {tree.hasMore && !tree.loading ? (
-          <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={tree.loadingMore} className="self-start" onClick={tree.loadMore}>
-            {tree.loadingMore ? "Cargando proyectos..." : "Cargar más proyectos"}
-          </Button>
+      <div className="relative min-h-0">
+        <div
+          ref={viewportRef}
+          className="max-h-[420px] overflow-y-auto overscroll-contain pr-[16px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-[1024px]:max-h-[720px]"
+          onScroll={syncScrollState}
+          data-admin-files-tree-viewport
+        >
+          <div className="flex min-w-0 flex-col gap-[16px]">
+            {tree.search.applied ? <FolderSearchResults results={tree.folderResults} selection={selection} onSelect={onSelectSearchResult} /> : null}
+            {content}
+            {tree.error && tree.projects.length ? <p className="text-body-3 m-0 px-[8px] text-[var(--color-danger-100)]" role="alert">{tree.error}</p> : null}
+            {tree.hasMore && !tree.loading ? (
+              <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={tree.loadingMore} className="self-start" onClick={tree.loadMore}>
+                {tree.loadingMore ? "Cargando proyectos..." : "Cargar más proyectos"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        {hasOverflow ? (
+          <ScrollBar
+            height={scrollState.height}
+            length={scrollState.length}
+            position={scrollState.position}
+            interactive
+            onPositionChange={handlePositionChange}
+            aria-label="Desplazamiento de proyectos y carpetas"
+            className="absolute right-0 top-0"
+            trackContainerClassName="bg-transparent"
+          />
         ) : null}
       </div>
     </aside>

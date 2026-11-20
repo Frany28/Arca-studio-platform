@@ -502,6 +502,19 @@ test("el árbol acota la tabla, busca carpetas y gestiona carpetas personalizada
   await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
   await tree.getByRole("button", { exact: true, name: "Garantías" }).click();
   await page.getByRole("rowheader", { name: /Garantía impermeabilización/ }).waitFor();
+  const branch = await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).evaluate((button) => {
+    const row = button.closest("[data-tree-row]");
+    return { background: getComputedStyle(row).backgroundColor, current: button.getAttribute("aria-current"), height: row.getBoundingClientRect().height };
+  });
+  const selectedFolder = await tree.getByRole("button", { exact: true, name: "Garantías" }).evaluate((button) => {
+    const row = button.closest("[data-tree-row]");
+    return { background: getComputedStyle(row).backgroundColor, current: button.getAttribute("aria-current"), height: row.getBoundingClientRect().height };
+  });
+  assert.equal(branch.background, selectedFolder.background, "El proyecto conserva su contexto visual al seleccionar una carpeta, como en Figma");
+  assert.notEqual(branch.background, "rgba(0, 0, 0, 0)");
+  assert.equal(branch.current, null, "Solo la carpeta seleccionada es la ubicación actual");
+  assert.equal(selectedFolder.current, "true");
+  assert.equal(selectedFolder.height, 36, "La superficie de la fila respeta la geometría de Figma");
   assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, includeSubfolders: itemRequests(backend).at(-1).search.includeSubfolders }, { folderId: "104", includeSubfolders: "true" });
 
   await create.click();

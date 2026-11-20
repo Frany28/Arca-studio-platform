@@ -975,7 +975,10 @@ Validación, capturas y diferencias respecto a Figma:
   Rechazados) dentro de `TabPanel`. El árbol «Proyectos» solo aparece en Aprobados; Pendientes y
   Rechazados listan todos los proyectos y añaden la columna Proyecto. Rechazados muestra el motivo
   bajo el nombre.
-- Árbol: filas de 39 px separadas 9 px, sangría de 17 px por nivel, icono `Folder2` y chevron.
+- Árbol (Figma `3727:683873`): superficies de 36 px cada 48 px, margen horizontal de 8 px,
+  sangría de 17 px por nivel, icono `Folder2` y chevron. El proyecto de la carpeta seleccionada
+  conserva el fondo de contexto; solo la ubicación seleccionada lleva `aria-current`.
+  El desplazamiento utiliza `ScrollBar` y `useVerticalScrollBar`, con 16 px reservados a la derecha.
   Seleccionar un proyecto o carpeta acota la tabla (`includeSubfolders=true`); pulsar de nuevo el
   proyecto seleccionado quita el ámbito. «Buscar carpeta...» consulta carpetas por nombre visible
   (con su ruta proyecto › carpetas) y proyectos por nombre o cliente.
