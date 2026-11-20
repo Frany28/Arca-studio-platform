@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -203,14 +203,9 @@ async function insertHistoricalComment({ commentType = "image", createdAt = null
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({ baseUrl: process.env.ARCA_FILE_COMPATIBILITY_TEST_DATABASE_URL, prefix: "arca_file_compatibility" });
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true, baseUrl: process.env.ARCA_FILE_COMPATIBILITY_TEST_DATABASE_URL, prefix: "arca_file_compatibility" });
   workDir = await mkdtemp(path.join(tmpdir(), "arca-file-compatibility-it-"));
-  // El helper aplica las migraciones sin Prisma: se registran como las dejaría `prisma migrate deploy`.
-  const migrations = (await readdir(path.join(BACKEND_ROOT, "prisma", "migrations"))).filter((name) => /^\d{14}_/.test(name));
-  for (const name of migrations) {
-    await database.client.query(`insert into public._prisma_migrations (id, checksum, migration_name, finished_at, applied_steps_count)
-      values ($1, 'ensayo-local', $2, now(), 1)`, [randomUUID(), name]);
-  }
+  // El helper registra el historial terminado con los checksums reales que verifica la activación.
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "file-compatibility-test-secret-0123456789abcdef0123456789abcdef",
     DATABASE_POOL_MAX: "8",

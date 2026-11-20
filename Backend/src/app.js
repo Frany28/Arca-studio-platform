@@ -20,6 +20,7 @@ import quoteRoutes from "./routes/quotes.js";
 import serviceCatalogRoutes from "./routes/serviceCatalog.js";
 import supportRoutes from "./routes/support.js";
 import { normalizeError } from "./errors/appError.js";
+import { loadProjectFileReviewActivation } from "./middlewares/projectFileReview.js";
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use(express.json({ limit: "100kb" }));
 app.use(sanitizePublicResponse);
 app.use(loadSession);
 app.use(requireTrustedOrigin);
+app.use("/api", loadProjectFileReviewActivation);
 app.use("/api/auth", authRoutes);
 // Antes de /api/admin: catálogo, unidades y cotizaciones tienen routers propios con autenticación y rol admin.
 app.use("/api/admin/services", serviceCatalogRoutes);
@@ -67,6 +69,11 @@ app.use((error, _req, res, next) => {
     code: error.code,
     message: error.message,
     name: error.name,
+    schema: error.schema,
+    table: error.table,
+    column: error.column,
+    constraint: error.constraint,
+    routine: error.routine,
   });
 
   // Saturación de la base (P1-2): 503 con Retry-After, igual que el 503 del rate limiter.

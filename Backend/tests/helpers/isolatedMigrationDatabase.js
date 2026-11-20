@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
@@ -17,10 +17,11 @@ const migrationsDirectory = new URL("../../prisma/migrations/", import.meta.url)
  * @param {boolean} [options.createApiRoles] - Crea los roles de la API de Supabase.
  * @param {string} [options.stopBefore] - Migración (y posteriores) que no se aplica, para preparar
  *   datos previos y aplicarla después con applyMigration.
+ * @param {boolean} [options.recordMigrations] - Registra el historial terminado con sus checksums reales.
  * @returns {Promise<{ client: import("pg").Client, databaseUrl: string, drop: Function }>} Cliente
  *   conectado a la base migrada, su URL y la función que la elimina.
  */
-export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createApiRoles = false, stopBefore }) {
+export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createApiRoles = false, stopBefore, recordMigrations = false }) {
   const base = new URL(baseUrl);
   assert.ok(LOCAL_HOSTS.includes(base.hostname), "La prueba rechaza hosts remotos.");
   const { default: pg } = await import("pg");
@@ -43,6 +44,15 @@ export async function createIsolatedMigrationDatabase({ baseUrl, prefix, createA
     await client.connect();
     if (createApiRoles) await createSupabaseApiRoles(client);
     await applyMigrationHistory(client, stopBefore);
+    if (recordMigrations) {
+      const names = (await readdir(migrationsDirectory)).filter((name) => /^\d{14}_/.test(name) && (!stopBefore || name < stopBefore)).sort();
+      for (const name of names) {
+        const bytes = await readFile(new URL(`${name}/migration.sql`, migrationsDirectory));
+        await client.query(`insert into public._prisma_migrations
+          (id, checksum, migration_name, finished_at, applied_steps_count) values ($1, $2, $3, now(), 1)`,
+        [randomUUID(), createHash("sha256").update(bytes).digest("hex"), name]);
+      }
+    }
   } catch (error) {
     await drop();
     throw error;

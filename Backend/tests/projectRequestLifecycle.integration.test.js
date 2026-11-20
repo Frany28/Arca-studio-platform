@@ -26,7 +26,7 @@ const realFetch = globalThis.fetch;
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true,
     baseUrl: process.env.ARCA_REQUEST_LIFECYCLE_TEST_DATABASE_URL,
     prefix: "arca_request_lifecycle",
   });

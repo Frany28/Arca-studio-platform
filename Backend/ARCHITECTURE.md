@@ -305,12 +305,18 @@ No modifica filas: las carpetas existentes quedan como personalizadas y los proy
 
 ### Versiones y revisión de archivos de proyecto (B4, Fase 1.2)
 
-**Activación coordinada.** `PROJECT_FILE_REVIEW_ENABLED=true` (`config/projectFileReview.js`), apagada por defecto y leída en cada petición. Apagada, el backend conserva exactamente su comportamiento anterior:
+**Activación coordinada.** `PROJECT_FILE_REVIEW_ENABLED=true` expresa la intención; no habilita SQL ni rutas por sí sola. `middlewares/projectFileReview.js#loadProjectFileReviewActivation` resuelve el estado efectivo antes de los routers de la API. `services/projectFileReviewActivationService.js` exige historial terminado, no revertido y con checksum exacto de las migraciones `20261117120000`, `20261118120000` y `20261119120000`, sin intentos pendientes, además de las columnas, valores de enums, restricciones validadas e índices válidos/necesarios del catálogo PostgreSQL. La lista de dependencias vive en `config/projectFileReviewSchema.js` y sus lecturas en `repositories/projectFileReviewSchemaRepository.js`.
+
+El estado efectivo se fija con `AsyncLocalStorage` (`config/projectFileReview.js`) para toda la petición y sus operaciones asíncronas: rutas, consultas, descargas, comentarios y eventos usan el mismo resultado aunque otra petición haga una comprobación distinta. Fuera de ese contexto está apagado; una operación interna que necesite revisión debe comprobar primero `resolveProjectFileReviewActivation()` y ejecutar su trabajo en `withProjectFileReviewState`.
+
+La caché de disponibilidad tiene una sola clave por instancia/pool, positivos de 30 s y negativos de 5 s; deduplica comprobaciones simultáneas, se invalida al observar la intención apagada y expira para detectar migraciones aplicadas. No contiene datos de usuarios y no almacena errores. Si el esquema/historial está incompleto y los archivos siguen siendo heredados, preserva su lectura y mantiene las rutas nuevas en 404. Si ya hay archivos con `access_policy` informado, rechaza con 503 `DATABASE_SCHEMA_NOT_READY`: volver al acceso heredado ampliaría las audiencias. Los fallos de PostgreSQL se propagan al manejo central y conservan diagnóstico interno.
+
+Apagada por defecto, la activación conserva el comportamiento anterior:
 - la carga ejecuta las mismas sentencias de siempre, sin las columnas de B3: v1 vigente y `access_policy` NULL;
 - la descarga usa `findProjectFileForDownload` e ignora `versionId`;
 - las rutas nuevas responden 404 `API_ROUTE_NOT_FOUND` antes de autenticar (`middlewares/projectFileReview.js`).
 
-Lo comprueban `tests/projectFileVersions.test.js`, que compara el SQL literal de la carga, y la integración.
+Lo comprueban `tests/projectFileVersions.test.js`, que compara el SQL literal de la carga, `tests/projectFileReviewActivation.test.js` y `tests/projectFileReviewActivation.integration.test.js` (misma guarda local que B3). Las integraciones HTTP usan un historial local con checksums reales, registrado por la opción `recordMigrations` del helper aislado.
 
 **Reglas aprobadas para B4** (`FILE_CONFIRMED_RULES`):
 - solo el administrador aprueba y rechaza (DA5);

@@ -131,7 +131,7 @@ async function allPages(query) {
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({ baseUrl: process.env.ARCA_FILE_MANAGER_TEST_DATABASE_URL, prefix: "arca_file_manager" });
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true, baseUrl: process.env.ARCA_FILE_MANAGER_TEST_DATABASE_URL, prefix: "arca_file_manager" });
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "file-manager-test-secret-0123456789abcdef0123456789abcdef",
     DATABASE_POOL_MAX: "8",

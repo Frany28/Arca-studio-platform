@@ -244,7 +244,7 @@ function documentComment(fileId, fileVersionId) {
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({ baseUrl: process.env.ARCA_COMMENT_AUDIENCE_TEST_DATABASE_URL, prefix: "arca_comment_audience" });
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true, baseUrl: process.env.ARCA_COMMENT_AUDIENCE_TEST_DATABASE_URL, prefix: "arca_comment_audience" });
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "comment-audience-test-secret-0123456789abcdef0123456789abcdef",
     COMMENT_RATE_LIMIT_MAX: "1000",
@@ -263,6 +263,8 @@ before(async () => {
     ...(await import("../src/services/sessionService.js")),
     ...(await import("../src/services/projectEvents.js")),
     ...(await import("../src/repositories/projectCommentRepository.js")),
+    ...(await import("../src/config/projectFileReview.js")),
+    ...(await import("../src/services/projectFileReviewActivationService.js")),
     app: (await import("../src/app.js")).default,
   };
   modules.objectStorage.get = async (key) => {
@@ -392,8 +394,11 @@ test("matriz: listados, creación, documentos, puntos, respuestas, autores e his
   const hidden = await insertFile({ projectId: adminOnlyInternal, versions: [{ status: "approved" }] });
   await comment(adminOnlyInternal, headers.admin, galleryComment("image", hidden.fileId));
   const ownerUser = { clientId: seed.client, id: seed.owner, role: { code: "client" } };
-  assert.equal(await modules.findProjectCommentAuthorProfilePhoto(adminOnlyInternal, seed.admin, ownerUser), null);
-  assert.equal(await modules.findProjectCommentAuthorProfilePhoto(projectId, seed.admin, ownerUser), "users/admin/profile-photo");
+  // La consulta directa comparte el mismo estado verificado que obtendría dentro de HTTP.
+  await modules.withProjectFileReviewState(await modules.resolveProjectFileReviewActivation(), async () => {
+    assert.equal(await modules.findProjectCommentAuthorProfilePhoto(adminOnlyInternal, seed.admin, ownerUser), null);
+    assert.equal(await modules.findProjectCommentAuthorProfilePhoto(projectId, seed.admin, ownerUser), "users/admin/profile-photo");
+  });
 
   // Draft: el cliente y el arquitecto no comentan ni leen; el administrador sí lee.
   const draft = await createProject("draft");

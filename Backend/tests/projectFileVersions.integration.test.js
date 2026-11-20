@@ -169,7 +169,7 @@ async function assertNoRecordedObjectDeleted() {
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({ baseUrl: process.env.ARCA_FILE_VERSIONS_TEST_DATABASE_URL, prefix: "arca_file_versions" });
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true, baseUrl: process.env.ARCA_FILE_VERSIONS_TEST_DATABASE_URL, prefix: "arca_file_versions" });
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "file-versions-test-secret-0123456789abcdef0123456789abcdef",
     DATABASE_POOL_MAX: "8",

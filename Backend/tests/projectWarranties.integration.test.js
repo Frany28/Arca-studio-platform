@@ -163,7 +163,7 @@ async function conservation(projectId) {
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({ baseUrl: process.env.ARCA_WARRANTIES_TEST_DATABASE_URL, prefix: "arca_warranties" });
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true, baseUrl: process.env.ARCA_WARRANTIES_TEST_DATABASE_URL, prefix: "arca_warranties" });
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "warranties-test-secret-0123456789abcdef0123456789abcdef",
     DATABASE_POOL_MAX: "10",

@@ -196,7 +196,7 @@ async function detailFiles(projectId, headers) {
 
 before(async () => {
   if (!enabled) return;
-  database = await createIsolatedMigrationDatabase({ baseUrl: process.env.ARCA_FILE_AUDIENCES_TEST_DATABASE_URL, prefix: "arca_file_audiences" });
+  database = await createIsolatedMigrationDatabase({ recordMigrations: true, baseUrl: process.env.ARCA_FILE_AUDIENCES_TEST_DATABASE_URL, prefix: "arca_file_audiences" });
   Object.assign(process.env, {
     AUTH_TOKEN_SECRET: "file-audiences-test-secret-0123456789abcdef0123456789abcdef",
     DATABASE_POOL_MAX: "8",

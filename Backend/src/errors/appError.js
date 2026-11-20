@@ -91,8 +91,19 @@ function createDatabaseUnavailableError(cause) {
 }
 
 /**
- * Normaliza el valor de error para mantener un formato interno consistente.
- * Preserva el contrato de error que procesa el middleware global.
+ * Traduce una dependencia de esquema ausente a un error público estable de disponibilidad.
+ * Conserva la causa PostgreSQL para diagnóstico interno sin exponer nombres ni códigos SQLSTATE.
+ *
+ * @param {Error} [cause] - Error original o ausencia detectada mediante el catálogo.
+ * @returns {AppError} Error 503 de esquema pendiente.
+ */
+export function createDatabaseSchemaNotReadyError(cause) {
+  return new AppError({ cause, code: "DATABASE_SCHEMA_NOT_READY", message: "El servicio no está disponible temporalmente. Intenta de nuevo más tarde.", status: 503 });
+}
+
+/**
+ * Traduce errores de aplicación y PostgreSQL al contrato público que usa el middleware global.
+ * Preserva las causas internas y oculta SQLSTATE, nombres de esquema y detalles de las consultas.
  *
  * @param {Error} error - Error que debe evaluarse o traducirse.
  * @returns {unknown} Resultado producido por la operación.
@@ -100,8 +111,11 @@ function createDatabaseUnavailableError(cause) {
 export function normalizeError(error) {
   if (error instanceof AppError) return error;
   if (isDatabaseUnavailableError(error)) return createDatabaseUnavailableError(error);
+  if (["42703", "42P01", "42704", "42883"].includes(error?.code)) {
+    return createDatabaseSchemaNotReadyError(error);
+  }
   if (error?.status && error?.publicMessage) return new AppError({ code: error.code || "REQUEST_ERROR", message: error.publicMessage, status: error.status, cause: error });
   if (error?.code === "23505") return new ConflictError("RESOURCE_CONFLICT", "El recurso ya existe o fue modificado simultáneamente.", error);
   if (error?.type === "entity.too.large") return new AppError({ code: "PAYLOAD_TOO_LARGE", message: "El contenido supera el tamaño permitido.", status: 413, cause: error });
-  return new AppError({ code: error?.code || "INTERNAL_SERVER_ERROR", message: "Ocurrió un error inesperado.", status: error?.status || 500, cause: error });
+  return new AppError({ code: /^[0-9A-Z]{5}$/.test(error?.code || "") ? "INTERNAL_SERVER_ERROR" : error?.code || "INTERNAL_SERVER_ERROR", message: "Ocurrió un error inesperado.", status: error?.status || 500, cause: error });
 }

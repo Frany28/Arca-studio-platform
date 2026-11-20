@@ -12,7 +12,7 @@ process.env.SUPABASE_STORAGE_S3_ENDPOINT = "https://storage.test.local/s3";
 process.env.SUPABASE_STORAGE_S3_SECRET_ACCESS_KEY = "test-secret-key";
 
 const { pool } = await import("../src/config/db.js");
-const { isProjectFileReviewEnabled } = await import("../src/config/projectFileReview.js");
+const { isProjectFileReviewEnabled, isProjectFileReviewRequested, withProjectFileReviewState } = await import("../src/config/projectFileReview.js");
 const { buildStorageObjectKey } = await import("../src/config/storage.js");
 const { describeStorageKeyShape } = await import("../src/domain/storageInventory.js");
 const { requireProjectFileReviewEnabled } = await import("../src/middlewares/projectFileReview.js");
@@ -76,7 +76,8 @@ test("la activación se lee del entorno en cada llamada y solo «true» la encie
     for (const [value, expected] of [[undefined, false], ["", false], ["false", false], ["1", false], ["yes", false], ["true", true], [" TRUE ", true]]) {
       if (value === undefined) delete process.env.PROJECT_FILE_REVIEW_ENABLED;
       else process.env.PROJECT_FILE_REVIEW_ENABLED = value;
-      assert.equal(isProjectFileReviewEnabled(), expected, String(value));
+      assert.equal(isProjectFileReviewRequested(), expected, String(value));
+      assert.equal(isProjectFileReviewEnabled(), false, "la intención sola no habilita el esquema");
     }
   } finally {
     if (previous === undefined) delete process.env.PROJECT_FILE_REVIEW_ENABLED;
@@ -91,7 +92,7 @@ test("activación apagada: las rutas nuevas responden 404 de ruta inexistente si
       process.env.PROJECT_FILE_REVIEW_ENABLED = value;
       const response = { body: null, statusCode: 200, json(body) { this.body = body; return this; }, status(code) { this.statusCode = code; return this; } };
       let continued = false;
-      requireProjectFileReviewEnabled({}, response, () => { continued = true; });
+      withProjectFileReviewState(value === "true", () => requireProjectFileReviewEnabled({}, response, () => { continued = true; }));
       assert.equal(continued, expectNext, value);
       if (!expectNext) assert.deepEqual([response.statusCode, response.body], [404, { code: "API_ROUTE_NOT_FOUND", message: "Ruta de API no encontrada." }]);
     }
