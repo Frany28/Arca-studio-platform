@@ -502,6 +502,9 @@ test("el árbol acota la tabla, busca carpetas y gestiona carpetas personalizada
   await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
   await tree.getByRole("button", { exact: true, name: "Garantías" }).click();
   await page.getByRole("rowheader", { name: /Garantía impermeabilización/ }).waitFor();
+  await tree.getByRole("button", { exact: true, name: "Garantías" }).evaluate(async (button) => {
+    await Promise.all(button.closest("[data-tree-row]").getAnimations().map((animation) => animation.finished));
+  });
   const branch = await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).evaluate((button) => {
     const row = button.closest("[data-tree-row]");
     return { background: getComputedStyle(row).backgroundColor, current: button.getAttribute("aria-current"), height: row.getBoundingClientRect().height };

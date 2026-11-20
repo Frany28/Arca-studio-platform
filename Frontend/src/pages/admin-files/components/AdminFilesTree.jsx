@@ -59,6 +59,7 @@ function TreeRow({ actionsDisabled, activeBranch = false, children, depth, expan
             showLeftIcon
             iconLeft={<ArrowDown2 size="20" color="currentColor" className={clsx("transition-transform duration-200", expanded && "rotate-180")} />}
             showRightIcon={false}
+            tooltip={false}
             disabled={actionsDisabled}
             aria-expanded={expanded}
             aria-label={`${expanded ? "Ocultar" : "Mostrar"} carpetas de ${label}`}
