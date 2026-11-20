@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {open,hash,inspect,vercel,projectId,suffix,deployment,environment,selectedUrl,target} from './.phase12-runtime.mjs';
-import {root,save,run,pending,check,compare,prisma,configureScopedLimits,restoreScopedLimits} from './.phase12-maintenance.mjs';
+import {root,save,run,pending,check,compare,prisma,configureScopedLimits,restoreScopedLimits,recycleIdleMigrationConnections} from './.phase12-maintenance.mjs';
 import {assertStage,publicClone} from './.phase12-public.mjs';
 
 const read=file=>JSON.parse(fs.readFileSync(path.join(root,file)));
@@ -31,6 +31,7 @@ async function apply() {
  const before=await publicApi(cookie);save('http-before.json',before);console.log(JSON.stringify({before:before.map(({route,status,code})=>({route,status,code})),deployment:result.deployment,target,precedence:result.precedence}));
  await pause();
  await configureScopedLimits('postgres');
+ await recycleIdleMigrationConnections('postgres');
  // La pausa detiene nuevas entradas; el preflight verifica que ya no haya transacciones abiertas.
  for(let i=0;i<pending.length;i++) {
   assertBackup();const alias=await vercel(`/v13/deployments/sistema-web-arca-studio.vercel.app${suffix}`);assert.equal(alias.id,deployment.id,'Deployment changed during maintenance');
@@ -40,6 +41,7 @@ async function apply() {
  }
  await prisma('postgres',2,'staging-final','status');save('staging-applied.json',{migrations:pending,checksPassed:true,createdAt:new Date().toISOString()});
  await restoreScopedLimits('postgres');
+ await recycleIdleMigrationConnections('postgres');
  await resume();assertBackup();
 }
 async function after() {

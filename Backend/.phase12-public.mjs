@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {open,hash} from './.phase12-runtime.mjs';
-import {root,save,run,fingerprints,pgEnvironment,pending,check,compare,prisma,names,configureScopedLimits} from './.phase12-maintenance.mjs';
+import {root,save,run,fingerprints,pgEnvironment,pending,check,compare,prisma,names,configureScopedLimits,recycleIdleMigrationConnections} from './.phase12-maintenance.mjs';
 import {PROJECT_FILE_REVIEW_MIGRATIONS} from './src/config/projectFileReviewSchema.js';
 
 export const publicClone='arca_phase12_public_20261120';
@@ -95,6 +95,7 @@ export async function assertStage(c,index) {
 async function rehearsePublic() {
  assertBackup();assert(read('public-restore-verified.json').allMetadataMatch);
  if(!fs.existsSync(path.join(root,`limits-original-${publicClone}.json`)))await configureScopedLimits(publicClone);
+ await recycleIdleMigrationConnections(publicClone);
  for(let i=0;i<pending.length;i++){
  const c=await open(publicClone);let before;try{save(`public-stage-${i+1}-history.json`,await assertStage(c,i));before=await check(c,pending[i],'preflight','public-rehearsal');}finally{await c.end();}
  const started=Date.now();await prisma(publicClone,i,`public-rehearsal-${i+1}`);

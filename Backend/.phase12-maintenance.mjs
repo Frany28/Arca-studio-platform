@@ -58,6 +58,21 @@ export async function restoreScopedLimits(database) {
  const original=read(`limits-original-${database}.json`);assert.equal(original.database,database);assert(database==='postgres'||/^arca_phase12_[a-z_0-9]+$/.test(database));
  const c=await open(database);try{for(const key of ['lock_timeout','statement_timeout']){if(original.values[key]===undefined)await c.query(`alter role postgres in database "${database}" reset ${key}`);else await c.query(`alter role postgres in database "${database}" set ${key}='${original.values[key].replaceAll("'","''")}'`);}save(`limits-restored-${database}.json`,{...original,restoredAt:new Date().toISOString()});}finally{await c.end();}
 }
+export async function recycleIdleMigrationConnections(database) {
+ const publicClone='arca_phase12_public_20261120';
+ assert(database==='postgres'||database===publicClone,'Only confirmed maintenance databases');
+ if(database==='postgres')assert(read('maintenance-state.json').paused===true,'Backend must be paused before recycling its connections');
+ // Decisión operativa: renovar únicamente backends inactivos del pooler propio; nunca cerrar transacciones.
+ const control=await open(database==='postgres'?publicClone:'postgres');
+ try {
+  const sessions=(await control.query("select pid,state,xact_start from pg_stat_activity where datname=$1 and usename=current_user and application_name='Supavisor'",[database])).rows;
+  assert(sessions.every(s=>s.state==='idle'&&s.xact_start===null),'An active session prevents recycling');
+  const rows=(await control.query("select pid,pg_terminate_backend(pid) as recycled from pg_stat_activity where datname=$1 and usename=current_user and application_name='Supavisor' and state='idle' and xact_start is null and pid<>pg_backend_pid()",[database])).rows;
+  assert(rows.every(r=>r.recycled===true),'Idle backend recycling failed');
+  save(`connections-recycled-${database}-${Date.now()}.json`,{database,rows,reason:'Apply temporary per-role/per-database limits; no active transactions terminated'});
+  console.log(JSON.stringify({database,idleConnectionsRecycled:rows.length}));
+ }finally{await control.end();}
+}
 export async function prisma(database,index,label,action='deploy') {
  const {config,probe}=prepareStage(index);const u=new URL(selectedUrl);u.pathname='/'+database;u.searchParams.set('sslmode','require');u.searchParams.set('sslaccept','strict');u.searchParams.set('sslcert',path.join(root,'root.crt').replaceAll('\\','/'));u.searchParams.set('options','-c lock_timeout=3000 -c statement_timeout=60000');
  const env={...process.env,PHASE12_PRISMA_URL:u.toString()};
