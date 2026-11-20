@@ -996,7 +996,7 @@ Validación, capturas y diferencias respecto a Figma:
   «Eliminar» de Figma no se ofrece. Cada fila ofrece «Revisar» (Pendientes) o el ojo (consulta),
   la descarga de su versión y «Más opciones» con «Historial de versiones» y, en «Documentos ›
   Garantías» y sus subcarpetas (`folder.section === "warranties"`), «Garantías». La columna
-  Acciones mide 176 px. «+ Nuevo» y «Reemplazar» pertenecen a U3.
+  Acciones mide 176 px. «Más opciones» incluye también «Reemplazar archivo» (U3).
 - Visor con revisión (U2; Figma `3727:683878`, motivo `3727:683879`, historial `3952:187549`,
   avisos `3795:580699` y `3797:278032`): `AdminFileViewerDialog` sigue el patrón del visor de
   cotizaciones (`DocumentFileCard` + área del visor + pie de dos acciones) y añade el historial a la
@@ -1017,7 +1017,7 @@ Validación, capturas y diferencias respecto a Figma:
     comparte con el cliente (DA3): el aviso lo indica y compartir sigue siendo una acción aparte.
     Figma muestra «Cancelar» y «Aceptar»; como no hay nada que cancelar, solo se ofrece «Aceptar».
   - Historial: de la más reciente a la más antigua, 10 por página con «Mostrar más versiones»;
-    cada versión ofrece «Ver», «Restaurar versión» (solo aprobadas, no vigentes y sin otra
+    cada versión ofrece «Ver», «Restaurar versión» (cualquier aprobada, también la vigente (B4, PR2), y sin otra
     pendiente; deshabilitada con su motivo) y «Descargar». Restaurar crea una versión nueva
     pendiente, conserva el historial y la muestra para revisarla; la recarga pide de una vez las
     versiones ya visibles para no volver a la primera página.
@@ -1027,6 +1027,30 @@ Validación, capturas y diferencias respecto a Figma:
 - Garantías (U2, B8): `AdminFileWarrantyDialog` lista las garantías vigentes del proyecto con una
   casilla por garantía; marcar vincula y desmarcar desvincula al momento, y el estado mostrado es
   `linkedWarrantyIds` de la respuesta. Figma no diseña este diálogo: reutiliza Modal y Checkbox.
+- Carga (U3; Figma `3727:683875` «Nuevo archivo», `3727:683876` «Reemplazar archivo», móvil
+  `3727:684027`): `AdminFileUploadDialog` reutiliza `FileUploadSection` (elegir o arrastrar,
+  tarjetas con progreso, «Intenta de nuevo» y «Eliminar») dentro del patrón Modal de 400 px, con
+  «Cerrar»/«Cancelar» y «Confirmar». «Reemplazar archivo» añade el motivo obligatorio (≤255), que
+  Figma no dibuja y la API exige; su ayuda y su error van fuera del TextArea por el mismo motivo que
+  el diálogo de rechazo.
+  - «+ Nuevo» está a la derecha de la barra en Aprobados y sube a la carpeta seleccionada en el
+    árbol; deshabilitado con su motivo sin carpeta, en la raíz del proyecto, en proyectos archivados
+    o finalizados y con la portada ya ocupada. «Reemplazar» está en el pie del visor y en «Más
+    opciones» de la fila (no en Pendientes); deshabilitado en archivos heredados o con una versión
+    pendiente.
+  - Las reglas (`utils/adminFileUpload.js`) son las del backend: PDF, DOCX, XLSX, JPEG/JPG, PNG y
+    MP4 (extensión y tipo), 50 MB, nombre ≤150; portada, solo JPEG/PNG. Un archivo inválido se
+    muestra con su motivo y no se transfiere. Las cargas van de una en una
+    (`useAdminFileUploadQueue`).
+  - Errores definitivos (nombre repetido, carpeta llena, permisos, proyecto de solo lectura) sin
+    reintento; transitorios (red, 5xx, 429) con «Intenta de nuevo». Cancelar una carga en curso o
+    perder la respuesta deja el resultado incierto: se consulta lo guardado y, si se registró, se
+    conserva y se trata como completada; si no, el backend ya compensó el objeto.
+  - Con una carga en curso el diálogo no se cierra (se cancela desde su tarjeta). La sección no se
+    deshabilita durante la carga, porque `disabled` también inhabilitaría el botón que la cancela.
+  - Tras confirmar se recargan tabla, métricas, árbol (contadores) y, en el visor, el historial,
+    que muestra la versión nueva. Los avisos dicen que el archivo o la versión queda pendiente de
+    revisión.
 
 ### Dashboard administrativo móvil
 

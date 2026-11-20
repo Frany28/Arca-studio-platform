@@ -1,4 +1,4 @@
-import { Clock, DocumentDownload, Eye, ShieldTick } from "iconsax-react";
+import { Clock, DocumentDownload, DocumentUpload, Eye, ShieldTick } from "iconsax-react";
 
 import ActionMenu from "../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../components/ui/Badge/Badge.jsx";
@@ -7,7 +7,7 @@ import HorizontalScrollViewport from "../../../components/ui/ScrollBar/Horizonta
 import { getAdminFilesColumns, getAdminFilesTableMinWidth } from "../../../config/adminFilesTable.js";
 import { formatStorage } from "../../../utils/fileMetrics.js";
 import TableHeaderLabel from "../../admin-services-quotes/components/TableHeaderLabel.jsx";
-import { canLinkWarranties } from "../utils/adminFileReview.js";
+import { canLinkWarranties, getReplaceAvailability } from "../utils/adminFileReview.js";
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
 
 const ARIA_SORT = Object.freeze({ asc: "ascending", desc: "descending" });
@@ -58,10 +58,13 @@ function NameCell({ item, tab }) {
  * @param {Object} props - Fila, pestaña, estado y callbacks.
  * @returns {import("react").ReactElement} Acciones.
  */
-function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, onWarranties, tab }) {
+function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, onReplace, onWarranties, tab }) {
   const label = `${item.name}, versión ${item.versionNumber}`;
+  // Una fila pendiente ya es la versión pendiente del archivo: no admite otra hasta revisarla.
+  const replace = tab === "pending" ? null : getReplaceAvailability(item, []);
   const menuItems = [
     { icon: Clock, id: "history", label: "Historial de versiones" },
+    ...(replace ? [{ disabled: !replace.allowed, icon: DocumentUpload, id: "replace", label: replace.allowed ? "Reemplazar archivo" : `Reemplazar archivo (${replace.reason})` }] : []),
     ...(canLinkWarranties(item) ? [{ icon: ShieldTick, id: "warranties", label: "Garantías" }] : []),
   ];
   return (
@@ -94,7 +97,11 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
         tooltip="Más opciones"
         menuWidthClassName="w-[230px]"
         disabled={actionsDisabled}
-        onSelect={(action) => (action.id === "warranties" ? onWarranties(item) : onOpen(item, null))}
+        onSelect={(action) => {
+          if (action.id === "warranties") onWarranties(item);
+          else if (action.id === "replace") onReplace(item);
+          else onOpen(item, null);
+        }}
       />
     </div>
   );
@@ -116,11 +123,12 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
  * @param {(item: Object) => void} props.onDownload - Descarga la versión.
  * @param {(item: Object, trigger: HTMLElement|null) => void} props.onOpen - Abre el visor de la versión.
  * @param {(item: Object) => void} props.onWarranties - Abre las garantías del documento.
+ * @param {(item: Object) => void} props.onReplace - Abre «Reemplazar archivo».
  * @param {number|null} props.downloadingVersionId - Versión que se está descargando.
  * @param {boolean} props.actionsDisabled - Bloquea acciones durante una operación.
  * @returns {import("react").ReactElement} Tabla.
  */
-function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownload, onOpen, onSort, onWarranties, sort, tab }) {
+function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownload, onOpen, onReplace, onSort, onWarranties, sort, tab }) {
   const options = { showProject: tab !== "approved" };
   const columns = getAdminFilesColumns(options);
   return (
@@ -164,7 +172,7 @@ function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownl
                     <Badge label={uploader} theme="Neutral" size="M" truncate className="max-w-full" />
                   </td>
                   <td className="px-[16px] py-[16px]">
-                    <RowActions item={item} tab={tab} downloading={downloading} actionsDisabled={actionsDisabled} onDownload={onDownload} onOpen={onOpen} onWarranties={onWarranties} />
+                    <RowActions item={item} tab={tab} downloading={downloading} actionsDisabled={actionsDisabled} onDownload={onDownload} onOpen={onOpen} onReplace={onReplace} onWarranties={onWarranties} />
                   </td>
                 </tr>
               );

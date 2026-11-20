@@ -12,9 +12,11 @@ import { useAdminFileFolderActions } from "../hooks/useAdminFileFolderActions.js
 import { useAdminFileVersionDownload } from "../hooks/useAdminFileVersionDownload.js";
 import { ADMIN_FILES_PAGE_SIZE, useAdminFilesItems } from "../hooks/useAdminFilesItems.js";
 import { useAdminFilesTree } from "../hooks/useAdminFilesTree.js";
-import { ADMIN_FILES_TABS, getItemsEmptyCopy } from "../utils/adminFilesPresentation.js";
+import { describeUploadResult } from "../utils/adminFileUpload.js";
+import { ADMIN_FILES_TABS, getItemsEmptyCopy, getUploadDisabledReason } from "../utils/adminFilesPresentation.js";
 import AdminFileFolderDialog from "./AdminFileFolderDialog.jsx";
 import AdminFileReviewResultDialog from "./AdminFileReviewResultDialog.jsx";
+import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
 import AdminFileViewerDialog from "./AdminFileViewerDialog.jsx";
 import AdminFileWarrantyDialog from "./AdminFileWarrantyDialog.jsx";
 import AdminFilesTable from "./AdminFilesTable.jsx";
@@ -45,7 +47,8 @@ function describeRemoval(removal) {
 /**
  * Área de trabajo del administrador (Figma 3727:683873): pestañas, árbol (solo en Aprobados),
  * barra, tabla y paginación, más las operaciones de carpetas, la descarga de versiones (U1) y el
- * visor con revisión, historial, restauración y garantías (U2). Tras cada operación confirmada se
+ * visor con revisión, historial, restauración y garantías (U2), y «+ Nuevo» y «Reemplazar archivo»
+ * (U3). Tras cada operación confirmada se
  * recargan la tabla y las métricas; el historial lo recarga el propio visor. Con espacio suficiente
  * árbol y tabla van en dos columnas; si no, el árbol se apila encima.
  *
@@ -62,6 +65,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   const [viewer, setViewer] = useState(null);
   const [warrantyItem, setWarrantyItem] = useState(null);
   const [reviewResult, setReviewResult] = useState(null);
+  const [uploadDialog, setUploadDialog] = useState(null);
   const downloads = useAdminFileVersionDownload({
     onError: (message, name) => feedback.notify("danger", "No se pudo descargar el archivo", message, name),
   });
@@ -98,6 +102,33 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   });
   const operationInProgress = folders.removing || Boolean(downloads.downloadingVersionId);
 
+  // Destino de «+ Nuevo»: la carpeta seleccionada en el árbol (con su número de archivos).
+  const selectedProject = tree.projects.find((project) => project.id === selection.projectId) || null;
+  const selectedFolder = selectedProject?.folders.find((folder) => folder.id === selection.folderId) || null;
+  const newAction = showTree ? {
+    disabledReason: getUploadDisabledReason(selectedProject, selectedFolder),
+    onClick: () => setUploadDialog({ mode: "upload", target: { folder: selectedFolder, project: selectedProject } }),
+  } : null;
+
+  /**
+   * Carga confirmada (o reconciliada con lo guardado): recarga tabla, métricas y, si es un archivo
+   * nuevo, el árbol (sus contadores); avisa de que queda pendiente de revisión.
+   *
+   * @param {"upload"|"replace"} kind - Operación.
+   * @param {Object} result - Respuesta de la API.
+   * @param {{ file: File }} meta - Archivo subido.
+   * @returns {void}
+   */
+  function handleUploaded(kind, result, meta) {
+    refreshAfterOperation();
+    if (kind === "upload") tree.reload();
+    const target = uploadDialog?.target;
+    const texts = describeUploadResult(kind, kind === "upload"
+      ? { location: `${target?.project.name} › ${target?.folder.name}`, name: result?.file?.title || meta.file.name }
+      : { name: uploadDialog?.file?.name || meta.file.name, versionNumber: result?.version?.versionNumber });
+    feedback.notify("success", texts.title, texts.description, meta.file.name);
+  }
+
   /**
    * Recarga la tabla y las métricas tras una operación confirmada o un conflicto de vista obsoleta.
    *
@@ -130,6 +161,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
         onDownload={(item) => downloads.download({ fileId: item.fileId, name: item.name, projectId: item.project.id, versionId: item.versionId })}
         onOpen={(item, trigger) => setViewer({ item, trigger })}
         onWarranties={setWarrantyItem}
+        onReplace={(item) => setUploadDialog({ file: { fileId: item.fileId, folderSystemKey: item.folder?.section === "cover" ? "cover" : null, name: item.name, projectId: item.project.id }, mode: "replace" })}
       />
     );
   } else {
@@ -163,6 +195,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
         onExtensionsChange={items.setExtensions}
         hasFilters={items.hasFilters}
         onClearFilters={items.clearFilters}
+        newAction={newAction}
       />
       <div aria-busy={items.loading || undefined}>{content}</div>
       {!items.loading && !items.error && (items.items.length || items.pagination.hasPrevious) ? (
@@ -228,6 +261,15 @@ function AdminFilesWorkspace({ onMetricsStale }) {
             setViewer(null);
             setReviewResult(review);
           }}
+        />
+      ) : null}
+      {uploadDialog ? (
+        <AdminFileUploadDialog
+          mode={uploadDialog.mode}
+          target={uploadDialog.target}
+          file={uploadDialog.file}
+          onUploaded={(result, meta) => handleUploaded(uploadDialog.mode, result, meta)}
+          onClose={() => setUploadDialog(null)}
         />
       ) : null}
       {warrantyItem ? (

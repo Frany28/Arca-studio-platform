@@ -59,7 +59,8 @@ test("history labels and restore availability follow the backend rules", () => {
   const rejected = { id: 3, isCurrent: false, review: { status: "rejected" } };
   const pending = { id: 4, isCurrent: false, review: { status: "pending" } };
   assert.deepEqual(getRestoreAvailability(approvedOld, [current, approvedOld]), { allowed: true, reason: "" });
-  assert.equal(getRestoreAvailability(current, [current]).allowed, false);
+  assert.deepEqual(getRestoreAvailability(current, [current, approvedOld]), { allowed: true, reason: "" }, "la vigente aprobada también se restaura (PR2)");
+  assert.match(getRestoreAvailability(current, [pending, current]).reason, /pendiente/);
   assert.equal(getRestoreAvailability(rejected, [rejected]).allowed, false);
   assert.match(getRestoreAvailability(approvedOld, [pending, current, approvedOld]).reason, /pendiente/);
 });

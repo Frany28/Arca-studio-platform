@@ -72,8 +72,9 @@ export function formatReviewStatus(status) {
 }
 
 /**
- * Indica si una versión del historial puede restaurarse: aprobada, distinta de la vigente y sin
- * otra versión pendiente en el archivo (la API admite una sola pendiente por archivo).
+ * Indica si una versión del historial puede restaurarse según B4: cualquier versión aprobada,
+ * incluida la vigente (regla PR2), siempre que el archivo no tenga otra versión pendiente (PR1:
+ * una sola pendiente por archivo). El motivo lo exige el diálogo y lo vuelve a validar la API.
  *
  * @param {Object} version - Versión del historial.
  * @param {Array<Object>} versions - Versiones cargadas del archivo.
@@ -81,8 +82,23 @@ export function formatReviewStatus(status) {
  */
 export function getRestoreAvailability(version, versions) {
   if (version.review?.status !== "approved") return { allowed: false, reason: "Solo se pueden restaurar versiones aprobadas." };
-  if (version.isCurrent) return { allowed: false, reason: "Es la versión vigente." };
   if ((versions || []).some((candidate) => candidate.review?.status === "pending")) {
+    return { allowed: false, reason: "El archivo ya tiene una versión pendiente de revisión." };
+  }
+  return { allowed: true, reason: "" };
+}
+
+/**
+ * Indica si un archivo admite una versión nueva (B4, U3): no los heredados (sin versiones hasta su
+ * conversión) ni los que ya tienen una pendiente (PR1). El motivo lo exige el diálogo y la API.
+ *
+ * @param {{ review?: { status?: string } }} version - Versión mostrada o fila de la tabla.
+ * @param {Array<Object>} versions - Versiones conocidas del archivo (vacío si no se cargaron).
+ * @returns {{ allowed: boolean, reason: string }} Resultado y motivo si no procede.
+ */
+export function getReplaceAvailability(version, versions) {
+  if (version?.review?.status === "legacy") return { allowed: false, reason: "Este archivo heredado todavía no admite versiones." };
+  if (version?.review?.status === "pending" || (versions || []).some((candidate) => candidate.review?.status === "pending")) {
     return { allowed: false, reason: "El archivo ya tiene una versión pendiente de revisión." };
   }
   return { allowed: true, reason: "" };

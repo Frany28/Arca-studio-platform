@@ -30,7 +30,7 @@ function versionActions(version, versions) {
 /**
  * Historial de versiones del visor (Figma 3952:187549): de la más reciente a la más antigua, con
  * la versión mostrada resaltada, su estado de revisión y el motivo del rechazo o de la restauración.
- * Cada versión ofrece «Ver», «Restaurar versión» (solo aprobadas, no vigentes y sin otra pendiente;
+ * Cada versión ofrece «Ver», «Restaurar versión» (cualquier aprobada, también la vigente, y sin otra pendiente;
  * crea una versión nueva pendiente y conserva el historial) y «Descargar». «Mostrar más versiones»
  * pide la página siguiente.
  *

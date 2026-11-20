@@ -7,6 +7,8 @@ import {
   renameFileManagerFolder,
   searchFolders,
 } from "../services/fileManagerService.js";
+import { assertFileManagerUploadTarget, storeFileManagerFile } from "../services/fileManagerUploadService.js";
+import { runUpload, uploadPolicies } from "../services/fileUploadService.js";
 
 // Administrador de archivos (Fase 1.2, B7). Solo traduce HTTP; las reglas viven en
 // services/fileManagerService.js. Las lecturas no se guardan en caché compartida: dependen del
@@ -43,3 +45,40 @@ export const patchFileManagerFolder = respond((req) => renameFileManagerFolder({
 export const deleteFileManagerFolderHandler = respond((req) => deleteFileManagerFolder({
   folderId: req.params.folderId, projectId: req.params.projectId, user: req.user,
 }));
+
+/**
+ * Sube un archivo nuevo a una carpeta del proyecto (U3). Comprueba proyecto y carpeta antes de leer
+ * el contenido y reutiliza la carga de documentos (formatos, límites, firma y compensación). La v1
+ * nace pendiente de revisión; un nombre ya usado en el proyecto responde 409 DUPLICATE_PROJECT_FILE.
+ *
+ * @param {import("express").Request} req - Solicitud con `projectId` y `folderId` validados.
+ * @param {import("express").Response} res - Respuesta HTTP.
+ * @param {Function} next - Middleware de errores.
+ * @returns {Promise<void>} 201 `{file}`.
+ */
+export async function postFileManagerFile(req, res, next) {
+  try {
+    const projectId = Number(req.params.projectId);
+    const folderId = Number(req.validatedQuery.folderId);
+    await assertFileManagerUploadTarget({ folderId, projectId, user: req.user });
+    /**
+     * Registra la carga validada en la carpeta destino.
+     * La regla de la carpeta se repite con el proyecto bloqueado.
+     *
+     * @param {object} upload - Contenido, tipo, nombre y tamaño.
+     * @returns {Promise<object>} Archivo registrado.
+     */
+    function storeInFolder(upload) {
+      return storeFileManagerFile({ folderId, projectId, upload, user: req.user });
+    }
+    const file = await runUpload({ operation: storeInFolder, policy: uploadPolicies.document, req });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.status(201).json({ file });
+  } catch (error) {
+    if (error.code === "DUPLICATE_PROJECT_FILE" || error.code === "23505") {
+      res.status(409).json({ code: "DUPLICATE_PROJECT_FILE", message: "Ese archivo ya existe en este proyecto." });
+      return;
+    }
+    next(error);
+  }
+}

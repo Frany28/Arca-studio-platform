@@ -11,8 +11,10 @@ import { useAdminFileReviewOperations } from "../hooks/useAdminFileReviewOperati
 import { useAdminFileVersionContent } from "../hooks/useAdminFileVersionContent.js";
 import { useAdminFileVersions } from "../hooks/useAdminFileVersions.js";
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
-import { canLinkWarranties, describeRestoreResult, formatReviewStatus, getViewerKind } from "../utils/adminFileReview.js";
+import { canLinkWarranties, describeRestoreResult, formatReviewStatus, getReplaceAvailability, getViewerKind } from "../utils/adminFileReview.js";
+import { describeUploadResult } from "../utils/adminFileUpload.js";
 import AdminFileReasonDialog from "./AdminFileReasonDialog.jsx";
+import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
 import AdminFileVersionHistory from "./AdminFileVersionHistory.jsx";
 import AdminFileVersionSurface from "./AdminFileVersionSurface.jsx";
 import AdminFileWarrantyDialog from "./AdminFileWarrantyDialog.jsx";
@@ -72,6 +74,7 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
   const [views, setViews] = useState({});
   const [reasonDialog, setReasonDialog] = useState(null);
   const [warrantiesOpen, setWarrantiesOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const operations = useAdminFileReviewOperations({
     onStale: () => {
       history.reload();
@@ -87,11 +90,13 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
   const view = views[displayed.id] || DEFAULT_VIEW;
   const pending = displayed.review?.status === "pending";
   const busy = Boolean(operations.pending);
+  // El historial cargado decide si hay otra versión pendiente; mientras carga, se usa la fila.
+  const replaceAvailability = getReplaceAvailability(displayed, history.versions);
   const downloading = downloads.downloadingVersionId === displayed.id;
   const displayName = displayed.originalName || item.name;
 
   useDialogKeyboard({
-    open: !reasonDialog && !warrantiesOpen,
+    open: !reasonDialog && !warrantiesOpen && !replaceOpen,
     getContainer: () => document.querySelector("[data-admin-file-viewer]"),
     onEscape: () => {
       if (!busy) onClose();
@@ -150,6 +155,22 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
       feedback.notify("success", "Versión restaurada", describeRestoreResult(created, target), displayName);
     }
     return outcome;
+  }
+
+  /**
+   * Versión nueva confirmada (o reconciliada): recarga historial, tabla y métricas, muestra la
+   * versión creada (pendiente, con «Rechazar» y «Aprobar») y avisa de que queda pendiente.
+   *
+   * @param {{ version: Object }} result - Respuesta de la API.
+   * @returns {void}
+   */
+  function handleReplaced(result) {
+    const created = result?.version;
+    history.reload();
+    onChanged();
+    if (created?.id) setDisplayedVersionId(created.id);
+    const texts = describeUploadResult("replace", { name: item.name, versionNumber: created?.versionNumber });
+    feedback.notify("success", texts.title, texts.description, item.name);
   }
 
   const header = {
@@ -226,6 +247,20 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
                 <Button theme="Primary" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={onClose}>
                   Cerrar
                 </Button>
+                <Button
+                  theme="Primary"
+                  type="Solid"
+                  size="S"
+                  showLeftIcon={false}
+                  showRightIcon={false}
+                  disabled={busy || !replaceAvailability.allowed}
+                  tooltip={replaceAvailability.allowed ? "Subir una versión nueva" : replaceAvailability.reason}
+                  aria-label={replaceAvailability.allowed ? "Reemplazar" : `Reemplazar. ${replaceAvailability.reason}`}
+                  className="h-[41px] min-w-[140px] flex-1"
+                  onClick={() => setReplaceOpen(true)}
+                >
+                  Reemplazar
+                </Button>
                 {canLinkWarranties(item) ? (
                   <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={() => setWarrantiesOpen(true)}>
                     Garantías
@@ -243,6 +278,14 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
           subject={`${displayName} · V${reasonDialog.version.versionNumber}`}
           onClose={() => setReasonDialog(null)}
           onSubmit={submitReason}
+        />
+      ) : null}
+      {replaceOpen ? (
+        <AdminFileUploadDialog
+          mode="replace"
+          file={{ ...file, folderSystemKey: item.folder?.section === "cover" ? "cover" : null, name: item.name }}
+          onUploaded={handleReplaced}
+          onClose={() => setReplaceOpen(false)}
         />
       ) : null}
       {warrantiesOpen ? <AdminFileWarrantyDialog file={{ ...file, name: displayName }} onClose={() => setWarrantiesOpen(false)} /> : null}

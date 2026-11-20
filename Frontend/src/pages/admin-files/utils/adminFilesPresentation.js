@@ -122,3 +122,23 @@ export function getItemsEmptyCopy(tab, filtered) {
   if (tab === "rejected") return { description: "Las versiones rechazadas se conservan y aparecerán aquí con su motivo.", title: "No hay archivos rechazados" };
   return { description: "Los archivos aprobados de los proyectos aparecerán aquí.", title: "Aún no hay archivos aprobados" };
 }
+
+// Estados de proyecto que no admiten archivos nuevos (el administrador sí prepara un borrador).
+const UPLOAD_READ_ONLY_STATUSES = Object.freeze({ archived: "El proyecto está archivado: no admite archivos nuevos.", finished: "El proyecto está finalizado: no admite archivos nuevos." });
+
+/**
+ * Motivo por el que «+ Nuevo» no puede subir a la selección del árbol, o cadena vacía si puede.
+ * Los archivos se suben dentro de una carpeta (crear archivos en la raíz no se ofrece); la portada
+ * admite una sola imagen, que se reemplaza. El backend vuelve a comprobar cada regla.
+ *
+ * @param {{ status?: string }|null} project - Proyecto seleccionado.
+ * @param {{ systemKey?: string|null, fileCount?: number }|null} folder - Carpeta seleccionada.
+ * @returns {string} Motivo o "".
+ */
+export function getUploadDisabledReason(project, folder) {
+  if (!project) return "Selecciona una carpeta del árbol para subir archivos.";
+  if (UPLOAD_READ_ONLY_STATUSES[project.status]) return UPLOAD_READ_ONLY_STATUSES[project.status];
+  if (!folder) return "Los archivos se suben dentro de una carpeta: selecciona una.";
+  if (folder.systemKey === "cover" && Number(folder.fileCount) >= 1) return "La portada ya tiene su imagen: usa «Reemplazar archivo».";
+  return "";
+}

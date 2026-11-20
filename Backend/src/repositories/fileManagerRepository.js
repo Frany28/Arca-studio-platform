@@ -306,3 +306,39 @@ export async function listFileManagerItems({
   );
   return result.rows;
 }
+
+/**
+ * Lee el destino de una subida del administrador: la carpeta del proyecto (no retirada), su clave
+ * propia, la clave de la carpeta predeterminada más cercana (la propia o un ancestro, que decide su
+ * sección) y cuántos archivos activos contiene. Con `executor` de una transacción se lee bajo el
+ * bloqueo del proyecto que toma la carga.
+ *
+ * @param {{ projectId: number, folderId: number }} target - Proyecto y carpeta.
+ * @param {{ query: Function }} [executor] - Cliente o pool.
+ * @returns {Promise<{ systemKey: string|null, classificationKey: string|null, fileCount: number }|null>}
+ *   Destino o null si la carpeta no pertenece al proyecto o fue retirada.
+ */
+export async function findFolderUploadTarget({ folderId, projectId }, executor = { query }) {
+  const result = await executor.query(
+    `
+      with recursive chain as (
+        select folder.id, folder.parent_id, folder.system_key, 0 as depth
+        from public.project_folders folder
+        where folder.id = $1::bigint and folder.project_id = $2::bigint and folder.deleted_at is null
+        union all
+        select parent.id, parent.parent_id, parent.system_key, chain.depth + 1
+        from public.project_folders parent inner join chain on parent.id = chain.parent_id
+        where chain.depth < 64
+      )
+      select
+        (select chain.system_key from chain where chain.depth = 0) as system_key,
+        (select chain.system_key from chain where chain.system_key is not null order by chain.depth limit 1) as classification_key,
+        (select count(*) from public.files file where file.folder_id = $1::bigint and ${ACTIVE_FILE_SQL})::int as file_count
+      where exists (select 1 from chain)
+    `,
+    [folderId, projectId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return { classificationKey: row.classification_key ?? null, fileCount: Number(row.file_count), systemKey: row.system_key ?? null };
+}

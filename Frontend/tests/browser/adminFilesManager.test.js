@@ -98,6 +98,9 @@ function toFileVersion(entry) {
   };
 }
 
+// Sección funcional de las carpetas predeterminadas del simulador (catálogo del backend).
+const SECTION_BY_KEY = Object.freeze({ cover: "cover", documents: "documents", "documents.warranties": "warranties", renders: "renders", "renders.models": "models_3d" });
+
 // PDF mínimo válido de una página para PDF.js (contenido ficticio).
 const SAMPLE_PDF = Buffer.from(`%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
@@ -167,12 +170,36 @@ function createBackend({ enabled = true, failures = {} } = {}) {
     return ids;
   }
 
+  /**
+   * Registra una subida como v1 pendiente en la carpeta, con la categoría y la sección del backend.
+   *
+   * @param {Object} project - Proyecto.
+   * @param {Object} folder - Carpeta.
+   * @param {string} name - Nombre legible.
+   * @param {Object} request - Petición de Playwright.
+   * @returns {Object} `file` de la respuesta.
+   */
+  function recordUpload(project, folder, name, request) {
+    const extension = name.split(".").pop().toLowerCase();
+    let section = null;
+    for (let current = folder; current && !section; current = project.folders.find((candidate) => candidate.id === current.parentId)) {
+      section = SECTION_BY_KEY[current.systemKey] || null;
+    }
+    const id = 800 + state.items.length;
+    const entry = item(id, { day: 28, extension, fileCategory: extension === "png" && section === "models_3d" ? "panorama" : undefined, folder: { id: folder.id, name: folder.name, section }, isCurrent: false, name, project, size: request.postDataBuffer()?.length || 10, status: "pending" });
+    entry.contentType = extension === "pdf" ? "application/pdf" : "image/png";
+    state.items.push(entry);
+    folder.fileCount += 1;
+    return { id: entry.fileId, reviewStatus: "pending", title: name, versionId: entry.versionId };
+  }
+
   state.handle = async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const { pathname: path } = url;
     const method = request.method();
-    const body = request.postData() ? JSON.parse(request.postData()) : null;
+    const isJson = String(request.headers()["content-type"] || "").includes("application/json");
+    const body = isJson && request.postData() ? JSON.parse(request.postData()) : null;
     const params = Object.fromEntries(url.searchParams);
     state.requests.push({ body, method, path, search: params });
     const operation = `${method} ${path.replace(/\/\d+(?=\/|$)/g, "/:id")}`;
@@ -322,6 +349,38 @@ function createBackend({ enabled = true, failures = {} } = {}) {
       const linkedWarrantyIds = state.warranties.filter((candidate) => candidate.documents.some((document) => document.fileId === fileId)).map((candidate) => candidate.id);
       return json(route, 200, { changed: method === "DELETE" || !linked, fileId, linkedWarrantyIds, warrantyId: warranty.id });
     }
+    const uploadMatch = /^\/api\/admin\/files\/projects\/(\d+)\/files$/.exec(path);
+    if (uploadMatch && method === "POST") {
+      const project = state.projects.find((candidate) => candidate.id === Number(uploadMatch[1]));
+      const folder = project.folders.find((candidate) => candidate.id === Number(params.folderId));
+      const name = decodeURIComponent(request.headers()["x-file-name"] || "");
+      if (state.uploadHook) {
+        const handled = await state.uploadHook({ folder, name, project, record: () => recordUpload(project, folder, name, request), route });
+        if (handled) return handled;
+      }
+      if (!folder) return json(route, 404, { code: "PROJECT_FOLDER_NOT_FOUND", message: "Carpeta no encontrada." });
+      if (state.items.some((candidate) => candidate.project.id === project.id && candidate.name.toLowerCase() === name.toLowerCase())) {
+        return json(route, 409, { code: "DUPLICATE_PROJECT_FILE", message: "Ese archivo ya existe en este proyecto." });
+      }
+      if (folder.systemKey === "cover" && folder.fileCount >= 1) return json(route, 409, { code: "PROJECT_FOLDER_FULL", message: "La portada admite una sola imagen: reemplaza la existente." });
+      return json(route, 201, { file: recordUpload(project, folder, name, request) });
+    }
+    const replaceMatch = /^\/api\/projects\/(\d+)\/files\/(\d+)\/versions$/.exec(path);
+    if (replaceMatch && method === "POST") {
+      const fileId = Number(replaceMatch[2]);
+      const note = decodeURIComponent(request.headers()["x-change-note"] || "").trim();
+      if (!note) return json(route, 400, { code: "VALIDATION_ERROR", fields: { "headers.x-change-note": ["Escribe el motivo del cambio."] }, message: "Datos inválidos" });
+      const siblings = state.items.filter((candidate) => candidate.fileId === fileId);
+      if (siblings.some((candidate) => candidate.review.status === "pending")) return json(route, 409, { code: "FILE_VERSION_PENDING_REVIEW", message: "Pendiente" });
+      const latest = siblings.reduce((top, candidate) => (candidate.versionNumber > top.versionNumber ? candidate : top));
+      const versionNumber = latest.versionNumber + 1;
+      const created = {
+        ...latest, changeNote: note, createdAt: "2026-04-01T10:00:00.000Z", extension: "pdf", isCurrent: false, name: decodeURIComponent(request.headers()["x-file-name"] || latest.name),
+        review: { reason: null, reviewedAt: null, reviewerName: null, status: "pending" }, size: request.postDataBuffer()?.length || 10, uploadedBy: { id: 1, name: "Ana Admin" }, versionId: 7000 + versionNumber, versionNumber,
+      };
+      state.items.push(created);
+      return json(route, 201, { version: toFileVersion(created) });
+    }
     state.requests.push({ method, path, unexpected: true });
     return json(route, 404, { code: "TEST_ROUTE_MISSING", message: "Ruta no simulada" });
   };
@@ -341,11 +400,19 @@ async function openFiles(context, backend, { theme = "light", viewport = { heigh
   const page = applyBrowserTimeouts(await browserContext.newPage());
   await page.addInitScript((value) => localStorage.setItem("arca-theme", value), theme);
   const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  const consoleErrors = [];
+  page.on("pageerror", (error) => errors.push(`${error.message} | ${error.stack || ""}`));
+  // Errores de consola: se ignoran solo los avisos del navegador por respuestas HTTP de error que la
+  // prueba simula a propósito (409, 503...); cualquier otro se registra con su origen y falla la prueba.
+  page.on("console", (message) => {
+    if (message.type() !== "error" || /^Failed to load resource: the server responded with a status of \d{3}/.test(message.text())) return;
+    consoleErrors.push(`${message.text()} @ ${message.location()?.url || ""}:${message.location()?.lineNumber ?? ""}`);
+  });
   await page.route((url) => url.pathname.startsWith("/api/"), backend.handle);
   context.after(async () => {
     await browserContext.close();
-    assert.deepEqual(errors, []);
+    assert.deepEqual(errors, [], "errores de página");
+    assert.deepEqual(consoleErrors, [], "errores de consola");
     assert.deepEqual(backend.requests.filter((request) => request.unexpected), []);
   });
   await page.goto(`${origin}/archivos`);
@@ -736,6 +803,251 @@ for (const theme of ["light", "dark"]) {
       assert.ok(layout.overflow <= 0, `La página no desborda (${layout.overflow} px)`);
       assert.equal(layout.sideBySide, width >= 1024, "Dos columnas solo con espacio suficiente");
       if (SCREENSHOT_DIR) await page.screenshot({ fullPage: true, path: `${SCREENSHOT_DIR}/files-${theme}-${width}.png` });
+    });
+  }
+}
+
+const uploadDialog = (page, mode = "upload") => page.locator(`[data-admin-file-upload='${mode}']`);
+const pdfFile = (name) => ({ buffer: SAMPLE_PDF, mimeType: "application/pdf", name });
+
+/**
+ * Selecciona «Quinta Bella Vista › <ruta>» en el árbol, desplegando cada nivel.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @param {string[]} path - Carpetas desde la raíz del proyecto.
+ * @returns {Promise<void>}
+ */
+async function selectQuintaFolder(page, path) {
+  const tree = page.getByRole("complementary", { name: "Proyectos" });
+  await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
+  for (const [index, name] of path.entries()) {
+    if (index < path.length - 1) await tree.getByRole("button", { name: `Mostrar carpetas de ${name}` }).click();
+    else await tree.getByRole("button", { exact: true, name }).click();
+  }
+}
+
+test("U3 · «+ Nuevo» sube a la carpeta elegida, valida antes de transferir y avisa que queda pendiente", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  const nuevo = page.getByRole("button", { name: /^Nuevo archivo/ });
+  await nuevo.waitFor();
+  assert.match(await nuevo.getAttribute("aria-label"), /Selecciona una carpeta/);
+  assert.equal(await nuevo.isDisabled(), true);
+  const tree = page.getByRole("complementary", { name: "Proyectos" });
+  await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
+  assert.match(await nuevo.getAttribute("aria-label"), /dentro de una carpeta/, "la raíz no admite archivos nuevos");
+  await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
+  await tree.getByRole("button", { exact: true, name: "Garantías" }).click();
+  await nuevo.click();
+
+  const dialog = uploadDialog(page);
+  await dialog.getByText("Dentro de: Quinta Bella Vista › Garantías").waitFor();
+  await dialog.getByText("Formatos PDF, DOCX, XLSX, JPEG, PNG y MP4, hasta 50 MB.").waitFor();
+  const input = dialog.locator("input[type='file']");
+  await input.setInputFiles([{ buffer: Buffer.from("hola"), mimeType: "text/plain", name: "notas.txt" }]);
+  await dialog.getByText("Formato no admitido. Usa PDF, DOCX, XLSX, JPEG, PNG o MP4.").waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Confirmar" }).isDisabled(), true, "un archivo inválido no se transfiere");
+  await dialog.getByRole("button", { name: "Eliminar archivo notas.txt" }).click();
+  await input.setInputFiles([pdfFile("Certificado techo.pdf")]);
+  const metricsBefore = metricsReads(backend);
+  const treeReads = () => backend.requests.filter((request) => request.path === "/api/admin/files/tree").length;
+  const treeBefore = treeReads();
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText("«Certificado techo.pdf» se subió a Quinta Bella Vista › Garantías. Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
+  const uploadRequest = backend.requests.find((request) => request.method === "POST" && request.path === "/api/admin/files/projects/1/files");
+  assert.deepEqual(uploadRequest.search, { folderId: "104" });
+  await waitUntil(() => metricsReads(backend) > metricsBefore && treeReads() > treeBefore);
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
+  await page.getByRole("rowheader", { name: /Certificado techo\.pdf/ }).waitFor();
+});
+
+test("U3 · arrastrar y soltar, nombre repetido sin reintento, fallo temporal con reintento y 403 comprensible", async (context) => {
+  const backend = createBackend();
+  let attempts = 0;
+  backend.uploadHook = async ({ name, route }) => {
+    if (name !== "Inestable.pdf") return null;
+    attempts += 1;
+    if (attempts > 1) return null;
+    await route.fulfill({ body: JSON.stringify({ code: "STORAGE_UNAVAILABLE", message: "Almacenamiento no disponible." }), contentType: "application/json", status: 503 });
+    return true;
+  };
+  const page = await openFiles(context, backend);
+  await selectQuintaFolder(page, ["Documentos", "Garantías"]);
+  await page.getByRole("button", { name: "Nuevo archivo" }).click();
+  const dialog = uploadDialog(page);
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["%PDF-1.4"], "Garantía impermeabilización.pdf", { type: "application/pdf" }));
+    transfer.items.add(new File(["%PDF-1.4"], "Inestable.pdf", { type: "application/pdf" }));
+    return transfer;
+  });
+  await dialog.getByText("Arrastra y suelta").dispatchEvent("drop", { dataTransfer });
+  await dialog.getByText("Garantía impermeabilización", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.getByText(/Ya existe un archivo con ese nombre en el proyecto/).waitFor();
+  await dialog.getByText("Almacenamiento no disponible.").waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Intenta de nuevo" }).count(), 1, "solo el fallo temporal se reintenta");
+  await dialog.getByRole("button", { name: "Intenta de nuevo" }).click();
+  await dialog.getByText("Subido · Pendiente de revisión").waitFor();
+  assert.equal(attempts, 2);
+  assert.equal(await dialog.count(), 1, "con un error definitivo el diálogo sigue abierto");
+  await page.getByText(/«Inestable\.pdf» se subió/).waitFor();
+  // Una tarjeta con error definitivo se retira con su botón de texto «Eliminar».
+  await dialog.getByRole("button", { exact: true, name: "Eliminar" }).click();
+  await dialog.getByRole("button", { name: "Listo" }).click();
+  await dialog.waitFor({ state: "detached" });
+
+  const forbidden = createBackend({ failures: { "POST /api/admin/files/projects/:id/files": { body: { code: "FORBIDDEN", message: "No tienes permisos para realizar esta acción." }, status: 403 } } });
+  const second = await openFiles(context, forbidden);
+  await selectQuintaFolder(second, ["Documentos", "Garantías"]);
+  await second.getByRole("button", { name: "Nuevo archivo" }).click();
+  await uploadDialog(second).locator("input[type='file']").setInputFiles([pdfFile("Permiso.pdf")]);
+  await uploadDialog(second).getByRole("button", { name: "Confirmar" }).click();
+  await uploadDialog(second).getByText("No tienes permisos para realizar esta acción.").waitFor();
+  assert.equal(await uploadDialog(second).getByRole("button", { name: "Intenta de nuevo" }).count(), 0);
+});
+
+test("U3 · cancelar una carga en curso reconcilia con lo guardado: sin registro sale de la lista; registrada se conserva", async (context) => {
+  const backend = createBackend();
+  backend.uploadHook = async ({ name, record }) => {
+    if (name === "Registrado.pdf") record();
+    return new Promise(() => {});
+  };
+  const page = await openFiles(context, backend);
+  await selectQuintaFolder(page, ["Documentos", "Garantías"]);
+  await page.getByRole("button", { name: "Nuevo archivo" }).click();
+  const dialog = uploadDialog(page);
+  await dialog.locator("input[type='file']").setInputFiles([pdfFile("Cancelado.pdf")]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.locator("form").getByText("Subiendo...").waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Cerrar nuevo archivo" }).isDisabled(), true, "no se cierra con una carga en curso");
+  await dialog.getByRole("button", { name: "Eliminar archivo Cancelado.pdf" }).click();
+  await dialog.getByText("Cancelado", { exact: true }).waitFor({ state: "detached" });
+  assert.ok(backend.requests.some((request) => request.path === "/api/admin/files/items" && request.search.search === "Cancelado.pdf" && request.search.tab === "pending"), "consulta lo guardado");
+
+  await dialog.locator("input[type='file']").setInputFiles([pdfFile("Registrado.pdf")]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.locator("form").getByText("Subiendo...").waitFor();
+  await dialog.getByRole("button", { name: "Eliminar archivo Registrado.pdf" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText(/«Registrado\.pdf» se subió a Quinta Bella Vista › Garantías\. Queda pendiente de revisión/).waitFor();
+  assert.equal(backend.items.filter((entry) => entry.name === "Registrado.pdf").length, 1, "la carga registrada se conserva una sola vez");
+});
+
+test("U3 · «Reemplazar» desde el visor exige motivo, crea la versión pendiente y la muestra; con una pendiente se deshabilita", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  await viewer.locator("canvas").first().waitFor();
+  await viewer.getByRole("button", { exact: true, name: "Reemplazar" }).click();
+  const dialog = uploadDialog(page, "replace");
+  await dialog.getByText("Archivo: Garantía impermeabilización.pdf").waitFor();
+  await dialog.locator("input[type='file']").setInputFiles([pdfFile("Garantía firmada.pdf")]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.getByText("Escribe el motivo del cambio.").waitFor();
+  await dialog.getByRole("textbox", { name: /Motivo del cambio/ }).fill("Se añade la firma del cliente.");
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText("Se creó la V13 de «Garantía impermeabilización.pdf». Queda pendiente de revisión: la versión vigente no cambia hasta aprobarla.").waitFor();
+  assert.ok(backend.requests.some((candidate) => candidate.method === "POST" && candidate.path === "/api/projects/1/files/30/versions"), "usa la ruta de versiones (B4)");
+  await viewer.getByText("V13 · Pendiente de revisión").waitFor();
+  await viewer.getByRole("button", { name: "Aprobar" }).waitFor();
+  const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+  await history.locator("li[data-version-number='13']").getByText("Motivo: Se añade la firma del cliente.").waitFor();
+  await history.locator("li[data-version-number='12']").waitFor();
+
+  await viewer.getByRole("button", { name: "Opciones de la versión 12" }).click();
+  await page.getByRole("menuitem", { exact: true, name: "Ver" }).click();
+  await viewer.getByText("V12 · Aprobada").waitFor();
+  const replace = viewer.getByRole("button", { name: /^Reemplazar/ });
+  assert.equal(await replace.isDisabled(), true);
+  assert.match(await replace.getAttribute("aria-label"), /ya tiene una versión pendiente/);
+});
+
+test("U3 · «Reemplazar archivo» desde la tabla (no en Pendientes) y restaurar la vigente aprobada (B4)", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Más opciones para Fachada.png, versión 1" }).click();
+  await page.getByRole("menuitem", { name: "Reemplazar archivo" }).click();
+  const dialog = uploadDialog(page, "replace");
+  await dialog.getByRole("textbox", { name: /Motivo del cambio/ }).fill("Render corregido.");
+  await dialog.locator("input[type='file']").setInputFiles([{ buffer: SAMPLE_PNG, mimeType: "image/png", name: "Fachada v2.png" }]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await page.getByText(/Se creó la V2 de «Fachada\.png»/).waitFor();
+  assert.ok(backend.requests.some((candidate) => candidate.method === "POST" && candidate.path === "/api/projects/2/files/40/versions"));
+
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
+  await page.getByRole("button", { name: "Más opciones para Fachada v2.png, versión 2" }).click();
+  assert.equal(await page.getByRole("menuitem", { name: /Reemplazar archivo/ }).count(), 0, "una fila pendiente no se reemplaza");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("tab", { name: "Aprobados" }).click();
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  await viewer.getByRole("button", { name: "Opciones de la versión 12" }).click();
+  assert.equal(await page.getByRole("menuitem", { name: "Restaurar versión" }).isDisabled(), false, "la vigente aprobada se puede restaurar (PR2)");
+  await page.keyboard.press("Escape");
+});
+
+test("U3 · Panorámicas: una imagen subida se revisa con el visor 360", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await selectQuintaFolder(page, ["Renders e imágenes", "Panorámicas"]);
+  await page.getByRole("button", { name: "Nuevo archivo" }).click();
+  const dialog = uploadDialog(page);
+  await dialog.locator("input[type='file']").setInputFiles([{ buffer: SAMPLE_PNG, mimeType: "image/png", name: "Sala 360.png" }]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
+  await page.getByRole("button", { name: "Revisar Sala 360.png, versión 1" }).click();
+  const stage = viewerDialog(page).getByRole("region", { name: "Visor panorámico 360" });
+  await stage.waitFor();
+  await viewerDialog(page).getByText("Cargando panorámica 360…").waitFor({ state: "detached", timeout: 15000 });
+  assert.equal(await viewerDialog(page).getByText("No se pudo cargar la panorámica.").count(), 0);
+  assert.equal(await stage.locator("canvas").count(), 1, "WebGL dibuja la esfera 360");
+});
+
+test("U3 · teclado: «+ Nuevo» se abre con Enter, el foco queda en el diálogo y Escape lo cierra", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await selectQuintaFolder(page, ["Documentos", "Garantías"]);
+  await page.getByRole("button", { name: "Nuevo archivo" }).focus();
+  await page.keyboard.press("Enter");
+  const dialog = uploadDialog(page);
+  await dialog.waitFor();
+  await page.waitForFunction(() => document.querySelector("[data-admin-file-upload]")?.contains(document.activeElement));
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => Boolean(document.querySelector("[data-admin-file-upload]")?.contains(document.activeElement))), true, "el foco no sale del diálogo");
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" });
+});
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [375, 1440]) {
+    test(`U3 · diálogos de carga responsive sin desbordar (${theme}, ${width} px)`, async (context) => {
+      const backend = createBackend();
+      const page = await openFiles(context, backend, { theme, viewport: { height: 900, width } });
+      await selectQuintaFolder(page, ["Documentos", "Garantías"]);
+      await page.getByRole("button", { name: "Nuevo archivo" }).click();
+      const dialog = uploadDialog(page);
+      await dialog.locator("input[type='file']").setInputFiles([pdfFile("Uno.pdf"), { buffer: Buffer.from("x"), mimeType: "text/plain", name: "dos.txt" }]);
+      await dialog.getByText("Formato no admitido. Usa PDF, DOCX, XLSX, JPEG, PNG o MP4.").waitFor();
+      await page.waitForTimeout(350);
+      const layout = await page.evaluate(() => {
+        const box = document.querySelector("[data-admin-file-upload]").getBoundingClientRect();
+        return { left: box.left, overflow: document.documentElement.scrollWidth - window.innerWidth, right: box.right, width: window.innerWidth };
+      });
+      assert.ok(layout.overflow <= 0 && layout.left >= 0 && layout.right <= layout.width, JSON.stringify(layout));
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/upload-${theme}-${width}.png` });
+      await dialog.getByRole("button", { exact: true, name: "Cerrar" }).click();
+      await dialog.waitFor({ state: "detached" });
+      await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+      await viewerDialog(page).getByRole("button", { exact: true, name: "Reemplazar" }).click();
+      await uploadDialog(page, "replace").waitFor();
+      await page.waitForTimeout(350);
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/replace-${theme}-${width}.png` });
     });
   }
 }

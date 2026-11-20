@@ -1,4 +1,4 @@
-import { FilterRemove, SearchNormal1 } from "iconsax-react";
+import { Add, FilterRemove, SearchNormal1 } from "iconsax-react";
 import { useMemo } from "react";
 
 import Button from "../../../components/ui/Button/Button.jsx";
@@ -10,7 +10,8 @@ import { ADMIN_FILES_TYPE_OPTIONS } from "../utils/adminFilesPresentation.js";
  * Barra de la tabla (Figma 3727:683873): búsqueda de archivos en la API («Buscar...»), filtro de
  * varios tipos (el embudo de la columna Tipo) y «Quitar filtros» en una sola fila, como la búsqueda
  * de Figma; con poco ancho los controles pasan a filas sucesivas y en móvil ocupan todo el ancho.
- * «+ Nuevo» (carga de archivos) pertenece a U3 y todavía no se muestra.
+ * «+ Nuevo» (U3) va a la derecha y sube a la carpeta seleccionada en el árbol; sin una carpeta
+ * válida se muestra deshabilitado con su motivo. Fuera de Aprobados (sin árbol) no se muestra.
  *
  * @param {Object} props - Estado de la consulta y callbacks.
  * @param {string} props.query - Texto escrito en la búsqueda.
@@ -19,9 +20,10 @@ import { ADMIN_FILES_TYPE_OPTIONS } from "../utils/adminFilesPresentation.js";
  * @param {(ids: string[]) => void} props.onExtensionsChange - Aplica los tipos marcados.
  * @param {boolean} props.hasFilters - Hay búsqueda o tipos que quitar.
  * @param {() => void} props.onClearFilters - Quita búsqueda y tipos.
+ * @param {{ disabledReason: string, onClick: () => void }|null} [props.newAction] - «+ Nuevo» o null para ocultarlo.
  * @returns {import("react").ReactElement} Barra de herramientas.
  */
-function AdminFilesToolbar({ extensions, hasFilters, onClearFilters, onExtensionsChange, onQueryChange, query }) {
+function AdminFilesToolbar({ extensions, hasFilters, newAction = null, onClearFilters, onExtensionsChange, onQueryChange, query }) {
   const typeItems = useMemo(() => ADMIN_FILES_TYPE_OPTIONS.map((option) => ({
     ...option,
     checked: extensions.includes(option.id) ? "Yes" : "No",
@@ -64,6 +66,26 @@ function AdminFilesToolbar({ extensions, hasFilters, onClearFilters, onExtension
       <Button theme="Primary" type="Solid" size="M" fitContent showLeftIcon iconLeft={<FilterRemove size="20" color="currentColor" />} showRightIcon={false} disabled={!hasFilters} className="shrink-0" onClick={onClearFilters}>
         Quitar filtros
       </Button>
+      {newAction ? (
+        <span className="ml-auto inline-flex max-[767px]:ml-0 max-[767px]:w-full">
+          <Button
+            theme="Primary"
+            type="Solid"
+            size="M"
+            fitContent
+            showLeftIcon
+            iconLeft={<Add size="20" color="currentColor" />}
+            showRightIcon={false}
+            disabled={Boolean(newAction.disabledReason)}
+            tooltip={newAction.disabledReason || "Subir archivos a la carpeta seleccionada"}
+            aria-label={newAction.disabledReason ? `Nuevo archivo. ${newAction.disabledReason}` : "Nuevo archivo"}
+            className="max-[767px]:!w-full"
+            onClick={newAction.onClick}
+          >
+            Nuevo
+          </Button>
+        </span>
+      ) : null}
     </div>
   );
 }

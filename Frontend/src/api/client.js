@@ -227,12 +227,13 @@ const UPLOAD_FALLBACK_ERRORS = Object.freeze({
  * @param {Object} params - Archivo y opciones de subida.
  * @param {Object} params.file - Archivo con name, type y size.
  * @param {Function} [params.onUploadProgress] - Recibe loaded, total y progress.
+ * @param {Record<string, string>} [params.headers] - Cabeceras adicionales (opcional).
  * @param {string} params.path - Ruta del endpoint de subida.
  * @param {Object} [params.signal] - AbortSignal para cancelar la petici?n activa.
  * @returns {Promise<Object|null>} Respuesta JSON decodificada o null.
  * @throws {Error} La promesa rechaza ante error HTTP, red o cancelaci?n.
  */
-export function uploadRawFile({ file, onUploadProgress, path, signal }) {
+export function uploadRawFile({ file, headers = {}, onUploadProgress, path, signal }) {
   const fileName = encodeURIComponent(file?.name || "archivo");
 
   return new Promise((resolve, reject) => {
@@ -248,6 +249,8 @@ export function uploadRawFile({ file, onUploadProgress, path, signal }) {
       file?.type || "application/octet-stream",
     );
     request.setRequestHeader("X-File-Name", fileName);
+    // Cabeceras adicionales opcionales (p. ej. X-Change-Note del reemplazo de versiones, ya codificada).
+    for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
 
     request.upload.onprogress = (event) => {
       if (!event.lengthComputable || !event.total) {
@@ -283,6 +286,7 @@ export function uploadRawFile({ file, onUploadProgress, path, signal }) {
         );
         error.status = request.status;
         error.code = data?.code || fallback?.code || "FILE_UPLOAD_FAILED";
+        error.fields = data?.fields || null;
         reportSessionExpiration({ code: error.code, path, status: error.status });
         reject(error);
         return;

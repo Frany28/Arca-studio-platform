@@ -73,3 +73,10 @@ export const warrantyDocumentLinkSchema = z.object({
 });
 
 export const projectWarrantiesReadSchema = z.object({ params: z.object({ projectId: positiveId }) });
+
+// Subida desde el administrador (U3): el contenido viaja como binario, como en la subida de proyectos,
+// y la carpeta destino es obligatoria (crear archivos en la raíz no se ofrece).
+export const fileManagerUploadSchema = z.object({
+  params: z.object({ projectId: positiveId }),
+  query: z.object({ folderId: positiveId }).passthrough(),
+});

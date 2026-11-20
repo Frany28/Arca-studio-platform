@@ -652,6 +652,11 @@ export async function findExistingProjectFile({
  *   la v1 nace vigente con la regla de acceso heredada, como siempre. Encendida, el archivo usa la
  *   política 1.2 (`access_policy = 1`) y su v1 nace pendiente, sin versión vigente (`current_version`
  *   NULL, `is_current = false`), con su formato en `content_type`; también la del administrador.
+ * @param {(fileType: string) => string} [options.resolveFileCategory] - Categoría según el formato
+ *   (por defecto, la de siempre: imagen, vídeo o documento). El administrador de archivos clasifica
+ *   como `panorama` las imágenes de «Panorámicas».
+ * @param {(client: object) => Promise<void>} [options.verifyTarget] - Comprobación adicional del
+ *   destino con el proyecto bloqueado (p. ej. la regla de la portada); si lanza, la carga se compensa.
  * @returns {Promise<object>} Resultado producido por la operación.
  * @throws {Error} Cuando una validación o dependencia impide completar la operación.
  */
@@ -662,9 +667,11 @@ export async function uploadProjectFile({
   folderId = null,
   originalName,
   projectId,
+  resolveFileCategory = getFileCategory,
   reviewRequired = isProjectFileReviewEnabled(),
   size,
   user,
+  verifyTarget = null,
 }) {
   const storageConfig = getSupabaseStorageConfig();
 
@@ -771,19 +778,22 @@ export async function uploadProjectFile({
         );
         if (!folder.rowCount) throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
       }
+      if (verifyTarget) await verifyTarget(client);
 
       // Bajo el bloqueo del proyecto, las cargas simultáneas con el mismo nombre se serializan aquí.
       if (await findExistingProjectFile({ originalName: safeOriginalName, projectId }, client)) {
         throw createDuplicateFileError("DUPLICATE_PROJECT_FILE");
       }
 
-      const fileIdentity = [fileId, projectId, user.id, safeOriginalName, fileType, getFileCategory(fileType)];
+      const fileIdentity = [fileId, projectId, user.id, safeOriginalName, fileType, resolveFileCategory(fileType)];
       const versionValues = [
         fileId,
         user.id,
         versionNumber,
         storageKey,
-        sanitizeStorageFileName(safeOriginalName),
+        // Con la revisión activada, `original_name` guarda el nombre legible que se muestra (U3); la
+        // clave de almacenamiento sigue saneada. Apagada, se conserva el valor saneado de siempre.
+        reviewRequired ? safeOriginalName : sanitizeStorageFileName(safeOriginalName),
         fileUrl,
         fileExtension,
         size,

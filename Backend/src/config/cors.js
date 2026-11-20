@@ -61,6 +61,7 @@ function getAllowedHeaders() {
     "Content-Type",
     "Origin",
     "Range",
+    "X-Change-Note",
     "X-File-Name",
     "X-Original-File-Name",
     "X-Requested-With",

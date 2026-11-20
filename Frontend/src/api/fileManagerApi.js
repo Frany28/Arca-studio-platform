@@ -1,4 +1,4 @@
-import { apiRequest, apiRequestFile, getApiUrl, toQueryString } from "./client.js";
+import { apiRequest, apiRequestFile, getApiUrl, toQueryString, uploadRawFile } from "./client.js";
 
 // Administrador de archivos (docs/API_CONTRACT.md, «Administrador de archivos (Fase 1.2, B7)»).
 // Solo para administradores y con PROJECT_FILE_REVIEW_ENABLED: con la activación apagada todas las
@@ -175,6 +175,43 @@ export const fileManagerApi = {
     return apiRequest(versionPath({ fileId, projectId }, `/versions/${encodeURIComponent(versionId)}/restore`), {
       body: JSON.stringify({ changeNote }),
       method: "POST",
+    });
+  },
+
+  /**
+   * Sube un archivo nuevo a una carpeta del proyecto (U3). La v1 nace pendiente de revisión.
+   *
+   * @param {Object} options - Destino, archivo y seguimiento.
+   * @param {number} options.projectId - Proyecto.
+   * @param {number} options.folderId - Carpeta destino (obligatoria).
+   * @param {File} options.file - Archivo.
+   * @param {(progress: {loaded: number, total: number, progress: number}) => void} [options.onUploadProgress] - Progreso.
+   * @param {AbortSignal} [options.signal] - Cancela la transferencia.
+   * @returns {Promise<{file: Object}>} Archivo registrado (`id`, `versionId`, `reviewStatus`).
+   */
+  uploadFile({ file, folderId, onUploadProgress, projectId, signal }) {
+    return uploadRawFile({ file, onUploadProgress, path: `/admin/files/projects/${encodeURIComponent(projectId)}/files${toQueryString({ folderId })}`, signal });
+  },
+
+  /**
+   * Sube una versión nueva de un archivo (B4) con su motivo obligatorio; queda pendiente de revisión.
+   *
+   * @param {Object} options - Archivo, motivo y seguimiento.
+   * @param {number} options.projectId - Proyecto.
+   * @param {number} options.fileId - Archivo.
+   * @param {File} options.file - Contenido de la versión nueva.
+   * @param {string} options.changeNote - Motivo del cambio (≤255).
+   * @param {Function} [options.onUploadProgress] - Progreso.
+   * @param {AbortSignal} [options.signal] - Cancela la transferencia.
+   * @returns {Promise<{version: Object}>} Versión creada.
+   */
+  replaceVersion({ changeNote, file, fileId, onUploadProgress, projectId, signal }) {
+    return uploadRawFile({
+      file,
+      headers: { "X-Change-Note": encodeURIComponent(changeNote) },
+      onUploadProgress,
+      path: versionPath({ fileId, projectId }, "/versions"),
+      signal,
     });
   },
 
