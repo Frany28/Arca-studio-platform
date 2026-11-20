@@ -5,10 +5,11 @@ import test from "node:test";
 import { formatFileUploadDate, formatStorage } from "../src/utils/fileMetrics.js";
 
 test("admin files page implements the Figma KPI section with live metrics", async () => {
-  const [page, kpi, http] = await Promise.all([
-    readFile(new URL("../src/pages/admin-files/AdminFilesPage.jsx", import.meta.url), "utf8"),
+  const [page, kpi, http, metricsHook] = await Promise.all([
+    readFile(new URL("../src/pages/admin-files/components/AdminFilesMetrics.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/AdminKpiMetric.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/api/adminApi.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/admin-files/hooks/useAdminFilesMetrics.js", import.meta.url), "utf8"),
   ]);
 
   const labels = ["Archivos totales", "Espacio Usado", "Última carga"];
@@ -25,7 +26,10 @@ test("admin files page implements the Figma KPI section with live metrics", asyn
   assert.match(kpi, /variant = "default"/);
   assert.match(kpi, /: "min-w-\[235px\] pr-\[16px\]"/);
   assert.match(kpi, /gap-\[12px\][\s\S]*text-heading-8[\s\S]*text-heading-4/);
-  assert.match(page, /api\.admin\.getDashboardMetrics/);
+  // Métricas del administrador (B7), con respaldo en el resumen del dashboard si la activación está apagada.
+  assert.match(metricsHook, /api\.fileManager\.getMetrics/);
+  assert.match(metricsHook, /api\.admin\.getDashboardMetrics/);
+  assert.match(metricsHook, /isFileManagerUnavailable\(error\)[\s\S]*readDashboardFileMetrics\(signal\)/);
   assert.match(http, /getDashboardMetrics\(\{ signal \} = \{\}\)/);
 });
 

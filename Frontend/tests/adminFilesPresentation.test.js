@@ -1,0 +1,149 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+import { fileManagerApi } from "../src/api/http.js";
+import { getAdminFilesColumns, getAdminFilesGridTemplate, getAdminFilesTableMinWidth } from "../src/config/adminFilesTable.js";
+import { describeFolderError } from "../src/pages/admin-files/hooks/useAdminFileFolderActions.js";
+import {
+  ADMIN_FILES_TABS,
+  FOLDER_RULE_MESSAGES,
+  buildFolderTree,
+  formatExtension,
+  formatFileDate,
+  formatFolderPath,
+  getFolderCapabilities,
+  getItemsEmptyCopy,
+  isFileManagerUnavailable,
+} from "../src/pages/admin-files/utils/adminFilesPresentation.js";
+
+function jsonResponse(data, { ok = true, status = 200 } = {}) {
+  return { headers: { get: () => "application/json" }, json: async () => data, ok, status };
+}
+
+async function captureRequest(run, data = {}) {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { options, url };
+    return jsonResponse(data);
+  };
+  try {
+    await run();
+    return request;
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+test("tabs follow Figma order and labels", () => {
+  assert.deepEqual(ADMIN_FILES_TABS.map((tab) => tab.label), ["Aprobados", "Pendientes por aprobación", "Rechazados"]);
+  assert.deepEqual(ADMIN_FILES_TABS.map((tab) => tab.id), ["approved", "pending", "rejected"]);
+});
+
+test("the disabled feature is detected only by 404 API_ROUTE_NOT_FOUND", () => {
+  assert.equal(isFileManagerUnavailable({ code: "API_ROUTE_NOT_FOUND", status: 404 }), true);
+  assert.equal(isFileManagerUnavailable({ code: "PROJECT_NOT_FOUND", status: 404 }), false);
+  assert.equal(isFileManagerUnavailable({ status: 500 }), false);
+  assert.equal(isFileManagerUnavailable(null), false);
+});
+
+test("folders in API preorder become a nested tree that keeps orphans", () => {
+  const roots = buildFolderTree([
+    { id: 1, name: "Renders e imágenes", parentId: null, systemKey: "renders" },
+    { id: 2, name: "Panorámicas", parentId: 1, systemKey: "renders.models" },
+    { id: 3, name: "Propuesta inicial", parentId: 2, systemKey: "renders.models.initial_proposal" },
+    { id: 4, name: "Documentos", parentId: null, systemKey: "documents" },
+    { id: 5, name: "Garantías", parentId: 4, systemKey: "documents.warranties" },
+    { id: 9, name: "Huérfana", parentId: 99, systemKey: null },
+  ]);
+  assert.deepEqual(roots.map((node) => node.name), ["Renders e imágenes", "Documentos", "Huérfana"]);
+  assert.equal(roots[0].children[0].name, "Panorámicas");
+  assert.equal(roots[0].children[0].children[0].name, "Propuesta inicial");
+  assert.equal(roots[1].children[0].name, "Garantías");
+  assert.deepEqual(buildFolderTree(null), []);
+});
+
+test("folder capabilities respect cover, protected defaults and the pending root decision", () => {
+  assert.deepEqual(getFolderCapabilities(null), { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.selectFolder });
+  assert.equal(getFolderCapabilities({ systemKey: "cover" }).canCreateChild, false);
+  assert.equal(getFolderCapabilities({ systemKey: "cover" }).createReason, FOLDER_RULE_MESSAGES.coverNoSubfolders);
+  assert.deepEqual(getFolderCapabilities({ systemKey: "documents.warranties" }), { canCreateChild: true, canManage: false, createReason: "" });
+  assert.deepEqual(getFolderCapabilities({ systemKey: null }), { canCreateChild: true, canManage: true, createReason: "" });
+  assert.match(FOLDER_RULE_MESSAGES.rootUndecided, /pendiente de decisión/);
+});
+
+test("formats keep visible names readable", () => {
+  assert.equal(formatExtension("pdf"), ".PDF");
+  assert.equal(formatExtension(".docx"), ".DOCX");
+  assert.equal(formatExtension(""), "—");
+  assert.match(formatFileDate("2026-03-22T12:00:00Z"), /22[\s\S]*mar[\s\S]*2026/);
+  assert.doesNotMatch(formatFileDate("2026-03-22T12:00:00Z"), /\./);
+  assert.equal(formatFileDate(null), "Sin fecha");
+  assert.equal(formatFileDate("no-es-fecha"), "Sin fecha");
+  assert.equal(formatFolderPath({ path: [{ name: "Documentos" }, { name: "Garantías" }], project: { name: "Quinta" } }), "Quinta › Documentos › Garantías");
+});
+
+test("empty states distinguish filters and tabs", () => {
+  assert.equal(getItemsEmptyCopy("approved", true).title, "No hay coincidencias");
+  assert.equal(getItemsEmptyCopy("pending", false).title, "No hay archivos pendientes");
+  assert.match(getItemsEmptyCopy("rejected", false).description, /se conservan/);
+  assert.equal(getItemsEmptyCopy("approved", false).title, "Aún no hay archivos aprobados");
+});
+
+test("folder API errors map to readable messages and field errors", () => {
+  assert.deepEqual(
+    describeFolderError({ code: "VALIDATION_ERROR", fields: { "body.name": ["Ya existe una carpeta con ese nombre."] }, message: "Datos inválidos" }, "x"),
+    { fieldError: "Ya existe una carpeta con ese nombre.", message: "Datos inválidos" },
+  );
+  assert.match(describeFolderError({ code: "PROJECT_FOLDER_NOT_EMPTY" }, "x").message, /vacías/);
+  assert.match(describeFolderError({ code: "PROJECT_FOLDER_PROTECTED" }, "x").message, /predeterminadas/);
+  assert.match(describeFolderError({ code: "PROJECT_FOLDER_DECISION_PENDING" }, "x").message, /pendiente de decisión/);
+  assert.equal(describeFolderError({}, "Fallo").message, "Fallo");
+});
+
+test("table geometry adds Proyecto only outside the approved tree view", () => {
+  assert.deepEqual(getAdminFilesColumns({ showProject: false }).map((column) => column.id), ["name", "version", "type", "size", "date", "uploadedBy", "actions"]);
+  assert.equal(getAdminFilesColumns({ showProject: true })[2].id, "project");
+  assert.equal(getAdminFilesTableMinWidth({ showProject: true }) - getAdminFilesTableMinWidth({ showProject: false }), 176);
+  assert.match(getAdminFilesGridTemplate({ showProject: false }), /^minmax\(0,1fr\) 88px/);
+});
+
+test("the file manager API builds the documented admin routes", async () => {
+  let request = await captureRequest(() => fileManagerApi.listItems({ extensions: ["pdf", "png"], folderId: 7, includeSubfolders: true, limit: 10, order: "asc", projectId: 3, search: "acta", sort: "name", tab: "pending" }));
+  const url = new URL(request.url, "http://local");
+  assert.equal(url.pathname, "/api/admin/files/items");
+  assert.equal(url.searchParams.get("extensions"), "pdf,png");
+  assert.equal(url.searchParams.get("includeSubfolders"), "true");
+  assert.equal(url.searchParams.get("tab"), "pending");
+  assert.equal(url.searchParams.get("sort"), "name");
+
+  request = await captureRequest(() => fileManagerApi.listItems({ includeSubfolders: true, tab: "approved" }));
+  assert.equal(new URL(request.url, "http://local").searchParams.has("includeSubfolders"), false, "Sin carpeta no se envía includeSubfolders");
+
+  request = await captureRequest(() => fileManagerApi.createFolder({ name: "Planos", parentId: 5, projectId: 3 }));
+  assert.equal(request.url, "/api/admin/files/projects/3/folders");
+  assert.equal(request.options.method, "POST");
+  assert.deepEqual(JSON.parse(request.options.body), { name: "Planos", parentId: 5 });
+
+  request = await captureRequest(() => fileManagerApi.renameFolder({ folderId: 8, name: "Nuevo", projectId: 3 }));
+  assert.equal(request.url, "/api/admin/files/projects/3/folders/8");
+  assert.equal(request.options.method, "PATCH");
+
+  request = await captureRequest(() => fileManagerApi.deleteFolder({ folderId: 8, projectId: 3 }));
+  assert.equal(request.options.method, "DELETE");
+
+  request = await captureRequest(() => fileManagerApi.searchFolders({ search: "garan" }));
+  assert.equal(request.url, "/api/admin/files/folders?search=garan");
+});
+
+test("the page offers no file deletion and keeps the default activation off", async () => {
+  const [table, workspace, api] = await Promise.all([
+    readFile(new URL("../src/pages/admin-files/components/AdminFilesTable.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/admin-files/components/AdminFilesWorkspace.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/fileManagerApi.js", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(table, /label: "Eliminar"|>Eliminar</);
+  assert.doesNotMatch(api, /\/files\/\$\{[^}]+\}`,\s*\{\s*method: "DELETE"/);
+  assert.match(workspace, /Los archivos guardados y sus versiones nunca se eliminan/);
+});

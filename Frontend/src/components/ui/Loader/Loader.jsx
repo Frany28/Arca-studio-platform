@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { getAdminFilesGridTemplate, getAdminFilesTableMinWidth } from "../../../config/adminFilesTable.js";
 import { ADMIN_PROJECT_COLUMN_WIDTHS, ADMIN_PROJECT_TABLE_MIN_WIDTH } from "../../../config/adminProjectTable.js";
 import { getMeasurementUnitGridTemplate, MEASUREMENT_UNIT_TABLE_MIN_WIDTH } from "../../../config/measurementUnitTable.js";
 import { getQuotesTableGridTemplate, QUOTES_TABLE_MIN_WIDTH } from "../../../config/quotesTable.js";
@@ -270,6 +271,49 @@ function AdminUserTableSkeleton() {
           {Array.from({ length: 7 }, (_, cellIndex) => (
             <SkeletonBlock key={cellIndex} className="h-[20px] w-full rounded-[var(--radius-1)]" delay={rowIndex * 35 + cellIndex * 15} tone={cellIndex < 4 ? "text" : "muted"} />
           ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Tabla del administrador de archivos (Figma 3727:683873): nombre, versión, proyecto (solo en
+// pendientes y rechazados), tipo, peso, fecha, autor y acciones. Usa la geometría de la tabla
+// (config/adminFilesTable.js) para no saltar al terminar la carga.
+function AdminFilesTableSkeleton({ rows, showProject }) {
+  const options = { showProject };
+  return (
+    <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
+      <div className="w-full overflow-x-auto">
+        <div style={{ minWidth: getAdminFilesTableMinWidth(options) }}>
+          <SkeletonBlock className="h-[49px] w-full rounded-none" />
+          {Array.from({ length: rows }, (_, rowIndex) => (
+            <div key={rowIndex} className="grid h-[68px] items-center border-b border-[var(--color-neutral-200)] last:border-b-0" style={{ gridTemplateColumns: getAdminFilesGridTemplate(options) }}>
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[75%] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[24px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
+              {showProject ? <SkeletonBlock className="mx-[24px] h-[17px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 25} tone="text" /> : null}
+              <SkeletonBlock className="mx-[24px] h-[20px] w-[40px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 35} />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[56px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 45} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[17px] w-[80px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 55} tone="text" />
+              <SkeletonBlock className="mx-[24px] h-[24px] w-[104px] rounded-[var(--radius-full)]" delay={rowIndex * 35 + 65} />
+              <SkeletonBlock className="mx-[24px] h-[20px] w-[32px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 75} tone="muted" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Árbol de proyectos y carpetas del administrador de archivos (Figma 3727:683873): filas de 39 px
+// con sangría por nivel, como el árbol cargado.
+function AdminFilesTreeSkeleton({ rows }) {
+  return (
+    <div className="flex w-full flex-col gap-[8px]">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex h-[39px] items-center gap-[12px] px-[8px]" style={{ paddingLeft: `${8 + (index % 3) * 16}px` }}>
+          <SkeletonBlock className="size-[20px] shrink-0 rounded-[var(--radius-1)]" delay={index * 45} tone="muted" />
+          <SkeletonBlock className="h-[17px] w-[60%] rounded-[var(--radius-1)]" delay={index * 45 + 20} tone="text" />
         </div>
       ))}
     </div>
@@ -868,6 +912,10 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
     content = <AdminUserMetricsSkeleton projects={variant === "projects"} />;
   } else if (preset === "adminUserTable") {
     content = <AdminUserTableSkeleton />;
+  } else if (preset === "adminFilesTable") {
+    content = <AdminFilesTableSkeleton rows={itemCount} showProject={variant === "withProject"} />;
+  } else if (preset === "adminFilesTree") {
+    content = <AdminFilesTreeSkeleton rows={itemCount} />;
   } else if (preset === "measurementUnitTable") {
     content = <MeasurementUnitTableSkeleton rows={itemCount} />;
   } else if (preset === "serviceCatalogTable") {
