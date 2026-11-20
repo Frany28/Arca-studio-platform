@@ -1,0 +1,169 @@
+// Reglas de presentación de U2 (visor, revisión, historial, restauración y garantías). Funciones
+// puras: deciden el visor de cada versión, redactan los avisos a partir de lo que confirma la API y
+// traducen sus conflictos. El backend sigue siendo la autoridad de cada regla.
+
+// Límites del contrato (docs/API_CONTRACT.md, B4): motivo de rechazo 1–500 y de restauración 1–255.
+export const REJECT_REASON_MAX_LENGTH = 500;
+export const RESTORE_NOTE_MAX_LENGTH = 255;
+// Versiones por página del historial («Mostrar más versiones»).
+export const VERSION_HISTORY_PAGE_SIZE = 10;
+// Sección funcional de «Documentos › Garantías» y sus subcarpetas (catálogo de carpetas).
+const WARRANTY_SECTION = "warranties";
+
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov"]);
+
+/**
+ * Elige el visor de una versión: PDF, DOCX y XLSX con los visores de documentos; imágenes, vídeos
+ * y panorámicas (categoría `panorama` del archivo) con su visor; el resto no tiene vista previa.
+ *
+ * @param {{ extension?: string|null, contentType?: string|null, fileCategory?: string|null }} file - Versión o elemento.
+ * @returns {"pdf"|"docx"|"xlsx"|"image"|"panorama"|"video"|"unsupported"} Tipo de visor.
+ */
+export function getViewerKind(file) {
+  const extension = String(file?.extension || "").replace(/^\./, "").toLowerCase();
+  const contentType = String(file?.contentType || "").toLowerCase();
+  if (extension === "pdf" || contentType === "application/pdf") return "pdf";
+  if (extension === "docx") return "docx";
+  if (extension === "xlsx") return "xlsx";
+  if (IMAGE_EXTENSIONS.has(extension) || contentType.startsWith("image/")) {
+    return file?.fileCategory === "panorama" ? "panorama" : "image";
+  }
+  if (VIDEO_EXTENSIONS.has(extension) || contentType.startsWith("video/")) return "video";
+  return "unsupported";
+}
+
+/**
+ * Indica si un documento puede respaldar garantías: debe estar en «Documentos › Garantías» o en
+ * una de sus subcarpetas (B8); el backend lo vuelve a comprobar al vincular.
+ *
+ * @param {{ folder?: { section?: string|null }|null }} item - Elemento del administrador.
+ * @returns {boolean} true si se ofrece «Garantías».
+ */
+export function canLinkWarranties(item) {
+  return item?.folder?.section === WARRANTY_SECTION;
+}
+
+/**
+ * Etiqueta corta de una versión del historial: «Versión actual» para la vigente y «V3» para el resto.
+ *
+ * @param {{ versionNumber: number, isCurrent: boolean }} version - Versión.
+ * @returns {string} Etiqueta.
+ */
+export function formatVersionLabel(version) {
+  return version.isCurrent ? `Versión actual · V${version.versionNumber}` : `V${version.versionNumber}`;
+}
+
+const REVIEW_STATUS_LABELS = Object.freeze({
+  approved: "Aprobada",
+  legacy: "Heredada",
+  pending: "Pendiente de revisión",
+  rejected: "Rechazada",
+});
+
+/**
+ * Estado de revisión legible.
+ *
+ * @param {string|null|undefined} status - Estado de la API.
+ * @returns {string} Texto.
+ */
+export function formatReviewStatus(status) {
+  return REVIEW_STATUS_LABELS[status] || REVIEW_STATUS_LABELS.legacy;
+}
+
+/**
+ * Indica si una versión del historial puede restaurarse: aprobada, distinta de la vigente y sin
+ * otra versión pendiente en el archivo (la API admite una sola pendiente por archivo).
+ *
+ * @param {Object} version - Versión del historial.
+ * @param {Array<Object>} versions - Versiones cargadas del archivo.
+ * @returns {{ allowed: boolean, reason: string }} Resultado y motivo si no procede.
+ */
+export function getRestoreAvailability(version, versions) {
+  if (version.review?.status !== "approved") return { allowed: false, reason: "Solo se pueden restaurar versiones aprobadas." };
+  if (version.isCurrent) return { allowed: false, reason: "Es la versión vigente." };
+  if ((versions || []).some((candidate) => candidate.review?.status === "pending")) {
+    return { allowed: false, reason: "El archivo ya tiene una versión pendiente de revisión." };
+  }
+  return { allowed: true, reason: "" };
+}
+
+/**
+ * Textos del aviso de una revisión confirmada, redactados solo con lo que devuelve la API: aprobar
+ * convierte la versión en vigente y no la comparte (la acción de compartir es independiente);
+ * rechazar conserva la versión rechazada y no cambia la vigente.
+ *
+ * @param {"approve"|"reject"} action - Acción confirmada.
+ * @param {{ version: Object, currentVersionId: number|null, sharedWithClient: boolean }} result - Respuesta.
+ * @param {string} fileName - Nombre visible del archivo.
+ * @returns {{ title: string, description: string }} Textos.
+ */
+export function describeReviewResult(action, result, fileName) {
+  const number = result?.version?.versionNumber;
+  if (action === "approve") {
+    const current = result?.currentVersionId === result?.version?.id
+      ? `La V${number} de «${fileName}» es ahora la versión vigente.`
+      : `La V${number} de «${fileName}» quedó aprobada.`;
+    const sharing = result?.sharedWithClient
+      ? " También está compartida con el cliente."
+      : " Aún no se comparte con el cliente: compartirla es una acción independiente.";
+    return { description: current + sharing, title: "Archivo aprobado correctamente" };
+  }
+  const current = result?.currentVersionId ? " La versión vigente no cambia." : " El archivo sigue sin versión vigente.";
+  return {
+    description: `Se rechazó la V${number} de «${fileName}» y se conserva con su motivo.${current}`,
+    title: "Archivo rechazado correctamente",
+  };
+}
+
+/**
+ * Texto del aviso de una restauración confirmada: la versión nueva queda pendiente de revisión.
+ *
+ * @param {{ versionNumber: number, review?: { status: string } }} version - Versión creada.
+ * @param {{ versionNumber: number }} source - Versión restaurada.
+ * @returns {string} Descripción.
+ */
+export function describeRestoreResult(version, source) {
+  const status = version?.review?.status === "pending" ? "queda pendiente de revisión" : `queda ${formatReviewStatus(version?.review?.status).toLowerCase()}`;
+  return `Se creó la V${version?.versionNumber} a partir de la V${source?.versionNumber}, que se conserva en el historial. La nueva versión ${status}.`;
+}
+
+// Conflictos y respuestas obsoletas del contrato (B4 y B8). `stale` indica que la vista quedó
+// desactualizada: se recargan tabla e historial sin cerrar lo que el usuario estaba viendo.
+const OPERATION_ERRORS = Object.freeze({
+  FILE_DECISION_PENDING: { message: "El archivo está archivado y su tratamiento sigue pendiente de decisión.", stale: false },
+  FILE_NOT_ACTIVE: { message: "El archivo ya no está activo.", stale: true },
+  FILE_NOT_FOUND: { message: "El archivo ya no está disponible.", stale: true },
+  FILE_VERSION_CONFLICT: { message: "Otra operación cambió el archivo al mismo tiempo. Se actualizó la información.", stale: true },
+  FILE_VERSION_NOT_APPROVED: { message: "Solo se pueden restaurar versiones aprobadas.", stale: true },
+  FILE_VERSION_NOT_FOUND: { message: "La versión ya no está disponible.", stale: true },
+  FILE_VERSION_NOT_PENDING: { message: "Esta versión ya fue revisada. Se actualizó la información.", stale: true },
+  FILE_VERSION_PENDING_REVIEW: { message: "El archivo ya tiene una versión pendiente de revisión. Revísala antes de restaurar otra.", stale: true },
+  FILE_VERSIONING_UNAVAILABLE: { message: "Este archivo heredado todavía no admite versiones.", stale: false },
+  PROJECT_ARCHIVED: { message: "El proyecto está archivado: sus archivos no se pueden modificar.", stale: false },
+  PROJECT_DRAFT: { message: "El proyecto todavía es un borrador: esta operación no está disponible.", stale: false },
+  PROJECT_FINALIZED: { message: "El proyecto está finalizado: sus archivos no se pueden modificar.", stale: false },
+  WARRANTY_DOCUMENT_LINK_NOT_FOUND: { message: "El documento ya no estaba vinculado a esa garantía. Se actualizó la información.", stale: true },
+  WARRANTY_DOCUMENT_OUTSIDE_FOLDER: { message: "El documento debe estar en «Documentos › Garantías» o en una de sus subcarpetas.", stale: false },
+  WARRANTY_NOT_FOUND: { message: "La garantía ya no existe. Se actualizó la información.", stale: true },
+  WARRANTY_RETIRED: { message: "La garantía fue retirada. Se actualizó la información.", stale: true },
+});
+
+/**
+ * Traduce un error de las operaciones de U2 a un mensaje y, si lo hay, al error de un campo
+ * (`body.reason` o `body.changeNote`).
+ *
+ * @param {Object} error - Error de apiRequest (`status`, `code`, `message`, `fields`).
+ * @param {string} fallback - Mensaje por defecto.
+ * @returns {{ message: string, fieldError: string, stale: boolean }} Mensajes y si hay que recargar.
+ */
+export function describeOperationError(error, fallback) {
+  const fields = error?.fields || {};
+  const field = fields["body.reason"] || fields["body.changeNote"] || fields.reason || fields.changeNote || "";
+  const known = OPERATION_ERRORS[error?.code];
+  return {
+    fieldError: Array.isArray(field) ? field[0] || "" : field,
+    message: known?.message || error?.message || fallback,
+    stale: Boolean(known?.stale),
+  };
+}

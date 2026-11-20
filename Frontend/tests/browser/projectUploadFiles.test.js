@@ -114,15 +114,26 @@ test("«Intenta de nuevo» repite solo la subida fallida y actualiza el proyecto
   assert.equal(refreshes(), 1, "solo la subida completada actualiza el proyecto");
 });
 
-test("eliminar un archivo durante la subida la cancela sin actualizar el proyecto", async (context) => {
-  const { page, refreshes, uploads } = await openUploadTab(context, () => new Promise(() => {}));
+test("cancelar un archivo durante la subida la aborta y conserva los archivos ya guardados", async (context) => {
+  // La primera subida no termina (sigue en curso); las siguientes se guardan.
+  const { page, refreshes, uploads } = await openUploadTab(context, (number) => (number === 1 ? new Promise(() => {}) : { file: { id: 900 + number } }));
 
   await selectFiles(page, [pdf("Plano A.pdf")]);
-  await page.waitForTimeout(600);
+  await page.getByText("Subiendo...").first().waitFor();
   await page.getByRole("button", { name: "Eliminar archivo Plano A.pdf" }).click();
-  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: "Eliminar archivo Plano A.pdf" }).waitFor({ state: "detached" });
 
   assert.equal(uploads.length, 1);
-  assert.equal(await page.getByRole("button", { name: "Eliminar archivo Plano A.pdf" }).count(), 0, "el archivo sale de la lista");
-  assert.equal(refreshes(), 0);
+  // Conservación (Fase 1.2, B1): el servidor pudo registrar la carga justo antes de cancelarla, así
+  // que cancelar recarga una vez los archivos del proyecto para mostrarla si quedó guardada.
+  await page.waitForTimeout(300);
+  assert.equal(refreshes(), 1, "la cancelación recarga el proyecto una sola vez");
+
+  // Un archivo ya guardado sigue disponible: se muestra completado y no ofrece eliminarse.
+  await selectFiles(page, [pdf("Plano B.pdf")]);
+  const savedCard = page.locator("div[id*='-file-']:not([id$='-remove']):not([id$='-message'])").filter({ has: page.getByText("Plano B", { exact: true }) });
+  await savedCard.getByText("Completado", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Eliminar archivo Plano B.pdf" }).count(), 0, "un archivo guardado no ofrece eliminarse");
+  assert.equal(uploads.length, 2);
+  assert.equal(refreshes(), 2, "la subida completada actualiza el proyecto");
 });

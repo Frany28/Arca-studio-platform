@@ -993,8 +993,40 @@ Validación, capturas y diferencias respecto a Figma:
   las predeterminadas («Panorámicas», «Documentos › Garantías», etc.) no tienen acciones. No se
   ofrece mover carpetas (D13). El formulario reutiliza el patrón Modal + Input (Figma no lo diseña).
 - Conservación: los archivos guardados y sus versiones no se eliminan, así que la acción
-  «Eliminar» de Figma no se ofrece. En U1 cada fila descarga su versión; el visor, la revisión
-  (aprobar o rechazar), «+ Nuevo», reemplazo e historial pertenecen a U2 y U3.
+  «Eliminar» de Figma no se ofrece. Cada fila ofrece «Revisar» (Pendientes) o el ojo (consulta),
+  la descarga de su versión y «Más opciones» con «Historial de versiones» y, en «Documentos ›
+  Garantías» y sus subcarpetas (`folder.section === "warranties"`), «Garantías». La columna
+  Acciones mide 176 px. «+ Nuevo» y «Reemplazar» pertenecen a U3.
+- Visor con revisión (U2; Figma `3727:683878`, motivo `3727:683879`, historial `3952:187549`,
+  avisos `3795:580699` y `3797:278032`): `AdminFileViewerDialog` sigue el patrón del visor de
+  cotizaciones (`DocumentFileCard` + área del visor + pie de dos acciones) y añade el historial a la
+  derecha (312 px; debajo cuando el diálogo mide menos de 880 px, por container query).
+  - Visores reutilizados por tipo (`getViewerKind`): PDF con `PdfViewerSurface` (páginas, zoom y
+    descarga de los bytes mostrados), DOCX y XLSX con `OfficeViewerSurface`, panorámicas
+    (`fileCategory === "panorama"`) con `Panorama360Viewer` integrado; imágenes y vídeos con su
+    elemento nativo en el mismo marco, porque `ImageViewerModal` y `VideoViewerModal` son modales
+    completos ligados a las observaciones del proyecto. Todos son de solo consulta: sin
+    observaciones (`ProjectReadOnlyProvider`).
+  - Una versión pendiente muestra «Rechazar» (Danger Outline) y «Aprobar»; las demás, «Cerrar» y,
+    si procede, «Garantías». Rechazar y restaurar piden motivo obligatorio con
+    `AdminFileReasonDialog` (TextArea + «Volver»/«Enviar» o «Restaurar»). La ayuda y el error se
+    muestran fuera del TextArea: su ayuda desaparece con el foco y, al reaparecer, desplazaba el pie
+    entre `mousedown` y `mouseup` y el clic en «Enviar» se perdía.
+  - Los avisos de aprobación y rechazo (`AdminFileReviewResultDialog`) se redactan con la respuesta
+    de la API (`describeReviewResult`). Figma dice «ahora es visible en el proyecto», pero aprobar no
+    comparte con el cliente (DA3): el aviso lo indica y compartir sigue siendo una acción aparte.
+    Figma muestra «Cancelar» y «Aceptar»; como no hay nada que cancelar, solo se ofrece «Aceptar».
+  - Historial: de la más reciente a la más antigua, 10 por página con «Mostrar más versiones»;
+    cada versión ofrece «Ver», «Restaurar versión» (solo aprobadas, no vigentes y sin otra
+    pendiente; deshabilitada con su motivo) y «Descargar». Restaurar crea una versión nueva
+    pendiente, conserva el historial y la muestra para revisarla; la recarga pide de una vez las
+    versiones ya visibles para no volver a la primera página.
+  - Un 409 que deja la vista desactualizada (versión ya revisada, otra pendiente, garantía
+    retirada) se muestra en el visor, recarga tabla e historial y no cierra nada. Tras cada operación
+    confirmada se recargan la tabla y las métricas.
+- Garantías (U2, B8): `AdminFileWarrantyDialog` lista las garantías vigentes del proyecto con una
+  casilla por garantía; marcar vincula y desmarcar desvincula al momento, y el estado mostrado es
+  `linkedWarrantyIds` de la respuesta. Figma no diseña este diálogo: reutiliza Modal y Checkbox.
 
 ### Dashboard administrativo móvil
 

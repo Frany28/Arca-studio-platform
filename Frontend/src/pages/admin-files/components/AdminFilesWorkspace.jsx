@@ -1,20 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
-import { api } from "../../../api/http.js";
 import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
 import HorizontalTabMenu from "../../../components/ui/HorizontalTabMenu/HorizontalTabMenu.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import TabPanel from "../../../components/ui/TabPanel.jsx";
-import { saveBlobAsFile } from "../../../utils/saveBlobAsFile.js";
 import CursorPaginationNav from "../../admin-services-quotes/components/CursorPaginationNav.jsx";
 import StatusConfirmationModal from "../../admin-services-quotes/components/StatusConfirmationModal.jsx";
 import { useAlertFeedback } from "../../admin-services-quotes/hooks/useAlertFeedback.js";
 import { useAdminFileFolderActions } from "../hooks/useAdminFileFolderActions.js";
+import { useAdminFileVersionDownload } from "../hooks/useAdminFileVersionDownload.js";
 import { ADMIN_FILES_PAGE_SIZE, useAdminFilesItems } from "../hooks/useAdminFilesItems.js";
 import { useAdminFilesTree } from "../hooks/useAdminFilesTree.js";
 import { ADMIN_FILES_TABS, getItemsEmptyCopy } from "../utils/adminFilesPresentation.js";
 import AdminFileFolderDialog from "./AdminFileFolderDialog.jsx";
+import AdminFileReviewResultDialog from "./AdminFileReviewResultDialog.jsx";
+import AdminFileViewerDialog from "./AdminFileViewerDialog.jsx";
+import AdminFileWarrantyDialog from "./AdminFileWarrantyDialog.jsx";
 import AdminFilesTable from "./AdminFilesTable.jsx";
 import AdminFilesToolbar from "./AdminFilesToolbar.jsx";
 import AdminFilesTree from "./AdminFilesTree.jsx";
@@ -42,8 +44,10 @@ function describeRemoval(removal) {
 
 /**
  * Área de trabajo del administrador (Figma 3727:683873): pestañas, árbol (solo en Aprobados),
- * barra, tabla y paginación, más las operaciones de carpetas y la descarga de versiones. Con
- * espacio suficiente árbol y tabla van en dos columnas; si no, el árbol se apila encima.
+ * barra, tabla y paginación, más las operaciones de carpetas, la descarga de versiones (U1) y el
+ * visor con revisión, historial, restauración y garantías (U2). Tras cada operación confirmada se
+ * recargan la tabla y las métricas; el historial lo recarga el propio visor. Con espacio suficiente
+ * árbol y tabla van en dos columnas; si no, el árbol se apila encima.
  *
  * @param {Object} props - Recarga de métricas tras una operación.
  * @param {() => void} props.onMetricsStale - Vuelve a leer las métricas.
@@ -55,9 +59,12 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   const feedback = useAlertFeedback();
   const [selection, setSelection] = useState(NO_SCOPE);
   const [expanded, setExpanded] = useState(() => new Set());
-  const [downloadingVersionId, setDownloadingVersionId] = useState(null);
-  const downloadRequest = useRef(null);
-  useEffect(() => () => downloadRequest.current?.abort(), []);
+  const [viewer, setViewer] = useState(null);
+  const [warrantyItem, setWarrantyItem] = useState(null);
+  const [reviewResult, setReviewResult] = useState(null);
+  const downloads = useAdminFileVersionDownload({
+    onError: (message, name) => feedback.notify("danger", "No se pudo descargar el archivo", message, name),
+  });
 
   const tabIndex = Math.max(ADMIN_FILES_TABS.findIndex((tab) => tab.id === items.tab), 0);
   const tab = ADMIN_FILES_TABS[tabIndex].id;
@@ -89,30 +96,16 @@ function AdminFilesWorkspace({ onMetricsStale }) {
     },
     onFoldersChange: tree.replaceProjectFolders,
   });
-  const operationInProgress = folders.removing || Boolean(downloadingVersionId);
+  const operationInProgress = folders.removing || Boolean(downloads.downloadingVersionId);
 
   /**
-   * Descarga una versión con el nombre que indica el servidor; impide descargas simultáneas y el
-   * desmontaje cancela la petición.
+   * Recarga la tabla y las métricas tras una operación confirmada o un conflicto de vista obsoleta.
    *
-   * @param {Object} item - Fila de la tabla.
-   * @returns {Promise<void>}
+   * @returns {void}
    */
-  async function downloadVersion(item) {
-    if (downloadRequest.current) return;
-    const controller = new AbortController();
-    downloadRequest.current = controller;
-    setDownloadingVersionId(item.versionId);
-    try {
-      const { blob, fileName } = await api.fileManager.downloadVersion({ fileId: item.fileId, projectId: item.project.id, signal: controller.signal, versionId: item.versionId });
-      if (!controller.signal.aborted) saveBlobAsFile(blob, fileName || item.name);
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      feedback.notify("danger", "No se pudo descargar el archivo", error?.message || "Inténtalo de nuevo.", item.name);
-    } finally {
-      downloadRequest.current = null;
-      if (!controller.signal.aborted) setDownloadingVersionId(null);
-    }
+  function refreshAfterOperation() {
+    items.reload();
+    onMetricsStale();
   }
 
   const filtered = items.hasFilters || (showTree && Boolean(selection.projectId));
@@ -132,9 +125,11 @@ function AdminFilesWorkspace({ onMetricsStale }) {
         tab={tab}
         sort={items.sort}
         actionsDisabled={operationInProgress || items.loading}
-        downloadingVersionId={downloadingVersionId}
+        downloadingVersionId={downloads.downloadingVersionId}
         onSort={items.toggleSort}
-        onDownload={downloadVersion}
+        onDownload={(item) => downloads.download({ fileId: item.fileId, name: item.name, projectId: item.project.id, versionId: item.versionId })}
+        onOpen={(item, trigger) => setViewer({ item, trigger })}
+        onWarranties={setWarrantyItem}
       />
     );
   } else {
@@ -220,6 +215,28 @@ function AdminFilesWorkspace({ onMetricsStale }) {
       </TabPanel>
 
       {folders.dialog ? <AdminFileFolderDialog key={`${folders.dialog.mode}-${folders.dialog.folder?.id ?? folders.dialog.parent?.id}`} dialog={folders.dialog} onClose={folders.closeDialog} onSubmit={folders.submitDialog} /> : null}
+      {viewer ? (
+        <AdminFileViewerDialog
+          key={viewer.item.versionId}
+          item={viewer.item}
+          returnFocusTo={viewer.trigger}
+          downloads={downloads}
+          feedback={feedback}
+          onChanged={refreshAfterOperation}
+          onClose={() => setViewer(null)}
+          onReviewed={(review) => {
+            setViewer(null);
+            setReviewResult(review);
+          }}
+        />
+      ) : null}
+      {warrantyItem ? (
+        <AdminFileWarrantyDialog
+          file={{ fileId: warrantyItem.fileId, name: warrantyItem.name, projectId: warrantyItem.project.id }}
+          onClose={() => setWarrantyItem(null)}
+        />
+      ) : null}
+      <AdminFileReviewResultDialog review={reviewResult} onClose={() => setReviewResult(null)} />
       <StatusConfirmationModal
         change={folders.removal}
         submitting={folders.removing}

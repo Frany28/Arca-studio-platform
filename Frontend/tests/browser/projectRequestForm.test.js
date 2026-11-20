@@ -104,6 +104,34 @@ async function choose(page, fieldLabel, optionLabel) {
 }
 
 const UPLOADED_LABEL = "Subido · Pendiente de enviar solicitud";
+
+/**
+ * Tarjeta de un adjunto por su nombre visible (la tarjeta omite la extensión).
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @param {string} fileName - Nombre del archivo con extensión.
+ * @returns {import("playwright").Locator} Tarjeta.
+ */
+function attachmentCard(page, fileName) {
+  const displayName = fileName.replace(/\.[^.]+$/, "");
+  return page.locator("div[id^='project-request-attachments-'][id*='-file-']:not([id$='-remove']):not([id$='-message'])")
+    .filter({ has: page.getByText(displayName, { exact: true }) });
+}
+
+/**
+ * Comprueba que un adjunto guardado sigue disponible y se conserva (Fase 1.2, B1): su tarjeta
+ * aparece completada y no ofrece eliminarlo.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @param {string} fileName - Nombre del archivo con extensión.
+ * @returns {Promise<void>}
+ */
+async function assertAttachmentPreserved(page, fileName) {
+  const card = attachmentCard(page, fileName);
+  await card.getByText(UPLOADED_LABEL, { exact: true }).waitFor();
+  assert.equal(await card.count(), 1, `${fileName} aparece una sola vez`);
+  assert.equal(await page.getByRole("button", { name: `Eliminar archivo ${fileName}` }).count(), 0, `${fileName} no ofrece eliminarse`);
+}
 const pngFile = (name) => ({ name, mimeType: "image/png", buffer: Buffer.from(`fake-${name}`) });
 
 const LEGAL_HEADING = "Documentación legal del inmueble";
@@ -380,15 +408,15 @@ test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con a
 
   await fillLegalSection(page);
 
-  // Cada selección se sube al momento al mismo borrador; quitar un archivo subido lo elimina en el
-  // servidor y la tarjeta desaparece tras confirmarse (la tarjeta omite la extensión).
+  // Cada selección se sube al momento al mismo borrador. Un archivo subido ya está guardado en la
+  // solicitud y se conserva (Fase 1.2, B1): sigue disponible y no ofrece eliminarse.
   const fileInput = page.locator('input[type="file"]');
   await fileInput.setInputFiles([pngFile("fachada.png")]);
   await fileInput.setInputFiles([pngFile("terraza.png")]);
   await page.getByText(UPLOADED_LABEL, { exact: true }).nth(1).waitFor();
-  await page.getByRole("button", { name: "Eliminar archivo terraza.png" }).click();
-  await page.getByText("terraza", { exact: true }).waitFor({ state: "detached" });
-  assert.deepEqual(calls.filter((call) => call.method === "DELETE").map((call) => call.path), [`/api/project-requests/${REQUEST_ID}/files/52`]);
+  await assertAttachmentPreserved(page, "fachada.png");
+  await assertAttachmentPreserved(page, "terraza.png");
+  assert.equal(calls.filter((call) => call.method === "DELETE").length, 0, "no se pide eliminar adjuntos guardados");
 
   // Abrir el código guarda el formulario en el borrador y pide el código al backend; cerrar no
   // pierde datos ni vuelve a subir archivos, y reabrirlo actualiza el mismo borrador.
@@ -418,6 +446,7 @@ test("Caso 1 · Tiene inmueble: la sección aparece, se valida y se envía con a
   assert.match(draftBody.submissionId, /^[0-9a-f-]{36}$/);
   const uploads = calls.filter((call) => call.path === `/api/project-requests/${REQUEST_ID}/files`);
   assert.deepEqual(uploads.map((call) => decodeURIComponent(call.fileName || "")), ["fachada.png", "terraza.png"]);
+  assert.equal(calls.filter((call) => call.method === "DELETE").length, 0, "el envío conserva ambos adjuntos");
 });
 
 test("Caso 2 · No tiene inmueble: la sección no aparece, no bloquea y no envía datos legales", async (context) => {
@@ -944,7 +973,7 @@ const CORRECTION_REQUEST = {
 };
 const CORRECTION_DETAIL = { json: { projectRequest: { ...CORRECTION_REQUEST, files: PERSISTED_REQUEST.files } } };
 
-test("Corrección: conserva los adjuntos guardados, admite agregar y eliminar y reenvía la misma solicitud", async (context) => {
+test("Corrección: conserva los adjuntos guardados, admite agregar y quitar lo no guardado y reenvía la misma solicitud", async (context) => {
   // Como el backend real: tras reenviar, la misma solicitud vuelve a verificación.
   let resubmitted = false;
   const { calls, page } = await openRequestPage(context, {
@@ -952,43 +981,48 @@ test("Corrección: conserva los adjuntos guardados, admite agregar y eliminar y 
     detailResponses: () => (resubmitted ? { json: { projectRequest: SUBMITTED_REQUEST } } : CORRECTION_DETAIL),
   });
   page.on("request", (request) => { if (request.url().endsWith("/submit")) resubmitted = true; });
-  // Los adjuntos guardados aparecen como completados y se pueden eliminar.
-  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
-  await page.getByRole("button", { name: "Eliminar archivo fachada.png" }).waitFor();
+  // Los adjuntos guardados aparecen como completados y se conservan (Fase 1.2, B1): no se eliminan.
+  await assertAttachmentPreserved(page, "Plano.pdf");
+  await assertAttachmentPreserved(page, "fachada.png");
 
-  // Agregar con borrador remoto ya no se bloquea; un nombre ya guardado se rechaza como repetido.
+  // Agregar con borrador remoto ya no se bloquea; un nombre ya guardado se rechaza como repetido y
+  // esa selección, que no se guardó, sí se puede quitar sin tocar el adjunto guardado.
   const fileInput = page.locator('input[type="file"]');
   await fileInput.setInputFiles([pngFile("fachada.png")]);
   await page.getByText("fachada.png: está repetido.", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Eliminar archivo fachada.png" }).last().click();
+  await page.getByRole("button", { name: "Eliminar archivo fachada.png" }).click();
   await page.getByText("fachada.png: está repetido.", { exact: true }).waitFor({ state: "detached" });
+  await assertAttachmentPreserved(page, "fachada.png");
   await fileInput.setInputFiles([pngFile("terraza.png")]);
-  await page.getByRole("button", { name: "Eliminar archivo terraza.png" }).waitFor();
-
-  // Eliminar un adjunto guardado lo borra en el servidor.
-  const deleted = page.waitForRequest((request) => request.method() === "DELETE");
-  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).click();
-  assert.match((await deleted).url(), new RegExp(`/project-requests/${REQUEST_ID}/files/7$`));
-  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor({ state: "detached" });
+  await assertAttachmentPreserved(page, "terraza.png");
+  await assertAttachmentPreserved(page, "Plano.pdf");
 
   await submitWithCode(page, calls);
-  // Reenvío sobre la solicitud existente: sin crear otra y subiendo solo el archivo nuevo.
+  // Reenvío sobre la solicitud existente: sin crear otra, subiendo solo el archivo nuevo y sin
+  // eliminar adjuntos guardados.
   assert.equal(calls.some((call) => call.method === "POST" && call.path === "/api/project-requests"), false);
   assert.ok(calls.some((call) => call.method === "PATCH" && call.path === `/api/project-requests/${REQUEST_ID}`));
   const uploads = calls.filter((call) => call.path === `/api/project-requests/${REQUEST_ID}/files`);
   assert.deepEqual(uploads.map((call) => decodeURIComponent(call.fileName || "")), ["terraza.png"]);
-  assert.equal(calls.filter((call) => call.method === "DELETE").length, 1);
+  assert.equal(calls.filter((call) => call.method === "DELETE").length, 0);
 });
 
-test("Corrección: si eliminar un adjunto guardado falla, se conserva y se informa el motivo", async (context) => {
-  const { page } = await openRequestPage(context, {
+test("Corrección: los adjuntos guardados no ofrecen eliminarse y siguen disponibles al recargar", async (context) => {
+  const { calls, page } = await openRequestPage(context, {
     initialRequest: CORRECTION_REQUEST,
     detailResponses: [CORRECTION_DETAIL],
-    deleteResponses: [{ status: 409, json: { code: "PROJECT_REQUEST_NOT_EDITABLE", message: "La solicitud ya no admite cambios." } }],
   });
-  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).click();
-  await page.getByText("Plano.pdf: La solicitud ya no admite cambios.", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
+  await assertAttachmentPreserved(page, "Plano.pdf");
+  await assertAttachmentPreserved(page, "fachada.png");
+  // La tarjeta guardada ofrece añadir más archivos en lugar de quitarlo.
+  assert.equal(await attachmentCard(page, "Plano.pdf").getByRole("button", { name: "Añadir archivo" }).count(), 1);
+
+  const readsBeforeReload = detailCalls(calls).length;
+  await page.reload();
+  await assertAttachmentPreserved(page, "Plano.pdf");
+  await assertAttachmentPreserved(page, "fachada.png");
+  assert.ok(detailCalls(calls).length > readsBeforeReload, "los adjuntos se vuelven a leer del backend");
+  assert.equal(calls.filter((call) => call.method === "DELETE").length, 0, "nunca se pide eliminar un adjunto guardado");
 });
 
 test("Corrección: sin los adjuntos guardados no se envía y se puede reintentar la lectura", async (context) => {
@@ -1005,7 +1039,9 @@ test("Corrección: sin los adjuntos guardados no se envía y se puede reintentar
   const readsBeforeRetry = detailCalls(calls).length;
   failing = false;
   await page.getByRole("button", { name: "Reintentar", exact: true }).click();
-  await page.getByRole("button", { name: "Eliminar archivo Plano.pdf" }).waitFor();
+  // Tras la lectura, los adjuntos guardados vuelven a estar disponibles y se conservan.
+  await assertAttachmentPreserved(page, "Plano.pdf");
+  await assertAttachmentPreserved(page, "fachada.png");
   assert.equal(detailCalls(calls).length, readsBeforeRetry + 1);
   assert.equal(await page.getByText(message, { exact: true }).count(), 0, "el aviso desaparece al cargar");
 });

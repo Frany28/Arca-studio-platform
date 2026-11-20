@@ -1,5 +1,5 @@
 import { query, withTransaction } from "../config/db.js";
-import { evaluateFolderOperation, orderFolderTree } from "../domain/projectFolderCatalog.js";
+import { evaluateFolderOperation, getSystemFolder, orderFolderTree } from "../domain/projectFolderCatalog.js";
 import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { insertAuditLog } from "../repositories/auditLogRepository.js";
 import {
@@ -157,8 +157,9 @@ export async function searchFolders({ cursor, limit, projectId = null, search })
 }
 
 /**
- * Representa una versión listada en el administrador. El motivo del rechazo y el revisor se muestran
- * al administrador, que como equipo puede ver los datos de revisión.
+ * Representa una versión listada en el administrador, con motivo y revisor visibles para el equipo.
+ * `fileCategory` elige el visor y `folder.section` es la sección del catálogo de la carpeta
+ * predeterminada más cercana (`warranties` en «Documentos › Garantías» y sus subcarpetas).
  *
  * @param {object} row - Fila del repositorio.
  * @returns {object} Elemento público.
@@ -169,7 +170,12 @@ function toFileManagerItem(row) {
     createdAt: row.created_at,
     extension: row.file_extension,
     fileId: Number(row.file_id),
-    folder: row.folder_id === null ? null : { id: Number(row.folder_id), name: row.folder_name },
+    fileCategory: row.file_category ?? null,
+    folder: row.folder_id === null ? null : {
+      id: Number(row.folder_id),
+      name: row.folder_name,
+      section: getSystemFolder(row.folder_classification_key)?.section ?? null,
+    },
     isCurrent: Boolean(row.is_current),
     name: row.name,
     project: { id: Number(row.project_id), name: row.project_name, status: row.project_status },

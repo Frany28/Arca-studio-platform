@@ -1,11 +1,13 @@
-import { DocumentDownload } from "iconsax-react";
+import { Clock, DocumentDownload, Eye, ShieldTick } from "iconsax-react";
 
+import ActionMenu from "../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../components/ui/Button/Button.jsx";
 import HorizontalScrollViewport from "../../../components/ui/ScrollBar/HorizontalScrollViewport.jsx";
 import { getAdminFilesColumns, getAdminFilesTableMinWidth } from "../../../config/adminFilesTable.js";
 import { formatStorage } from "../../../utils/fileMetrics.js";
 import TableHeaderLabel from "../../admin-services-quotes/components/TableHeaderLabel.jsx";
+import { canLinkWarranties } from "../utils/adminFileReview.js";
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
 
 const ARIA_SORT = Object.freeze({ asc: "ascending", desc: "descending" });
@@ -49,11 +51,62 @@ function NameCell({ item, tab }) {
 }
 
 /**
+ * Acciones de una fila: «Revisar» (pendientes) o el ojo (consulta) abren el visor; la descarga
+ * guarda esa versión; «Más opciones» abre el historial y, en documentos de «Documentos ›
+ * Garantías», sus garantías. La acción «Eliminar» de Figma no se ofrece: los archivos se conservan.
+ *
+ * @param {Object} props - Fila, pestaña, estado y callbacks.
+ * @returns {import("react").ReactElement} Acciones.
+ */
+function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, onWarranties, tab }) {
+  const label = `${item.name}, versión ${item.versionNumber}`;
+  const menuItems = [
+    { icon: Clock, id: "history", label: "Historial de versiones" },
+    ...(canLinkWarranties(item) ? [{ icon: ShieldTick, id: "warranties", label: "Garantías" }] : []),
+  ];
+  return (
+    <div className="flex items-center gap-[4px]">
+      {tab === "pending" ? (
+        <Button theme="Primary" type="Outline" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={actionsDisabled} aria-label={`Revisar ${label}`} onClick={(event) => onOpen(item, event.currentTarget)}>
+          Revisar
+        </Button>
+      ) : (
+        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} disabled={actionsDisabled} tooltip="Ver archivo" aria-label={`Ver ${label}`} onClick={(event) => onOpen(item, event.currentTarget)} />
+      )}
+      <Button
+        theme="Primary"
+        type="Ghost"
+        size="S"
+        showText={false}
+        showLeftIcon
+        iconLeft={<DocumentDownload size="20" color="currentColor" />}
+        showRightIcon={false}
+        disabled={actionsDisabled}
+        tooltip={downloading ? "Descargando..." : "Descargar versión"}
+        aria-label={`Descargar ${label}`}
+        aria-busy={downloading || undefined}
+        onClick={() => onDownload(item)}
+      />
+      <ActionMenu
+        items={menuItems}
+        triggerLabel={`Más opciones para ${label}`}
+        menuLabel={`Acciones para ${label}`}
+        tooltip="Más opciones"
+        menuWidthClassName="w-[230px]"
+        disabled={actionsDisabled}
+        onSelect={(action) => (action.id === "warranties" ? onWarranties(item) : onOpen(item, null))}
+      />
+    </div>
+  );
+}
+
+/**
  * Tabla del administrador de archivos (Figma 3727:683873, 3727:683877 y 4273:683806): nombre,
  * versión, proyecto (solo en Pendientes y Rechazados), tipo, peso, fecha, autor y acciones. Cada
  * fila es una versión real de la API; las versiones guardadas se conservan, así que la acción
- * «Eliminar» de Figma no se ofrece. En U1 la acción disponible es descargar la versión; el visor,
- * la revisión y el reemplazo llegan en U2 y U3. Desplaza en horizontal dentro de su contenedor.
+ * «Eliminar» de Figma no se ofrece. Cada fila abre el visor con su historial (U2), descarga su
+ * versión y, si procede, sus garantías; el reemplazo llega en U3. Desplaza en horizontal dentro de su
+ * contenedor.
  *
  * @param {Object} props - Filas, pestaña, orden y callbacks.
  * @param {Array<Object>} props.items - Versiones de la página visible.
@@ -61,11 +114,13 @@ function NameCell({ item, tab }) {
  * @param {{field: string, order: string}} props.sort - Orden aplicado.
  * @param {(field: string) => void} props.onSort - Alterna el orden.
  * @param {(item: Object) => void} props.onDownload - Descarga la versión.
+ * @param {(item: Object, trigger: HTMLElement|null) => void} props.onOpen - Abre el visor de la versión.
+ * @param {(item: Object) => void} props.onWarranties - Abre las garantías del documento.
  * @param {number|null} props.downloadingVersionId - Versión que se está descargando.
  * @param {boolean} props.actionsDisabled - Bloquea acciones durante una operación.
  * @returns {import("react").ReactElement} Tabla.
  */
-function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownload, onSort, sort, tab }) {
+function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownload, onOpen, onSort, onWarranties, sort, tab }) {
   const options = { showProject: tab !== "approved" };
   const columns = getAdminFilesColumns(options);
   return (
@@ -108,21 +163,8 @@ function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownl
                   <td className="px-[24px] py-[16px]">
                     <Badge label={uploader} theme="Neutral" size="M" truncate className="max-w-full" />
                   </td>
-                  <td className="px-[24px] py-[16px]">
-                    <Button
-                      theme="Primary"
-                      type="Ghost"
-                      size="S"
-                      showText={false}
-                      showLeftIcon
-                      iconLeft={<DocumentDownload size="20" color="currentColor" />}
-                      showRightIcon={false}
-                      disabled={actionsDisabled}
-                      tooltip={downloading ? "Descargando..." : "Descargar versión"}
-                      aria-label={`Descargar ${item.name}, versión ${item.versionNumber}`}
-                      aria-busy={downloading || undefined}
-                      onClick={() => onDownload(item)}
-                    />
+                  <td className="px-[16px] py-[16px]">
+                    <RowActions item={item} tab={tab} downloading={downloading} actionsDisabled={actionsDisabled} onDownload={onDownload} onOpen={onOpen} onWarranties={onWarranties} />
                   </td>
                 </tr>
               );

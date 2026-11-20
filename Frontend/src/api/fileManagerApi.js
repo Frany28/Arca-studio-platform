@@ -1,4 +1,4 @@
-import { apiRequest, apiRequestFile, toQueryString } from "./client.js";
+import { apiRequest, apiRequestFile, getApiUrl, toQueryString } from "./client.js";
 
 // Administrador de archivos (docs/API_CONTRACT.md, «Administrador de archivos (Fase 1.2, B7)»).
 // Solo para administradores y con PROJECT_FILE_REVIEW_ENABLED: con la activación apagada todas las
@@ -113,6 +113,119 @@ export const fileManagerApi = {
    * @returns {Promise<{blob: Blob, fileName: string|null}>} Contenido y nombre.
    */
   downloadVersion({ fileId, projectId, signal, versionId }) {
-    return apiRequestFile(`/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileId)}/content${toQueryString({ versionId })}`, { signal });
+    return apiRequestFile(versionPath({ fileId, projectId }, `/content${toQueryString({ versionId })}`), { signal });
+  },
+
+  /**
+   * URL del contenido de una versión para los visores que cargan por `src` (imagen, vídeo y
+   * panorámica). La sesión viaja en la cookie, como en el resto de visores del proyecto.
+   *
+   * @param {{ projectId: number, fileId: number, versionId: number }} version - Versión.
+   * @returns {string} URL absoluta de la API.
+   */
+  getVersionContentUrl({ fileId, projectId, versionId }) {
+    return getApiUrl(versionPath({ fileId, projectId }, `/content${toQueryString({ versionId })}`));
+  },
+
+  /**
+   * Lee una página del historial de versiones (de la más reciente a la más antigua).
+   *
+   * @param {Object} options - Archivo, página y cancelación.
+   * @param {number} options.projectId - Proyecto.
+   * @param {number} options.fileId - Archivo.
+   * @param {string|null} [options.cursor] - Cursor de la página anterior.
+   * @param {number} [options.limit] - Versiones por página (1–100).
+   * @param {AbortSignal} [options.signal] - Cancela la petición.
+   * @returns {Promise<{currentVersionId: number|null, versions: Array<Object>, nextCursor: string|null}>} Página.
+   */
+  listVersions({ cursor, fileId, limit, projectId, signal }) {
+    return apiRequest(versionPath({ fileId, projectId }, `/versions${toQueryString({ cursor, limit })}`), { signal });
+  },
+
+  /**
+   * Aprueba una versión pendiente: pasa a ser la vigente y no se comparte con el cliente.
+   *
+   * @param {{ projectId: number, fileId: number, versionId: number }} version - Versión.
+   * @returns {Promise<{version: Object, currentVersionId: number|null, sharedWithClient: boolean}>} Resultado confirmado.
+   */
+  approveVersion({ fileId, projectId, versionId }) {
+    return apiRequest(versionPath({ fileId, projectId }, `/versions/${encodeURIComponent(versionId)}/approve`), { method: "POST" });
+  },
+
+  /**
+   * Rechaza una versión pendiente con su motivo; la vigente no cambia y la rechazada se conserva.
+   *
+   * @param {{ projectId: number, fileId: number, versionId: number, reason: string }} payload - Versión y motivo.
+   * @returns {Promise<{version: Object, currentVersionId: number|null, sharedWithClient: boolean}>} Resultado confirmado.
+   */
+  rejectVersion({ fileId, projectId, reason, versionId }) {
+    return apiRequest(versionPath({ fileId, projectId }, `/versions/${encodeURIComponent(versionId)}/reject`), {
+      body: JSON.stringify({ reason }),
+      method: "POST",
+    });
+  },
+
+  /**
+   * Restaura una versión aprobada como versión nueva pendiente de revisión, con su motivo.
+   *
+   * @param {{ projectId: number, fileId: number, versionId: number, changeNote: string }} payload - Origen y motivo.
+   * @returns {Promise<{version: Object}>} Versión nueva pendiente.
+   */
+  restoreVersion({ changeNote, fileId, projectId, versionId }) {
+    return apiRequest(versionPath({ fileId, projectId }, `/versions/${encodeURIComponent(versionId)}/restore`), {
+      body: JSON.stringify({ changeNote }),
+      method: "POST",
+    });
+  },
+
+  /**
+   * Lee las garantías vigentes del proyecto con sus documentos vinculados (B8).
+   *
+   * @param {{ projectId: number, signal?: AbortSignal }} options - Proyecto y cancelación.
+   * @returns {Promise<{warranties: Array<Object>}>} Garantías.
+   */
+  listWarranties({ projectId, signal }) {
+    return apiRequest(`/projects/${encodeURIComponent(projectId)}/warranties`, { signal });
+  },
+
+  /**
+   * Vincula un documento a una garantía; repetirlo no cambia nada (`changed:false`).
+   *
+   * @param {{ projectId: number, warrantyId: number, fileId: number }} link - Vínculo.
+   * @returns {Promise<{warrantyId: number, fileId: number, changed: boolean, linkedWarrantyIds: number[]}>} Resultado.
+   */
+  linkWarrantyDocument({ fileId, projectId, warrantyId }) {
+    return apiRequest(warrantyDocumentPath({ fileId, projectId, warrantyId }), { method: "PUT" });
+  },
+
+  /**
+   * Desvincula un documento de una garantía; el vínculo queda como historial y el archivo no cambia.
+   *
+   * @param {{ projectId: number, warrantyId: number, fileId: number }} link - Vínculo.
+   * @returns {Promise<{warrantyId: number, fileId: number, changed: boolean, linkedWarrantyIds: number[]}>} Resultado.
+   */
+  unlinkWarrantyDocument({ fileId, projectId, warrantyId }) {
+    return apiRequest(warrantyDocumentPath({ fileId, projectId, warrantyId }), { method: "DELETE" });
   },
 };
+
+/**
+ * Ruta de un archivo de proyecto con un sufijo (`/content`, `/versions`...).
+ *
+ * @param {{ projectId: number, fileId: number }} file - Archivo.
+ * @param {string} suffix - Sufijo con su consulta.
+ * @returns {string} Ruta relativa a la API.
+ */
+function versionPath({ fileId, projectId }, suffix) {
+  return `/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(fileId)}${suffix}`;
+}
+
+/**
+ * Ruta del vínculo entre un documento y una garantía (rutas del administrador, B8).
+ *
+ * @param {{ projectId: number, warrantyId: number, fileId: number }} link - Vínculo.
+ * @returns {string} Ruta relativa a la API.
+ */
+function warrantyDocumentPath({ fileId, projectId, warrantyId }) {
+  return `/admin/files/projects/${encodeURIComponent(projectId)}/warranties/${encodeURIComponent(warrantyId)}/documents/${encodeURIComponent(fileId)}`;
+}

@@ -263,8 +263,8 @@ export async function listFileManagerItems({
         coalesce(version.content_type, file.file_type) as content_type,
         coalesce(version.original_name, file.title) as name,
         (version.version_number = file.current_version) as is_current,
-        file.id as file_id, file.access_policy, file.folder_id,
-        coalesce(catalog.name, folder.name) as folder_name,
+        file.id as file_id, file.access_policy, file.folder_id, file.file_category::text as file_category,
+        coalesce(catalog.name, folder.name) as folder_name, classification.system_key as folder_classification_key,
         project.id as project_id, project.name as project_name, project.status as project_status,
         uploader.id as uploader_id, concat_ws(' ', uploader.first_name, uploader.last_name) as uploader_name,
         concat_ws(' ', reviewer.first_name, reviewer.last_name) as reviewer_name,
@@ -274,6 +274,18 @@ export async function listFileManagerItems({
       inner join public.projects project on project.id = file.project_id and project.deleted_at is null
       left join public.project_folders folder on folder.id = file.folder_id
       left join unnest($9::text[], $10::text[]) as catalog(key, name) on catalog.key = folder.system_key
+      -- Carpeta predeterminada más cercana (la propia o un ancestro): define la sección funcional.
+      left join lateral (
+        with recursive chain as (
+          select ancestor.id, ancestor.parent_id, ancestor.system_key, 0 as depth
+          from public.project_folders ancestor where ancestor.id = file.folder_id
+          union all
+          select parent.id, parent.parent_id, parent.system_key, chain.depth + 1
+          from public.project_folders parent inner join chain on parent.id = chain.parent_id
+          where chain.depth < 64
+        )
+        select chain.system_key from chain where chain.system_key is not null order by chain.depth limit 1
+      ) classification on true
       left join public.users uploader on uploader.id = version.uploaded_by
       left join public.users reviewer on reviewer.id = version.reviewed_by
       where ${ACTIVE_FILE_SQL}

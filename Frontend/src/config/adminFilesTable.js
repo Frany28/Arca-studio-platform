@@ -13,7 +13,7 @@ const BASE_COLUMNS = Object.freeze([
   { id: "size", width: 112 },
   { id: "date", width: 152 },
   { id: "uploadedBy", width: 168 },
-  { id: "actions", width: 112 },
+  { id: "actions", width: 176 },
 ]);
 
 // Ancho mínimo de Nombre antes de desplazar la tabla en horizontal.

@@ -63,14 +63,16 @@ function defaultFolders(base) {
  * @param {Object} values - Campos variables.
  * @returns {Object} Elemento.
  */
-function item(id, { day, folder, name, project, reason = null, size, status = "approved", extension = "pdf" }) {
+function item(id, { day, extension = "pdf", fileCategory, fileId = id, folder, isCurrent = true, name, project, reason = null, size, status = "approved", versionNumber = 1 }) {
   return {
+    changeNote: null,
     contentType: extension === "pdf" ? "application/pdf" : "image/png",
     createdAt: `2026-03-${String(day).padStart(2, "0")}T14:00:00.000Z`,
     extension,
-    fileId: id,
+    fileCategory: fileCategory || (extension === "pdf" ? "document" : "image"),
+    fileId,
     folder,
-    isCurrent: true,
+    isCurrent,
     name,
     project: { id: project.id, name: project.name, status: "in_progress" },
     restoredFromVersionId: null,
@@ -78,9 +80,41 @@ function item(id, { day, folder, name, project, reason = null, size, status = "a
     size,
     uploadedBy: { id: 2, name: "Arq. Armando" },
     versionId: id * 10,
-    versionNumber: 1,
+    versionNumber,
   };
 }
+
+/**
+ * Versión del historial (FileVersion) a partir de un elemento del simulador.
+ *
+ * @param {Object} entry - Elemento.
+ * @returns {Object} Versión.
+ */
+function toFileVersion(entry) {
+  return {
+    changeNote: entry.changeNote, contentType: entry.contentType, createdAt: entry.createdAt, extension: entry.extension,
+    id: entry.versionId, isCurrent: entry.isCurrent, originalName: entry.name, restoredFromVersionId: entry.restoredFromVersionId,
+    review: entry.review, size: entry.size, uploadedBy: entry.uploadedBy, versionNumber: entry.versionNumber,
+  };
+}
+
+// PDF mínimo válido de una página para PDF.js (contenido ficticio).
+const SAMPLE_PDF = Buffer.from(`%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<<>>>>endobj
+4 0 obj<</Length 0>>stream
+
+endstream endobj
+xref
+0 5
+0000000000 65535 f 
+trailer<</Size 5/Root 1 0 R>>
+startxref
+0
+%%EOF`);
+// PNG de 1 × 1 píxel.
+const SAMPLE_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
 
 /**
  * Backend simulado del administrador de archivos con estado en memoria.
@@ -92,16 +126,23 @@ function createBackend({ enabled = true, failures = {} } = {}) {
   const quinta = { client: { name: "Cliente Uno" }, fileCount: 13, folders: defaultFolders(100), id: 1, name: "Quinta Bella Vista", status: "in_progress" };
   const apto = { client: { name: "Cliente Dos" }, fileCount: 1, folders: defaultFolders(200), id: 2, name: "Apartamento JC", status: "in_progress" };
   quinta.folders.push({ fileCount: 0, id: 150, name: "Planos de obra", parentId: 103, systemKey: null });
-  const documents = { id: 103, name: "Documentos" };
-  const warranties = { id: 104, name: "Garantías" };
+  const documents = { id: 103, name: "Documentos", section: "documents" };
+  const warranties = { id: 104, name: "Garantías", section: "warranties" };
   const items = [
     ...Array.from({ length: 12 }, (_, index) => item(index + 1, { day: index + 1, folder: documents, name: `Acta de inicio ${String(index + 1).padStart(2, "0")}.pdf`, project: quinta, size: (index + 1) * 1024 * 1024 })),
-    item(30, { day: 20, folder: warranties, name: "Garantía impermeabilización.pdf", project: quinta, size: 512 * 1024 }),
-    item(40, { day: 21, extension: "png", folder: { id: 201, name: "Renders e imágenes" }, name: "Fachada.png", project: apto, size: 2048 * 1024 }),
-    item(50, { day: 22, folder: documents, name: "Propuesta pendiente.pdf", project: quinta, size: 4096, status: "pending" }),
-    item(60, { day: 23, folder: documents, name: "Contrato rechazado.pdf", project: quinta, reason: "Falta la firma del cliente.", size: 8192, status: "rejected" }),
+    // Garantía: doce versiones aprobadas; la V12 es la vigente (historial con «Mostrar más versiones»).
+    ...Array.from({ length: 12 }, (_, index) => item(300 + index, { day: 9 + index, fileId: 30, folder: warranties, isCurrent: index === 11, name: "Garantía impermeabilización.pdf", project: quinta, size: 512 * 1024, versionNumber: index + 1 })),
+    item(40, { day: 21, extension: "png", folder: { id: 201, name: "Renders e imágenes", section: "renders" }, name: "Fachada.png", project: apto, size: 2048 * 1024 }),
+    // Propuesta: V1 aprobada vigente y V2 pendiente de revisión.
+    item(49, { day: 1, fileId: 50, folder: documents, name: "Propuesta pendiente.pdf", project: quinta, size: 4000 }),
+    item(50, { day: 22, fileId: 50, folder: documents, isCurrent: false, name: "Propuesta pendiente.pdf", project: quinta, size: 4096, status: "pending", versionNumber: 2 }),
+    item(60, { day: 23, folder: documents, isCurrent: false, name: "Contrato rechazado.pdf", project: quinta, reason: "Falta la firma del cliente.", size: 8192, status: "rejected" }),
   ];
-  const state = { items, projects: [quinta, apto], requests: [] };
+  const warrantyList = [
+    { code: "G-01", documents: [], endDate: "2028-01-01", id: 5, model: "Techo", product: "Impermeabilización", startDate: "2026-01-01" },
+    { code: "G-02", documents: [{ fileId: 30 }], endDate: "2027-06-01", id: 6, model: "Aluminio", product: "Ventanas", startDate: "2026-02-01" },
+  ];
+  const state = { items, projects: [quinta, apto], requests: [], warranties: warrantyList };
   const json = (route, status, body) => route.fulfill({ body: JSON.stringify(body), contentType: "application/json", status });
 
   /**
@@ -164,7 +205,7 @@ function createBackend({ enabled = true, failures = {} } = {}) {
       const tab = params.tab || "approved";
       const sort = params.sort || "date";
       const order = params.order || "desc";
-      let rows = state.items.filter((candidate) => candidate.review.status === tab);
+      let rows = state.items.filter((candidate) => candidate.review.status === tab && (tab !== "approved" || candidate.isCurrent));
       if (params.projectId) rows = rows.filter((candidate) => candidate.project.id === Number(params.projectId));
       if (params.folderId) {
         const project = state.projects.find((candidate) => candidate.id === Number(params.projectId));
@@ -216,7 +257,70 @@ function createBackend({ enabled = true, failures = {} } = {}) {
     }
     const contentMatch = /^\/api\/projects\/(\d+)\/files\/(\d+)\/content$/.exec(path);
     if (contentMatch) {
-      return route.fulfill({ body: "%PDF-1.4 prueba", contentType: "application/pdf", headers: { "Content-Disposition": `attachment; filename="acta-v${params.versionId}.pdf"` }, status: 200 });
+      const entry = state.items.find((candidate) => candidate.versionId === Number(params.versionId));
+      const png = entry?.extension === "png";
+      return route.fulfill({
+        body: png ? SAMPLE_PNG : SAMPLE_PDF,
+        contentType: png ? "image/png" : "application/pdf",
+        headers: { "Content-Disposition": `attachment; filename="acta-v${params.versionId}.${png ? "png" : "pdf"}"` },
+        status: 200,
+      });
+    }
+    const versionsMatch = /^\/api\/projects\/(\d+)\/files\/(\d+)\/versions$/.exec(path);
+    if (versionsMatch && method === "GET") {
+      const fileId = Number(versionsMatch[2]);
+      const all = state.items.filter((candidate) => candidate.fileId === fileId).sort((left, right) => right.versionNumber - left.versionNumber);
+      const offset = params.cursor ? Number(params.cursor) : 0;
+      const limit = Number(params.limit || 20);
+      const current = all.find((candidate) => candidate.isCurrent);
+      return json(route, 200, {
+        currentVersionId: current?.versionId ?? null,
+        nextCursor: offset + limit < all.length ? String(offset + limit) : null,
+        versions: all.slice(offset, offset + limit).map(toFileVersion),
+      });
+    }
+    const reviewMatch = /^\/api\/projects\/(\d+)\/files\/(\d+)\/versions\/(\d+)\/(approve|reject|restore)$/.exec(path);
+    if (reviewMatch && method === "POST") {
+      const [, , fileIdText, versionIdText, action] = reviewMatch;
+      const fileId = Number(fileIdText);
+      const target = state.items.find((candidate) => candidate.versionId === Number(versionIdText));
+      const siblings = state.items.filter((candidate) => candidate.fileId === fileId);
+      if (action === "restore") {
+        if (!body?.changeNote?.trim()) return json(route, 400, { code: "VALIDATION_ERROR", fields: { "body.changeNote": ["Escribe el motivo del cambio."] }, message: "Datos inválidos" });
+        if (siblings.some((candidate) => candidate.review.status === "pending")) return json(route, 409, { code: "FILE_VERSION_PENDING_REVIEW", message: "Pendiente" });
+        const versionNumber = Math.max(...siblings.map((candidate) => candidate.versionNumber)) + 1;
+        const created = {
+          ...target, changeNote: body.changeNote.trim(), createdAt: "2026-03-30T10:00:00.000Z", isCurrent: false, restoredFromVersionId: target.versionId,
+          review: { reason: null, reviewedAt: null, reviewerName: null, status: "pending" }, uploadedBy: { id: 1, name: "Ana Admin" }, versionId: 9000 + versionNumber, versionNumber,
+        };
+        state.items.push(created);
+        return json(route, 201, { version: toFileVersion(created) });
+      }
+      if (target.review.status !== "pending") return json(route, 409, { code: "FILE_VERSION_NOT_PENDING", message: "No pendiente" });
+      if (action === "approve") {
+        for (const sibling of siblings) sibling.isCurrent = false;
+        target.isCurrent = true;
+        target.review = { reason: null, reviewedAt: "2026-03-31T10:00:00.000Z", reviewerName: "Ana Admin", status: "approved" };
+      } else {
+        if (!body?.reason?.trim()) return json(route, 400, { code: "VALIDATION_ERROR", fields: { "body.reason": ["Escribe el motivo del rechazo."] }, message: "Datos inválidos" });
+        target.review = { reason: body.reason.trim(), reviewedAt: "2026-03-31T10:00:00.000Z", reviewerName: "Ana Admin", status: "rejected" };
+      }
+      const current = siblings.find((candidate) => candidate.isCurrent);
+      return json(route, 200, { currentVersionId: current?.versionId ?? null, sharedWithClient: false, version: toFileVersion(target) });
+    }
+    if (/^\/api\/projects\/\d+\/warranties$/.test(path)) return json(route, 200, { warranties: state.warranties });
+    const warrantyMatch = /^\/api\/admin\/files\/projects\/(\d+)\/warranties\/(\d+)\/documents\/(\d+)$/.exec(path);
+    if (warrantyMatch) {
+      const warranty = state.warranties.find((candidate) => candidate.id === Number(warrantyMatch[2]));
+      const fileId = Number(warrantyMatch[3]);
+      const linked = warranty.documents.some((document) => document.fileId === fileId);
+      if (method === "PUT" && !linked) warranty.documents.push({ fileId });
+      if (method === "DELETE") {
+        if (!linked) return json(route, 404, { code: "WARRANTY_DOCUMENT_LINK_NOT_FOUND", message: "Sin vínculo" });
+        warranty.documents = warranty.documents.filter((document) => document.fileId !== fileId);
+      }
+      const linkedWarrantyIds = state.warranties.filter((candidate) => candidate.documents.some((document) => document.fileId === fileId)).map((candidate) => candidate.id);
+      return json(route, 200, { changed: method === "DELETE" || !linked, fileId, linkedWarrantyIds, warrantyId: warranty.id });
     }
     state.requests.push({ method, path, unexpected: true });
     return json(route, 404, { code: "TEST_ROUTE_MISSING", message: "Ruta no simulada" });
@@ -284,7 +388,7 @@ test("métricas, pestañas, orden, búsqueda, tipos y paginación por cursor con
 
   await page.getByRole("button", { name: "Siguiente pág." }).click();
   await page.getByRole("rowheader", { name: /Acta de inicio 01/ }).waitFor();
-  assert.equal((await rowNames(page)).length, 4);
+  assert.equal((await rowNames(page)).length, 5);
   await page.getByRole("button", { name: "Anterior" }).click();
   await page.getByRole("rowheader", { name: /Garantía impermeabilización/ }).waitFor();
 
@@ -394,10 +498,10 @@ test("descarga la versión con el nombre del servidor", async (context) => {
   const backend = createBackend();
   const page = await openFiles(context, backend);
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Descargar Garantía impermeabilización.pdf, versión 1" }).click();
-  assert.equal((await download).suggestedFilename(), "acta-v300.pdf");
+  await page.getByRole("button", { name: "Descargar Garantía impermeabilización.pdf, versión 12" }).click();
+  assert.equal((await download).suggestedFilename(), "acta-v3110.pdf");
   const request = backend.requests.find((candidate) => candidate.path === "/api/projects/1/files/30/content");
-  assert.equal(request.search.versionId, "300");
+  assert.equal(request.search.versionId, "3110");
 });
 
 test("estado de error con reintento y estado vacío por filtros", async (context) => {
@@ -428,6 +532,188 @@ test("con la activación apagada solo muestra las métricas generales", async (c
   assert.equal(await page.getByRole("tab").count(), 0);
   assert.equal(backend.requests.filter((request) => request.path === "/api/admin/files/items").length, 0);
 });
+
+const viewerDialog = (page) => page.locator("[data-admin-file-viewer]");
+const reviewRequests = (backend, action) => backend.requests.filter((request) => request.method === "POST" && request.path.endsWith(`/${action}`));
+const metricsReads = (backend) => backend.requests.filter((request) => request.path === "/api/admin/files/metrics").length;
+
+/**
+ * Abre la pestaña de pendientes y el visor de «Propuesta pendiente.pdf» desde «Revisar».
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<import("playwright").Locator>} Visor.
+ */
+async function openPendingReview(page) {
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
+  await page.getByRole("button", { name: "Revisar Propuesta pendiente.pdf, versión 2" }).click();
+  const viewer = viewerDialog(page);
+  await viewer.locator("canvas").first().waitFor();
+  return viewer;
+}
+
+test("U2 · «Revisar» abre el PDF con historial; aprobar confirma lo que devuelve la API y no comparte", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("rowheader", { name: /Fachada/ }).waitFor();
+  const viewer = await openPendingReview(page);
+  await viewer.getByText("V2 · Pendiente de revisión").waitFor();
+  const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+  assert.deepEqual(await history.locator("li").evaluateAll((rows) => rows.map((row) => row.dataset.versionNumber)), ["2", "1"]);
+  assert.equal(backend.requests.find((request) => request.path === "/api/projects/1/files/50/content").search.versionId, "500");
+
+  const metricsBefore = metricsReads(backend);
+  await viewer.getByRole("button", { name: "Aprobar" }).click();
+  const result = page.locator("[data-admin-file-review-result]");
+  await result.getByText("Archivo aprobado correctamente").waitFor();
+  await result.getByText(/La V2 de «Propuesta pendiente\.pdf» es ahora la versión vigente\. Aún no se comparte con el cliente/).waitFor();
+  assert.equal(reviewRequests(backend, "approve").length, 1);
+  assert.equal(await viewerDialog(page).count(), 0, "el visor se cierra tras aprobar");
+  await page.getByText("No hay archivos pendientes").waitFor();
+  assert.ok(metricsReads(backend) > metricsBefore, "las métricas se vuelven a leer");
+  await result.getByRole("button", { name: "Aceptar" }).click();
+  // Compartir con el cliente es independiente: aprobar no llamó a las audiencias.
+  assert.equal(backend.requests.filter((request) => request.path.includes("/audiences")).length, 0);
+});
+
+test("U2 · rechazar exige motivo, lo envía y conserva la versión rechazada", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  const viewer = await openPendingReview(page);
+  await viewer.getByRole("button", { name: "Rechazar" }).click();
+  const reason = page.locator("[data-admin-file-reason='reject']");
+  await reason.getByRole("button", { name: "Enviar" }).click();
+  await reason.getByText("Escribe el motivo del rechazo.").waitFor();
+  assert.equal(reviewRequests(backend, "reject").length, 0, "sin motivo no se envía");
+  await reason.getByRole("textbox", { name: /Motivo del rechazo/ }).fill("  Falta la firma del cliente.  ");
+  await reason.getByRole("button", { name: "Enviar" }).click();
+  const result = page.locator("[data-admin-file-review-result]");
+  await result.getByText("Archivo rechazado correctamente").waitFor();
+  await result.getByText(/se conserva con su motivo\. La versión vigente no cambia\./).waitFor();
+  assert.deepEqual(reviewRequests(backend, "reject")[0].body, { reason: "Falta la firma del cliente." });
+  await result.getByRole("button", { name: "Aceptar" }).click();
+  await page.getByRole("tab", { name: "Rechazados" }).click();
+  await page.getByRole("rowheader", { name: /Propuesta pendiente\.pdf/ }).getByText("Motivo: Falta la firma del cliente.").waitFor();
+});
+
+test("U2 · un 409 de versión ya revisada se informa sin cerrar el visor y recarga tabla e historial", async (context) => {
+  const backend = createBackend({ failures: { "POST /api/projects/:id/files/:id/versions/:id/approve": { body: { code: "FILE_VERSION_NOT_PENDING", message: "No pendiente" }, status: 409 } } });
+  const page = await openFiles(context, backend);
+  const viewer = await openPendingReview(page);
+  const versionReads = () => backend.requests.filter((request) => request.path === "/api/projects/1/files/50/versions").length;
+  const itemReads = () => backend.requests.filter((request) => request.path === "/api/admin/files/items").length;
+  const [versionsBefore, itemsBefore] = [versionReads(), itemReads()];
+  await viewer.getByRole("button", { name: "Aprobar" }).click();
+  await viewer.getByRole("alert").getByText("Esta versión ya fue revisada. Se actualizó la información.").waitFor();
+  await waitUntil(() => versionReads() > versionsBefore && itemReads() > itemsBefore);
+  assert.equal(await viewerDialog(page).count(), 1, "el visor sigue abierto con la versión mostrada");
+  await viewer.getByText("V2 · Pendiente de revisión").waitFor();
+  assert.equal(await page.locator("[data-admin-file-review-result]").getByText("Archivo aprobado correctamente").count(), 0);
+});
+
+test("U2 · historial paginado: ver, descargar y restaurar con motivo (la nueva versión queda pendiente)", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  await viewer.locator("canvas").first().waitFor();
+  const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+  await history.locator("li[data-version-number='3']").waitFor();
+  assert.equal(await history.locator("li").count(), 10);
+  await viewer.getByRole("button", { name: "Mostrar más versiones" }).click();
+  await history.locator("li[data-version-number='1']").waitFor();
+  assert.equal(await history.locator("li").count(), 12);
+  assert.equal(await viewer.getByRole("button", { name: "Mostrar más versiones" }).count(), 0);
+  await history.locator("li[data-version-number='12']").getByText("Versión actual · V12").waitFor();
+
+  // Ver otra versión carga su contenido sin cerrar el visor.
+  await viewer.getByRole("button", { name: "Opciones de la versión 3" }).click();
+  await page.getByRole("menuitem", { exact: true, name: "Ver" }).click();
+  await viewer.getByText("V3 · Aprobada").waitFor();
+  await waitUntil(() => backend.requests.some((request) => request.path === "/api/projects/1/files/30/content" && request.search.versionId === "3020"));
+
+  // Descargar la versión mostrada reutiliza los bytes recibidos; otra versión la pide a la API.
+  const download = page.waitForEvent("download");
+  await viewer.getByRole("button", { name: "Opciones de la versión 5" }).click();
+  await page.getByRole("menuitem", { name: "Descargar" }).click();
+  assert.equal((await download).suggestedFilename(), "acta-v3040.pdf");
+
+  // Restaurar la V3 crea la V13 pendiente, conserva el historial y la muestra para revisarla.
+  await viewer.getByRole("button", { name: "Opciones de la versión 3" }).click();
+  await page.getByRole("menuitem", { name: "Restaurar versión" }).click();
+  const reason = page.locator("[data-admin-file-reason='restore']");
+  await reason.getByRole("button", { name: "Restaurar" }).click();
+  await reason.getByText("Escribe el motivo de la restauración.").waitFor();
+  await reason.getByRole("textbox", { name: /Motivo de la restauración/ }).fill("Se vuelve a la versión firmada.");
+  await reason.getByRole("button", { name: "Restaurar" }).click();
+  await page.getByText(/Se creó la V13 a partir de la V3, que se conserva en el historial\. La nueva versión queda pendiente de revisión\./).waitFor();
+  assert.deepEqual(reviewRequests(backend, "restore")[0].body, { changeNote: "Se vuelve a la versión firmada." });
+  await history.locator("li[data-version-number='13']").getByText("Pendiente de revisión").waitFor();
+  await history.locator("li[data-version-number='13']").getByText("Motivo: Se vuelve a la versión firmada.").waitFor();
+  await viewer.getByText("V13 · Pendiente de revisión").waitFor();
+  await viewer.getByRole("button", { name: "Aprobar" }).waitFor();
+  assert.equal(await history.locator("li").count(), 13, "el historial conserva todas las versiones");
+
+  // Con una pendiente, restaurar otra queda deshabilitado con su motivo.
+  await viewer.getByRole("button", { name: "Opciones de la versión 2" }).click();
+  assert.equal(await page.getByRole("menuitem", { name: /Restaurar versión \(El archivo ya tiene una versión pendiente/ }).isDisabled(), true);
+  await page.keyboard.press("Escape");
+});
+
+test("U2 · garantías: vincular y desvincular un documento de «Documentos › Garantías» con la respuesta del backend", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Más opciones para Fachada.png, versión 1" }).click();
+  assert.equal(await page.getByRole("menuitem", { name: "Garantías" }).count(), 0, "fuera de Garantías no se ofrece");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Más opciones para Garantía impermeabilización.pdf, versión 12" }).click();
+  await page.getByRole("menuitem", { name: "Garantías" }).click();
+  const dialog = page.locator("[data-admin-file-warranties]");
+  const ventanas = dialog.getByRole("checkbox", { name: /Ventanas/ });
+  await ventanas.waitFor();
+  assert.equal(await ventanas.getAttribute("aria-checked"), "true", "vínculo leído del backend");
+  await dialog.getByRole("checkbox", { name: "Vincular a Impermeabilización · Techo" }).click();
+  await dialog.getByText("Documento vinculado a Impermeabilización · Techo.").waitFor();
+  assert.ok(backend.requests.some((request) => request.method === "PUT" && request.path === "/api/admin/files/projects/1/warranties/5/documents/30"));
+  await dialog.getByRole("checkbox", { name: "Desvincular de Ventanas · Aluminio" }).click();
+  await dialog.getByText(/Documento desvinculado de Ventanas · Aluminio\. El vínculo se conserva en el historial\./).waitFor();
+  assert.ok(backend.requests.some((request) => request.method === "DELETE" && request.path === "/api/admin/files/projects/1/warranties/6/documents/30"));
+  assert.deepEqual(backend.warranties.map((warranty) => warranty.documents.map((document) => document.fileId)), [[30], []]);
+  await dialog.getByRole("button", { name: "Listo" }).click();
+});
+
+test("U2 · las imágenes se abren en el visor con la versión indicada", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Fachada.png, versión 1" }).click();
+  const image = viewerDialog(page).getByRole("img", { name: "Fachada.png" });
+  await image.waitFor();
+  assert.match(await image.getAttribute("src"), /\/api\/projects\/2\/files\/40\/content\?versionId=400$/);
+  await viewerDialog(page).getByRole("button", { name: "Cerrar", exact: true }).click();
+  await viewerDialog(page).waitFor({ state: "detached" });
+});
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [375, 1440]) {
+    test(`U2 · visor responsive sin desbordar (${theme}, ${width} px)`, async (context) => {
+      const backend = createBackend();
+      const page = await openFiles(context, backend, { theme, viewport: { height: 1000, width } });
+      const viewer = await openPendingReview(page);
+      await viewer.getByRole("list", { name: "Versiones del archivo" }).locator("li").first().waitFor();
+      await page.waitForTimeout(400);
+      const layout = await page.evaluate(() => {
+        const dialog = document.querySelector("[data-admin-file-viewer]").getBoundingClientRect();
+        return { overflow: document.documentElement.scrollWidth - window.innerWidth, right: dialog.right, width: window.innerWidth };
+      });
+      assert.ok(layout.overflow <= 0, `La página no desborda (${layout.overflow} px)`);
+      assert.ok(layout.right <= layout.width, "El visor cabe en el viewport");
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/viewer-${theme}-${width}.png` });
+      await viewer.getByRole("button", { name: "Rechazar" }).click();
+      await page.locator("[data-admin-file-reason='reject']").waitFor();
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/reject-${theme}-${width}.png` });
+    });
+  }
+}
 
 for (const theme of ["light", "dark"]) {
   for (const width of [375, 768, 1024, 1440]) {

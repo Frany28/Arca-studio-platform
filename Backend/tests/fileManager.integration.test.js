@@ -264,7 +264,10 @@ test("pestañas: aprobados (incluye heredados), pendientes y rechazados por vers
   assert.equal(pending.find((item) => item.versionNumber === 3).restoredFromVersionId, seed.files.acta.versionIds[0]);
   const rejected = await allPages("tab=rejected");
   assert.deepEqual(rejected.map((item) => [item.name, item.review.reason]), [["Plano_100%.pdf", "No cumple"]]);
-  assert.deepEqual(rejected[0].folder, { id: seed.quinta.folders["documents.initial_proposal"], name: "Propuesta inicial" });
+  assert.deepEqual(rejected[0].folder, { id: seed.quinta.folders["documents.initial_proposal"], name: "Propuesta inicial", section: "documents" });
+  assert.equal(rejected[0].fileCategory, "document");
+  const render = approved.find((item) => item.name === "Render cocina.png");
+  assert.deepEqual([render.fileCategory, render.folder.section], ["image", "images"]);
 });
 
 test("filtros, ordenación y cursor: ámbito, búsqueda, extensiones y los tres órdenes en ambos sentidos", { skip }, async () => {
@@ -355,4 +358,22 @@ test("permisos y activación: solo el administrador; apagada, 404 antes de auten
   } finally {
     process.env.PROJECT_FILE_REVIEW_ENABLED = "true";
   }
+});
+
+test("elementos: categoría del archivo y sección heredada de la carpeta predeterminada más cercana (visor y garantías, U2)", { skip }, async () => {
+  const project = await createProject("Garantías Norte");
+  const custom = await api(`/admin/files/projects/${project.id}/folders`, { body: { name: "Impermeabilización", parentId: project.folders["documents.warranties"] }, method: "POST" });
+  assert.equal(custom.status, 201);
+  const nested = await api(`/admin/files/projects/${project.id}/folders`, { body: { name: "2026", parentId: custom.body.folder.id }, method: "POST" });
+  await insertFile({ folderId: nested.body.folder.id, name: "Certificado.pdf", projectId: project.id, versions: [{ size: 10, status: "approved" }] });
+  const panorama = await insertFile({ folderId: project.folders["renders.models"], name: "Sala 360.png", projectId: project.id, versions: [{ size: 20, status: "approved" }] });
+  await rows("update public.files set file_category = 'panorama' where id = $1", [panorama.fileId]);
+  await insertFile({ name: "Sin carpeta.pdf", projectId: project.id, versions: [{ size: 30, status: "approved" }] });
+
+  const items = await allPages(`tab=approved&projectId=${project.id}`);
+  const byName = Object.fromEntries(items.map((item) => [item.name, item]));
+  assert.deepEqual(byName["Certificado.pdf"].folder, { id: nested.body.folder.id, name: "2026", section: "warranties" }, "subcarpeta de Garantías");
+  assert.equal(byName["Certificado.pdf"].fileCategory, "document");
+  assert.deepEqual([byName["Sala 360.png"].fileCategory, byName["Sala 360.png"].folder.section], ["panorama", "models_3d"]);
+  assert.deepEqual([byName["Sin carpeta.pdf"].folder, byName["Sin carpeta.pdf"].fileCategory], [null, "document"]);
 });
