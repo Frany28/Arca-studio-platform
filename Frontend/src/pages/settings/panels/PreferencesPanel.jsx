@@ -92,7 +92,7 @@ export default function PreferencesPanel({
 
       <PreferenceItem
         icon={<CallIcon className="size-5" />}
-        title="Whatsapp"
+        title="WhatsApp"
         description="Recibir actualizaciones en sus mensajes."
         rightContent={
           <Toggle

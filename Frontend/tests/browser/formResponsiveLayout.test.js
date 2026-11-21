@@ -49,11 +49,14 @@ after(async () => {
  *
  * @param {import("node:test").TestContext} context Prueba propietaria de la sesión.
  * @param {string} path Ruta del formulario.
- * @param {Object} [options] Tema y opciones de accesibilidad.
+ * @param {Object} [options] Tema, rol, mutaciones permitidas y opciones de accesibilidad.
+ * @param {Object<string, {status?: number, json: Object}>} [options.mutations] Respuestas de las
+ * únicas mutaciones permitidas, por «MÉTODO /api/ruta»; se registran en `page.mutations`.
  * @returns {Promise<import("playwright").Page>} Página lista para interactuar y medir.
  */
-async function openForm(context, path, { theme = "light", ...options } = {}) {
-  const role = path === "/configuraciones" ? "admin" : "architect";
+async function openForm(context, path, { theme = "light", role: requestedRole, mutations = {}, ...options } = {}) {
+  const role = requestedRole || (path === "/configuraciones" ? "admin" : "architect");
+  const sentMutations = [];
   const session = await browser.newContext({ viewport: { width: 1440, height: 1000 }, ...options });
   const page = applyBrowserTimeouts(await session.newPage());
   const errors = [];
@@ -67,6 +70,12 @@ async function openForm(context, path, { theme = "light", ...options } = {}) {
     const payload = requestPath === "/api/auth/me"
       ? { user: { id: 1, firstName: "Sidebar", lastName: "Test", email: "sidebar@example.test", role, status: "active" } }
       : READ_FIXTURES[requestPath];
+    const mutation = mutations[`${request.method()} ${requestPath}`];
+    if (mutation) {
+      sentMutations.push({ body: request.postDataJSON?.() ?? null, path: requestPath });
+      await route.fulfill({ status: mutation.status || 200, json: mutation.json });
+      return;
+    }
     if (request.method() !== "GET" || !payload) {
       errors.push(`HTTP inesperado: ${request.method()} ${requestPath}`);
       await route.fulfill({ status: 404, json: { code: "TEST_ROUTE_MISSING", message: "Fixture no definida" } });
@@ -85,6 +94,7 @@ async function openForm(context, path, { theme = "light", ...options } = {}) {
     .waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   assert.equal(await page.evaluate(() => document.documentElement.classList.contains("dark")), theme === "dark");
   await page.evaluate(() => document.fonts.ready);
+  page.mutations = sentMutations;
   return page;
 }
 
@@ -222,12 +232,95 @@ test("Escritorio 1440 px: ambos formularios conservan la geometría anterior de 
   }
 });
 
+test("Configuración sigue las variantes de Figma: pestañas horizontales en móvil y menú lateral desde tablet", async (context) => {
+  const page = await openForm(context, "/configuraciones");
+  const measure = () => page.evaluate(() => {
+    const tablist = document.querySelector("[role='tablist']").getBoundingClientRect();
+    const panel = document.querySelector(".settings-panel").getBoundingClientRect();
+    const row = document.querySelector(".settings-form-row").getBoundingClientRect();
+    return {
+      orientation: document.querySelector("[role='tablist']").getAttribute("aria-orientation"),
+      panel: { left: Math.round(panel.left), top: Math.round(panel.top), width: Math.round(panel.width) },
+      row: { left: Math.round(row.left), width: Math.round(row.width) },
+      tablist: { bottom: Math.round(tablist.bottom), top: Math.round(tablist.top), width: Math.round(tablist.width) },
+    };
+  });
+
+  // Móvil 375 (Figma 3727:688309…3727:688270): pestañas a todo el ancho, 48 px sobre el contenido.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await setRailState(page, 375, false);
+  const mobile = await measure();
+  assert.equal(mobile.orientation, "horizontal");
+  assert.equal(mobile.tablist.width, 343);
+  assert.equal(mobile.panel.top - mobile.tablist.bottom, 48);
+  assert.equal(mobile.row.width, 343, "los campos aprovechan todo el ancho");
+
+  // Tablet 1024 con riel contraído (Figma 3727:688302): menú de 160 px, panel de 644 px junto a él
+  // y formulario de 596 px (dos campos de 286 px) con 24 px de margen.
+  await page.setViewportSize({ width: 1024, height: 1366 });
+  await setRailState(page, 1024, false);
+  const tablet = await measure();
+  assert.equal(tablet.orientation, "vertical");
+  assert.equal(tablet.panel.width, 644);
+  assert.equal(tablet.panel.top, Math.round((await page.getByRole("tablist").boundingBox()).y), "menú y panel en la misma fila");
+  assert.deepEqual(tablet.row, { left: tablet.panel.left + 24, width: 596 });
+  const nameBox = await page.getByRole("textbox", { name: "Nombre", exact: true }).locator("xpath=ancestor::*[contains(@class,'settings-form-field')][1]").boundingBox();
+  assert.equal(Math.round(nameBox.width), 286);
+});
+
+for (const role of ["admin", "architect", "client"]) {
+  test(`Configuración móvil (${role}): pestañas, contraseña, avatar y soporte funcionan y conservan su estado`, async (context) => {
+    const page = await openForm(context, "/configuraciones", {
+      mutations: { "POST /api/auth/change-password": { json: { ok: true } } },
+      role,
+      theme: role === "architect" ? "dark" : "light",
+    });
+    // El borrador de Seguridad sobrevive al cambio de orientación del menú (escritorio → móvil).
+    await page.getByRole("tab", { name: "Seguridad", exact: true }).click();
+    await page.getByLabel("Contraseña actual", { exact: true }).fill("Actual2025*");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => document.querySelector("[role='tablist']")?.getAttribute("aria-orientation") === "horizontal");
+    assert.equal(await page.getByRole("tab", { name: "Seguridad", exact: true }).getAttribute("aria-selected"), "true");
+    assert.equal(await page.getByLabel("Contraseña actual", { exact: true }).inputValue(), "Actual2025*");
+    assert.deepEqual(await page.getByRole("tab").allInnerTexts(), SETTINGS_TABS, "los tres roles conservan sus cuatro pestañas");
+
+    // Cambiar contraseña envía la petición real y limpia el formulario.
+    await page.getByLabel("Nueva contraseña", { exact: true }).fill("Nueva2026*");
+    await page.getByLabel("Confirmar contraseña", { exact: true }).fill("Nueva2026*");
+    await page.getByRole("button", { name: "Cambiar contraseña", exact: true }).click();
+    await page.getByText("Contraseña restablecida").waitFor();
+    assert.deepEqual(page.mutations, [{ body: { currentPassword: "Actual2025*", newPassword: "Nueva2026*" }, path: "/api/auth/change-password" }]);
+    assert.equal(await page.getByLabel("Contraseña actual", { exact: true }).inputValue(), "");
+
+    // El modal de avatar cabe en el viewport y se cierra con Escape.
+    await page.getByRole("tab", { name: "Perfil", exact: true }).click();
+    await page.getByRole("button", { name: "Subir imagen", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.waitFor();
+    await page.waitForTimeout(400);
+    const box = await dialog.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= 390, `el modal cabe a lo ancho: ${JSON.stringify(box)}`);
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+
+    // Soporte: la pestaña se alcanza desplazando el menú y conserva el envío existente.
+    const support = page.getByRole("tab", { name: "Soporte", exact: true });
+    await support.click();
+    assert.equal(await support.getAttribute("aria-selected"), "true");
+    await page.getByRole("heading", { name: "Contactar Soporte" }).waitFor();
+    assert.deepEqual(await measureFormOverflow(page), { document: 0, content: 0, panel: 0, outsideControls: [] });
+  });
+}
+
 test("Configuración: teclado, validación y movimiento reducido conservan el layout móvil", async (context) => {
   const page = await openForm(context, "/configuraciones", { reducedMotion: "reduce" });
   await page.setViewportSize({ width: 320, height: 1000 });
   const profile = page.getByRole("tab", { name: "Perfil", exact: true });
+  // En móvil las pestañas son horizontales (Figma 3727:688316): las flechas laterales las recorren.
+  // ResizeObserver notifica el nuevo ancho en el siguiente frame.
+  await page.waitForFunction(() => document.querySelector("[role='tablist']")?.getAttribute("aria-orientation") === "horizontal");
   await profile.focus();
-  await profile.press("ArrowDown");
+  await profile.press("ArrowRight");
   const security = page.getByRole("tab", { name: "Seguridad", exact: true });
   assert.equal(await security.getAttribute("aria-selected"), "true");
   await page.getByRole("button", { name: "Cambiar contraseña", exact: true }).click();

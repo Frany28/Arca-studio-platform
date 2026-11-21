@@ -481,11 +481,23 @@ a una intervención independiente de la validación del contrato del riel.
 
 - La composición responsive depende del espacio disponible tras el riel y el padding,
   mediante container queries locales; no se redefinen los tokens del sidebar por página.
-- Configuración conserva el menú de 160 px, gap de 48 px y panel de 664 px cuando el
-  contenedor dispone de al menos 872 px. Por debajo, el menú se apila sobre el panel.
-  Las filas de dos campos de 320 px y gap de 24 px se mantienen cuando el panel dispone
-  de 664 px; con menos espacio se apilan y los campos ocupan el ancho disponible. La
-  misma política cubre Perfil, Seguridad, Preferencias y Soporte, incluidos avatar y upload.
+- Configuración (Figma `3727:688125`; escritorio 1440, tablet `3727:688302` y móvil
+  `3727:688309`…`3727:688270`) es la misma página para administrador, arquitecto y cliente.
+  Con al menos 596 px de contenedor (160 de menú + 48 + 388 de panel) muestra el menú
+  vertical (`SettingsVerticalTabMenu`, `TabItem` Divider M) junto al panel; por debajo,
+  el mismo componente con `orientation="horizontal"` es el «Horizontal tab menu» móvil
+  (`TabItem` Underline S de 32 px con icono, 16 px entre pestañas, borde inferior
+  `neutral-200`, desplazamiento horizontal propio y flechas izquierda/derecha), encima del
+  panel y a 48 px por encima y por debajo. El umbral lo comparten la container query
+  `settings-layout` de `SettingsPage.css` y `useSettingsMenuOrientation` (ResizeObserver),
+  porque depende también del riel expandido o contraído.
+  Junto al menú, el formulario mide 664 px (dos campos de 320 px y gap de 24 px) y, si el
+  panel es más estrecho, deja 24 px por lado como la tablet de Figma (panel de 644 px,
+  formulario de 596 px, campos de 286 px que encogen en su fila flex). Contactar Soporte
+  ocupa todo el panel, sin ese margen (`settings-support-form`, Figma `3727:688269`). Con
+  un panel de menos de 644 px las filas se apilan y los campos ocupan el ancho disponible;
+  avatar y selector de tema bajan bajo su texto, y los interruptores de Preferencias se
+  quedan en la fila con la descripción (b3) ajustada en varias líneas, como Figma móvil.
 - Nuevo proyecto conserva menú de 152 px y gap de 48 px cuando caben junto con un
   campo de 320 px (contenedor de al menos 520 px); con menos espacio se apila. Mantiene
   el formulario de hasta 656 px de escritorio. El grid de áreas limita su mínimo de

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../../api/http.js";
@@ -37,6 +37,7 @@ import {
   getDashboardPath,
 } from "../../utils/sideNavigationItems.js";
 import useResponsiveSidebarExpansion from "../../hooks/useResponsiveSidebarExpansion.js";
+import useSettingsMenuOrientation from "./useSettingsMenuOrientation.js";
 
 const AVATAR_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const AVATAR_MAX_SIZE_BYTES = 50 * 1024 * 1024;
@@ -136,6 +137,10 @@ export default function SettingsPage() {
   const currentUser = getUserDisplay(user);
   const mobileNavigation = useMobileNavigationDrawer();
   const [isSidebarExpanded, setIsSidebarExpanded] = useResponsiveSidebarExpansion();
+  // Figma móvil (3727:688309…3727:688270) cambia el menú vertical por pestañas horizontales cuando
+  // menú y panel no caben juntos (depende también del riel lateral).
+  const settingsLayoutRef = useRef(null);
+  const menuOrientation = useSettingsMenuOrientation(settingsLayoutRef);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] =
     useState(false);
   const [activeSettingsTabId, setActiveSettingsTabId] = useState("profile");
@@ -591,12 +596,14 @@ export default function SettingsPage() {
             }
           />
 
-          {/* El contenedor conserva el padding; el menú se apila si no cabe el panel de Figma. */}
-          <div className="settings-layout mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px] max-[767px]:px-[16px] max-[767px]:pb-[24px] max-[767px]:pt-[16px]">
+          {/* Menú vertical junto al panel si caben (container query de SettingsPage.css); si no,
+              pestañas horizontales encima con 48 px por encima y por debajo, como Figma móvil. */}
+          <div ref={settingsLayoutRef} className="settings-layout mx-auto flex w-full max-w-[1200px] flex-1 flex-col items-start px-[48px] pt-[48px] max-[767px]:px-[16px] max-[767px]:pb-[24px]">
             <section className="flex w-full min-w-0 items-start self-stretch">
               <SettingsVerticalTabMenu
                 activeItemId={activeSettingsTabId}
                 onChange={setActiveSettingsTabId}
+                orientation={menuOrientation}
               />
               <TabPanel
                 transitionKey={activeSettingsTabId}

@@ -183,14 +183,34 @@ function getNextIndex(currentIndex, total, direction) {
   return (currentIndex + direction + total) % total;
 }
 
+// Teclas que mueven la selección según la orientación del tablist (patrón WAI-ARIA Tabs).
+const NAVIGATION_KEYS = Object.freeze({
+  horizontal: { next: "ArrowRight", previous: "ArrowLeft" },
+  vertical: { next: "ArrowDown", previous: "ArrowUp" },
+});
+
+/**
+ * Menú de pestañas de Configuración. En vertical (por defecto) es el «Vertical tab menu» de
+ * escritorio y tablet: 160 px con `TabItem` Divider M. En horizontal es el «Horizontal tab menu»
+ * móvil de Figma (3727:688316): `TabItem` Underline S (32 px) con icono, 16 px entre pestañas,
+ * borde inferior `neutral-200` y desplazamiento horizontal propio cuando no caben, sin barra
+ * nativa visible. Las flechas siguen la orientación (izquierda/derecha o arriba/abajo).
+ *
+ * @param {Object} props - Pestañas, selección, orientación y callbacks.
+ * @param {"vertical"|"horizontal"} [props.orientation="vertical"] - Disposición del menú.
+ * @returns {import("react").ReactElement} Tablist.
+ */
 function SettingsVerticalTabMenu({
   items = DEFAULT_ITEMS,
   activeItemId,
   defaultActiveItemId = DEFAULT_ITEMS[0].id,
   onChange,
+  orientation = "vertical",
   className,
   ...props
 }) {
+  const isHorizontal = orientation === "horizontal";
+  const keys = isHorizontal ? NAVIGATION_KEYS.horizontal : NAVIGATION_KEYS.vertical;
   const generatedId = useId();
   const [internalActiveItemId, setInternalActiveItemId] = useState(
     defaultActiveItemId,
@@ -221,9 +241,9 @@ function SettingsVerticalTabMenu({
   function handleKeyDown(event, index) {
     let nextIndex = null;
 
-    if (event.key === "ArrowDown") {
+    if (event.key === keys.next) {
       nextIndex = getNextIndex(index, normalizedItems.length, 1);
-    } else if (event.key === "ArrowUp") {
+    } else if (event.key === keys.previous) {
       nextIndex = getNextIndex(index, normalizedItems.length, -1);
     } else if (event.key === "Home") {
       nextIndex = 0;
@@ -241,16 +261,20 @@ function SettingsVerticalTabMenu({
     const tabs =
       event.currentTarget.parentElement?.querySelectorAll('[role="tab"]');
     tabs?.[nextIndex]?.focus();
+    // En horizontal la pestaña enfocada puede quedar fuera del área visible del desplazamiento.
+    if (isHorizontal) tabs?.[nextIndex]?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }
 
   return (
     <div
       className={clsx(
-        "flex w-[160px] flex-col items-start justify-center gap-[var(--Spacing-Gap-XS,8px)]",
+        isHorizontal
+          ? "flex w-full items-center gap-[16px] overflow-x-auto overscroll-x-contain border-b border-[var(--color-neutral-200)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          : "flex w-[160px] flex-col items-start justify-center gap-[var(--Spacing-Gap-XS,8px)]",
         className,
       )}
       role="tablist"
-      aria-orientation="vertical"
+      aria-orientation={isHorizontal ? "horizontal" : "vertical"}
       {...props}
     >
       {normalizedItems.map((item, index) => {
@@ -260,14 +284,14 @@ function SettingsVerticalTabMenu({
           <TabItem
             key={item.id}
             label={item.label}
-            size="M"
-            style="Divider"
+            size={isHorizontal ? "S" : "M"}
+            style={isHorizontal ? "Underline" : "Divider"}
             selected={isActive}
             interactive
             iconLeft={false}
             iconRight={false}
             leftIcon={getIcon(item.icon, "size-5 shrink-0")}
-            className="w-full"
+            className={isHorizontal ? "shrink-0" : "w-full"}
             id={`${generatedId}-tab-${item.id}`}
             type="button"
             role="tab"

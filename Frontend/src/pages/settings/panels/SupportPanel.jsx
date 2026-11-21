@@ -269,7 +269,7 @@ export default function SupportPanel({
 
   return (
     <div className="flex flex-1 flex-col items-center gap-4">
-      <div className="settings-form-section relative flex flex-col gap-[24px]">
+      <div className="settings-form-section settings-support-form relative flex flex-col gap-[24px]">
         <div className="flex w-full flex-col gap-[2px] border-b border-[var(--color-neutral-200)] pb-[24px]">
           <h2 className="text-[24px] font-bold leading-[30px] tracking-[-0.5px] text-[var(--color-text-300)]">
             Contactar Soporte
@@ -333,7 +333,6 @@ export default function SupportPanel({
             <TextArea
               label="Descripción"
               required
-              information={false}
               showLabelInfo={false}
               showHint={false}
               value={supportDescription}

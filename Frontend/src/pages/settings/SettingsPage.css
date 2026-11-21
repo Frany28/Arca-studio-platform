@@ -1,19 +1,17 @@
-/* La composición responde al espacio que dejan riel, padding y menú, no solo al viewport.
-   872 px = menú de 160 px + gap de 48 px + panel de Figma de 664 px. */
+/* Composición de Configuración (Figma 3727:688125). Responde al espacio que dejan riel y padding,
+   no solo al viewport, con el umbral de useSettingsMenuOrientation (596 px = 160 + 48 + 388):
+   - Por debajo: pestañas horizontales encima del panel (Figma móvil), separadas 48 px, y el
+     formulario a todo el ancho.
+   - Desde el umbral: menú vertical de 160 px, 48 px de separación y el panel al lado. El
+     formulario mide 664 px (2 × 320 + 24) y, si el panel es más estrecho, deja 24 px por lado
+     como la variante tablet (panel de 644 px con formulario de 596 px: 2 × 286 + 24). */
 .settings-layout {
   container: settings-layout / inline-size;
 }
 
 .settings-layout > section {
   flex-direction: column;
-  gap: 24px;
-}
-
-@container settings-layout (min-width: 872px) {
-  .settings-layout > section {
-    flex-direction: row;
-    gap: var(--spacing-gap-7);
-  }
+  gap: var(--spacing-gap-7);
 }
 
 .settings-panel {
@@ -23,6 +21,24 @@
   width: 100%;
 }
 
+/* Va después de la regla base para que el margen de 24 px junto al menú prevalezca. */
+@container settings-layout (min-width: 596px) {
+  .settings-layout > section {
+    flex-direction: row;
+  }
+
+  .settings-panel {
+    --settings-form-width: min(664px, 100% - 48px);
+  }
+
+  /* Contactar Soporte ocupa todo el panel en tablet (Figma 3727:688269): sin margen lateral. */
+  .settings-panel .settings-support-form {
+    --settings-form-width: 664px;
+  }
+}
+
+/* Los campos encogen por igual dentro de su fila (flex), así que las dos columnas de 320 px pasan a
+   286 px en tablet sin reglas adicionales. */
 .settings-panel .settings-form-section,
 .settings-panel .settings-form-row {
   width: min(var(--settings-form-width), 100%);
@@ -43,13 +59,21 @@
   --settings-field-width: 447px;
 }
 
+/* El selector de tema conserva sus 320 px junto al texto (un interruptor mide lo que su contenido). */
+.settings-panel .settings-preference-control:has(> .settings-form-field) {
+  flex-shrink: 1;
+  width: var(--settings-field-width);
+  min-width: 0;
+}
+
 .settings-panel .settings-form-textarea {
   width: 100%;
   max-width: none;
 }
 
-/* Las dos columnas originales (320 + 24 + 320) solo se mantienen cuando caben. */
-@container settings-panel (width < 664px) {
+/* Una columna cuando ya no caben dos campos de 286 px (596 px de formulario + 48 px de margen),
+   como las variantes móviles de Figma. */
+@container settings-panel (width < 644px) {
   .settings-panel .settings-form-row {
     flex-direction: column;
     gap: var(--spacing-gap-4);
@@ -63,10 +87,16 @@
     display: none;
   }
 
+  /* Avatar y el selector de tema bajan debajo de su texto; los interruptores siguen en la fila
+     porque su texto se ajusta en varias líneas (Figma 3727:688298). */
   .settings-panel .settings-avatar-row,
-  .settings-panel .settings-preference-row {
+  .settings-panel .settings-preference-row:has(.settings-form-field) {
     flex-direction: column;
     align-items: stretch;
     gap: var(--spacing-gap-4);
+  }
+
+  .settings-panel .settings-preference-row:has(.settings-form-field) .settings-preference-control {
+    width: 100%;
   }
 }
