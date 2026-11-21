@@ -374,8 +374,11 @@ function createBackend({ enabled = true, failures = {} } = {}) {
       if (siblings.some((candidate) => candidate.review.status === "pending")) return json(route, 409, { code: "FILE_VERSION_PENDING_REVIEW", message: "Pendiente" });
       const latest = siblings.reduce((top, candidate) => (candidate.versionNumber > top.versionNumber ? candidate : top));
       const versionNumber = latest.versionNumber + 1;
+      // La versión nueva toma el formato del archivo subido (una imagen sigue siendo imagen).
+      const uploadedName = decodeURIComponent(request.headers()["x-file-name"] || latest.name);
+      const uploadedExtension = uploadedName.split(".").pop().toLowerCase();
       const created = {
-        ...latest, changeNote: note, createdAt: "2026-04-01T10:00:00.000Z", extension: "pdf", isCurrent: false, name: decodeURIComponent(request.headers()["x-file-name"] || latest.name),
+        ...latest, changeNote: note, contentType: uploadedExtension === "png" ? "image/png" : "application/pdf", createdAt: "2026-04-01T10:00:00.000Z", extension: uploadedExtension, isCurrent: false, name: uploadedName,
         review: { reason: null, reviewedAt: null, reviewerName: null, status: "pending" }, size: request.postDataBuffer()?.length || 10, uploadedBy: { id: 1, name: "Ana Admin" }, versionId: 7000 + versionNumber, versionNumber,
       };
       state.items.push(created);
@@ -773,8 +776,60 @@ test("U2 · las imágenes se abren en el visor con la versión indicada", async 
   const image = viewerDialog(page).getByRole("img", { name: "Fachada.png" });
   await image.waitFor();
   assert.match(await image.getAttribute("src"), /\/api\/projects\/2\/files\/40\/content\?versionId=400$/);
-  await viewerDialog(page).getByRole("button", { name: "Cerrar", exact: true }).click();
+  // Escenario de galería de Proyectos (Figma 3941:671103): 24 px de margen, imagen sin recortes y
+  // el historial de 312 px pegado al borde derecho.
+  await page.waitForTimeout(400);
+  const layout = await page.evaluate(() => {
+    const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const stage = box("[data-admin-file-media]");
+    const drawer = box("[data-admin-file-history-drawer]");
+    return {
+      drawer: { right: drawer.right, width: drawer.width },
+      fit: getComputedStyle(document.querySelector("[data-admin-file-media] img[alt='Fachada.png']")).objectFit,
+      layout: document.querySelector("[data-admin-file-viewer]").dataset.adminFileViewerLayout,
+      stage: { left: stage.left, right: stage.right, top: stage.top },
+      viewport: innerWidth,
+    };
+  });
+  assert.equal(layout.layout, "media");
+  assert.equal(layout.fit, "contain", "la imagen conserva su proporción sin recortarse");
+  assert.deepEqual(layout.stage, { left: 24, right: layout.viewport - 312 - 24, top: 24 });
+  assert.deepEqual(layout.drawer, { right: layout.viewport, width: 312 });
+  assert.equal(await viewerDialog(page).getByRole("button", { name: "Comentar video" }).count(), 0);
+  await viewerDialog(page).getByRole("button", { name: "Cerrar visor" }).click();
   await viewerDialog(page).waitFor({ state: "detached" });
+});
+
+test("imágenes: reemplazar y cambiar de versión mantiene el drawer; la revisión pendiente se decide desde él", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Fachada.png, versión 1" }).click();
+  const viewer = viewerDialog(page);
+  const drawer = viewer.locator("[data-admin-file-history-drawer]");
+  await viewer.getByRole("img", { name: "Fachada.png" }).waitFor();
+  assert.equal(await drawer.locator("[data-admin-file-media-actions]").count(), 0, "la vigente aprobada no añade acciones al drawer");
+
+  await drawer.getByRole("button", { name: "Subir una versión nueva" }).click();
+  const dialog = uploadDialog(page, "replace");
+  await dialog.locator("input[type='file']").setInputFiles([{ buffer: SAMPLE_PNG, mimeType: "image/png", name: "Fachada corregida.png" }]);
+  await dialog.getByRole("textbox", { name: /Motivo del cambio/ }).fill("Render corregido.");
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+
+  // La V2 pendiente se muestra en el escenario y el drawer ofrece su revisión.
+  const actions = drawer.locator("[data-admin-file-media-actions]");
+  await actions.getByText("Mostrando V2 · Pendiente de revisión").waitFor();
+  await actions.getByRole("button", { name: "Rechazar" }).waitFor();
+  await actions.getByRole("button", { name: "Aprobar" }).waitFor();
+  await waitUntil(() => backend.requests.some((request) => request.path === "/api/projects/2/files/40/content" && request.search.versionId !== "400"));
+
+  // «Ver» la V1 cambia la imagen sin cerrar el visor ni el historial.
+  await drawer.getByRole("button", { name: "Opciones de la versión 1" }).click();
+  await page.getByRole("menuitem", { exact: true, name: "Ver" }).click();
+  await page.waitForFunction(() => /versionId=400$/.test(document.querySelector("[data-admin-file-media] img[alt='Fachada.png']")?.getAttribute("src") || ""));
+  assert.equal(await drawer.locator("li[data-version-number='1']").getAttribute("aria-current"), "true");
+  assert.equal(await drawer.locator("li").count(), 2, "el historial conserva las dos versiones");
+  await actions.waitFor({ state: "detached" });
 });
 
 for (const theme of ["light", "dark"]) {

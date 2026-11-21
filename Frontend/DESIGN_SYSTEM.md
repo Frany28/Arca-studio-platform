@@ -1046,6 +1046,22 @@ Validación, capturas y diferencias respecto a Figma:
   - Menú de cada versión: `ActionMenu` de 160 px solo con texto y divisores («Ver», «Restaurar
     versión», «Descargar»); el motivo de una opción deshabilitada va en `hint` (`title` y nombre
     accesible) para no alargar la etiqueta.
+  - Imágenes, vídeos y panorámicas (Figma `3941:671103`, `3941:675497`, `3940:666189`; drawer
+    `3940:666330`) no usan el modal de 790 px: el escenario de galería de Proyectos ocupa todo el
+    espacio libre con 24 px de margen (1080 × 976 a 1440 × 1024; 664 px de ancho a 1024) y el
+    drawer de 312 px queda pegado al borde derecho. Por debajo de 921 px se apilan como en los
+    visores de Proyectos (escenario de 62 dvh, mín. 360 px; 58 dvh y 300 px desde 520 px; el
+    historial debajo). Los escenarios son los de Proyectos, extraídos a `components/ui/Gallery`:
+    `ImageViewerStage` (logo, «Cerrar», degradados y carrusel; `fit="cover"` con `ImageHighlighter`
+    en Proyectos y `fit="contain"` aquí, sin recortes para imágenes verticales) y
+    `VideoViewerStage` (reproducción, `PlaybackBar`, pantalla completa; aquí sin «Comentar
+    video»). `ImageViewerModal` y `VideoViewerModal` los componen con sus comentarios sin cambiar
+    su aspecto. La panorámica reutiliza `Panorama360Viewer` integrado con el logo y «Cerrar». Cada
+    escenario se reinicia con la URL de su versión (`key`): cambiar de versión no mezcla estados y
+    redibujar el drawer no reinicia la reproducción. Sin cabecera ni pie, el drawer de medios
+    recoge al final «Mostrando V3 · Aprobada» (si no es la vigente), el error de una operación,
+    «Rechazar»/«Aprobar» de una versión pendiente y «Garantías»; «Cerrar» es la X del escenario
+    y «Reemplazar», el «+». PDF, DOCX, XLSX y formatos sin vista previa conservan el modal.
   - Visores reutilizados por tipo (`getViewerKind`): PDF con `PdfViewerSurface` (páginas, zoom y
     descarga de los bytes mostrados), DOCX y XLSX con `OfficeViewerSurface`, panorámicas
     (`fileCategory === "panorama"`) con `Panorama360Viewer` integrado; imágenes y vídeos con su

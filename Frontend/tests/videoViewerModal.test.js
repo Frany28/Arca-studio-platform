@@ -6,20 +6,13 @@ import {
   releaseBodyScrollLock,
 } from "../src/hooks/useBodyScrollLock.js";
 
-const imageViewerSource = readFileSync(
-  new URL(
-    "../src/components/ui/Gallery/ImageViewerModal.jsx",
-    import.meta.url,
-  ),
-  "utf8",
-);
-const videoViewerSource = readFileSync(
-  new URL(
-    "../src/components/ui/Gallery/VideoViewerModal.jsx",
-    import.meta.url,
-  ),
-  "utf8",
-);
+// Cada visor se compone de su modal y del escenario compartido con Gestión de archivos
+// (ImageViewerStage, VideoViewerStage): la composición se comprueba sobre ambos.
+const readGallerySource = (...names) => names
+  .map((name) => readFileSync(new URL(`../src/components/ui/Gallery/${name}`, import.meta.url), "utf8"))
+  .join("\n");
+const imageViewerSource = readGallerySource("ImageViewerModal.jsx", "ImageViewerStage.jsx");
+const videoViewerSource = readGallerySource("VideoViewerModal.jsx", "VideoViewerStage.jsx");
 const galleryVideosSource = readFileSync(
   new URL(
     "../src/components/ui/Gallery/GalleryVideosModal.jsx",

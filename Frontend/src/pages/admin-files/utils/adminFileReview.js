@@ -33,6 +33,20 @@ export function getViewerKind(file) {
   return "unsupported";
 }
 
+// Tipos que se ven en el escenario de galería de Proyectos (a toda la altura junto al drawer) en
+// lugar del modal de documentos de 790 px.
+const MEDIA_VIEWER_KINDS = Object.freeze(["image", "video", "panorama"]);
+
+/**
+ * Indica si un tipo de visor se presenta como medio (imagen, vídeo o panorámica).
+ *
+ * @param {string} kind - Tipo de getViewerKind.
+ * @returns {boolean} true para el escenario de galería.
+ */
+export function isMediaViewerKind(kind) {
+  return MEDIA_VIEWER_KINDS.includes(kind);
+}
+
 /**
  * Indica si un documento puede respaldar garantías: debe estar en «Documentos › Garantías» o en
  * una de sus subcarpetas (B8); el backend lo vuelve a comprobar al vincular.

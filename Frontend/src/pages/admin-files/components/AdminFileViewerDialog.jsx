@@ -11,7 +11,7 @@ import { useAdminFileReviewOperations } from "../hooks/useAdminFileReviewOperati
 import { useAdminFileVersionContent } from "../hooks/useAdminFileVersionContent.js";
 import { useAdminFileVersions } from "../hooks/useAdminFileVersions.js";
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
-import { canLinkWarranties, describeRestoreResult, formatDisplayedVersionSuffix, getReplaceAvailability, getViewerKind } from "../utils/adminFileReview.js";
+import { canLinkWarranties, describeRestoreResult, formatDisplayedVersionSuffix, getReplaceAvailability, getViewerKind, isMediaViewerKind } from "../utils/adminFileReview.js";
 import { describeUploadResult } from "../utils/adminFileUpload.js";
 import AdminFileReasonDialog from "./AdminFileReasonDialog.jsx";
 import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
@@ -32,6 +32,16 @@ const MODAL_BOX = "flex w-[790px] max-w-full flex-col overflow-hidden rounded-[v
 // Área del documento: 527 px en escritorio (Figma), 213 px en móvil y toda la altura libre en tablet.
 const DOCUMENT_AREA = "h-[527px] min-h-[200px] max-[767px]:h-[213px] max-[767px]:min-h-0 min-[768px]:max-h-[calc(100dvh-211px)] min-[768px]:max-[1279px]:h-auto min-[768px]:max-[1279px]:max-h-none min-[768px]:max-[1279px]:flex-1";
 const DRAWER = "flex w-full flex-1 flex-col rounded-t-[var(--radius-3)] bg-[var(--color-neutral-100)] p-[16px] shadow-[var(--shadow-e2)] min-[768px]:h-full min-[768px]:w-[312px] min-[768px]:flex-none min-[768px]:overflow-y-auto min-[768px]:overscroll-contain min-[768px]:rounded-t-none min-[768px]:rounded-l-[var(--radius-3)]";
+
+// Imágenes, vídeos y panorámicas (Figma 3941:671103, 3941:675497 y 3940:666189): el escenario de
+// galería de Proyectos ocupa todo el espacio libre con 24 px de margen y el drawer 3940:666330 de
+// 312 px queda pegado al borde derecho. Por debajo de 921 px se apilan como en los visores de
+// Proyectos (escenario de 62 dvh, mínimo 360; 58 dvh y 300 en móvil, y el historial debajo), para
+// que el drawer no reduzca el medio a un tamaño inútil.
+const MEDIA_LAYOUT = "flex h-dvh w-screen flex-col overflow-y-auto overscroll-contain min-[921px]:flex-row min-[921px]:overflow-hidden";
+const MEDIA_AREA = "flex shrink-0 p-[16px] min-[921px]:min-h-0 min-[921px]:min-w-0 min-[921px]:flex-1 min-[921px]:p-[24px]";
+const MEDIA_STAGE = "flex h-[62dvh] min-h-[360px] w-full min-w-0 max-[520px]:h-[58dvh] max-[520px]:min-h-[300px] min-[921px]:h-full min-[921px]:min-h-0";
+const MEDIA_DRAWER = "flex w-full flex-1 flex-col gap-[24px] rounded-t-[var(--radius-3)] bg-[var(--color-neutral-100)] p-[16px] shadow-[var(--shadow-e2)] min-[921px]:h-full min-[921px]:w-[312px] min-[921px]:flex-none min-[921px]:overflow-y-auto min-[921px]:overscroll-contain min-[921px]:rounded-t-none min-[921px]:rounded-l-[var(--radius-3)]";
 
 /**
  * Versión mostrada a partir de la fila de la tabla, mientras el historial no la trae.
@@ -213,6 +223,63 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
     if (event.target === event.currentTarget) closeIfIdle();
   };
 
+  const mediaLayout = isMediaViewerKind(kind);
+  const surface = (
+    <AdminFileVersionSurface
+      kind={kind}
+      content={content}
+      src={api.fileManager.getVersionContentUrl(versionRef)}
+      title={displayName}
+      view={view}
+      onClose={closeIfIdle}
+      onViewChange={(next) => setViews((current) => ({ ...current, [displayed.id]: next }))}
+      onDownload={() => downloadVersion(displayed)}
+      downloading={downloading}
+    />
+  );
+  const historyPanel = (
+    <AdminFileVersionHistory
+      history={history}
+      displayedVersionId={displayed.id}
+      actionsDisabled={busy}
+      addVersion={{ ...replaceAvailability, onClick: () => setReplaceOpen(true) }}
+      onView={(version) => {
+        operations.clearError();
+        setDisplayedVersionId(version.id);
+      }}
+      onDownload={downloadVersion}
+      onRestore={(version) => setReasonDialog({ kind: "restore", version })}
+    />
+  );
+  // Sin el modal de documentos, el drawer de medios recoge lo que su cabecera y su pie mostraban:
+  // la versión que se ve si no es la vigente, el error de una operación y las acciones de revisión
+  // y de garantías. «Cerrar» es la X del escenario y «Reemplazar», el «+» del historial.
+  const showWarranties = !pending && canLinkWarranties(item);
+  const mediaPanel = versionSuffix || operations.error || pending || showWarranties ? (
+    <div className="mt-auto flex flex-col gap-[12px] border-t border-[var(--color-neutral-200)] pt-[16px]" data-admin-file-media-actions>
+      {versionSuffix ? <p className="text-body-3 m-0 text-[var(--color-text-200)]" data-admin-file-viewer-status>Mostrando {versionSuffix}</p> : null}
+      {operations.error ? <p role="alert" className="text-body-3 m-0 text-[var(--color-danger-100)]">{operations.error}</p> : null}
+      {pending || showWarranties ? (
+        <div className="flex flex-wrap gap-[12px]">
+          {pending ? (
+            <>
+              <Button theme="Danger" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[120px] flex-1" onClick={() => setReasonDialog({ kind: "reject", version: displayed })}>
+                Rechazar
+              </Button>
+              <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} aria-busy={operations.pending === "approve" || undefined} className="h-[41px] min-w-[120px] flex-1" onClick={approve}>
+                {operations.pending === "approve" ? "Aprobando..." : "Aprobar"}
+              </Button>
+            </>
+          ) : (
+            <Button theme="Primary" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] flex-1" onClick={() => setWarrantiesOpen(true)}>
+              Garantías
+            </Button>
+          )}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <>
       <Modal visible showDialog overlayVariant="blurred" transitionPreset="fade-scale" dialogShellClassName="!pb-0" contentClassName="!p-0" onClose={busy ? undefined : onClose}>
@@ -222,81 +289,76 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
           aria-labelledby={titleId}
           aria-busy={busy || undefined}
           data-admin-file-viewer
-          className={VIEWER_LAYOUT}
+          className={mediaLayout ? MEDIA_LAYOUT : VIEWER_LAYOUT}
+          data-admin-file-viewer-layout={mediaLayout ? "media" : "document"}
           onClick={closeOnBackdrop}
         >
           <h2 id={titleId} className="sr-only">{displayName}, versión {displayed.versionNumber}</h2>
-          <div className={MODAL_AREA} onClick={closeOnBackdrop}>
-            <div className={MODAL_BOX} data-admin-file-modal>
-              <DocumentFileCard document={header} keepExtension variant="modal" closeIcon={<CloseIcon />} onClose={pending && !busy ? onClose : undefined} />
-              <div className="flex min-h-0 flex-1 flex-col px-[16px] pb-[16px]">
-                <div className={`${DOCUMENT_AREA} overflow-hidden rounded-[var(--radius-3)]`} aria-busy={content.status === "loading" || undefined} data-admin-file-document>
-                  <AdminFileVersionSurface
-                    kind={kind}
-                    content={content}
-                    src={api.fileManager.getVersionContentUrl(versionRef)}
-                    title={displayName}
-                    view={view}
-                    onViewChange={(next) => setViews((current) => ({ ...current, [displayed.id]: next }))}
-                    onDownload={() => downloadVersion(displayed)}
-                    downloading={downloading}
-                  />
+          {mediaLayout ? (
+            <>
+              <div className={MEDIA_AREA} onClick={closeOnBackdrop}>
+                <div className={MEDIA_STAGE} data-admin-file-media aria-busy={busy || undefined}>{surface}</div>
+              </div>
+              <aside className={MEDIA_DRAWER} aria-label="Historial de versiones" data-admin-file-history-drawer>
+                {historyPanel}
+                {mediaPanel}
+              </aside>
+            </>
+          ) : (
+            <>
+              <div className={MODAL_AREA} onClick={closeOnBackdrop}>
+                <div className={MODAL_BOX} data-admin-file-modal>
+                  <DocumentFileCard document={header} keepExtension variant="modal" closeIcon={<CloseIcon />} onClose={pending && !busy ? onClose : undefined} />
+                  <div className="flex min-h-0 flex-1 flex-col px-[16px] pb-[16px]">
+                    <div className={`${DOCUMENT_AREA} overflow-hidden rounded-[var(--radius-3)]`} aria-busy={content.status === "loading" || undefined} data-admin-file-document>
+                      {surface}
+                    </div>
+                  </div>
+                  {operations.error ? <p role="alert" className="text-body-3 m-0 border-t border-[var(--color-neutral-200)] px-[16px] py-[12px] text-[var(--color-danger-100)]">{operations.error}</p> : null}
+                  <footer className="flex w-full shrink-0 flex-wrap items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
+                    {pending ? (
+                      <>
+                        <Button theme="Danger" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={() => setReasonDialog({ kind: "reject", version: displayed })}>
+                          Rechazar
+                        </Button>
+                        <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} aria-busy={operations.pending === "approve" || undefined} className="h-[41px] min-w-[140px] flex-1" onClick={approve}>
+                          {operations.pending === "approve" ? "Aprobando..." : "Aprobar"}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button theme="Primary" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={onClose}>
+                          Cerrar
+                        </Button>
+                        <Button
+                          theme="Primary"
+                          type="Solid"
+                          size="S"
+                          showLeftIcon={false}
+                          showRightIcon={false}
+                          disabled={busy || !replaceAvailability.allowed}
+                          tooltip={replaceAvailability.allowed ? "Subir una versión nueva" : replaceAvailability.reason}
+                          aria-label={replaceAvailability.allowed ? "Reemplazar" : `Reemplazar. ${replaceAvailability.reason}`}
+                          className="h-[41px] min-w-[140px] flex-1"
+                          onClick={() => setReplaceOpen(true)}
+                        >
+                          Reemplazar
+                        </Button>
+                        {canLinkWarranties(item) ? (
+                          <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={() => setWarrantiesOpen(true)}>
+                            Garantías
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
+                  </footer>
                 </div>
               </div>
-              {operations.error ? <p role="alert" className="text-body-3 m-0 border-t border-[var(--color-neutral-200)] px-[16px] py-[12px] text-[var(--color-danger-100)]">{operations.error}</p> : null}
-              <footer className="flex w-full shrink-0 flex-wrap items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
-                {pending ? (
-                  <>
-                    <Button theme="Danger" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={() => setReasonDialog({ kind: "reject", version: displayed })}>
-                      Rechazar
-                    </Button>
-                    <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} aria-busy={operations.pending === "approve" || undefined} className="h-[41px] min-w-[140px] flex-1" onClick={approve}>
-                      {operations.pending === "approve" ? "Aprobando..." : "Aprobar"}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button theme="Primary" type="Outline" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={onClose}>
-                      Cerrar
-                    </Button>
-                    <Button
-                      theme="Primary"
-                      type="Solid"
-                      size="S"
-                      showLeftIcon={false}
-                      showRightIcon={false}
-                      disabled={busy || !replaceAvailability.allowed}
-                      tooltip={replaceAvailability.allowed ? "Subir una versión nueva" : replaceAvailability.reason}
-                      aria-label={replaceAvailability.allowed ? "Reemplazar" : `Reemplazar. ${replaceAvailability.reason}`}
-                      className="h-[41px] min-w-[140px] flex-1"
-                      onClick={() => setReplaceOpen(true)}
-                    >
-                      Reemplazar
-                    </Button>
-                    {canLinkWarranties(item) ? (
-                      <Button theme="Primary" type="Solid" size="S" showLeftIcon={false} showRightIcon={false} disabled={busy} className="h-[41px] min-w-[140px] flex-1" onClick={() => setWarrantiesOpen(true)}>
-                        Garantías
-                      </Button>
-                    ) : null}
-                  </>
-                )}
-              </footer>
-            </div>
-          </div>
-          <aside className={DRAWER} aria-label="Historial de versiones" data-admin-file-history-drawer>
-            <AdminFileVersionHistory
-              history={history}
-              displayedVersionId={displayed.id}
-              actionsDisabled={busy}
-              addVersion={{ ...replaceAvailability, onClick: () => setReplaceOpen(true) }}
-              onView={(version) => {
-                operations.clearError();
-                setDisplayedVersionId(version.id);
-              }}
-              onDownload={downloadVersion}
-              onRestore={(version) => setReasonDialog({ kind: "restore", version })}
-            />
-          </aside>
+              <aside className={DRAWER} aria-label="Historial de versiones" data-admin-file-history-drawer>
+                {historyPanel}
+              </aside>
+            </>
+          )}
         </div>
       </Modal>
       {reasonDialog ? (

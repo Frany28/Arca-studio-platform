@@ -2,78 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { getToggledCommentId } from "../../../utils/commentSelection.js";
-import MainLogo from "../../../assets/logos/MainLogo.jsx";
-import Button from "../../ui/Button/Button.jsx";
-import Tooltip from "../../ui/Tooltip/Tooltip.jsx";
 import GeneralCommentsDrawer from "./GeneralCommentsDrawer.jsx";
-import ImageHighlighter from "./ImageHighlighter.jsx";
+import ImageViewerStage from "./ImageViewerStage.jsx";
 import { useImageComments } from "./useImageComments.js";
 import { useProjectReadOnly } from "../../../contexts/ProjectReadOnlyContext.jsx";
 
 const MODAL_TRANSITION_MS = 320;
 const MODAL_EASING = "ease-in-out";
 const IMAGE_TRANSITION_MS = 180;
-
-function CloseIcon({ className }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M0.195262 0.195262C0.455612 -0.0650874 0.877722 -0.0650874 1.13807 0.195262L6 5.05719L10.8619 0.195263C11.1223 -0.0650867 11.5444 -0.0650866 11.8047 0.195263C12.0651 0.455612 12.0651 0.877722 11.8047 1.13807L6.94281 6L11.8047 10.8619C12.0651 11.1223 12.0651 11.5444 11.8047 11.8047C11.5444 12.0651 11.1223 12.0651 10.8619 11.8047L6 6.94281L1.13807 11.8047C0.877722 12.0651 0.455612 12.0651 0.195262 11.8047C-0.0650873 11.5444 -0.0650873 11.1223 0.195262 10.8619L5.05719 6L0.195262 1.13807C-0.0650874 0.877722 -0.0650874 0.455612 0.195262 0.195262Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function ArrowLeftIcon({ className }) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        d="M12.5 15L7.5 10L12.5 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ArrowRightIcon({ className }) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        d="M7.5 15L12.5 10L7.5 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function normalizeItems(items) {
   const seen = new Set();
@@ -87,64 +23,6 @@ function normalizeItems(items) {
     seen.add(key);
     return true;
   });
-}
-
-function ImageCarouselControl({ items, activeIndex, onSelect, onPrevious, onNext }) {
-  if (items.length <= 1) {
-    return null;
-  }
-
-  return (
-    <div className="absolute bottom-[16px] left-1/2 flex -translate-x-1/2 items-center gap-[12px]">
-      <Tooltip asChild portal showTip text="Imagen anterior" tipPosition="Top center">
-        <button
-          type="button"
-          className="flex size-8 items-center justify-center rounded-full text-[var(--color-neutral-100-uniform)] transition-colors hover:bg-[rgba(42,41,41,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]"
-          onClick={onPrevious}
-          aria-label="Imagen anterior"
-        >
-          <ArrowLeftIcon className="size-5" />
-        </button>
-      </Tooltip>
-
-      <div className="flex max-w-[340px] items-center gap-[6px] rounded-full bg-[rgba(42,41,41,0.82)] px-[10px] py-[7px]">
-        {items.map((item, index) => (
-          <Tooltip
-            key={item.id ?? item.image}
-            asChild
-            portal
-            showTip
-            text={`Ver imagen ${index + 1}`}
-            tipPosition="Top center"
-          >
-            <button
-              type="button"
-              className={clsx(
-                "h-[8px] rounded-full transition-[width,background-color] duration-200",
-                index === activeIndex
-                  ? "w-[28px] bg-[var(--color-neutral-100-uniform)]"
-                  : "w-[8px] bg-[var(--color-text-100)] hover:bg-[var(--color-neutral-300)]",
-              )}
-              onClick={() => onSelect(index)}
-              aria-label={`Ver imagen ${index + 1}`}
-              aria-current={index === activeIndex ? "true" : undefined}
-            />
-          </Tooltip>
-        ))}
-      </div>
-
-      <Tooltip asChild portal showTip text="Imagen siguiente" tipPosition="Top center">
-        <button
-          type="button"
-          className="flex size-8 items-center justify-center rounded-full text-[var(--color-neutral-100-uniform)] transition-colors hover:bg-[rgba(42,41,41,0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-300)]"
-          onClick={onNext}
-          aria-label="Imagen siguiente"
-        >
-          <ArrowRightIcon className="size-5" />
-        </button>
-      </Tooltip>
-    </div>
-  );
 }
 
 function getRootCommentId(comments, commentId) {
@@ -380,62 +258,20 @@ export default function ImageViewerModal({
         aria-label={displayItem.title}
         onClick={onClose}
       >
-        <div
+        <ImageViewerStage
+          annotations={annotationComments}
+          focusedAnnotationId={focusedAnnotationId}
+          imageSrc={displayItem.image}
+          isImageVisible={isImageVisible}
+          onSelectionChange={readOnly ? undefined : handleSelectionChange}
+          onClose={onClose}
+          carousel={{ activeIndex, items: galleryItems, onNext: handleNext, onPrevious: handlePrevious, onSelect: setActiveIndex }}
           className={clsx(
-            "relative min-w-0 flex-1 overflow-hidden",
-            "rounded-[var(--radius-3)] bg-[var(--color-neutral-200)]",
             "h-[calc(100dvh-32px)]",
             "max-[920px]:h-[62dvh] max-[920px]:min-h-[360px] max-[920px]:flex-none",
             "max-[520px]:h-[58dvh] max-[520px]:min-h-[300px]",
           )}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div
-            className={clsx(
-              "absolute inset-0 transition-[opacity,transform] duration-200 ease-out",
-              isImageVisible
-                ? "scale-100 opacity-100"
-                : "scale-[1.01] opacity-0",
-            )}
-          >
-            <ImageHighlighter
-              annotations={annotationComments}
-              focusedAnnotationId={focusedAnnotationId}
-              imageSrc={displayItem.image}
-              onSelectionChange={readOnly ? undefined : handleSelectionChange}
-            />
-          </div>
-
-          <div className="pointer-events-none absolute inset-0 bg-[rgba(42,41,41,0.18)]" />
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-[120px] bg-[linear-gradient(180deg,rgba(0,0,0,0.26)_0%,rgba(0,0,0,0)_100%)]" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[170px] bg-[linear-gradient(0deg,rgba(0,0,0,0.40)_0%,rgba(0,0,0,0)_100%)]" />
-
-          <div className="absolute left-[12px] top-[12px]">
-            <MainLogo size="32px" appearance="dark" alt="ARCA Studio" />
-          </div>
-
-          <Button
-            theme="Primary"
-            type="Solid"
-            size="S"
-            showText={false}
-            showLeftIcon
-            showRightIcon={false}
-            iconLeft={<CloseIcon className="size-3" />}
-            aria-label="Cerrar imagen"
-            tooltip={false}
-            onClick={onClose}
-            className="absolute right-[8px] top-[8px] size-9 text-[var(--color-text-200)]"
-          />
-
-          <ImageCarouselControl
-            items={galleryItems}
-            activeIndex={activeIndex}
-            onSelect={setActiveIndex}
-            onPrevious={handlePrevious}
-            onNext={handleNext}
-          />
-        </div>
+        />
 
         <div
           className={clsx(
