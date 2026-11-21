@@ -3,8 +3,8 @@ import { useId, useState } from "react";
 import { api } from "../../../api/http.js";
 import Button from "../../../components/ui/Button/Button.jsx";
 import FileUploadSection from "../../../components/ui/FileUploadSection/FileUploadSection.jsx";
+import Input from "../../../components/ui/Input/Input.jsx";
 import Modal, { ModalCloseButton } from "../../../components/ui/Modal/Modal.jsx";
-import TextArea from "../../../components/ui/TextArea/TextArea.jsx";
 import { useDialogKeyboard } from "../../../hooks/useDialogKeyboard.js";
 import { formatStorage } from "../../../utils/fileMetrics.js";
 import { useAdminFileUploadQueue } from "../hooks/useAdminFileUploadQueue.js";
@@ -41,11 +41,18 @@ function toCard(item, queue) {
   };
 }
 
+// Placeholder literal del campo «Motivo del cambio» en Figma 3727:683111.
+const CHANGE_NOTE_PLACEHOLDER = "Ej. “Falta firma del cliente, Datos actualizados, etc.”";
+
 /**
- * Diálogo de carga de U3 (Figma 3727:683875 «Nuevo archivo» y 3727:683876 «Reemplazar archivo»):
+ * Diálogo de carga de U3 (Figma 3727:683875 «Nuevo archivo» y 3727:683111 «Reemplazar archivo»):
  * zona para elegir o arrastrar, tarjetas con progreso, error y reintento, y «Confirmar». El
- * reemplazo añade el motivo obligatorio (B4), que Figma no dibuja y la API exige. Todo archivo o
- * versión subida queda pendiente de revisión; el aviso lo da la página con la respuesta confirmada.
+ * reemplazo sigue Figma: título, zona de carga y, debajo, el campo de una línea «Motivo del
+ * cambio *» (obligatorio, ≤255, lo exige la API), con 4 px entre bloques; el archivo que se
+ * reemplaza se anuncia a los lectores de pantalla en la descripción del diálogo. Lo abren
+ * «Reemplazar» del visor, el «+» del drawer «Historial de versiones» y «Más opciones» de la tabla.
+ * Todo archivo o versión subida queda pendiente de revisión; el aviso lo da la página con la
+ * respuesta confirmada.
  * Mientras una carga está en curso no se cierra: se cancela desde su tarjeta, y la cola reconcilia
  * con lo guardado si la carga llegó a registrarse.
  *
@@ -142,42 +149,15 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
         className="flex max-h-[calc(100dvh-32px)] w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <form id={formId} className="relative flex min-h-0 flex-col gap-[12px] overflow-y-auto p-[16px]" onSubmit={handleSubmit} noValidate>
+        <form id={formId} className={`relative flex min-h-0 flex-col overflow-y-auto p-[16px] ${replacing ? "gap-[4px]" : "gap-[12px]"}`} onSubmit={handleSubmit} noValidate>
           <div className="absolute right-0 top-0">
             <ModalCloseButton disabled={queue.busy} ariaLabel={copy.close} onClick={onClose} />
           </div>
           <div className="flex flex-col gap-[4px] pr-[28px]">
             <h2 id={`${formId}-title`} className="text-heading-6 m-0 text-[var(--color-text-300)]">{copy.title}</h2>
-            <p id={`${formId}-location`} className="text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-100)]">{location}</p>
+            {/* Figma 3727:683111 no muestra el archivo reemplazado: queda en la descripción accesible. */}
+            <p id={`${formId}-location`} className={replacing ? "sr-only" : "text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-100)]"}>{location}</p>
           </div>
-          {replacing ? (
-            <div className="flex flex-col gap-[8px]">
-              <TextArea
-                id={`${formId}-note`}
-                label="Motivo del cambio"
-                required
-                showLabel
-                showLabelInfo={false}
-                showHint={false}
-                value={note}
-                placeholder="Ej. «Se añade la firma del cliente.»"
-                state={noteError ? "Error" : "Default"}
-                disabled={queue.busy}
-                maxLength={CHANGE_NOTE_MAX_LENGTH}
-                rows={3}
-                minHeight={88}
-                className="max-w-none"
-                aria-describedby={noteError ? `${formId}-note-error ${formId}-note-hint` : `${formId}-note-hint`}
-                onChange={(event) => {
-                  setNote(event.target.value);
-                  setNoteError("");
-                }}
-              />
-              {/* Ayuda y error fuera del TextArea: su ayuda aparece al perder el foco y desplazaría el pie. */}
-              <p id={`${formId}-note-hint`} className="text-body-4 m-0 text-[var(--color-text-100)]">Máximo {CHANGE_NOTE_MAX_LENGTH} caracteres. Se muestra en el historial.</p>
-              {noteError ? <p id={`${formId}-note-error`} className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{noteError}</p> : null}
-            </div>
-          ) : null}
           <FileUploadSection
             className="w-full"
             // Sin `disabled`: deshabilitaría también el botón que cancela la carga en curso. Lo que se
@@ -195,6 +175,36 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
             onFilesSelected={queue.add}
             aria-label={replacing ? "Elegir el archivo de la versión nueva" : "Elegir archivos para subir"}
           />
+          {replacing ? (
+            <div className="flex flex-col gap-[8px]">
+              <Input
+                id={`${formId}-note`}
+                type="Default input"
+                size="S"
+                label="Motivo del cambio"
+                required
+                showLabel
+                showLabelInfo={false}
+                showHint={false}
+                showLeftIcon={false}
+                showRightIcon={false}
+                value={note}
+                placeholder={CHANGE_NOTE_PLACEHOLDER}
+                state={noteError ? "Error" : "Default"}
+                disabled={queue.busy}
+                maxLength={CHANGE_NOTE_MAX_LENGTH}
+                className="w-full max-w-none"
+                aria-invalid={noteError ? true : undefined}
+                aria-describedby={noteError ? `${formId}-note-error` : undefined}
+                onChange={(event) => {
+                  setNote(event.target.value);
+                  setNoteError("");
+                }}
+              />
+              {/* El error va fuera del Input para no desplazar el pie mientras se escribe. */}
+              {noteError ? <p id={`${formId}-note-error`} className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{noteError}</p> : null}
+            </div>
+          ) : null}
         </form>
         <footer className="flex items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
           <Button theme="Primary" type="Outline" size="M" showLeftIcon={false} showRightIcon={false} disabled={queue.busy} className="!h-[41px] !w-full min-w-0 flex-1" onClick={onClose}>

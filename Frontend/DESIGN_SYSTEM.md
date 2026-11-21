@@ -1075,9 +1075,15 @@ Validación, capturas y diferencias respecto a Figma:
 - Carga (U3; Figma `3727:683875` «Nuevo archivo», `3727:683876` «Reemplazar archivo», móvil
   `3727:684027`): `AdminFileUploadDialog` reutiliza `FileUploadSection` (elegir o arrastrar,
   tarjetas con progreso, «Intenta de nuevo» y «Eliminar») dentro del patrón Modal de 400 px, con
-  «Cerrar»/«Cancelar» y «Confirmar». «Reemplazar archivo» añade el motivo obligatorio (≤255), que
-  Figma no dibuja y la API exige; su ayuda y su error van fuera del TextArea por el mismo motivo que
-  el diálogo de rechazo.
+  «Cerrar»/«Cancelar» y «Confirmar». «Reemplazar archivo» sigue Figma `3727:683111`: título h6,
+  zona de carga y debajo el campo de una línea «Motivo del cambio *» (`Input` S, placeholder
+  «Ej. “Falta firma del cliente, Datos actualizados, etc.”», obligatorio y ≤255, lo exige la API
+  y se guarda como `changeNote` de la versión), con 4 px entre bloques; el archivo reemplazado
+  solo se anuncia en la descripción accesible del diálogo y el error del motivo va fuera del
+  `Input`. Lo abren «Reemplazar» del visor, el «+» del drawer «Historial de versiones» y «Más
+  opciones» de la tabla. El texto de formatos enumera la política vigente (PDF, DOCX, XLSX, JPEG,
+  PNG y MP4) en lugar del genérico de Figma «JPEG, PNG, PDF», para no impedir versionar
+  documentos DOCX, XLSX o MP4 existentes.
   - «+ Nuevo» está a la derecha de la barra en Aprobados y sube a la carpeta seleccionada en el
     árbol; deshabilitado con su motivo sin carpeta, en la raíz del proyecto, en proyectos archivados
     o finalizados y con la portada ya ocupada. «Reemplazar» está en el pie del visor y en «Más

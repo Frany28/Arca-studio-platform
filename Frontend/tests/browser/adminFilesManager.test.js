@@ -1060,6 +1060,89 @@ test("U3 · «Reemplazar» desde el visor exige motivo, crea la versión pendien
   assert.match(await replace.getAttribute("aria-label"), /ya tiene una versión pendiente/);
 });
 
+test("«+» del historial abre «Reemplazar archivo» (Figma 3727:683111): valida, crea una sola versión con su motivo y actualiza el drawer", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  await viewer.locator("canvas").first().waitFor();
+  const drawer = viewer.locator("[data-admin-file-history-drawer]");
+  const add = drawer.getByRole("button", { name: "Subir una versión nueva" });
+  const versionPosts = () => backend.requests.filter((request) => request.method === "POST" && request.path === "/api/projects/1/files/30/versions").length;
+
+  // Dos clics seguidos abren un solo modal, con el documento gestionado en su descripción.
+  await add.click();
+  await add.click({ force: true }).catch(() => {});
+  const dialog = uploadDialog(page, "replace");
+  await dialog.waitFor();
+  assert.equal(await page.locator("[data-admin-file-upload]").count(), 1);
+  await dialog.getByRole("heading", { name: "Reemplazar archivo" }).waitFor();
+  assert.match(await dialog.evaluate((element) => document.getElementById(element.getAttribute("aria-describedby")).textContent), /Garantía impermeabilización\.pdf/);
+  const note = dialog.getByRole("textbox", { name: /Motivo del cambio/ });
+  assert.equal(await note.getAttribute("placeholder"), "Ej. “Falta firma del cliente, Datos actualizados, etc.”");
+  assert.equal(await dialog.getByRole("button", { name: "Confirmar" }).isDisabled(), true, "sin archivo no se confirma");
+
+  // Cancelar, la X y Escape cierran sin crear nada.
+  await dialog.getByRole("button", { name: "Cancelar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await add.click();
+  await dialog.getByRole("button", { name: "Cerrar reemplazo de archivo" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await add.click();
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(await viewerDialog(page).count(), 1, "Escape solo cierra el modal de reemplazo");
+  assert.equal(versionPosts(), 0);
+
+  // Formato no admitido y más de 50 MB se rechazan antes de transferir (el reemplazo admite un archivo).
+  for (const [invalidFile, message] of [["txt", /Formato no admitido/], ["large", /supera el tamaño máximo de 50 MB/]]) {
+    await add.click();
+    const invalid = await page.evaluateHandle((kind) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(kind === "txt"
+        ? new File(["texto"], "Notas.txt", { type: "text/plain" })
+        : new File([new Uint8Array(50 * 1024 * 1024 + 1)], "Enorme.pdf", { type: "application/pdf" }));
+      return transfer;
+    }, invalidFile);
+    await dialog.getByText("Arrastra y suelta").dispatchEvent("drop", { dataTransfer: invalid });
+    await dialog.getByText(message).waitFor();
+    assert.equal(await dialog.getByRole("button", { name: "Confirmar" }).isDisabled(), true);
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
+    await dialog.waitFor({ state: "detached" });
+  }
+
+  // Arrastrar un PDF válido; un motivo de solo espacios no se envía y conserva el archivo elegido.
+  await add.click();
+  const valid = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["%PDF-1.4"], "Garantía firmada.pdf", { type: "application/pdf" }));
+    return transfer;
+  });
+  await dialog.getByText("Arrastra y suelta").dispatchEvent("drop", { dataTransfer: valid });
+  await dialog.getByText("Garantía firmada", { exact: true }).waitFor();
+  await note.fill("   ");
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.getByText("Escribe el motivo del cambio.").waitFor();
+  assert.equal(await note.getAttribute("aria-invalid"), "true");
+  assert.equal(versionPosts(), 0, "sin motivo no se transfiere");
+  await dialog.getByText("Garantía firmada", { exact: true }).waitFor();
+
+  // Confirmar (doble clic) crea una sola versión con su motivo y el drawer la muestra.
+  await note.fill("Datos actualizados desde el historial.");
+  await dialog.getByRole("button", { name: "Confirmar" }).dblclick();
+  await dialog.waitFor({ state: "detached" });
+  assert.equal(versionPosts(), 1, "una sola subida");
+  await page.getByText("Se creó la V13 de «Garantía impermeabilización.pdf». Queda pendiente de revisión: la versión vigente no cambia hasta aprobarla.").waitFor();
+  const history = drawer.getByRole("list", { name: "Versiones del archivo" });
+  await history.locator("li[data-version-number='13']").getByText("V13 · Pendiente de revisión").waitFor();
+  await history.locator("li[data-version-number='13']").getByText("Motivo: Datos actualizados desde el historial.").waitFor();
+  await history.locator("li[data-version-number='12']").getByText("Versión actual", { exact: true }).waitFor();
+  assert.equal(await history.locator("li").count(), 11, "la página visible añade la nueva y conserva las anteriores");
+  // Con una versión pendiente, el «+» queda deshabilitado con su motivo.
+  assert.equal(await add.isDisabled(), true);
+  assert.match(await add.getAttribute("aria-label"), /ya tiene una versión pendiente/);
+});
+
 test("U3 · «Reemplazar archivo» desde la tabla (no en Pendientes) y restaurar la vigente aprobada (B4)", async (context) => {
   const backend = createBackend();
   const page = await openFiles(context, backend);
