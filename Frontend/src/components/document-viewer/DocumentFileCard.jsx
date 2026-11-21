@@ -8,6 +8,9 @@ import { getFileDisplayName } from "../../utils/fileDisplayName.js";
  * Encabezado de un documento abierto: icono del tipo, nombre, tamaño y fecha, y su responsable.
  * Lo comparten los documentos de proyecto y el visor de cotizaciones. `keepExtension` muestra el
  * nombre completo del archivo (`COT-001.pdf`, como Figma 5812:283654) en lugar de quitarle la extensión.
+ * La variante `modal` (visor del administrador de archivos, Figma 3727:682968) alinea el responsable a
+ * la derecha a 24 px del nombre, reserva el hueco de la X solo si hay `onClose` y, por debajo de
+ * 520 px, conserva una sola fila mostrando únicamente el avatar (su nombre queda accesible).
  *
  * @param {Object} props - Documento, variante y cierre opcional.
  * @param {Object|null} props.document - Datos del documento (name, fileType, size, uploadedAt, owner, ownerAvatarSrc).
@@ -30,11 +33,11 @@ export default function DocumentFileCard({ closeIcon = null, document, keepExten
       className={clsx(
         "relative flex w-full items-center bg-[var(--color-neutral-100)] p-[16px]",
         isModal
-          ? "min-h-[72px] gap-[48px] pr-[56px] max-[720px]:gap-[24px] max-[520px]:flex-wrap max-[520px]:gap-[12px]"
+          ? clsx("min-h-[72px] gap-[24px] max-[520px]:gap-[12px]", onClose && "pr-[56px]")
           : "gap-[24px] max-[720px]:flex-wrap max-[520px]:gap-[16px]",
       )}
     >
-      <div className={clsx("flex min-w-0 items-center gap-[12px]", !isModal && "flex-1")}>
+      <div className="flex min-w-0 flex-1 items-center gap-[12px]">
         <FileAttachmentIcons
           type={document.fileType}
           className={clsx(
@@ -74,7 +77,7 @@ export default function DocumentFileCard({ closeIcon = null, document, keepExten
           avatarName={document.owner}
           avatarDecorative={false}
           className="shrink-0"
-          textClassName="text-[var(--color-text-300)]"
+          textClassName={clsx("text-[var(--color-text-300)]", isModal && "max-[520px]:sr-only")}
         />
       ) : null}
 

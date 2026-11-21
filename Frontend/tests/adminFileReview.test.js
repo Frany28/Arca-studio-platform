@@ -7,6 +7,8 @@ import {
   describeOperationError,
   describeRestoreResult,
   describeReviewResult,
+  describeVersionNote,
+  formatDisplayedVersionSuffix,
   formatReviewStatus,
   formatVersionLabel,
   getRestoreAvailability,
@@ -49,9 +51,29 @@ test("warranties are offered only inside «Documentos › Garantías» and its s
   assert.equal(canLinkWarranties({ folder: null }), false);
 });
 
+test("history notes and the viewer header name the version only when it adds information", () => {
+  const versions = [
+    { id: 30, review: { status: "approved" }, versionNumber: 3 },
+    { changeNote: "Vuelve la firmada.", id: 50, restoredFromVersionId: 30, review: { status: "pending" }, versionNumber: 5 },
+  ];
+  assert.equal(describeVersionNote(versions[1], versions), "Restaurada desde V3 · Motivo: Vuelve la firmada.");
+  assert.equal(describeVersionNote({ restoredFromVersionId: 1 }, versions), "Restaurada desde una versión anterior");
+  assert.equal(describeVersionNote({ changeNote: "Plano corregido.", review: { status: "approved" } }, []), "Motivo: Plano corregido.");
+  assert.equal(describeVersionNote({ changeNote: "x", review: { reason: "Falta la firma.", status: "rejected" } }, []), "Motivo del rechazo: Falta la firma.");
+  assert.equal(describeVersionNote({ review: { status: "approved" } }, []), "");
+
+  assert.equal(formatDisplayedVersionSuffix({ isCurrent: true, review: { status: "approved" }, versionNumber: 4 }), "");
+  assert.equal(formatDisplayedVersionSuffix({ isCurrent: true, review: { status: "legacy" }, versionNumber: 1 }), "");
+  assert.equal(formatDisplayedVersionSuffix({ isCurrent: false, review: { status: "approved" }, versionNumber: 2 }), "V2 · Aprobada");
+  assert.equal(formatDisplayedVersionSuffix({ isCurrent: false, review: { status: "pending" }, versionNumber: 5 }), "V5 · Pendiente de revisión");
+});
+
 test("history labels and restore availability follow the backend rules", () => {
-  assert.equal(formatVersionLabel({ isCurrent: true, versionNumber: 4 }), "Versión actual · V4");
-  assert.equal(formatVersionLabel({ isCurrent: false, versionNumber: 2 }), "V2");
+  // Drawer 3934:182047: «Versión actual» y «V2»; pendientes y rechazadas nombran su estado.
+  assert.equal(formatVersionLabel({ isCurrent: true, review: { status: "approved" }, versionNumber: 4 }), "Versión actual");
+  assert.equal(formatVersionLabel({ isCurrent: false, review: { status: "approved" }, versionNumber: 2 }), "V2");
+  assert.equal(formatVersionLabel({ isCurrent: false, review: { status: "pending" }, versionNumber: 5 }), "V5 · Pendiente de revisión");
+  assert.equal(formatVersionLabel({ isCurrent: false, review: { status: "rejected" }, versionNumber: 3 }), "V3 · Rechazada");
   assert.equal(formatReviewStatus("pending"), "Pendiente de revisión");
   assert.equal(formatReviewStatus(null), "Heredada");
   const approvedOld = { id: 1, isCurrent: false, review: { status: "approved" } };

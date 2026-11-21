@@ -44,14 +44,54 @@ export function canLinkWarranties(item) {
   return item?.folder?.section === WARRANTY_SECTION;
 }
 
+// Estados que el historial nombra junto a la versión porque Figma (3934:182047) solo dibuja aprobadas.
+const LABELED_HISTORY_STATUSES = Object.freeze(["pending", "rejected"]);
+
 /**
- * Etiqueta corta de una versión del historial: «Versión actual» para la vigente y «V3» para el resto.
+ * Etiqueta de una versión en el drawer del historial (Figma 3934:182047): «Versión actual» para la
+ * vigente y «V3» para el resto. Las pendientes y rechazadas añaden su estado («V5 · Pendiente de
+ * revisión»), que Figma no dibuja pero el administrador necesita para decidir.
  *
- * @param {{ versionNumber: number, isCurrent: boolean }} version - Versión.
+ * @param {{ versionNumber: number, isCurrent: boolean, review?: { status?: string } }} version - Versión.
  * @returns {string} Etiqueta.
  */
 export function formatVersionLabel(version) {
-  return version.isCurrent ? `Versión actual · V${version.versionNumber}` : `V${version.versionNumber}`;
+  const base = version.isCurrent ? "Versión actual" : `V${version.versionNumber}`;
+  const status = version.review?.status;
+  return LABELED_HISTORY_STATUSES.includes(status) ? `${base} · ${formatReviewStatus(status)}` : base;
+}
+
+/**
+ * Línea adicional de una versión del historial, solo cuando hay algo que contar: el motivo del
+ * rechazo, el origen de una restauración («Restaurada desde V2», si esa versión está cargada) y el
+ * motivo del cambio de un reemplazo o una restauración.
+ *
+ * @param {Object} version - Versión del historial.
+ * @param {Array<Object>} versions - Versiones cargadas (para resolver el número de la de origen).
+ * @returns {string} Texto o cadena vacía.
+ */
+export function describeVersionNote(version, versions) {
+  if (version.review?.status === "rejected" && version.review?.reason) return `Motivo del rechazo: ${version.review.reason}`;
+  const parts = [];
+  if (version.restoredFromVersionId) {
+    const source = (versions || []).find((candidate) => candidate.id === version.restoredFromVersionId);
+    parts.push(source ? `Restaurada desde V${source.versionNumber}` : "Restaurada desde una versión anterior");
+  }
+  if (version.changeNote) parts.push(`Motivo: ${version.changeNote}`);
+  return parts.join(" · ");
+}
+
+/**
+ * Indica en la cabecera del visor qué versión se muestra cuando no es la vigente aprobada (ver una
+ * versión anterior, una pendiente o una rechazada); con la vigente, la cabecera queda como Figma.
+ *
+ * @param {{ versionNumber: number, isCurrent?: boolean, review?: { status?: string } }} version - Versión mostrada.
+ * @returns {string} «V3 · Aprobada» o cadena vacía.
+ */
+export function formatDisplayedVersionSuffix(version) {
+  const status = version.review?.status;
+  if (version.isCurrent && (status === "approved" || status === "legacy" || !status)) return "";
+  return `V${version.versionNumber} · ${formatReviewStatus(status)}`;
 }
 
 const REVIEW_STATUS_LABELS = Object.freeze({

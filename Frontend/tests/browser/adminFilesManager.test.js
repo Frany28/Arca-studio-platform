@@ -617,6 +617,7 @@ test("con la activación apagada solo muestra las métricas generales", async (c
 });
 
 const viewerDialog = (page) => page.locator("[data-admin-file-viewer]");
+const viewerHeader = (viewer) => viewer.locator("[data-admin-file-modal] article");
 const reviewRequests = (backend, action) => backend.requests.filter((request) => request.method === "POST" && request.path.endsWith(`/${action}`));
 const metricsReads = (backend) => backend.requests.filter((request) => request.path === "/api/admin/files/metrics").length;
 
@@ -639,7 +640,7 @@ test("U2 · «Revisar» abre el PDF con historial; aprobar confirma lo que devue
   const page = await openFiles(context, backend);
   await page.getByRole("rowheader", { name: /Fachada/ }).waitFor();
   const viewer = await openPendingReview(page);
-  await viewer.getByText("V2 · Pendiente de revisión").waitFor();
+  await viewerHeader(viewer).getByText("V2 · Pendiente de revisión").waitFor();
   const history = viewer.getByRole("list", { name: "Versiones del archivo" });
   assert.deepEqual(await history.locator("li").evaluateAll((rows) => rows.map((row) => row.dataset.versionNumber)), ["2", "1"]);
   assert.equal(backend.requests.find((request) => request.path === "/api/projects/1/files/50/content").search.versionId, "500");
@@ -689,7 +690,7 @@ test("U2 · un 409 de versión ya revisada se informa sin cerrar el visor y reca
   await viewer.getByRole("alert").getByText("Esta versión ya fue revisada. Se actualizó la información.").waitFor();
   await waitUntil(() => versionReads() > versionsBefore && itemReads() > itemsBefore);
   assert.equal(await viewerDialog(page).count(), 1, "el visor sigue abierto con la versión mostrada");
-  await viewer.getByText("V2 · Pendiente de revisión").waitFor();
+  await viewerHeader(viewer).getByText("V2 · Pendiente de revisión").waitFor();
   assert.equal(await page.locator("[data-admin-file-review-result]").getByText("Archivo aprobado correctamente").count(), 0);
 });
 
@@ -706,12 +707,12 @@ test("U2 · historial paginado: ver, descargar y restaurar con motivo (la nueva 
   await history.locator("li[data-version-number='1']").waitFor();
   assert.equal(await history.locator("li").count(), 12);
   assert.equal(await viewer.getByRole("button", { name: "Mostrar más versiones" }).count(), 0);
-  await history.locator("li[data-version-number='12']").getByText("Versión actual · V12").waitFor();
+  await history.locator("li[data-version-number='12']").getByText("Versión actual", { exact: true }).waitFor();
 
   // Ver otra versión carga su contenido sin cerrar el visor.
   await viewer.getByRole("button", { name: "Opciones de la versión 3" }).click();
   await page.getByRole("menuitem", { exact: true, name: "Ver" }).click();
-  await viewer.getByText("V3 · Aprobada").waitFor();
+  await viewerHeader(viewer).getByText("V3 · Aprobada").waitFor();
   await waitUntil(() => backend.requests.some((request) => request.path === "/api/projects/1/files/30/content" && request.search.versionId === "3020"));
 
   // Descargar la versión mostrada reutiliza los bytes recibidos; otra versión la pide a la API.
@@ -732,13 +733,13 @@ test("U2 · historial paginado: ver, descargar y restaurar con motivo (la nueva 
   assert.deepEqual(reviewRequests(backend, "restore")[0].body, { changeNote: "Se vuelve a la versión firmada." });
   await history.locator("li[data-version-number='13']").getByText("Pendiente de revisión").waitFor();
   await history.locator("li[data-version-number='13']").getByText("Motivo: Se vuelve a la versión firmada.").waitFor();
-  await viewer.getByText("V13 · Pendiente de revisión").waitFor();
+  await viewerHeader(viewer).getByText("V13 · Pendiente de revisión").waitFor();
   await viewer.getByRole("button", { name: "Aprobar" }).waitFor();
   assert.equal(await history.locator("li").count(), 13, "el historial conserva todas las versiones");
 
   // Con una pendiente, restaurar otra queda deshabilitado con su motivo.
   await viewer.getByRole("button", { name: "Opciones de la versión 2" }).click();
-  assert.equal(await page.getByRole("menuitem", { name: /Restaurar versión \(El archivo ya tiene una versión pendiente/ }).isDisabled(), true);
+  assert.equal(await page.getByRole("menuitem", { name: /Restaurar versión\. El archivo ya tiene una versión pendiente/ }).isDisabled(), true);
   await page.keyboard.press("Escape");
 });
 
@@ -774,6 +775,81 @@ test("U2 · las imágenes se abren en el visor con la versión indicada", async 
   assert.match(await image.getAttribute("src"), /\/api\/projects\/2\/files\/40\/content\?versionId=400$/);
   await viewerDialog(page).getByRole("button", { name: "Cerrar", exact: true }).click();
   await viewerDialog(page).waitFor({ state: "detached" });
+});
+
+for (const theme of ["light", "dark"]) {
+  test(`visor de consulta: modal 3727:682968 centrado y drawer 3934:182047 a la derecha (${theme}, 1440 px)`, async (context) => {
+    const backend = createBackend();
+    const page = await openFiles(context, backend, { theme, viewport: { height: 1024, width: 1440 } });
+    await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+    const viewer = viewerDialog(page);
+    await viewer.locator("canvas").first().waitFor();
+    const drawer = viewer.locator("[data-admin-file-history-drawer]");
+    await drawer.getByRole("heading", { name: "Historial de versiones" }).waitFor();
+    const history = drawer.getByRole("list", { name: "Versiones del archivo" });
+    await history.locator("li[data-version-number='12']").getByText("Versión actual", { exact: true }).waitFor();
+    await history.locator("li[data-version-number='11']").getByText("V11", { exact: true }).waitFor();
+    // Fecha (relativa hasta 30 días, «Hace 3 días»; después, exacta) y autor.
+    await history.locator("li[data-version-number='12']").getByText(/^.+ \| Por Arq\. Armando$/).waitFor();
+    await page.waitForTimeout(400);
+    const layout = await page.evaluate(() => {
+      const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+      const modal = box("[data-admin-file-modal]");
+      const panel = box("[data-admin-file-history-drawer]");
+      return { drawer: { height: panel.height, left: panel.left, right: panel.right, width: panel.width }, modal: { left: modal.left, right: modal.right, width: modal.width }, viewport: { height: innerHeight, width: innerWidth } };
+    });
+    assert.equal(layout.modal.width, 790, "el modal mide 790 px como en Figma");
+    assert.equal(layout.drawer.width, 312, "el drawer mide 312 px");
+    assert.equal(layout.drawer.right, layout.viewport.width, "el drawer queda pegado al borde derecho");
+    assert.equal(layout.drawer.height, layout.viewport.height, "el drawer ocupa toda la altura");
+    assert.ok(layout.modal.right <= layout.drawer.left, "el modal no queda bajo el drawer");
+    assert.ok(Math.abs(layout.modal.left - (layout.viewport.width - 790) / 2) <= 8, "el modal queda centrado en la ventana");
+    // La consulta no tiene X (Figma 3727:682968): se cierra con «Cerrar», Escape o el fondo.
+    assert.equal(await viewer.getByRole("button", { name: "Cerrar visor" }).count(), 0);
+
+    // Menú de versión de 160 px solo con texto: «Ver», «Restaurar versión» y «Descargar».
+    await drawer.getByRole("button", { name: "Opciones de la versión 11" }).click();
+    const menu = page.getByRole("menu", { name: "Acciones para la versión 11" });
+    assert.deepEqual(await menu.getByRole("menuitem").allInnerTexts(), ["Ver", "Restaurar versión", "Descargar"]);
+    assert.equal(Math.round((await menu.boundingBox()).width), 160);
+    assert.equal(await menu.locator("svg").count(), 0, "las opciones no llevan iconos");
+    await page.keyboard.press("Escape");
+
+    // «+» abre el mismo reemplazo que «Reemplazar» (anotación de Figma «para reemplazar versión»).
+    await drawer.getByRole("button", { name: "Subir una versión nueva" }).click();
+    const dialog = uploadDialog(page, "replace");
+    await dialog.getByText("Archivo: Garantía impermeabilización.pdf").waitFor();
+    await dialog.getByRole("button", { name: "Cancelar" }).click();
+    await dialog.waitFor({ state: "detached" });
+
+    // Pulsar el fondo (fuera del modal y del drawer) cierra el visor.
+    await page.mouse.click(40, 500);
+    await viewer.waitFor({ state: "detached" });
+    if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/viewer-drawer-${theme}.png` });
+  });
+}
+
+test("visor en móvil: el modal arriba y el historial como hoja inferior, sin desbordar", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend, { viewport: { height: 812, width: 375 } });
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  await viewer.locator("canvas").first().waitFor();
+  await viewer.locator("[data-admin-file-history-drawer] li").first().waitFor();
+  await page.waitForTimeout(400);
+  const layout = await page.evaluate(() => {
+    const modal = document.querySelector("[data-admin-file-modal]").getBoundingClientRect();
+    const drawer = document.querySelector("[data-admin-file-history-drawer]").getBoundingClientRect();
+    return { drawerTop: drawer.top, drawerWidth: drawer.width, modalBottom: modal.bottom, modalWidth: modal.width, overflow: document.documentElement.scrollWidth - innerWidth };
+  });
+  assert.equal(layout.modalWidth, 343, "modal de 343 px con 16 px de margen (Figma 3953:297003)");
+  assert.equal(layout.drawerWidth, 375, "la hoja ocupa todo el ancho");
+  assert.ok(layout.drawerTop >= layout.modalBottom, "el historial va debajo del modal");
+  assert.ok(layout.overflow <= 0, "la página no desborda");
+  // El historial sigue accesible desplazando la composición.
+  await viewer.getByRole("button", { name: "Mostrar más versiones" }).scrollIntoViewIfNeeded();
+  await viewer.getByRole("button", { name: "Mostrar más versiones" }).click();
+  await viewer.locator("li[data-version-number='1']").waitFor();
 });
 
 for (const theme of ["light", "dark"]) {
@@ -968,7 +1044,7 @@ test("U3 · «Reemplazar» desde el visor exige motivo, crea la versión pendien
   await dialog.waitFor({ state: "detached" });
   await page.getByText("Se creó la V13 de «Garantía impermeabilización.pdf». Queda pendiente de revisión: la versión vigente no cambia hasta aprobarla.").waitFor();
   assert.ok(backend.requests.some((candidate) => candidate.method === "POST" && candidate.path === "/api/projects/1/files/30/versions"), "usa la ruta de versiones (B4)");
-  await viewer.getByText("V13 · Pendiente de revisión").waitFor();
+  await viewerHeader(viewer).getByText("V13 · Pendiente de revisión").waitFor();
   await viewer.getByRole("button", { name: "Aprobar" }).waitFor();
   const history = viewer.getByRole("list", { name: "Versiones del archivo" });
   await history.locator("li[data-version-number='13']").getByText("Motivo: Se añade la firma del cliente.").waitFor();
@@ -976,7 +1052,9 @@ test("U3 · «Reemplazar» desde el visor exige motivo, crea la versión pendien
 
   await viewer.getByRole("button", { name: "Opciones de la versión 12" }).click();
   await page.getByRole("menuitem", { exact: true, name: "Ver" }).click();
-  await viewer.getByText("V12 · Aprobada").waitFor();
+  // La vigente aprobada se muestra con la cabecera de Figma (sin sufijo) y el drawer la marca.
+  await history.locator("li[data-version-number='12'][aria-current='true']").waitFor();
+  assert.equal(await viewerHeader(viewer).getByText(/V1[23] ·/).count(), 0);
   const replace = viewer.getByRole("button", { name: /^Reemplazar/ });
   assert.equal(await replace.isDisabled(), true);
   assert.match(await replace.getAttribute("aria-label"), /ya tiene una versión pendiente/);

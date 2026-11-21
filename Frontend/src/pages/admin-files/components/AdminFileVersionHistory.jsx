@@ -1,18 +1,16 @@
 import clsx from "clsx";
-import { ArrowRotateLeft, DocumentDownload, Eye } from "iconsax-react";
+import { Add, ArrowRight2, Status } from "iconsax-react";
 
 import ActionMenu from "../../../components/ui/ActionMenu/ActionMenu.jsx";
-import Badge from "../../../components/ui/Badge/Badge.jsx";
 import Button from "../../../components/ui/Button/Button.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
+import { formatHumanDate } from "../../../utils/relativeTime.js";
 import { formatFileDate } from "../utils/adminFilesPresentation.js";
-import { formatReviewStatus, formatVersionLabel, getRestoreAvailability } from "../utils/adminFileReview.js";
-
-const STATUS_BADGE_THEMES = Object.freeze({ approved: "Success", pending: "Info", rejected: "Danger" });
+import { describeVersionNote, formatVersionLabel, getRestoreAvailability } from "../utils/adminFileReview.js";
 
 /**
- * Acciones del menú de una versión: ver, restaurar (deshabilitada con su motivo si no procede) y
- * descargar.
+ * Acciones del menú de una versión (Figma 3939:504526, 160 px, solo texto y divisores): ver,
+ * restaurar (deshabilitada con su motivo en `hint` si no procede) y descargar.
  *
  * @param {Object} version - Versión.
  * @param {Array<Object>} versions - Versiones cargadas.
@@ -21,23 +19,91 @@ const STATUS_BADGE_THEMES = Object.freeze({ approved: "Success", pending: "Info"
 function versionActions(version, versions) {
   const restore = getRestoreAvailability(version, versions);
   return [
-    { icon: Eye, id: "view", label: "Ver" },
-    { disabled: !restore.allowed, icon: ArrowRotateLeft, id: "restore", label: restore.allowed ? "Restaurar versión" : `Restaurar versión (${restore.reason})` },
-    { icon: DocumentDownload, id: "download", label: "Descargar" },
+    { id: "view", label: "Ver" },
+    { disabled: !restore.allowed, hint: restore.reason || undefined, id: "restore", label: "Restaurar versión", separated: true },
+    { id: "download", label: "Descargar", separated: true },
   ];
 }
 
 /**
- * Historial de versiones del visor (Figma 3952:187549): de la más reciente a la más antigua, con
- * la versión mostrada resaltada, su estado de revisión y el motivo del rechazo o de la restauración.
- * Cada versión ofrece «Ver», «Restaurar versión» (cualquier aprobada, también la vigente, y sin otra pendiente;
- * crea una versión nueva pendiente y conserva el historial) y «Descargar». «Mostrar más versiones»
- * pide la página siguiente.
+ * Paso del historial (patrón «Progress step base» Featured Icon S de Figma): la versión vigente usa
+ * el estado completado (icono `Status` sobre `primary-300`) y el resto el incompleto (chevron con
+ * borde). Se compone aquí porque `ProgressStepBase` fija el icono `Image`, alinea arriba con 8 px y
+ * mide 304 px, mientras el drawer centra con 12 px y añade el menú y la línea de motivo.
  *
- * @param {Object} props - Historial (useAdminFileVersions), versión mostrada y callbacks.
- * @returns {import("react").ReactElement} Panel lateral.
+ * @param {Object} props - Versión, posición y callbacks.
+ * @returns {import("react").ReactElement} Elemento de la lista.
  */
-function AdminFileVersionHistory({ actionsDisabled, displayedVersionId, history, onDownload, onRestore, onView }) {
+function VersionStep({ actionsDisabled, displayed, isLast, onSelect, version, versions }) {
+  const current = Boolean(version.isCurrent);
+  const note = describeVersionNote(version, versions);
+  const author = version.uploadedBy?.name || "Usuario";
+  return (
+    <li className="relative flex items-start justify-between gap-[8px]" data-version-number={version.versionNumber} aria-current={displayed ? "true" : undefined}>
+      {/* Conector de 2 px entre centros de iconos (24 px de separación + 18 px hasta el centro). */}
+      {!isLast ? <span aria-hidden="true" className="absolute -bottom-[42px] left-[15px] top-[18px] w-[2px] bg-[var(--color-neutral-200)]" /> : null}
+      {!isLast && current ? <span aria-hidden="true" className="absolute left-[15px] top-[18px] h-[33px] w-[2px] bg-[var(--color-primary-300)]" /> : null}
+      <div className="flex min-w-0 flex-1 items-start gap-[12px]">
+        <span
+          aria-hidden="true"
+          className={clsx(
+            "relative z-[1] mt-[2px] flex size-[32px] shrink-0 items-center justify-center rounded-[var(--radius-2)] shadow-[var(--shadow-e1)]",
+            current
+              ? "bg-[var(--color-primary-300)] text-[var(--color-neutral-100-uniform)]"
+              : "border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] text-[var(--color-text-100)]",
+          )}
+        >
+          {current ? <Status size="16" variant="Linear" color="currentColor" /> : <ArrowRight2 size="16" variant="Linear" color="currentColor" />}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-[4px] pt-[1px]">
+          <p className={clsx("text-body-3 m-0 truncate", current ? "text-[var(--color-text-200)]" : "text-[var(--color-text-100)]")} title={`V${version.versionNumber}`}>
+            {formatVersionLabel(version)}
+          </p>
+          <p className={clsx("text-body-4 m-0 truncate", current ? "text-[var(--color-text-100)]" : "text-[var(--color-neutral-400)]")}>
+            <time dateTime={version.createdAt} title={formatFileDate(version.createdAt)}>{formatHumanDate(version.createdAt)}</time> | Por {author}
+          </p>
+          {note ? <p className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={note}>{note}</p> : null}
+        </div>
+      </div>
+      <ActionMenu
+        items={versionActions(version, versions)}
+        triggerLabel={`Opciones de la versión ${version.versionNumber}`}
+        menuLabel={`Acciones para la versión ${version.versionNumber}`}
+        tooltip="Más opciones"
+        menuWidthClassName="w-[160px]"
+        disabled={actionsDisabled}
+        onSelect={(item) => onSelect(item.id, version)}
+      />
+    </li>
+  );
+}
+
+/**
+ * Drawer «Historial de versiones» del visor (Figma 3934:182047): título, «+» para incorporar una
+ * versión (anotación de Figma «para reemplazar versión»: abre el mismo flujo que «Reemplazar»),
+ * pasos de la más reciente a la más antigua con fecha relativa y autor, menú «Ver», «Restaurar
+ * versión» (cualquier aprobada, también la vigente, y sin otra pendiente; crea una versión nueva
+ * pendiente y conserva el historial) y «Descargar», y «Mostrar más versiones» con la página
+ * siguiente de la API.
+ *
+ * @param {Object} props - Historial (useAdminFileVersions), versión mostrada, alta y callbacks.
+ * @param {{ allowed: boolean, reason: string, onClick: () => void }} props.addVersion - «+» (reemplazo).
+ * @returns {import("react").ReactElement} Contenido del drawer.
+ */
+function AdminFileVersionHistory({ actionsDisabled, addVersion, displayedVersionId, history, onDownload, onRestore, onView }) {
+  /**
+   * Ejecuta la acción elegida en el menú de una versión.
+   *
+   * @param {"view"|"restore"|"download"} action - Acción.
+   * @param {Object} version - Versión.
+   * @returns {void}
+   */
+  function handleSelect(action, version) {
+    if (action === "view") onView(version);
+    else if (action === "restore") onRestore(version);
+    else onDownload(version);
+  }
+
   let content;
   if (history.loading && !history.versions.length) {
     content = <p className="text-body-3 m-0 text-[var(--color-text-100)]" role="status">Cargando versiones...</p>;
@@ -45,72 +111,51 @@ function AdminFileVersionHistory({ actionsDisabled, displayedVersionId, history,
     content = (
       <EmptyState title="No se pudo cargar el historial" description={history.error} size="S" showFeaturedIcon={false} showActions showSecondaryAction={false} primaryActionLabel="Reintentar" onPrimaryAction={history.reload} />
     );
+  } else if (!history.versions.length) {
+    content = <p className="text-body-3 m-0 text-[var(--color-text-100)]">Este archivo todavía no tiene versiones registradas.</p>;
   } else {
     content = (
-      <ol className="flex flex-col" aria-label="Versiones del archivo">
-        {history.versions.map((version, index) => {
-          const displayed = version.id === displayedVersionId;
-          const status = version.review?.status || "legacy";
-          const note = status === "rejected" ? version.review?.reason : version.changeNote;
-          const author = version.uploadedBy?.name || "Usuario";
-          return (
-            <li key={version.id} className="relative flex gap-[12px] pb-[16px]" data-version-number={version.versionNumber} aria-current={displayed ? "true" : undefined}>
-              {index < history.versions.length - 1 ? <span aria-hidden="true" className="absolute bottom-0 left-[15px] top-[32px] w-px bg-[var(--color-neutral-300)]" /> : null}
-              <span
-                aria-hidden="true"
-                className={clsx(
-                  "relative z-[1] flex size-[32px] shrink-0 items-center justify-center rounded-[var(--radius-2)] border text-body-4",
-                  displayed ? "border-[var(--color-primary-300)] bg-[var(--color-primary-300)] text-[var(--color-neutral-100-uniform)]" : "border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)] text-[var(--color-text-200)]",
-                )}
-              >
-                V{version.versionNumber}
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
-                <div className="relative min-h-[20px] pr-[40px]">
-                  <p className="text-heading-8 m-0 truncate pt-[6px] text-[var(--color-text-300)]">{formatVersionLabel(version)}</p>
-                  {/* El menú va en la esquina para que la fecha quede pegada a la etiqueta, como en Figma. */}
-                  <div className="absolute -top-[2px] right-0">
-                    <ActionMenu
-                      items={versionActions(version, history.versions)}
-                      triggerLabel={`Opciones de la versión ${version.versionNumber}`}
-                      menuLabel={`Acciones para la versión ${version.versionNumber}`}
-                      tooltip="Más opciones"
-                      menuWidthClassName="w-[240px]"
-                      disabled={actionsDisabled}
-                      onSelect={(item) => {
-                        if (item.id === "view") onView(version);
-                        else if (item.id === "restore") onRestore(version);
-                        else onDownload(version);
-                      }}
-                    />
-                  </div>
-                </div>
-                <p className="text-body-4 m-0 text-[var(--color-text-100)]">
-                  <time dateTime={version.createdAt}>{formatFileDate(version.createdAt)}</time> | Por {author}
-                </p>
-                <Badge label={formatReviewStatus(status)} theme={STATUS_BADGE_THEMES[status] || "Neutral"} size="S" className="self-start" />
-                {version.restoredFromVersionId ? <p className="text-body-4 m-0 text-[var(--color-text-100)]">Restaurada desde otra versión aprobada.</p> : null}
-                {note ? <p className="text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-200)]">{status === "rejected" ? "Motivo del rechazo: " : "Motivo: "}{note}</p> : null}
-              </div>
-            </li>
-          );
-        })}
+      <ol className="flex flex-col gap-[24px]" aria-label="Versiones del archivo">
+        {history.versions.map((version, index) => (
+          <VersionStep
+            key={version.id}
+            version={version}
+            versions={history.versions}
+            displayed={version.id === displayedVersionId}
+            isLast={index === history.versions.length - 1}
+            actionsDisabled={actionsDisabled}
+            onSelect={handleSelect}
+          />
+        ))}
       </ol>
     );
   }
 
   return (
-    <section className="flex min-h-0 flex-col gap-[16px]" aria-labelledby="admin-file-history-title" aria-busy={history.loading || undefined}>
-      <h3 id="admin-file-history-title" className="text-heading-6 m-0 text-[var(--color-text-300)]">Historial de versiones</h3>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-[4px] [scrollbar-width:thin]">
-        {content}
-        {history.error && history.versions.length ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{history.error}</p> : null}
-        {history.hasMore ? (
-          <Button theme="Primary" type="Link" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={history.loadingMore || actionsDisabled} onClick={history.loadMore}>
-            {history.loadingMore ? "Cargando versiones..." : "Mostrar más versiones"}
-          </Button>
-        ) : null}
+    <section className="flex flex-col gap-[24px]" aria-labelledby="admin-file-history-title" aria-busy={history.loading || undefined}>
+      <div className="flex items-center justify-between gap-[8px]">
+        <h3 id="admin-file-history-title" className="text-heading-5 m-0 text-[var(--color-text-50)]">Historial de versiones</h3>
+        <Button
+          theme="Primary"
+          type="Ghost"
+          size="S"
+          showText={false}
+          showLeftIcon
+          iconLeft={<Add size="20" color="currentColor" />}
+          showRightIcon={false}
+          disabled={actionsDisabled || !addVersion.allowed}
+          tooltip={addVersion.allowed ? "Subir una versión nueva" : addVersion.reason}
+          aria-label={addVersion.allowed ? "Subir una versión nueva" : `Subir una versión nueva. ${addVersion.reason}`}
+          onClick={addVersion.onClick}
+        />
       </div>
+      {content}
+      {history.error && history.versions.length ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{history.error}</p> : null}
+      {history.hasMore ? (
+        <Button theme="Primary" type="Ghost" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={history.loadingMore || actionsDisabled} className="self-start" onClick={history.loadMore}>
+          {history.loadingMore ? "Cargando versiones..." : "Mostrar más versiones"}
+        </Button>
+      ) : null}
     </section>
   );
 }

@@ -1011,10 +1011,29 @@ Validación, capturas y diferencias respecto a Figma:
   la descarga de su versión y «Más opciones» con «Historial de versiones» y, en «Documentos ›
   Garantías» y sus subcarpetas (`folder.section === "warranties"`), «Garantías». La columna
   Acciones mide 176 px. «Más opciones» incluye también «Reemplazar archivo» (U3).
-- Visor con revisión (U2; Figma `3727:683878`, motivo `3727:683879`, historial `3952:187549`,
-  avisos `3795:580699` y `3797:278032`): `AdminFileViewerDialog` sigue el patrón del visor de
-  cotizaciones (`DocumentFileCard` + área del visor + pie de dos acciones) y añade el historial a la
-  derecha (312 px; debajo cuando el diálogo mide menos de 880 px, por container query).
+- Visor con revisión (U2; modal `3727:682968`, drawer «Historial de versiones» `3934:182047`,
+  composición escritorio `3727:682849`, tablet `3952:187549`, móvil `3953:297003`; revisión
+  `3727:683878`, motivo `3727:683879`, avisos `3795:580699` y `3797:278032`): `AdminFileViewerDialog`
+  monta en un solo `Modal` el modal de 790 px (`DocumentFileCard` variante `modal` + documento de
+  527 px + pie «Cerrar»/«Reemplazar» de 41 px) y el drawer de 312 px anclado a la derecha a toda
+  altura (esquinas izquierdas de 12 px, `shadow-e2`). En escritorio el modal se centra en la ventana
+  mientras cabe junto al drawer; de 768 a 1279 px ocupa la columna izquierda con 24 px de margen y
+  toda la altura; por debajo de 768 px el modal va arriba (343 px, documento de 213 px) y el
+  historial pasa a hoja inferior con desplazamiento vertical. Pulsar el fondo, Escape o «Cerrar»
+  cierran; solo la revisión pendiente lleva X (como `3727:683385`). La cabecera añade «V3 · Aprobada»
+  cuando la versión mostrada no es la vigente aprobada; con la vigente queda como Figma.
+  - Drawer: título h5, «+» (anotación de Figma «para reemplazar versión»: abre el mismo
+    `AdminFileUploadDialog` en modo reemplazo que «Reemplazar», deshabilitado con su motivo) y pasos
+    «Versión actual» (icono `Status` sobre `primary-300`) y «Vn» (chevron `ArrowRight2` con borde),
+    con conector de 2 px (`neutral-200`; tramo `primary-300` bajo la vigente), fecha relativa
+    (`formatHumanDate`) y autor. Los colores son los estados Completed/Incomplete de
+    `ProgressStepBase`; las filas se componen aparte porque ese componente fija el icono `Image`,
+    8 px de separación alineados arriba y 304 px de ancho. Figma solo dibuja versiones aprobadas:
+    las pendientes y rechazadas añaden su estado a la etiqueta y, si hay datos, una línea con el
+    motivo del rechazo, «Restaurada desde Vn» o el motivo del cambio (`describeVersionNote`).
+  - Menú de cada versión: `ActionMenu` de 160 px solo con texto y divisores («Ver», «Restaurar
+    versión», «Descargar»); el motivo de una opción deshabilitada va en `hint` (`title` y nombre
+    accesible) para no alargar la etiqueta.
   - Visores reutilizados por tipo (`getViewerKind`): PDF con `PdfViewerSurface` (páginas, zoom y
     descarga de los bytes mostrados), DOCX y XLSX con `OfficeViewerSurface`, panorámicas
     (`fileCategory === "panorama"`) con `Panorama360Viewer` integrado; imágenes y vídeos con su

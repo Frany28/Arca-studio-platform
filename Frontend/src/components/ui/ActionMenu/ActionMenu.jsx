@@ -20,6 +20,8 @@ function MenuDivider() {
  * @property {"default"|"danger"} [tone="default"] - `danger` para acciones destructivas.
  * @property {boolean} [separated=false] - Dibuja un divisor antes del elemento.
  * @property {boolean} [disabled=false] - Muestra la acción sin permitir seleccionarla.
+ * @property {string} [hint] - Explicación breve (p. ej. por qué está deshabilitada): se muestra como
+ * `title` y se añade al nombre accesible, sin alargar la etiqueta visible en menús estrechos.
  */
 
 /**
@@ -261,6 +263,8 @@ function ActionMenu({
                         type="button"
                         role="menuitem"
                         disabled={item.disabled}
+                        title={item.hint || undefined}
+                        aria-label={item.hint ? `${item.label}. ${item.hint}` : undefined}
                         className={clsx(
                           "text-heading-8 flex h-[36px] w-full items-center gap-[12px] rounded-[var(--radius-2)] px-[8px] text-left transition-colors duration-150 focus:outline-none motion-reduce:transition-none",
                           isDanger ? "text-[var(--color-danger-100)]" : "text-[var(--color-text-200)]",
