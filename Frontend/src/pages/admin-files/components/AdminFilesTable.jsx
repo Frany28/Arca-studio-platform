@@ -1,4 +1,4 @@
-import { Clock, DocumentDownload, DocumentUpload, Eye, ShieldTick } from "iconsax-react";
+import { Clock, DocumentUpload, ExportCurve, Eye, ShieldTick } from "iconsax-react";
 
 import ActionMenu from "../../../components/ui/ActionMenu/ActionMenu.jsx";
 import Badge from "../../../components/ui/Badge/Badge.jsx";
@@ -11,7 +11,8 @@ import { canLinkWarranties, getReplaceAvailability } from "../utils/adminFileRev
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
 
 const ARIA_SORT = Object.freeze({ asc: "ascending", desc: "descending" });
-const HEADER_CELL = "px-[24px] py-[16px]";
+// `font-medium` explícito: el navegador pone los `th` en negrita y Figma usa Inter Medium 14.
+const HEADER_CELL = "px-[24px] py-[16px] font-medium";
 const BODY_CELL = "text-heading-8 truncate px-[24px] py-[16px] text-[var(--color-text-300)]";
 
 /**
@@ -52,7 +53,7 @@ function NameCell({ item, tab }) {
 
 /**
  * Acciones de una fila: «Revisar» (pendientes) o el ojo (consulta) abren el visor; la descarga
- * guarda esa versión; «Más opciones» abre el historial y, en documentos de «Documentos ›
+ * (icono `export` de Figma, ExportCurve) guarda esa versión; «Más opciones» abre el historial y, en documentos de «Documentos ›
  * Garantías», sus garantías. La acción «Eliminar» de Figma no se ofrece: los archivos se conservan.
  *
  * @param {Object} props - Fila, pestaña, estado y callbacks.
@@ -82,7 +83,7 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
         size="S"
         showText={false}
         showLeftIcon
-        iconLeft={<DocumentDownload size="20" color="currentColor" />}
+        iconLeft={<ExportCurve size="20" color="currentColor" />}
         showRightIcon={false}
         disabled={actionsDisabled}
         tooltip={downloading ? "Descargando..." : "Descargar versión"}
@@ -113,7 +114,7 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
  * fila es una versión real de la API; las versiones guardadas se conservan, así que la acción
  * «Eliminar» de Figma no se ofrece. Cada fila abre el visor con su historial (U2), descarga su
  * versión y, si procede, sus garantías; el reemplazo llega en U3. Desplaza en horizontal dentro de su
- * contenedor.
+ * contenedor. Como en Figma, las filas de 68 px no llevan divisores entre sí.
  *
  * @param {Object} props - Filas, pestaña, orden y callbacks.
  * @param {Array<Object>} props.items - Versiones de la página visible.
@@ -157,7 +158,7 @@ function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownl
               const downloading = downloadingVersionId === item.versionId;
               const uploader = item.uploadedBy?.name || "Sin autor";
               return (
-                <tr key={item.versionId} className="h-[68px] border-t border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]" data-version-id={item.versionId}>
+                <tr key={item.versionId} className="h-[68px] bg-[var(--color-neutral-100)]" data-version-id={item.versionId}>
                   <NameCell item={item} tab={tab} />
                   <td className={`${BODY_CELL} tabular-nums`}>v{item.versionNumber}</td>
                   {options.showProject ? <td className={BODY_CELL} title={item.project?.name}>{item.project?.name}</td> : null}

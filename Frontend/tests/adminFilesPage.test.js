@@ -22,7 +22,8 @@ test("admin files page implements the Figma KPI section with live metrics", asyn
   assert.match(page, /iconType="Accent"/);
   assert.match(page, /iconType="Info"/);
   assert.match(page, /iconType="Warning"/);
-  assert.match(page, /border-y border-\[var\(--color-neutral-200\)\] py-\[24px\]/);
+  // Divisores por dentro como en Figma: 1 + 23 + contenido + 23 + 1 = 97 px en escritorio.
+  assert.match(page, /min-h-\[97px\][\s\S]*border-y border-\[var\(--color-neutral-200\)\] py-\[23px\]/);
   assert.match(kpi, /variant = "default"/);
   assert.match(kpi, /: "min-w-\[235px\] pr-\[16px\]"/);
   assert.match(kpi, /gap-\[12px\][\s\S]*text-heading-8[\s\S]*text-heading-4/);

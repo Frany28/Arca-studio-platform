@@ -210,7 +210,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   );
 
   return (
-    <div className="flex flex-col gap-[24px] min-[768px]:gap-[48px]">
+    <div className="flex flex-col gap-[48px]">
       <HorizontalTabMenu
         items={TAB_LABELS}
         activeIndex={tabIndex}

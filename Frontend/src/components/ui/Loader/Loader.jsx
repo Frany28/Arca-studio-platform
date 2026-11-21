@@ -288,7 +288,7 @@ function AdminFilesTableSkeleton({ rows, showProject }) {
         <div style={{ minWidth: getAdminFilesTableMinWidth(options) }}>
           <SkeletonBlock className="h-[49px] w-full rounded-none" />
           {Array.from({ length: rows }, (_, rowIndex) => (
-            <div key={rowIndex} className="grid h-[68px] items-center border-b border-[var(--color-neutral-200)] last:border-b-0" style={{ gridTemplateColumns: getAdminFilesGridTemplate(options) }}>
+            <div key={rowIndex} className="grid h-[68px] items-center" style={{ gridTemplateColumns: getAdminFilesGridTemplate(options) }}>
               <SkeletonBlock className="mx-[24px] h-[17px] w-[75%] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="text" />
               <SkeletonBlock className="mx-[24px] h-[17px] w-[24px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 15} tone="text" />
               {showProject ? <SkeletonBlock className="mx-[24px] h-[17px] rounded-[var(--radius-1)]" delay={rowIndex * 35 + 25} tone="text" /> : null}

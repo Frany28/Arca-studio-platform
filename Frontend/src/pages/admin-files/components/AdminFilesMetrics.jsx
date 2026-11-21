@@ -10,14 +10,16 @@ const NUMBER_FORMATTER = new Intl.NumberFormat("es-VE");
 /**
  * KPI de la cabecera (Figma 3727:683873): archivos totales, espacio usado y última carga. Con el
  * administrador activado vienen de `GET /admin/files/metrics` (restauraciones contadas una vez);
- * con la activación apagada, del resumen del dashboard (useAdminFilesMetrics).
+ * con la activación apagada, del resumen del dashboard (useAdminFilesMetrics). Figma dibuja los
+ * divisores por dentro (97 px en escritorio, 227 px en móvil): 1 + 23 px de relleno por lado
+ * reproducen esa altura con el borde CSS.
  *
  * @param {Object} props - Estado de useAdminFilesMetrics.
  * @returns {import("react").ReactElement} Fila de métricas.
  */
 function AdminFilesMetrics({ error, loading, metrics, reload }) {
   return (
-    <div className="flex min-h-[98px] w-full flex-wrap content-center items-center gap-y-[16px] border-y border-[var(--color-neutral-200)] py-[24px]" aria-label="Métricas de archivos">
+    <div className="flex min-h-[97px] w-full flex-wrap content-center items-center gap-y-[16px] border-y border-[var(--color-neutral-200)] py-[23px]" aria-label="Métricas de archivos">
       {loading ? (
         <Loader preset="adminUserMetrics" label="Cargando métricas de archivos" />
       ) : error ? (

@@ -982,14 +982,25 @@ Validación, capturas y diferencias respecto a Figma:
   Seleccionar un proyecto o carpeta acota la tabla (`includeSubfolders=true`); pulsar de nuevo el
   proyecto seleccionado quita el ámbito. «Buscar carpeta...» consulta carpetas por nombre visible
   (con su ruta proyecto › carpetas) y proyectos por nombre o cliente.
+- Ritmo vertical (Figma `3727:683873` y móvil `3727:683883`): 16 px entre título y KPI y 48 px
+  entre KPI, pestañas y área de trabajo en todos los anchos. El bloque de KPI mide 97 px (227 px en
+  móvil) porque Figma dibuja los divisores por dentro: `border-y` + `py-[23px]`. La barra de la
+  tabla compensa con `-my-[2px]` los botones de 44 px junto al buscador de 40 px, así que la tabla
+  empieza 64 px bajo la barra; sus filas sucesivas se separan 16 px.
 - Dos columnas (árbol 280–340 px + tabla) cuando el contenedor mide al menos 800 px (container
-  query); por debajo el árbol se apila encima con altura máxima y desplazamiento propio. La tabla
-  desplaza en horizontal dentro de `HorizontalScrollViewport`; la página nunca desborda.
+  query); por debajo el árbol se apila encima con cuatro filas visibles (184 px, como Figma móvil)
+  y desplazamiento propio. La tabla desplaza en horizontal dentro de `HorizontalScrollViewport`;
+  la página nunca desborda.
 - Tabla: geometría en `config/adminFilesTable.js`, compartida con el skeleton (`Loader`
   `adminFilesTable`, variante `withProject`; el árbol usa `adminFilesTree`). Orden real por
   Nombre, Peso y Fecha (`aria-sort`); el embudo de Tipo remite al filtro múltiple de la barra.
   Paginación por cursor de 10 filas (el cursor pertenece a la pestaña y el orden). Sin columna de
-  selección: no hay acciones masivas.
+  selección: no hay acciones masivas. Encabezados y celdas en Inter Medium 14 (`th` con
+  `font-medium` explícito frente a la negrita del navegador); filas de 68 px sin divisores, también
+  en el skeleton. La descarga de la fila usa `ExportCurve` (icono `export` de Figma). El orden usa
+  `ArrowSwapVertical` de `TableHeaderLabel`, compartido con las demás tablas del administrador;
+  Figma dibuja `arrow-3` (`ArrangeVertical`), pendiente de unificar en todas ellas a la vez porque su
+  variante Bold no distingue el orden aplicado.
 - Carpetas: «+» crea una subcarpeta en la carpeta seleccionada; está deshabilitado sin carpeta,
   en la raíz del proyecto (decisión D7 pendiente) y en la portada. Solo las carpetas
   personalizadas ofrecen «Renombrar» y «Retirar carpeta» (solo vacías, lo comprueba el backend);

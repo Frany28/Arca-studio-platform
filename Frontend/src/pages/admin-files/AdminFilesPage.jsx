@@ -56,8 +56,9 @@ function AdminFilesPage() {
       showGreeting={false}
       onNotificationsToggle={() => setIsNotificationsDrawerOpen((open) => !open)}
     >
-      <section className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-[24px] px-[16px] pb-[48px] sm:px-[24px] min-[768px]:gap-[48px] lg:px-[48px]" aria-labelledby="admin-files-title">
-        <header className="flex flex-col gap-[24px]">
+      {/* Figma 3727:683873 / 3727:683883: 16 px entre título y KPI y 48 px entre secciones, también en móvil. */}
+      <section className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-[48px] px-[16px] pb-[48px] sm:px-[24px] lg:px-[48px]" aria-labelledby="admin-files-title">
+        <header className="flex flex-col gap-[16px]">
           <AdminPageTitle id="admin-files-title">Gestión de archivos</AdminPageTitle>
           <AdminFilesMetrics {...metrics} />
         </header>

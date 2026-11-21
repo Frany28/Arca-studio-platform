@@ -164,8 +164,8 @@ function FolderSearchResults({ onSelect, results, selection }) {
  * Columna «Proyectos» de la pestaña Aprobados (Figma 3727:683873): búsqueda de carpetas, «+» para
  * crear una subcarpeta en la carpeta seleccionada y el árbol de proyectos con sus carpetas
  * anidadas. Seleccionar un proyecto o una carpeta acota la tabla; volver a pulsar el proyecto
- * seleccionado quita el ámbito. En móvil el árbol se apila sobre la tabla con altura máxima y
- * desplazamiento propio.
+ * seleccionado quita el ámbito. Apilado sobre la tabla (contenedor < 800 px), el árbol muestra
+ * cuatro filas como Figma móvil 3727:683883 (184 px) y desplaza el resto con su ScrollBar.
  *
  * @param {Object} props - Árbol (useAdminFilesTree), selección, carpetas expandidas y callbacks.
  * @returns {import("react").ReactElement} Columna del árbol.
@@ -272,7 +272,7 @@ function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFol
       <div className="relative min-h-0">
         <div
           ref={viewportRef}
-          className="max-h-[420px] overflow-y-auto overscroll-contain pr-[16px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-[1024px]:max-h-[720px]"
+          className="max-h-[184px] overflow-y-auto overscroll-contain pr-[16px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden @min-[800px]:max-h-[720px]"
           onScroll={syncScrollState}
           data-admin-files-tree-viewport
         >

@@ -12,6 +12,9 @@ import { ADMIN_FILES_TYPE_OPTIONS } from "../utils/adminFilesPresentation.js";
  * de Figma; con poco ancho los controles pasan a filas sucesivas y en móvil ocupan todo el ancho.
  * «+ Nuevo» (U3) va a la derecha y sube a la carpeta seleccionada en el árbol; sin una carpeta
  * válida se muestra deshabilitado con su motivo. Fuera de Aprobados (sin árbol) no se muestra.
+ * Como en Figma, la fila mide lo que el buscador (40 px) y los botones de 44 px sobresalen 2 px por
+ * cada lado (-my-[2px]), de modo que la tabla empieza 64 px bajo la barra; las filas sucesivas se
+ * separan 16 px, como la variante móvil.
  *
  * @param {Object} props - Estado de la consulta y callbacks.
  * @param {string} props.query - Texto escrito en la búsqueda.
@@ -31,7 +34,7 @@ function AdminFilesToolbar({ extensions, hasFilters, newAction = null, onClearFi
   })), [extensions]);
 
   return (
-    <div className="flex flex-wrap items-center gap-[12px]" data-admin-files-toolbar>
+    <div className="-my-[2px] flex flex-wrap items-center gap-x-[12px] gap-y-[16px]" data-admin-files-toolbar>
       <div className="min-w-[200px] max-w-[320px] flex-1 max-[767px]:max-w-none max-[767px]:basis-full">
         <Input
           type="Default input"
