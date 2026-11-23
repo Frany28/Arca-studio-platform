@@ -122,3 +122,29 @@ export async function failQuotePdf(versionId, token, code) {
     [versionId, token, code],
   );
 }
+
+/**
+ * Lista las versiones comerciales de una cotización, de la más reciente a la más antigua, con la
+ * referencia de su PDF (si existe) y el autor de cada versión. Solo lee PostgreSQL: el estado del
+ * objeto en Storage lo verifica `getQuotePdf` al servir cada documento.
+ *
+ * @param {number} quoteId - Cotización.
+ * @param {{ beforeVersion: number|null, limit: number }} page - Versión desde la que continuar y tamaño.
+ * @returns {Promise<Array<object>>} Hasta `limit + 1` filas.
+ */
+export async function listQuotePdfVersions(quoteId, { beforeVersion, limit }) {
+  const result = await query(
+    `select q.code, q.id as quote_id, v.id as version_id, v.version_number, v.is_current, v.created_at,
+       v.project_id, v.project_name, author.id as author_id, author.first_name as author_first_name, author.last_name as author_last_name,
+       doc.status, doc.file_name, doc.size_bytes, doc.generated_at, doc.stored_at, doc.error_code
+     from public.quotes q
+     inner join public.quote_versions v on v.quote_id = q.id
+     left join public.quote_pdf_documents doc on doc.quote_version_id = v.id
+     left join public.users author on author.id = v.created_by
+     where q.id = $1 and ($2::int is null or v.version_number < $2::int)
+     order by v.version_number desc
+     limit $3`,
+    [quoteId, beforeVersion, limit + 1],
+  );
+  return result.rows;
+}

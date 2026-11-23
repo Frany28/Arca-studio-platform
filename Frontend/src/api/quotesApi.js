@@ -180,4 +180,26 @@ export const quotesApi = {
   retryQuotePdf({ quoteId, signal, version }) {
     return apiRequest(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf/retry${toQueryString({ version })}`, { method: "POST", signal });
   },
+
+  /**
+   * Descarga el PDF almacenado de una versión concreta con el nombre de Content-Disposition.
+   * Sirve los bytes originales verificados; nunca regenera el documento.
+   *
+   * @param {{quoteId: number, version: number, signal?: AbortSignal}} params - Documento y cancelación.
+   * @returns {Promise<{blob: Blob, fileName: string|null}>} Documento y nombre indicado por el servidor.
+   */
+  downloadQuotePdf({ quoteId, signal, version }) {
+    return apiRequestFile(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf${toQueryString({ version })}`, { signal });
+  },
+
+  /**
+   * Lista el historial de PDF de una cotización: sus versiones comerciales, de la más reciente a la
+   * más antigua, con el estado de cada documento (`pending`, `available` o `error`).
+   *
+   * @param {{quoteId: number, cursor?: string, limit?: number, signal?: AbortSignal}} params - Cotización y página.
+   * @returns {Promise<{quote: Object, versions: Array<Object>, nextCursor: string|null}>} Página del historial.
+   */
+  listQuotePdfVersions({ cursor, limit, quoteId, signal }) {
+    return apiRequest(`/admin/quotes/${encodeURIComponent(quoteId)}/pdf/versions${toQueryString({ cursor, limit })}`, { signal });
+  },
 };

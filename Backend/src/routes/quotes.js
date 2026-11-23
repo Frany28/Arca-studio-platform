@@ -6,6 +6,7 @@ import {
   getQuoteClientProjects,
   getQuoteClients,
   getQuotePdfDocument,
+  getQuotePdfVersions,
   getQuotes,
   getQuotesSummary,
   patchQuote,
@@ -22,6 +23,7 @@ import {
   quoteDetailSchema,
   quoteListSchema,
   quotePdfSchema,
+  quotePdfVersionsSchema,
   quoteProjectOptionsSchema,
   quoteUpdateSchema,
 } from "../validation/quoteSchemas.js";
@@ -41,6 +43,7 @@ router.get("/clients/:clientId/projects", validate(quoteProjectOptionsSchema), g
 router.get("/:quoteId", validate(quoteDetailSchema), getQuoteById);
 router.patch("/:quoteId", adminRateLimits.quoteWrite, validate(quoteUpdateSchema), patchQuote);
 router.get("/:quoteId/pdf", adminRateLimits.quotePdf, validate(quotePdfSchema), getQuotePdfDocument);
+router.get("/:quoteId/pdf/versions", validate(quotePdfVersionsSchema), getQuotePdfVersions);
 router.post("/:quoteId/pdf/retry", adminRateLimits.quotePdf, validate(quotePdfSchema), postQuotePdfRetry);
 
 export default router;

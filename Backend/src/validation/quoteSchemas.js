@@ -163,6 +163,12 @@ const quoteIdParams = z.object({ quoteId: positiveId });
 
 export const quoteDetailSchema = z.object({ params: quoteIdParams });
 
+// Historial de PDF: cursor opaco con el número de la última versión vista.
+export const quotePdfVersionsSchema = z.object({
+  params: quoteIdParams,
+  query: z.object({ cursor: z.string().max(200).optional(), limit: pageLimit }).passthrough(),
+});
+
 // timeZone se acepta por compatibilidad; los PDF persistentes usan la zona canónica guardada.
 export const quotePdfSchema = z.object({
   params: quoteIdParams,

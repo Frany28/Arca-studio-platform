@@ -146,6 +146,28 @@ export function createQuoteDatabaseMock() {
   function respond(sql, params = []) {
     const text = sql.replace(/\s+/g, " ").trim();
     statements.push(text);
+    if (text.startsWith("select q.code, q.id as quote_id, v.id as version_id")) {
+      // Historial de PDF (quotePdfRepository.listQuotePdfVersions): versiones con su documento.
+      const [quoteId, beforeVersion, limit] = params;
+      const quote = state.quotes.find((candidate) => candidate.id === Number(quoteId));
+      if (!quote) return { rowCount: 0, rows: [] };
+      const versions = state.versions
+        .filter((version) => version.quoteId === quote.id && (beforeVersion === null || version.versionNumber < beforeVersion))
+        .sort((left, right) => right.versionNumber - left.versionNumber)
+        .slice(0, limit);
+      const rows = versions.map((version) => {
+        const author = state.users.get(version.createdBy);
+        const doc = pdf.rows.get(version.id);
+        return {
+          author_first_name: author?.firstName ?? null, author_id: author ? String(author.id) : null, author_last_name: author?.lastName ?? null,
+          code: quote.code, created_at: version.createdAt, error_code: doc?.error_code ?? null, file_name: doc?.file_name ?? null,
+          generated_at: doc?.generated_at ?? null, is_current: version.isCurrent, project_id: String(version.projectId), project_name: version.projectName,
+          quote_id: String(quote.id), size_bytes: doc?.size_bytes ?? null, status: doc?.status ?? null, stored_at: doc?.stored_at ?? null,
+          version_id: String(version.id), version_number: version.versionNumber,
+        };
+      });
+      return { rowCount: rows.length, rows };
+    }
     const documentResult = pdf.respond(sql, params);
     if (documentResult) return documentResult;
     const result = (rows, rowCount = rows.length) => ({ rowCount, rows });

@@ -34,9 +34,10 @@ function versionActions(version, versions) {
  * @param {Object} props - Versión, posición y callbacks.
  * @returns {import("react").ReactElement} Elemento de la lista.
  */
-function VersionStep({ actionsDisabled, displayed, isLast, onSelect, version, versions }) {
+function VersionStep({ actionsDisabled, displayed, getActions, isLast, onSelect, version, versions }) {
   const current = Boolean(version.isCurrent);
-  const note = describeVersionNote(version, versions);
+  // Una versión puede traer su propia línea (p. ej. el estado del PDF de una cotización).
+  const note = version.note ?? describeVersionNote(version, versions);
   const author = version.uploadedBy?.name || "Usuario";
   return (
     <li className="relative flex items-start justify-between gap-[8px]" data-version-number={version.versionNumber} aria-current={displayed ? "true" : undefined}>
@@ -66,7 +67,7 @@ function VersionStep({ actionsDisabled, displayed, isLast, onSelect, version, ve
         </div>
       </div>
       <ActionMenu
-        items={versionActions(version, versions)}
+        items={getActions(version, versions)}
         triggerLabel={`Opciones de la versión ${version.versionNumber}`}
         menuLabel={`Acciones para la versión ${version.versionNumber}`}
         tooltip="Más opciones"
@@ -88,9 +89,11 @@ function VersionStep({ actionsDisabled, displayed, isLast, onSelect, version, ve
  *
  * @param {Object} props - Historial (useAdminFileVersions), versión mostrada, alta y callbacks.
  * @param {{ allowed: boolean, reason: string, onClick: () => void }} props.addVersion - «+» (reemplazo).
+ * @param {(version: Object, versions: Array<Object>) => Array<Object>} [props.getVersionActions] - Menú de cada versión
+ *   (por defecto ver, restaurar y descargar; los PDF de cotizaciones solo ven y descargan).
  * @returns {import("react").ReactElement} Contenido del drawer.
  */
-function AdminFileVersionHistory({ actionsDisabled, addVersion, displayedVersionId, history, onDownload, onRestore, onView }) {
+function AdminFileVersionHistory({ actionsDisabled, addVersion, displayedVersionId, getVersionActions = versionActions, history, onDownload, onRestore, onView }) {
   /**
    * Ejecuta la acción elegida en el menú de una versión.
    *
@@ -100,7 +103,7 @@ function AdminFileVersionHistory({ actionsDisabled, addVersion, displayedVersion
    */
   function handleSelect(action, version) {
     if (action === "view") onView(version);
-    else if (action === "restore") onRestore(version);
+    else if (action === "restore") onRestore?.(version);
     else onDownload(version);
   }
 
@@ -124,6 +127,7 @@ function AdminFileVersionHistory({ actionsDisabled, addVersion, displayedVersion
             displayed={version.id === displayedVersionId}
             isLast={index === history.versions.length - 1}
             actionsDisabled={actionsDisabled}
+            getActions={getVersionActions}
             onSelect={handleSelect}
           />
         ))}

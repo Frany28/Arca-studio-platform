@@ -9,6 +9,7 @@ import { formatStorage } from "../../../utils/fileMetrics.js";
 import TableHeaderLabel from "../../admin-services-quotes/components/TableHeaderLabel.jsx";
 import { canLinkWarranties, getReplaceAvailability } from "../utils/adminFileReview.js";
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
+import { describeQuotePdfStatus, getAdminFileItemKey, isQuoteItem } from "../utils/adminQuoteDocuments.js";
 
 const ARIA_SORT = Object.freeze({ asc: "ascending", desc: "descending" });
 // `font-medium` explícito: el navegador pone los `th` en negrita y Figma usa Inter Medium 14.
@@ -39,12 +40,23 @@ function SortableHeader({ disabled, field, label, onSort, sort }) {
  */
 function NameCell({ item, tab }) {
   const reason = tab === "rejected" ? item.review?.reason : "";
+  // PDF de cotización no disponible: se informa su estado bajo el nombre (pendiente o el fallo).
+  const quoteStatus = isQuoteItem(item) ? describeQuotePdfStatus(item.quote.pdf) : null;
   return (
     <th scope="row" className="truncate px-[24px] py-[12px] text-left font-normal">
       <span className="text-heading-8 block truncate text-[var(--color-text-300)]" title={item.name}>{item.name}</span>
       {reason ? (
         <span className="text-body-4 block truncate text-[var(--color-danger-100)]" title={`Motivo del rechazo: ${reason}`}>
           Motivo: {reason}
+        </span>
+      ) : null}
+      {quoteStatus?.label ? (
+        <span
+          className={`text-body-4 block truncate ${item.quote.pdf.status === "error" ? "text-[var(--color-danger-100)]" : "text-[var(--color-text-100)]"}`}
+          title={quoteStatus.label}
+          data-quote-pdf-status={item.quote.pdf.status}
+        >
+          {quoteStatus.label}
         </span>
       ) : null}
     </th>
@@ -61,13 +73,18 @@ function NameCell({ item, tab }) {
  */
 function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, onReplace, onWarranties, tab }) {
   const label = `${item.name}, versión ${item.versionNumber}`;
+  // Los PDF de cotizaciones se ven y descargan (si están disponibles) y muestran su historial
+  // comercial; no se reemplazan ni vinculan a garantías: se modifican desde Cotizaciones.
+  const quote = isQuoteItem(item);
+  const quoteStatus = quote ? describeQuotePdfStatus(item.quote.pdf) : null;
   // Una fila pendiente ya es la versión pendiente del archivo: no admite otra hasta revisarla.
-  const replace = tab === "pending" ? null : getReplaceAvailability(item, []);
+  const replace = tab === "pending" || quote ? null : getReplaceAvailability(item, []);
   const menuItems = [
     { icon: Clock, id: "history", label: "Historial de versiones" },
     ...(replace ? [{ disabled: !replace.allowed, icon: DocumentUpload, id: "replace", label: replace.allowed ? "Reemplazar archivo" : `Reemplazar archivo (${replace.reason})` }] : []),
-    ...(canLinkWarranties(item) ? [{ icon: ShieldTick, id: "warranties", label: "Garantías" }] : []),
+    ...(!quote && canLinkWarranties(item) ? [{ icon: ShieldTick, id: "warranties", label: "Garantías" }] : []),
   ];
+  const downloadUnavailable = Boolean(quoteStatus && !quoteStatus.available);
   return (
     <div className="flex items-center gap-[4px]">
       {tab === "pending" ? (
@@ -85,9 +102,9 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
         showLeftIcon
         iconLeft={<ExportCurve size="20" color="currentColor" />}
         showRightIcon={false}
-        disabled={actionsDisabled}
-        tooltip={downloading ? "Descargando..." : "Descargar versión"}
-        aria-label={`Descargar ${label}`}
+        disabled={actionsDisabled || downloadUnavailable}
+        tooltip={downloading ? "Descargando..." : downloadUnavailable ? quoteStatus.label : "Descargar versión"}
+        aria-label={downloadUnavailable ? `Descargar ${label}. ${quoteStatus.label}` : `Descargar ${label}`}
         aria-busy={downloading || undefined}
         onClick={() => onDownload(item)}
       />
@@ -111,7 +128,7 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
 /**
  * Tabla del administrador de archivos (Figma 3727:683873, 3727:683877 y 4273:683806): nombre,
  * versión, proyecto (solo en Pendientes y Rechazados), tipo, peso, fecha, autor y acciones. Cada
- * fila es una versión real de la API; las versiones guardadas se conservan, así que la acción
+ * fila es una versión real de la API (o el PDF vigente de una cotización del proyecto, en «Documentos»); las versiones guardadas se conservan, así que la acción
  * «Eliminar» de Figma no se ofrece. Cada fila abre el visor con su historial (U2), descarga su
  * versión y, si procede, sus garantías; el reemplazo llega en U3. Desplaza en horizontal dentro de su
  * contenedor. Como en Figma, las filas de 68 px no llevan divisores entre sí.
@@ -125,11 +142,12 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
  * @param {(item: Object, trigger: HTMLElement|null) => void} props.onOpen - Abre el visor de la versión.
  * @param {(item: Object) => void} props.onWarranties - Abre las garantías del documento.
  * @param {(item: Object) => void} props.onReplace - Abre «Reemplazar archivo».
- * @param {number|null} props.downloadingVersionId - Versión que se está descargando.
+ * @param {number|null} props.downloadingVersionId - Versión de archivo que se está descargando.
+ * @param {string|null} [props.downloadingQuoteKey] - PDF de cotización que se está descargando («quoteId:versión»).
  * @param {boolean} props.actionsDisabled - Bloquea acciones durante una operación.
  * @returns {import("react").ReactElement} Tabla.
  */
-function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownload, onOpen, onReplace, onSort, onWarranties, sort, tab }) {
+function AdminFilesTable({ actionsDisabled, downloadingQuoteKey = null, downloadingVersionId, items, onDownload, onOpen, onReplace, onSort, onWarranties, sort, tab }) {
   const options = { showProject: tab !== "approved" };
   const columns = getAdminFilesColumns(options);
   return (
@@ -155,17 +173,22 @@ function AdminFilesTable({ actionsDisabled, downloadingVersionId, items, onDownl
           </thead>
           <tbody>
             {items.map((item) => {
-              const downloading = downloadingVersionId === item.versionId;
+              const downloading = isQuoteItem(item)
+                ? downloadingQuoteKey === `${item.quote.id}:${item.versionNumber}`
+                : downloadingVersionId === item.versionId;
               const uploader = item.uploadedBy?.name || "Sin autor";
               return (
-                <tr key={item.versionId} className="h-[68px] bg-[var(--color-neutral-100)]" data-version-id={item.versionId}>
+                <tr key={getAdminFileItemKey(item)} className="h-[68px] bg-[var(--color-neutral-100)]" data-version-id={item.versionId} data-item-source={item.source || "file"}>
                   <NameCell item={item} tab={tab} />
                   <td className={`${BODY_CELL} tabular-nums`}>v{item.versionNumber}</td>
                   {options.showProject ? <td className={BODY_CELL} title={item.project?.name}>{item.project?.name}</td> : null}
                   <td className="px-[24px] py-[16px]">
                     <Badge label={formatExtension(item.extension)} theme="Neutral" size="S" truncate />
                   </td>
-                  <td className={`${BODY_CELL} tabular-nums`}>{formatStorage(item.size, { maximumFractionDigits: 1 })}</td>
+                  <td className={`${BODY_CELL} tabular-nums`}>
+                    {/* Un PDF de cotización no disponible no tiene tamaño: no hay archivo que pesar. */}
+                    {isQuoteItem(item) && item.size === null ? "—" : formatStorage(item.size, { maximumFractionDigits: 1 })}
+                  </td>
                   <td className={`${BODY_CELL} tabular-nums`}>
                     <time dateTime={item.createdAt}>{formatFileDate(item.createdAt)}</time>
                   </td>

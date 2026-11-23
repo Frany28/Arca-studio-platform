@@ -377,3 +377,75 @@ test("elementos: categoría del archivo y sección heredada de la carpeta predet
   assert.deepEqual([byName["Sala 360.png"].fileCategory, byName["Sala 360.png"].folder.section], ["panorama", "models_3d"]);
   assert.deepEqual([byName["Sin carpeta.pdf"].folder, byName["Sin carpeta.pdf"].fileCategory], [null, "document"]);
 });
+
+/**
+ * Registra una versión comercial de una cotización y, si se indica, su documento PDF. No sube nada:
+ * el gestor solo lee las referencias de PostgreSQL (los bytes se sirven con la API de Cotizaciones).
+ *
+ * @param {object} options - Cotización, versión, proyecto y estado del PDF (null: sin reserva).
+ * @returns {Promise<number>} Id de la versión.
+ */
+async function insertQuoteVersion({ at, current = true, pdf, projectId, quoteId, versionNumber }) {
+  const [version] = await rows(`insert into public.quote_versions (quote_id, version_number, client_id, client_name, project_id, project_name, services_total, created_by, is_current, created_at)
+    values ($1, $2, $3, 'Cliente Norte', $4, 'Proyecto cotizado', 100.00, $5, $6, $7::timestamptz) returning id::int`, [quoteId, versionNumber, seed.client, projectId, seed.admin, current, at]);
+  if (pdf) {
+    const code = `COT-${String(quoteId).padStart(3, "0")}`;
+    const available = pdf === "available";
+    await rows(`insert into public.quote_pdf_documents (quote_version_id, object_key, file_name, document_model, source_hash, time_zone, layout_revision,
+        status, bucket, content_hash, size_bytes, generated_at, stored_at, error_code)
+      values ($1, $2, $3, '{}'::jsonb, repeat('a', 64), 'America/Caracas', 2, $4, $5, $6, $7, $8, $8, $9)`, [
+      version.id, `quotes/${quoteId}/versions/v${versionNumber}/${code}-v${versionNumber}.pdf`, `${code}-v${versionNumber}.pdf`, pdf,
+      available ? "quotes-private" : null, available ? "b".repeat(64) : null, available ? 4096 * versionNumber : null,
+      available ? new Date(at) : null, pdf === "error" ? "QUOTE_PDF_STORAGE_ERROR" : null,
+    ]);
+  }
+  return version.id;
+}
+
+test("cotizaciones: su PDF vigente aparece en «Documentos» del proyecto, sin copiarse a files y solo en Aprobados", { skip }, async () => {
+  const project = await createProject("Proyecto cotizado");
+  const filesBefore = Number((await rows("select count(*)::int as n from public.files"))[0].n);
+  const quote = async () => Number((await rows("insert into public.quotes (code, created_by, updated_by) values ('COT-TMP', $1, $1) returning id", [seed.admin]))[0].id);
+  const withCode = async (id) => {
+    await rows("update public.quotes set code = $2 where id = $1", [id, `COT-${String(id).padStart(3, "0")}`]);
+    return id;
+  };
+  const versioned = await withCode(await quote());
+  await insertQuoteVersion({ at: "2026-04-01T10:00:00Z", current: false, pdf: "available", projectId: project.id, quoteId: versioned, versionNumber: 1 });
+  await insertQuoteVersion({ at: "2026-04-02T10:00:00Z", pdf: "available", projectId: project.id, quoteId: versioned, versionNumber: 2 });
+  const failed = await withCode(await quote());
+  await insertQuoteVersion({ at: "2026-04-03T10:00:00Z", pdf: "error", projectId: project.id, quoteId: failed, versionNumber: 1 });
+  const legacy = await withCode(await quote());
+  await insertQuoteVersion({ at: "2026-04-04T10:00:00Z", pdf: null, projectId: project.id, quoteId: legacy, versionNumber: 1 });
+
+  const items = await allPages(`tab=approved&projectId=${project.id}`);
+  assert.deepEqual(items.map((item) => [item.source, item.name, item.versionNumber, item.quote.pdf.status]).sort(), [
+    ["quote", `COT-${String(failed).padStart(3, "0")}-v1.pdf`, 1, "error"],
+    ["quote", `COT-${String(legacy).padStart(3, "0")}-v1.pdf`, 1, "pending"],
+    ["quote", `COT-${String(versioned).padStart(3, "0")}-v2.pdf`, 2, "available"],
+  ].sort(), "una fila por cotización: su versión vigente");
+  const current = items.find((item) => item.quote.id === versioned);
+  assert.deepEqual([current.folder, current.fileId, current.review, current.size, current.extension], [
+    { id: project.folders.documents, name: "Documentos", section: "documents" }, null, null, 8192, "pdf"]);
+  assert.equal(items.find((item) => item.quote.id === failed).size, null, "un PDF no disponible no informa tamaño");
+  assert.equal(items.find((item) => item.quote.id === failed).quote.pdf.errorCode, "QUOTE_PDF_STORAGE_ERROR");
+
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders.documents}`)).length, 3, "carpeta «Documentos»");
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders["documents.warranties"]}`)).length, 0);
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&search=v2.pdf`)).length, 1);
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&extensions=png`)).length, 0);
+  assert.equal((await allPages(`tab=pending&projectId=${project.id}`)).length, 0);
+  assert.equal((await allPages(`tab=rejected&projectId=${project.id}`)).length, 0);
+  for (const sort of ["date", "name", "size"]) {
+    const paged = await allPages(`tab=approved&sort=${sort}&order=asc&limit=1`);
+    assert.equal(new Set(paged.map((item) => `${item.source}:${item.versionId}`)).size, paged.length, `sin duplicados al paginar por ${sort}`);
+    assert.equal(paged.filter((item) => item.source === "quote").length, 3, `cotizaciones incluidas al paginar por ${sort}`);
+  }
+  assert.equal(Number((await rows("select count(*)::int as n from public.files"))[0].n), filesBefore, "no se crean archivos ni copias");
+
+  const history = await api(`/admin/quotes/${versioned}/pdf/versions`);
+  assert.equal(history.status, 200);
+  assert.deepEqual(history.body.versions.map((version) => [version.versionNumber, version.isCurrent, version.pdf.status]), [[2, true, "available"], [1, false, "available"]]);
+  assert.equal((await api(`/admin/quotes/${versioned}/pdf/versions`, { headers: seed.headers.architect })).status, 403);
+  assert.equal((await api(`/admin/files/items?tab=approved&projectId=${project.id}`, { headers: seed.headers.owner })).status, 403);
+});

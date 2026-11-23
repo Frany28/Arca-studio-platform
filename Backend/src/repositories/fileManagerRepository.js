@@ -25,12 +25,17 @@ export const FILE_MANAGER_TAB_SQL = Object.freeze({
   rejected: "version.review_status = 'rejected'::public.file_version_review_status",
 });
 
-// Ordenaciones admitidas: expresión, tipo para comparar con el cursor y expresión del cursor.
+// Ordenaciones admitidas sobre la fila unificada (`item`): expresión, tipo para comparar con el cursor
+// y expresión del cursor. Desempate: origen (`source_rank`: 0 archivos, 1 cotizaciones) e id.
 const SORTS = Object.freeze({
-  date: { cast: "timestamptz", cursorSql: preciseCursorTimestampSql("version.created_at"), sql: "version.created_at" },
-  name: { cast: "text", cursorSql: "lower(coalesce(version.original_name, file.title))", sql: "lower(coalesce(version.original_name, file.title))" },
-  size: { cast: "bigint", cursorSql: "coalesce(version.file_size, 0)::text", sql: "coalesce(version.file_size, 0)" },
+  date: { cast: "timestamptz", cursorSql: preciseCursorTimestampSql("item.created_at"), sql: "item.created_at" },
+  name: { cast: "text", cursorSql: "lower(item.name)", sql: "lower(item.name)" },
+  size: { cast: "bigint", cursorSql: "coalesce(item.file_size, 0)::text", sql: "coalesce(item.file_size, 0)" },
 });
+
+// Carpeta en la que se muestran los PDF de cotizaciones: «Documentos» del proyecto de la versión
+// vigente. Es una integración lógica: el PDF sigue en su bucket privado y en quote_pdf_documents.
+export const QUOTE_DOCUMENTS_FOLDER_KEY = "documents";
 
 /**
  * Parámetros con el catálogo de carpetas predeterminadas (claves y nombres visibles) para unirlos
@@ -226,7 +231,13 @@ export async function listFolderAncestors(folderIds) {
 /**
  * Lista una página de versiones de una pestaña (aprobados, pendientes o rechazados) con filtros,
  * ordenación y cursor. Todos los filtros van antes del LIMIT; el cursor guarda el valor de la
- * ordenación y el id de la versión como desempate.
+ * ordenación, el origen y el id de la fila como desempate.
+ *
+ * En Aprobados se incluyen, además, los PDF de cotizaciones (`source = 'quote'`): uno por cotización,
+ * el de su versión comercial vigente, en la carpeta «Documentos» del proyecto de esa versión. No se
+ * copian a `files`: se leen de `quote_versions` y `quote_pdf_documents`, con su estado (`pending`,
+ * `available` o `error`; sin fila, la versión es anterior a la persistencia y se recupera al abrirla).
+ * Las cotizaciones no pasan por revisión, por eso no aparecen en Pendientes ni Rechazados.
  *
  * @param {object} options - Pestaña, ámbito, filtros, orden y página.
  * @param {"approved"|"pending"|"rejected"} options.tab - Pestaña.
@@ -237,7 +248,7 @@ export async function listFolderAncestors(folderIds) {
  * @param {string[]} [options.extensions] - Extensiones admitidas (en minúsculas).
  * @param {"date"|"name"|"size"} options.sort - Ordenación.
  * @param {"asc"|"desc"} options.order - Sentido.
- * @param {[string, string]|null} options.cursor - Valor de ordenación e id de la última fila.
+ * @param {[string, number, string]|null} options.cursor - Valor de ordenación, origen e id de la última fila.
  * @param {number} options.limit - Tamaño de página.
  * @returns {Promise<Array<object>>} Hasta `limit + 1` filas.
  */
@@ -257,51 +268,87 @@ export async function listFileManagerItems({
         inner join scope_folders parent on child.parent_id = parent.id
         where $3::boolean and child.deleted_at is null
       )
-      select
-        version.id as version_id, version.version_number, version.file_extension, version.file_size, version.created_at,
-        version.review_status::text as review_status, version.review_reason, version.reviewed_at, version.restored_from_version_id,
-        coalesce(version.content_type, file.file_type) as content_type,
-        coalesce(version.original_name, file.title) as name,
-        (version.version_number = file.current_version) as is_current,
-        file.id as file_id, file.access_policy, file.folder_id, file.file_category::text as file_category,
-        coalesce(catalog.name, folder.name) as folder_name, classification.system_key as folder_classification_key,
-        project.id as project_id, project.name as project_name, project.status as project_status,
-        uploader.id as uploader_id, concat_ws(' ', uploader.first_name, uploader.last_name) as uploader_name,
-        concat_ws(' ', reviewer.first_name, reviewer.last_name) as reviewer_name,
-        ${sortDefinition.cursorSql} as cursor_value
-      from public.file_versions version
-      inner join public.files file on file.id = version.file_id
-      inner join public.projects project on project.id = file.project_id and project.deleted_at is null
-      left join public.project_folders folder on folder.id = file.folder_id
-      left join unnest($9::text[], $10::text[]) as catalog(key, name) on catalog.key = folder.system_key
-      -- Carpeta predeterminada más cercana (la propia o un ancestro): define la sección funcional.
-      left join lateral (
-        with recursive chain as (
-          select ancestor.id, ancestor.parent_id, ancestor.system_key, 0 as depth
-          from public.project_folders ancestor where ancestor.id = file.folder_id
-          union all
-          select parent.id, parent.parent_id, parent.system_key, chain.depth + 1
-          from public.project_folders parent inner join chain on parent.id = chain.parent_id
-          where chain.depth < 64
-        )
-        select chain.system_key from chain where chain.system_key is not null order by chain.depth limit 1
-      ) classification on true
-      left join public.users uploader on uploader.id = version.uploaded_by
-      left join public.users reviewer on reviewer.id = version.reviewed_by
-      where ${ACTIVE_FILE_SQL}
-        and version.deleted_at is null
-        and ${FILE_MANAGER_TAB_SQL[tab]}
-        and ($1::bigint is null or file.project_id = $1::bigint)
-        and ($2::bigint is null or file.folder_id in (select id from scope_folders))
-        and ($4::text is null or coalesce(version.original_name, file.title) ilike $4)
-        and (cardinality($5::text[]) = 0 or lower(version.file_extension) = any($5::text[]))
-        and ($6::text is null or (${sortDefinition.sql}, version.id) ${comparison} ($6::${sortDefinition.cast}, $7::bigint))
-      order by ${sortDefinition.sql} ${order}, version.id ${order}
+      select item.*, ${sortDefinition.cursorSql} as cursor_value
+      from (
+        select
+          'file'::text as source, 0 as source_rank,
+          version.id as version_id, version.version_number, version.file_extension, version.file_size, version.created_at,
+          version.review_status::text as review_status, version.review_reason, version.reviewed_at, version.restored_from_version_id,
+          coalesce(version.content_type, file.file_type) as content_type,
+          coalesce(version.original_name, file.title) as name,
+          (version.version_number = file.current_version) as is_current,
+          file.id as file_id, file.access_policy, file.folder_id, file.file_category::text as file_category,
+          coalesce(catalog.name, folder.name) as folder_name, classification.system_key as folder_classification_key,
+          project.id as project_id, project.name as project_name, project.status as project_status,
+          uploader.id as uploader_id, concat_ws(' ', uploader.first_name, uploader.last_name) as uploader_name,
+          concat_ws(' ', reviewer.first_name, reviewer.last_name) as reviewer_name,
+          null::bigint as quote_id, null::text as quote_code, null::text as pdf_status, null::text as pdf_error_code
+        from public.file_versions version
+        inner join public.files file on file.id = version.file_id
+        inner join public.projects project on project.id = file.project_id and project.deleted_at is null
+        left join public.project_folders folder on folder.id = file.folder_id
+        left join unnest($9::text[], $10::text[]) as catalog(key, name) on catalog.key = folder.system_key
+        -- Carpeta predeterminada más cercana (la propia o un ancestro): define la sección funcional.
+        left join lateral (
+          with recursive chain as (
+            select ancestor.id, ancestor.parent_id, ancestor.system_key, 0 as depth
+            from public.project_folders ancestor where ancestor.id = file.folder_id
+            union all
+            select parent.id, parent.parent_id, parent.system_key, chain.depth + 1
+            from public.project_folders parent inner join chain on parent.id = chain.parent_id
+            where chain.depth < 64
+          )
+          select chain.system_key from chain where chain.system_key is not null order by chain.depth limit 1
+        ) classification on true
+        left join public.users uploader on uploader.id = version.uploaded_by
+        left join public.users reviewer on reviewer.id = version.reviewed_by
+        where ${ACTIVE_FILE_SQL}
+          and version.deleted_at is null
+          and ${FILE_MANAGER_TAB_SQL[tab]}
+
+        union all
+
+        -- PDF de cotizaciones (solo en Aprobados): versión comercial vigente de cada cotización.
+        select
+          'quote'::text as source, 1 as source_rank,
+          quote_version.id as version_id, quote_version.version_number, 'pdf'::text as file_extension,
+          case when doc.status = 'available' then doc.size_bytes::bigint end as file_size, quote_version.created_at,
+          null::text as review_status, null::text as review_reason, null::timestamptz as reviewed_at, null::bigint as restored_from_version_id,
+          'application/pdf'::text as content_type,
+          coalesce(doc.file_name, quote.code || '-v' || quote_version.version_number || '.pdf') as name,
+          true as is_current,
+          null::bigint as file_id, null::smallint as access_policy, documents.id as folder_id, null::text as file_category,
+          documents.name as folder_name, documents.system_key as folder_classification_key,
+          project.id as project_id, project.name as project_name, project.status as project_status,
+          author.id as uploader_id, concat_ws(' ', author.first_name, author.last_name) as uploader_name,
+          null::text as reviewer_name,
+          quote.id as quote_id, quote.code as quote_code, coalesce(doc.status::text, 'pending') as pdf_status, doc.error_code as pdf_error_code
+        from public.quote_versions quote_version
+        inner join public.quotes quote on quote.id = quote_version.quote_id
+        inner join public.projects project on project.id = quote_version.project_id and project.deleted_at is null
+        left join public.quote_pdf_documents doc on doc.quote_version_id = quote_version.id
+        left join lateral (
+          select folder.id, coalesce(catalog.name, folder.name) as name, folder.system_key
+          from public.project_folders folder
+          left join unnest($9::text[], $10::text[]) as catalog(key, name) on catalog.key = folder.system_key
+          where folder.project_id = quote_version.project_id and folder.system_key = $11::text and folder.deleted_at is null
+          order by folder.id limit 1
+        ) documents on true
+        left join public.users author on author.id = quote_version.created_by
+        where $12::boolean and quote_version.is_current
+      ) item
+      where ($1::bigint is null or item.project_id = $1::bigint)
+        and ($2::bigint is null or item.folder_id in (select id from scope_folders))
+        and ($4::text is null or item.name ilike $4)
+        and (cardinality($5::text[]) = 0 or lower(item.file_extension) = any($5::text[]))
+        and ($6::text is null or (${sortDefinition.sql}, item.source_rank, item.version_id) ${comparison} ($6::${sortDefinition.cast}, $13::int, $7::bigint))
+      order by ${sortDefinition.sql} ${order}, item.source_rank ${order}, item.version_id ${order}
       limit $8
     `,
     [
       projectId, folderId, includeSubfolders, search ? toContainsPattern(search) : null, extensions,
-      cursor?.[0] ?? null, cursor?.[1] ?? null, limit + 1, keys, names,
+      cursor?.[0] ?? null, cursor?.[2] ?? null, limit + 1, keys, names,
+      QUOTE_DOCUMENTS_FOLDER_KEY, tab === "approved", cursor?.[1] ?? 0,
     ],
   );
   return result.rows;

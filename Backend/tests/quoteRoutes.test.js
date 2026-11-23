@@ -64,7 +64,7 @@ test("sin sesión responde 401 y sin rol administrador 403, sin consultar Postgr
   const server = await startServer(context, { authenticated: false });
   const requests = [
     ["GET", ""], ["GET", "/summary"], ["GET", "/clients"], ["GET", "/clients/3/projects"], ["GET", "/1"],
-    ["GET", "/1/pdf"], ["POST", "/1/pdf/retry"], ["POST", "", VALID_CREATE], ["PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1 }],
+    ["GET", "/1/pdf"], ["GET", "/1/pdf/versions"], ["POST", "/1/pdf/retry"], ["POST", "", VALID_CREATE], ["PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1 }],
   ];
   for (const [method, path, body] of requests) {
     assert.equal((await server.send(method, path, body)).status, 401, `${method} ${path}`);
@@ -596,4 +596,46 @@ test("PDF: fallo de generación es recuperable sin nueva versión comercial", as
   row.document_model = model;
   assert.equal((await server.send("POST", "/1/pdf/retry")).status, 200);
   assert.equal(server.database.state.versions.length, 1);
+});
+
+test("historial de PDF: versiones comerciales con su documento, autor y estado; paginado y sin regenerar", async (context) => {
+  const server = await startServer(context);
+  await createQuote(server);
+  const edited = await server.send("PATCH", "/1", { ...VALID_CREATE, expectedVersion: 1, items: [{ quantity: "100", serviceId: 1, unitRate: "14" }] });
+  assert.equal(edited.body.quote.pdf.status, "available");
+  server.storage.setFailPut(true);
+  await server.send("PATCH", "/1", { ...VALID_CREATE, expectedVersion: 2, items: [{ quantity: "90", serviceId: 1, unitRate: "14" }] });
+  server.storage.setFailPut(false);
+  const transfers = { ...server.storage.calls };
+
+  const all = await server.send("GET", "/1/pdf/versions");
+  assert.equal(all.status, 200);
+  assert.equal(all.headers.get("cache-control"), "no-store");
+  assert.deepEqual(all.body.quote, { code: "COT-001", id: 1 });
+  assert.deepEqual(all.body.versions.map((version) => [version.versionNumber, version.isCurrent, version.pdf.status, version.pdf.fileName]), [
+    [3, true, "error", "COT-001-v3.pdf"],
+    [2, false, "available", "COT-001-v2.pdf"],
+    [1, false, "available", "COT-001-v1.pdf"],
+  ]);
+  assert.equal(all.body.versions[0].pdf.size, null, "un PDF fallido no informa tamaño ni es descargable");
+  assert.equal(all.body.versions[0].pdf.errorCode, "QUOTE_PDF_STORAGE_ERROR");
+  assert.ok(all.body.versions[1].pdf.size > 0);
+  assert.deepEqual(all.body.versions[1].project, { id: 9, name: "Apto. 910" });
+  assert.equal(all.body.versions[1].createdBy.id, 2);
+  assert.equal(JSON.stringify(all.body).includes("quotes/1/versions"), false, "no expone claves internas de Storage");
+  assert.deepEqual(server.storage.calls, transfers, "listar el historial no lee ni escribe Storage");
+
+  const first = await server.send("GET", "/1/pdf/versions?limit=2");
+  assert.deepEqual(first.body.versions.map((version) => version.versionNumber), [3, 2]);
+  const second = await server.send("GET", `/1/pdf/versions?limit=2&cursor=${first.body.nextCursor}`);
+  assert.deepEqual([second.body.versions.map((version) => version.versionNumber), second.body.nextCursor], [[1], null]);
+
+  const historic = await server.raw("GET", "/1/pdf?version=1");
+  assert.equal(historic.status, 200, "una versión anterior se sirve con su PDF original");
+  assert.equal(historic.headers.get("content-type"), "application/pdf");
+  assert.equal((await server.raw("GET", "/1/pdf?version=3")).status, 409, "la versión con fallo no se descarga");
+
+  assert.equal((await server.send("GET", "/99/pdf/versions")).status, 404);
+  assert.equal((await server.send("GET", "/1/pdf/versions?cursor=no-valido")).status, 400);
+  assert.equal((await server.send("GET", "/1/pdf/versions?limit=101")).status, 400);
 });

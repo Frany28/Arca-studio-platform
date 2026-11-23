@@ -157,19 +157,20 @@ export async function searchFolders({ cursor, limit, projectId = null, search })
 }
 
 /**
- * Representa una versión listada en el administrador, con motivo y revisor visibles para el equipo.
- * `fileCategory` elige el visor y `folder.section` es la sección del catálogo de la carpeta
- * predeterminada más cercana (`warranties` en «Documentos › Garantías» y sus subcarpetas).
+ * Representa una versión listada: `fileCategory` elige el visor y `folder.section` es la sección de
+ * la carpeta predeterminada más cercana; `source` distingue archivos (`file`) de PDF de cotizaciones
+ * (`quote`, sin `fileId` ni revisión, con `quote` y el `versionId` de la versión comercial).
  *
  * @param {object} row - Fila del repositorio.
  * @returns {object} Elemento público.
  */
 function toFileManagerItem(row) {
+  const isQuote = row.source === "quote";
   return {
     contentType: row.content_type,
     createdAt: row.created_at,
     extension: row.file_extension,
-    fileId: Number(row.file_id),
+    fileId: isQuote ? null : Number(row.file_id),
     fileCategory: row.file_category ?? null,
     folder: row.folder_id === null ? null : {
       id: Number(row.folder_id),
@@ -179,14 +180,20 @@ function toFileManagerItem(row) {
     isCurrent: Boolean(row.is_current),
     name: row.name,
     project: { id: Number(row.project_id), name: row.project_name, status: row.project_status },
+    quote: isQuote ? {
+      code: row.quote_code,
+      id: Number(row.quote_id),
+      pdf: { errorCode: row.pdf_error_code ?? null, status: row.pdf_status },
+    } : null,
     restoredFromVersionId: row.restored_from_version_id === null ? null : Number(row.restored_from_version_id),
-    review: {
+    review: isQuote ? null : {
       reason: row.review_reason ?? null,
       reviewedAt: row.reviewed_at ?? null,
       reviewerName: row.reviewer_name || null,
       status: row.review_status ?? "legacy",
     },
     size: row.file_size === null ? null : Number(row.file_size),
+    source: isQuote ? "quote" : "file",
     uploadedBy: row.uploader_id === null ? null : { id: Number(row.uploader_id), name: row.uploader_name || "Usuario" },
     versionId: Number(row.version_id),
     versionNumber: Number(row.version_number),
@@ -194,8 +201,27 @@ function toFileManagerItem(row) {
 }
 
 /**
+ * Decodifica el cursor de una pestaña y comprueba que corresponde a la misma pestaña, orden y
+ * sentido. El cursor actual guarda también el origen de la última fila (archivo o cotización); se
+ * aceptan los de cinco elementos anteriores a la integración de cotizaciones (origen archivo).
+ *
+ * @param {string} cursor - Cursor recibido.
+ * @param {{ tab: string, sort: string, order: string }} query - Consulta actual.
+ * @returns {[string, number, string]} Valor de ordenación, origen e id.
+ * @throws {ValidationError} Si el cursor no es válido o no corresponde.
+ */
+function decodeTabCursor(cursor, { order, sort, tab }) {
+  const parsed = decodeCursor(cursor, 6) ?? decodeCursor(cursor, 5);
+  if (!parsed || parsed[0] !== tab || parsed[1] !== sort || parsed[2] !== order) invalidCursor();
+  if (parsed.length === 5) return [parsed[3], 0, parsed[4]];
+  const rank = Number(parsed[4]);
+  if (rank !== 0 && rank !== 1) invalidCursor();
+  return [parsed[3], rank, parsed[5]];
+}
+
+/**
  * Lista una pestaña del administrador (aprobados, pendientes o rechazados) con filtros, ordenación y
- * cursor. El cursor queda ligado a la pestaña, la ordenación y el sentido: reutilizarlo con otros
+ * cursor. Aprobados incluye los PDF de cotizaciones de cada proyecto (carpeta «Documentos»). El cursor queda ligado a la pestaña, la ordenación y el sentido: reutilizarlo con otros
  * responde 400, en lugar de devolver páginas incoherentes.
  *
  * @param {object} options - Pestaña, ámbito, filtros, orden y página (validados por Zod).
@@ -213,12 +239,7 @@ function toFileManagerItem(row) {
  * @throws {ValidationError|NotFoundError} Si el cursor no corresponde o la carpeta no existe.
  */
 export async function listFileManagerTab({ cursor, extensions, folderId, includeSubfolders, limit, order, projectId, search, sort, tab }) {
-  let decoded = null;
-  if (cursor) {
-    const parsed = decodeCursor(cursor, 5);
-    if (!parsed || parsed[0] !== tab || parsed[1] !== sort || parsed[2] !== order) invalidCursor();
-    decoded = [parsed[3], parsed[4]];
-  }
+  const decoded = cursor ? decodeTabCursor(cursor, { order, sort, tab }) : null;
   await assertScopeFolder({ folderId, projectId });
   const rows = await listFileManagerItems({
     cursor: decoded, extensions, folderId, includeSubfolders, limit, order, projectId, search, sort, tab,
@@ -227,7 +248,9 @@ export async function listFileManagerTab({ cursor, extensions, folderId, include
   const last = page.at(-1);
   return {
     items: page.map(toFileManagerItem),
-    nextCursor: rows.length > limit && last ? encodeCursor([tab, sort, order, String(last.cursor_value), String(last.version_id)]) : null,
+    nextCursor: rows.length > limit && last
+      ? encodeCursor([tab, sort, order, String(last.cursor_value), Number(last.source_rank), String(last.version_id)])
+      : null,
   };
 }
 

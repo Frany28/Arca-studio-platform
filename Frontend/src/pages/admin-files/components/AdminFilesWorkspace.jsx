@@ -10,10 +10,12 @@ import StatusConfirmationModal from "../../admin-services-quotes/components/Stat
 import { useAlertFeedback } from "../../admin-services-quotes/hooks/useAlertFeedback.js";
 import { useAdminFileFolderActions } from "../hooks/useAdminFileFolderActions.js";
 import { useAdminFileVersionDownload } from "../hooks/useAdminFileVersionDownload.js";
+import { useAdminQuotePdfDownload } from "../hooks/useAdminQuotePdfDownload.js";
 import { ADMIN_FILES_PAGE_SIZE, useAdminFilesItems } from "../hooks/useAdminFilesItems.js";
 import { useAdminFilesTree } from "../hooks/useAdminFilesTree.js";
 import { describeUploadResult } from "../utils/adminFileUpload.js";
 import { ADMIN_FILES_TABS, getItemsEmptyCopy, getUploadDisabledReason } from "../utils/adminFilesPresentation.js";
+import { isQuoteItem } from "../utils/adminQuoteDocuments.js";
 import AdminFileFolderDialog from "./AdminFileFolderDialog.jsx";
 import AdminFileReviewResultDialog from "./AdminFileReviewResultDialog.jsx";
 import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
@@ -22,6 +24,7 @@ import AdminFileWarrantyDialog from "./AdminFileWarrantyDialog.jsx";
 import AdminFilesTable from "./AdminFilesTable.jsx";
 import AdminFilesToolbar from "./AdminFilesToolbar.jsx";
 import AdminFilesTree from "./AdminFilesTree.jsx";
+import AdminQuotePdfViewerDialog from "./AdminQuotePdfViewerDialog.jsx";
 
 const NO_SCOPE = Object.freeze({ folderId: null, projectId: null });
 const TAB_LABELS = ADMIN_FILES_TABS.map((tab) => tab.label);
@@ -48,7 +51,7 @@ function describeRemoval(removal) {
  * Área de trabajo del administrador (Figma 3727:683873): pestañas, árbol (solo en Aprobados),
  * barra, tabla y paginación, más las operaciones de carpetas, la descarga de versiones (U1) y el
  * visor con revisión, historial, restauración y garantías (U2), y «+ Nuevo» y «Reemplazar archivo»
- * (U3). Tras cada operación confirmada se
+ * (U3). Los PDF de cotizaciones del proyecto se abren en su propio visor con el historial comercial. Tras cada operación confirmada se
  * recargan la tabla y las métricas; el historial lo recarga el propio visor. Con espacio suficiente
  * árbol y tabla van en dos columnas; si no, el árbol se apila encima.
  *
@@ -67,6 +70,10 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   const [reviewResult, setReviewResult] = useState(null);
   const [uploadDialog, setUploadDialog] = useState(null);
   const downloads = useAdminFileVersionDownload({
+    onError: (message, name) => feedback.notify("danger", "No se pudo descargar el archivo", message, name),
+  });
+  // PDF de cotizaciones del proyecto (carpeta «Documentos»): se descargan por la API de Cotizaciones.
+  const quoteDownloads = useAdminQuotePdfDownload({
     onError: (message, name) => feedback.notify("danger", "No se pudo descargar el archivo", message, name),
   });
 
@@ -100,7 +107,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
     },
     onFoldersChange: tree.replaceProjectFolders,
   });
-  const operationInProgress = folders.removing || Boolean(downloads.downloadingVersionId);
+  const operationInProgress = folders.removing || Boolean(downloads.downloadingVersionId) || Boolean(quoteDownloads.downloadingKey);
 
   // Destino de «+ Nuevo»: la carpeta seleccionada en el árbol (con su número de archivos).
   const selectedProject = tree.projects.find((project) => project.id === selection.projectId) || null;
@@ -157,8 +164,11 @@ function AdminFilesWorkspace({ onMetricsStale }) {
         sort={items.sort}
         actionsDisabled={operationInProgress || items.loading}
         downloadingVersionId={downloads.downloadingVersionId}
+        downloadingQuoteKey={quoteDownloads.downloadingKey}
         onSort={items.toggleSort}
-        onDownload={(item) => downloads.download({ fileId: item.fileId, name: item.name, projectId: item.project.id, versionId: item.versionId })}
+        onDownload={(item) => (isQuoteItem(item)
+          ? quoteDownloads.download({ name: item.name, quoteId: item.quote.id, versionNumber: item.versionNumber })
+          : downloads.download({ fileId: item.fileId, name: item.name, projectId: item.project.id, versionId: item.versionId }))}
         onOpen={(item, trigger) => setViewer({ item, trigger })}
         onWarranties={setWarrantyItem}
         onReplace={(item) => setUploadDialog({ file: { fileId: item.fileId, folderSystemKey: item.folder?.section === "cover" ? "cover" : null, name: item.name, projectId: item.project.id }, mode: "replace" })}
@@ -244,7 +254,17 @@ function AdminFilesWorkspace({ onMetricsStale }) {
       </TabPanel>
 
       {folders.dialog ? <AdminFileFolderDialog key={`${folders.dialog.mode}-${folders.dialog.folder?.id ?? folders.dialog.parent?.id}`} dialog={folders.dialog} onClose={folders.closeDialog} onSubmit={folders.submitDialog} /> : null}
-      {viewer ? (
+      {viewer && isQuoteItem(viewer.item) ? (
+        <AdminQuotePdfViewerDialog
+          key={`quote:${viewer.item.versionId}`}
+          item={viewer.item}
+          returnFocusTo={viewer.trigger}
+          downloads={quoteDownloads}
+          onChanged={refreshAfterOperation}
+          onClose={() => setViewer(null)}
+        />
+      ) : null}
+      {viewer && !isQuoteItem(viewer.item) ? (
         <AdminFileViewerDialog
           key={viewer.item.versionId}
           item={viewer.item}

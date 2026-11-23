@@ -1,6 +1,6 @@
 import { pipeline } from "node:stream/promises";
 
-import { getQuotePdf, retryQuotePdf } from "../services/quotePdfService.js";
+import { getQuotePdf, listQuotePdfVersions, retryQuotePdf } from "../services/quotePdfService.js";
 import {
   createQuote,
   getClientProjectOptions,
@@ -62,6 +62,23 @@ export async function getQuotesSummary(_req, res, next) {
 export async function getQuoteById(req, res, next) {
   try {
     res.set("Cache-Control", NO_STORE).status(200).json({ quote: await getQuote(req.params.quoteId) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Devuelve el historial de PDF de una cotización (sus versiones comerciales con el estado de cada
+ * documento), para el visor de Cotizaciones y del administrador de archivos. Sin caché.
+ *
+ * @param {import("express").Request} req - Solicitud con parámetros y consulta validados.
+ * @param {import("express").Response} res - Respuesta HTTP.
+ * @param {Function} next - Continúa con el middleware de errores.
+ * @returns {Promise<void>}
+ */
+export async function getQuotePdfVersions(req, res, next) {
+  try {
+    res.set("Cache-Control", NO_STORE).status(200).json(await listQuotePdfVersions({ ...req.validatedQuery, quoteId: req.params.quoteId }));
   } catch (error) {
     next(error);
   }

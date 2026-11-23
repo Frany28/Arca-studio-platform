@@ -1,9 +1,10 @@
 ﻿import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 
-import { AppError, NotFoundError } from "../errors/appError.js";
+import { AppError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { buildQuotePdfReservation, QUOTE_PDF_LAYOUTS, QUOTE_PDF_MAX_BYTES, toQuotePdfStatus } from "../domain/quotePdfDocument.js";
 import { findQuoteById } from "../repositories/quoteRepository.js";
+import { decodeCursor, encodeCursor } from "../utils/pagination.js";
 import * as documents from "../repositories/quotePdfRepository.js";
 import { objectStorage } from "./objectStorage.js";
 import { loadQuotePdfAssets } from "./quotePdfAssets.js";
@@ -279,4 +280,42 @@ export async function getQuotePdf({ ifNoneMatch, quoteId, versionNumber, signal 
     }
     throw pdfError(code, "No se pudo recuperar el PDF almacenado. Reintenta su recuperación.", error);
   }
+}
+
+/**
+ * Historial de PDF de una cotización: cada versión comercial con su documento (o su estado si
+ * aún no está disponible), de la más reciente a la más antigua. Es el mismo historial comercial de
+ * `quote_versions`, no una segunda historia: el administrador de archivos lo muestra tal cual y
+ * cada documento se lee con `getQuotePdf` (bytes originales verificados), sin regenerarlo.
+ *
+ * @param {{ quoteId: number, cursor?: string, limit?: number }} options - Cotización y página.
+ * @returns {Promise<{ quote: object, versions: object[], nextCursor: string|null }>} Página.
+ * @throws {ValidationError|NotFoundError} Cursor inválido o cotización inexistente.
+ */
+export async function listQuotePdfVersions({ cursor, limit = 10, quoteId }) {
+  const decoded = cursor ? decodeCursor(cursor, 1) : null;
+  const beforeVersion = decoded ? Number(decoded[0]) : null;
+  if (cursor && !(Number.isSafeInteger(beforeVersion) && beforeVersion > 1)) {
+    throw new ValidationError("Los datos enviados no son válidos.", { "query.cursor": "Cursor inválido." });
+  }
+  const rows = await documents.listQuotePdfVersions(quoteId, { beforeVersion, limit });
+  if (!rows.length && beforeVersion === null) throw new NotFoundError("QUOTE_NOT_FOUND", "La cotización o su versión no existe.");
+  const page = rows.slice(0, limit);
+  const first = rows[0];
+  return {
+    nextCursor: rows.length > limit ? encodeCursor([String(page.at(-1).version_number)]) : null,
+    quote: first ? { code: first.code, id: Number(first.quote_id) } : { code: null, id: Number(quoteId) },
+    versions: page.map((row) => {
+      const pdf = toQuotePdfStatus(row);
+      return {
+        createdAt: row.created_at,
+        createdBy: row.author_id === null ? null : { id: Number(row.author_id), name: [row.author_first_name, row.author_last_name].filter(Boolean).join(" ").trim() || "Usuario" },
+        isCurrent: Boolean(row.is_current),
+        pdf: { ...pdf, fileName: pdf.fileName || `${row.code}-v${row.version_number}.pdf` },
+        project: { id: Number(row.project_id), name: row.project_name },
+        versionId: Number(row.version_id),
+        versionNumber: Number(row.version_number),
+      };
+    }),
+  };
 }

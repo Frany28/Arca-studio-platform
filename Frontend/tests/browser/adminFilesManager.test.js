@@ -122,10 +122,11 @@ const SAMPLE_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAA
 /**
  * Backend simulado del administrador de archivos con estado en memoria.
  *
- * @param {{ enabled?: boolean, failures?: Object }} [options] - Activación y fallos inyectados.
+ * @param {{ enabled?: boolean, failures?: Object, quotes?: boolean }} [options] - Activación, fallos inyectados y
+ *   PDF de cotizaciones de «Casa Cotizada» (solo con `quotes`, para no alterar los demás recuentos).
  * @returns {Object} Estado y manejador.
  */
-function createBackend({ enabled = true, failures = {} } = {}) {
+function createBackend({ enabled = true, failures = {}, quotes = false } = {}) {
   const quinta = { client: { name: "Cliente Uno" }, fileCount: 13, folders: defaultFolders(100), id: 1, name: "Quinta Bella Vista", status: "in_progress" };
   const apto = { client: { name: "Cliente Dos" }, fileCount: 1, folders: defaultFolders(200), id: 2, name: "Apartamento JC", status: "in_progress" };
   quinta.folders.push({ fileCount: 0, id: 150, name: "Planos de obra", parentId: 103, systemKey: null });
@@ -145,7 +146,29 @@ function createBackend({ enabled = true, failures = {} } = {}) {
     { code: "G-01", documents: [], endDate: "2028-01-01", id: 5, model: "Techo", product: "Impermeabilización", startDate: "2026-01-01" },
     { code: "G-02", documents: [{ fileId: 30 }], endDate: "2027-06-01", id: 6, model: "Aluminio", product: "Ventanas", startDate: "2026-02-01" },
   ];
-  const state = { items, projects: [quinta, apto], requests: [], warranties: warrantyList };
+  const state = { items, projects: [quinta, apto], quoteDocuments: new Map(), requests: [], warranties: warrantyList };
+  if (quotes) {
+    // Proyecto con dos cotizaciones: COT-012 (v1 y v2 disponibles) y COT-013 (v1 con fallo de almacenamiento).
+    const cotizada = { client: { name: "Cliente Tres" }, fileCount: 0, folders: defaultFolders(500), id: 3, name: "Casa Cotizada", status: "in_progress" };
+    state.projects.push(cotizada);
+    const folder = { id: 503, name: "Documentos", section: "documents" };
+    const quoteVersion = (quoteId, versionNumber, day, status) => ({
+      createdAt: `2026-04-${String(day).padStart(2, "0")}T14:00:00.000Z`, createdBy: { id: 1, name: "Ana Admin" }, quoteId, versionNumber,
+      pdf: { errorCode: status === "error" ? "QUOTE_PDF_STORAGE_ERROR" : null, fileName: `COT-0${quoteId}-v${versionNumber}.pdf`, size: status === "available" ? 40960 : null, status },
+    });
+    state.quoteDocuments.set(12, [quoteVersion(12, 2, 3, "available"), quoteVersion(12, 1, 1, "available")]);
+    state.quoteDocuments.set(13, [quoteVersion(13, 1, 2, "error")]);
+    state.quoteItem = (quoteId) => {
+      const current = state.quoteDocuments.get(quoteId)[0];
+      return {
+        contentType: "application/pdf", createdAt: current.createdAt, extension: "pdf", fileCategory: null, fileId: null, folder, isCurrent: true,
+        name: current.pdf.fileName, project: { id: cotizada.id, name: cotizada.name, status: "in_progress" },
+        quote: { code: `COT-0${quoteId}`, id: quoteId, pdf: { errorCode: current.pdf.errorCode, status: current.pdf.status } },
+        restoredFromVersionId: null, review: null, size: current.pdf.size, source: "quote", uploadedBy: current.createdBy,
+        versionId: 9000 + quoteId, versionNumber: current.versionNumber,
+      };
+    };
+  }
   const json = (route, status, body) => route.fulfill({ body: JSON.stringify(body), contentType: "application/json", status });
 
   /**
@@ -233,6 +256,7 @@ function createBackend({ enabled = true, failures = {} } = {}) {
       const sort = params.sort || "date";
       const order = params.order || "desc";
       let rows = state.items.filter((candidate) => candidate.review.status === tab && (tab !== "approved" || candidate.isCurrent));
+      if (tab === "approved" && state.quoteItem) rows = [...rows, ...[...state.quoteDocuments.keys()].map((quoteId) => state.quoteItem(quoteId))];
       if (params.projectId) rows = rows.filter((candidate) => candidate.project.id === Number(params.projectId));
       if (params.folderId) {
         const project = state.projects.find((candidate) => candidate.id === Number(params.projectId));
@@ -383,6 +407,24 @@ function createBackend({ enabled = true, failures = {} } = {}) {
       };
       state.items.push(created);
       return json(route, 201, { version: toFileVersion(created) });
+    }
+    const quoteMatch = /^\/api\/admin\/quotes\/(\d+)\/pdf(\/versions|\/retry)?$/.exec(path);
+    if (quoteMatch && state.quoteDocuments.has(Number(quoteMatch[1]))) {
+      const quoteId = Number(quoteMatch[1]);
+      const versions = state.quoteDocuments.get(quoteId);
+      const target = versions.find((candidate) => candidate.versionNumber === Number(params.version)) ?? versions[0];
+      if (quoteMatch[2] === "/versions") {
+        return json(route, 200, {
+          nextCursor: null, quote: { code: `COT-0${quoteId}`, id: quoteId },
+          versions: versions.map((version, index) => ({ ...version, isCurrent: index === 0, project: { id: 3, name: "Casa Cotizada" }, versionId: quoteId * 100 + version.versionNumber })),
+        });
+      }
+      if (quoteMatch[2] === "/retry" && method === "POST") {
+        target.pdf = { ...target.pdf, errorCode: null, size: 40960, status: "available" };
+        return json(route, 200, { message: "PDF disponible.", pdf: target.pdf });
+      }
+      if (target.pdf.status !== "available") return json(route, 409, { code: "QUOTE_PDF_ERROR", message: "El PDF no está disponible. Reintenta su recuperación." });
+      return route.fulfill({ body: SAMPLE_PDF, contentType: "application/pdf", headers: { "Content-Disposition": `attachment; filename="${target.pdf.fileName}"` }, status: 200 });
     }
     state.requests.push({ method, path, unexpected: true });
     return json(route, 404, { code: "TEST_ROUTE_MISSING", message: "Ruta no simulada" });
@@ -600,6 +642,69 @@ test("descarga la versión con el nombre del servidor", async (context) => {
   assert.equal((await download).suggestedFilename(), "acta-v3110.pdf");
   const request = backend.requests.find((candidate) => candidate.path === "/api/projects/1/files/30/content");
   assert.equal(request.search.versionId, "3110");
+});
+
+test("cotizaciones: su PDF aparece en «Documentos» del proyecto; se ve, descarga y recorre su historial sin reemplazarlo", async (context) => {
+  const backend = createBackend({ quotes: true });
+  const page = await openFiles(context, backend);
+  const tree = page.getByRole("complementary", { name: "Proyectos" });
+  await tree.getByRole("button", { name: "Mostrar carpetas de Casa Cotizada" }).click();
+  await tree.getByRole("button", { exact: true, name: "Documentos" }).click();
+  await page.getByRole("rowheader", { name: /COT-012-v2\.pdf/ }).waitFor();
+  assert.deepEqual((await rowNames(page)).sort(), ["COT-012-v2.pdf", "COT-013-v1.pdf"]);
+  assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, projectId: itemRequests(backend).at(-1).search.projectId }, { folderId: "503", projectId: "3" });
+
+  // Un PDF no disponible se informa y no se descarga; uno disponible sí, desde la API de Cotizaciones.
+  const failedRow = page.locator("tr", { has: page.getByRole("rowheader", { name: /COT-013-v1\.pdf/ }) });
+  await failedRow.getByText("Error de almacenamiento del PDF").waitFor();
+  assert.equal(await failedRow.locator("td").nth(2).innerText(), "—", "sin archivo no hay peso");
+  assert.equal(await page.getByRole("button", { name: /^Descargar COT-013-v1\.pdf, versión 1\./ }).isDisabled(), true);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { exact: true, name: "Descargar COT-012-v2.pdf, versión 2" }).click();
+  assert.equal((await download).suggestedFilename(), "COT-012-v2.pdf");
+  assert.equal(backend.requests.find((request) => request.path === "/api/admin/quotes/12/pdf").search.version, "2");
+
+  // Menú: historial, sin reemplazo ni garantías.
+  await page.getByRole("button", { name: "Más opciones para COT-012-v2.pdf, versión 2" }).click();
+  const menu = page.getByRole("menu", { name: "Acciones para COT-012-v2.pdf, versión 2" });
+  assert.deepEqual((await menu.getByRole("menuitem").allInnerTexts()).map((text) => text.trim()), ["Historial de versiones"]);
+  await page.keyboard.press("Escape");
+
+  // Visor: PDF vigente, historial comercial (V2 actual y V1) y la versión anterior con su PDF original.
+  await page.getByRole("button", { exact: true, name: "Ver COT-012-v2.pdf, versión 2" }).click();
+  const viewer = page.locator("[data-admin-quote-viewer]");
+  await viewer.locator("canvas").first().waitFor();
+  const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+  await history.locator("li").nth(1).waitFor();
+  assert.deepEqual(await history.locator("li").evaluateAll((rows) => rows.map((row) => row.dataset.versionNumber)), ["2", "1"]);
+  assert.equal(await viewer.getByRole("button", { name: /^Subir una versión nueva\./ }).isDisabled(), true, "el PDF no se reemplaza a mano");
+  await viewer.getByRole("button", { name: "Opciones de la versión 1" }).click();
+  const versionMenu = page.getByRole("menu", { name: "Acciones para la versión 1" });
+  assert.deepEqual((await versionMenu.getByRole("menuitem").allInnerTexts()).map((text) => text.trim()), ["Ver", "Descargar"]);
+  await versionMenu.getByRole("menuitem", { name: "Ver" }).click();
+  await viewer.getByText(/V1 · Versión anterior/).waitFor();
+  await waitUntil(() => backend.requests.some((request) => request.path === "/api/admin/quotes/12/pdf" && request.search.version === "1"));
+  await viewer.getByRole("button", { name: "Editar cotización" }).waitFor();
+  await viewer.getByRole("button", { exact: true, name: "Cerrar" }).click();
+  await viewer.waitFor({ state: "detached" });
+
+  // Un PDF con error se recupera una sola vez al abrirlo (sin versión nueva) y la tabla lo refleja.
+  const loads = itemRequests(backend).length;
+  await page.getByRole("button", { exact: true, name: "Ver COT-013-v1.pdf, versión 1" }).click();
+  await viewer.locator("canvas").first().waitFor();
+  assert.equal(backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/quotes/13/pdf/retry").length, 1);
+  await waitUntil(() => itemRequests(backend).length > loads);
+  await viewer.getByRole("button", { exact: true, name: "Cerrar" }).click();
+  await failedRow.getByText("Error de almacenamiento del PDF").waitFor({ state: "detached" });
+  assert.equal(await page.getByRole("button", { exact: true, name: "Descargar COT-013-v1.pdf, versión 1" }).isDisabled(), false);
+
+  // Búsqueda y Pendientes (sin cotizaciones).
+  await page.getByLabel("Buscar archivos por nombre").fill("COT-013");
+  await page.waitForFunction(() => document.querySelectorAll("[data-admin-files-table] tbody tr").length === 1);
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
+  await page.getByText("No hay coincidencias").waitFor();
+  assert.equal(itemRequests(backend).at(-1).search.tab, "pending");
+  assert.equal(await page.locator("[data-item-source='quote']").count(), 0, "las cotizaciones no pasan por revisión");
 });
 
 test("estado de error con reintento y estado vacío por filtros", async (context) => {
