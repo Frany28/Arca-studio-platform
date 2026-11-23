@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { startAdminRouterServer } from "./helpers/adminRouterServer.js";
@@ -101,4 +102,14 @@ test("Pendientes y Rechazados no incluyen cotizaciones; solo el administrador ac
   server.setUser(null);
   assert.equal((await server.send("GET", "/api/admin/files/items?tab=approved")).status, 401);
   assert.equal(calls.length, 2);
+});
+
+test("la carpeta lógica de las cotizaciones se resuelve por proyecto sin sombrear la carpeta exterior", async () => {
+  // Regresión detectada en staging: con el alias `folder` dentro de la subconsulta, el contador del
+  // árbol comparaba `folder.project_id` consigo mismo y solo el primer proyecto contaba sus cotizaciones.
+  const source = await readFile(new URL("../src/repositories/fileManagerRepository.js", import.meta.url), "utf8");
+  const helper = source.slice(source.indexOf("function quoteFolderSql"), source.indexOf("function catalogParams"));
+  assert.match(helper, /from public\.project_folders quote_target/);
+  assert.doesNotMatch(helper, /project_folders folder/);
+  assert.match(source, /quoteFolderSql\("folder\.project_id", "\$4"\)/);
 });

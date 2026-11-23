@@ -43,12 +43,14 @@ const SORTS = Object.freeze({
  * @returns {string} Fragmento `(select folder.id, folder.name, folder.system_key ...)`.
  */
 function quoteFolderSql(projectSql, keyParam) {
+  // Alias propio (`quote_target`): con `folder` sombrearía la carpeta de la consulta exterior y
+  // `projectSql` (p. ej. `folder.project_id`) se compararía consigo mismo.
   return `(
-    select folder.id, folder.name, folder.system_key
-    from public.project_folders folder
-    where folder.project_id = ${projectSql} and folder.deleted_at is null
-      and folder.system_key in (${keyParam}::text, 'documents')
-    order by (folder.system_key = ${keyParam}::text) desc, folder.id
+    select quote_target.id, quote_target.name, quote_target.system_key
+    from public.project_folders quote_target
+    where quote_target.project_id = ${projectSql} and quote_target.deleted_at is null
+      and quote_target.system_key in (${keyParam}::text, 'documents')
+    order by (quote_target.system_key = ${keyParam}::text) desc, quote_target.id
     limit 1
   )`;
 }
