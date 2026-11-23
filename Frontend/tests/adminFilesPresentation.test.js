@@ -13,6 +13,8 @@ import {
   formatFileDate,
   formatFolderPath,
   getFolderCapabilities,
+  getUploadDisabledReason,
+  QUOTES_FOLDER_KEY,
   getItemsEmptyCopy,
   isFileManagerUnavailable,
 } from "../src/pages/admin-files/utils/adminFilesPresentation.js";
@@ -70,6 +72,13 @@ test("folder capabilities respect cover, protected defaults and the pending root
   assert.equal(getFolderCapabilities({ systemKey: "cover" }).createReason, FOLDER_RULE_MESSAGES.coverNoSubfolders);
   assert.deepEqual(getFolderCapabilities({ systemKey: "documents.warranties" }), { canCreateChild: true, canManage: false, createReason: "" });
   assert.deepEqual(getFolderCapabilities({ systemKey: null }), { canCreateChild: true, canManage: true, createReason: "" });
+  // «Documentos › Cotizaciones» la gestiona su módulo: sin subcarpetas ni archivos manuales.
+  assert.deepEqual(getFolderCapabilities({ systemKey: QUOTES_FOLDER_KEY }), { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.quotesManaged });
+  for (const systemKey of ["documents.records", "documents.plans", "documents.additional"]) {
+    assert.deepEqual(getFolderCapabilities({ systemKey }), { canCreateChild: true, canManage: false, createReason: "" }, systemKey);
+  }
+  assert.match(getUploadDisabledReason({ status: "in_progress" }, { fileCount: 3, systemKey: QUOTES_FOLDER_KEY }), /Cotizaciones/);
+  assert.equal(getUploadDisabledReason({ status: "in_progress" }, { fileCount: 0, systemKey: "documents.plans" }), "");
   assert.match(FOLDER_RULE_MESSAGES.rootUndecided, /pendiente de decisión/);
 });
 

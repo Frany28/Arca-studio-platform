@@ -203,7 +203,7 @@ test("migración: preflight y postcheck correctos, datos existentes intactos y s
   assert.deepEqual(await systemTree(ids.legacy), []);
 });
 
-test("alta manual: el draft nace con las 18 carpetas del catálogo", { skip }, async () => {
+test("alta manual: el draft nace con las 22 carpetas del catálogo", { skip }, async () => {
   const { projectId } = await configuration.createManualDraftProject({ clientId: ids.client, name: "Casa manual", user: { id: ids.admin } });
   await assertCatalogTree(projectId);
   const [creator] = await rows("select bool_and(created_by = $2) as ok from public.project_folders where project_id = $1", [projectId, ids.admin]);
@@ -212,21 +212,23 @@ test("alta manual: el draft nace con las 18 carpetas del catálogo", { skip }, a
   assert.equal((await systemTree(projectId))[0].system_key, "cover");
 });
 
-test("cotización: el draft creado al guardar la cotización nace con las 18 carpetas", { skip }, async () => {
+test("cotización: el draft creado al guardar la cotización nace con las 22 carpetas", { skip }, async () => {
   const { quote } = await createDraftQuote("Casa cotizada");
   await assertCatalogTree(quote.project.id);
 });
 
-test("aprobación: el draft de una solicitud aprobada nace con las 18 carpetas y conserva sus adjuntos", { skip }, async () => {
+test("aprobación: el draft de una solicitud aprobada nace con las 22 carpetas y conserva sus adjuntos", { skip }, async () => {
   const requestId = await createPendingRequest("Casa solicitada");
   const result = await workflow.decideProjectRequest({ action: "approve", internalNotes: null, projectRequestId: requestId, reason: null, reviewedBy: ids.admin });
   assert.equal(result.outcome, "updated", JSON.stringify(result));
   const [request] = await rows("select status, converted_project_id::int from public.project_requests where id = $1", [requestId]);
   assert.equal(request.status, "converted");
   await assertCatalogTree(request.converted_project_id);
-  // El adjunto pasa al proyecto como antes y queda sin carpeta: su ubicación es una decisión pendiente.
-  const [attachment] = await rows("select project_id::int, folder_id, origin_project_request_id::int from public.files where origin_project_request_id = $1", [requestId]);
-  assert.deepEqual(attachment, { folder_id: null, origin_project_request_id: requestId, project_id: request.converted_project_id });
+  // El adjunto pasa al proyecto como antes (misma fila y versiones) y, por la clasificación documental,
+  // se ubica en «Archivos del cliente» (domain/documentClassification.js).
+  const [clientFiles] = await rows("select id::int from public.project_folders where project_id = $1 and system_key = 'client_files' and deleted_at is null", [request.converted_project_id]);
+  const [attachment] = await rows("select project_id::int, folder_id::int, origin_project_request_id::int from public.files where origin_project_request_id = $1", [requestId]);
+  assert.deepEqual(attachment, { folder_id: clientFiles.id, origin_project_request_id: requestId, project_id: request.converted_project_id });
 });
 
 test("repetición y concurrencia: una sola carpeta por clave y proyecto", { skip }, async () => {
@@ -342,7 +344,9 @@ test("catálogo B2: «Panorámicas» y «Documentos › Garantías» en las alta
   assert.deepEqual([panoramas.id, panoramas.name], [byKey.get("renders.models").id, "Panorámicas"]);
   const warranties = folders.find((folder) => folder.systemKey === "documents.warranties");
   const documentsIndex = folders.findIndex((folder) => folder.systemKey === "documents");
-  assert.deepEqual(folders.slice(documentsIndex, documentsIndex + 3).map((folder) => folder.systemKey), ["documents", "documents.initial_proposal", "documents.warranties"]);
+  assert.deepEqual(folders.slice(documentsIndex, documentsIndex + 7).map((folder) => folder.systemKey), [
+    "documents", "documents.quotes", "documents.initial_proposal", "documents.records", "documents.plans", "documents.warranties", "documents.additional",
+  ]);
 
   // Regla confirmada: carpetas personalizadas dentro de otras, salvo en la portada.
   const foldersBefore = (await rows("select count(*)::int as count from public.project_folders where project_id = $1", [projectId]))[0].count;

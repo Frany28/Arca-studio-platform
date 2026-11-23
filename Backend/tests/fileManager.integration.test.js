@@ -402,7 +402,7 @@ async function insertQuoteVersion({ at, current = true, pdf, projectId, quoteId,
   return version.id;
 }
 
-test("cotizaciones: su PDF vigente aparece en «Documentos» del proyecto, sin copiarse a files y solo en Aprobados", { skip }, async () => {
+test("cotizaciones: su PDF vigente aparece en «Documentos › Cotizaciones», sin copiarse a files y solo en Aprobados", { skip }, async () => {
   const project = await createProject("Proyecto cotizado");
   const filesBefore = Number((await rows("select count(*)::int as n from public.files"))[0].n);
   const quote = async () => Number((await rows("insert into public.quotes (code, created_by, updated_by) values ('COT-TMP', $1, $1) returning id", [seed.admin]))[0].id);
@@ -426,11 +426,20 @@ test("cotizaciones: su PDF vigente aparece en «Documentos» del proyecto, sin c
   ].sort(), "una fila por cotización: su versión vigente");
   const current = items.find((item) => item.quote.id === versioned);
   assert.deepEqual([current.folder, current.fileId, current.review, current.size, current.extension], [
-    { id: project.folders.documents, name: "Documentos", section: "documents" }, null, null, 8192, "pdf"]);
+    { id: project.folders["documents.quotes"], name: "Cotizaciones", section: "quotes" }, null, null, 8192, "pdf"]);
   assert.equal(items.find((item) => item.quote.id === failed).size, null, "un PDF no disponible no informa tamaño");
   assert.equal(items.find((item) => item.quote.id === failed).quote.pdf.errorCode, "QUOTE_PDF_STORAGE_ERROR");
 
-  assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders.documents}`)).length, 3, "carpeta «Documentos»");
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders["documents.quotes"]}`)).length, 3, "«Documentos › Cotizaciones»");
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders.documents}`)).length, 0, "solo la carpeta: no duplica las de sus subcarpetas");
+  assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders.documents}&includeSubfolders=true`)).length, 3, "con subcarpetas, una vez cada una");
+  const tree = await api(`/admin/files/tree?search=${encodeURIComponent("Proyecto cotizado")}`);
+  const treeProject = tree.body.projects.find((candidate) => candidate.id === project.id);
+  assert.equal(treeProject.fileCount, 3);
+  assert.equal(treeProject.folders.find((folder) => folder.systemKey === "documents.quotes").fileCount, 3);
+  assert.equal(treeProject.folders.find((folder) => folder.systemKey === "documents").fileCount, 0);
+  const metrics = await api(`/admin/files/metrics?projectId=${project.id}&folderId=${project.folders["documents.quotes"]}`);
+  assert.deepEqual([metrics.body.metrics.totalFiles, metrics.body.metrics.usedBytes, metrics.body.metrics.objectCount], [3, 4096 + 8192, 2], "cuenta sus PDF almacenados");
   assert.equal((await allPages(`tab=approved&projectId=${project.id}&folderId=${project.folders["documents.warranties"]}`)).length, 0);
   assert.equal((await allPages(`tab=approved&projectId=${project.id}&search=v2.pdf`)).length, 1);
   assert.equal((await allPages(`tab=approved&projectId=${project.id}&extensions=png`)).length, 0);

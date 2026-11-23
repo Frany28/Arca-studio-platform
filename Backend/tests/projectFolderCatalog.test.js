@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  getFolderManagingModule,
+  planMissingSystemFolders,
+  QUOTE_DOCUMENTS_FOLDER_KEY,
   FOLDER_PENDING_DECISIONS,
   PROJECT_SYSTEM_FOLDERS,
   WARRANTY_DOCUMENTS_FOLDER_KEY,
@@ -18,7 +21,8 @@ import {
 } from "../src/domain/projectFolderCatalog.js";
 
 // Árbol de Figma 3727:618978 y 3727:682730 («Gestión de archivos»), en orden visual, como nombre por
-// profundidad, con «Panorámicas» (clave renders.models) y «Documentos › Garantías» confirmados.
+// profundidad, con «Panorámicas» (clave renders.models), «Documentos › Garantías» y las categorías
+// documentales de la archivística (Cotizaciones, Actas, Planos y Documentos adicionales).
 const FIGMA_TREE = [
   [0, "Portada del proyecto"],
   [0, "Renders e imágenes"],
@@ -35,8 +39,12 @@ const FIGMA_TREE = [
   [2, "Ejecución"],
   [2, "Resultado final"],
   [0, "Documentos"],
+  [1, "Cotizaciones"],
   [1, "Propuesta inicial"],
+  [1, "Actas"],
+  [1, "Planos"],
   [1, "Garantías"],
+  [1, "Documentos adicionales"],
   [0, "Archivos del cliente"],
 ];
 
@@ -112,7 +120,7 @@ test("la portada admite una sola imagen JPG o PNG y solo se reemplaza (Figma)", 
 });
 
 test("el contenido de las demás carpetas queda pendiente de D14, sin valores supuestos", () => {
-  for (const folder of PROJECT_SYSTEM_FOLDERS.filter((candidate) => candidate.key !== "cover")) {
+  for (const folder of PROJECT_SYSTEM_FOLDERS.filter((candidate) => !["cover", "documents.quotes"].includes(candidate.key))) {
     assert.equal(folder.content, null, folder.key);
     assert.ok(folder.pendingDecisions.includes("D14"), folder.key);
     assert.deepEqual(evaluateFolderContent({ systemKey: folder.key }, { currentFileCount: 0, extension: "pdf" }), {
@@ -148,10 +156,11 @@ test("las carpetas personalizadas se renombran y solo se eliminan vacías; mover
 test("crear carpetas personalizadas: dentro de cualquier otra salvo la portada; la raíz depende de D7", () => {
   assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: null } }), { outcome: "allowed", reason: "INSIDE_CUSTOM_FOLDER" });
   assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: null }), { decision: "D7", outcome: "pending_decision", reason: "ROOT_CUSTOM_FOLDER_UNDECIDED" });
-  for (const folder of PROJECT_SYSTEM_FOLDERS.filter((candidate) => candidate.key !== "cover")) {
+  for (const folder of PROJECT_SYSTEM_FOLDERS.filter((candidate) => !["cover", "documents.quotes"].includes(candidate.key))) {
     assert.deepEqual(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: folder.key } }), { outcome: "allowed", reason: "INSIDE_SYSTEM_FOLDER" }, folder.key);
   }
   assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "cover" } }).outcome, "forbidden");
+  assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "documents.quotes" } }).outcome, "forbidden", "Cotizaciones no admite subcarpetas");
   assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "legacy.retired" } }).outcome, "allowed");
   assert.throws(() => evaluateFolderOperation({ operation: "copy" }), { code: "UNKNOWN_FOLDER_OPERATION" });
 });
@@ -235,8 +244,12 @@ test("orden de lectura: preorden del árbol, predeterminadas según el catálogo
     "renders.videos.execution",
     "renders.videos.final_result",
     "documents",
+    "documents.quotes",
     "documents.initial_proposal",
+    "documents.records",
+    "documents.plans",
     "documents.warranties",
+    "documents.additional",
     "client_files",
     "legacy.retired",
     "custom:301",
@@ -282,7 +295,7 @@ test("«Documentos › Garantías» usa la clave documents.warranties dentro de 
   });
   assert.deepEqual(
     PROJECT_SYSTEM_FOLDERS.filter((folder) => folder.parentKey === "documents").map((folder) => folder.key),
-    ["documents.initial_proposal", "documents.warranties"],
+    ["documents.quotes", "documents.initial_proposal", "documents.records", "documents.plans", "documents.warranties", "documents.additional"],
   );
   // Admite subcarpetas personalizadas y está protegida como cualquier predeterminada.
   assert.equal(evaluateFolderOperation({ operation: "create_child", parent: { systemKey: "documents.warranties" } }).outcome, "allowed");
@@ -302,4 +315,58 @@ test("las decisiones de carpetas resueltas salen del registro y las pendientes e
   for (const decision of referenced) assert.ok(FOLDER_PENDING_DECISIONS[decision], `Decisión sin documentar: ${decision}`);
   // D13 ya no afecta a cada carpeta: solo describe mover carpetas personalizadas.
   assert.equal(PROJECT_SYSTEM_FOLDERS.some((folder) => folder.pendingDecisions.includes("D13")), false);
+});
+
+test("«Documentos › Cotizaciones» es una carpeta gestionada: sin archivos manuales ni subcarpetas", () => {
+  assert.equal(QUOTE_DOCUMENTS_FOLDER_KEY, "documents.quotes");
+  assert.equal(getSystemFolder("documents.quotes").parentKey, "documents");
+  assert.equal(getFolderManagingModule("documents.quotes"), "quotes");
+  for (const key of [null, "documents", "documents.plans", "documents.warranties"]) assert.equal(getFolderManagingModule(key), null, key);
+  assert.deepEqual(evaluateFolderContent({ systemKey: "documents.quotes" }, { currentFileCount: 0, extension: "pdf" }), { outcome: "forbidden", reason: "FOLDER_MANAGED_BY_MODULE" });
+  for (const operation of ["rename", "delete", "move"]) {
+    assert.equal(evaluateFolderOperation({ folder: { systemKey: "documents.quotes" }, operation }).reason, "SYSTEM_FOLDER_PROTECTED", operation);
+  }
+});
+
+test("las categorías documentales nuevas siguen la convención de claves y no cambian las históricas", () => {
+  assert.deepEqual(
+    ["documents.records", "documents.plans", "documents.additional"].map((key) => [key, getSystemFolder(key).name, getSystemFolder(key).parentKey]),
+    [["documents.records", "Actas", "documents"], ["documents.plans", "Planos", "documents"], ["documents.additional", "Documentos adicionales", "documents"]],
+  );
+  for (const key of ["cover", "renders.models", "renders.images", "renders.videos", "documents.initial_proposal", "documents.warranties", "client_files"]) {
+    assert.ok(getSystemFolder(key), key);
+  }
+});
+
+test("sincronización: planifica solo las carpetas que faltan y no adopta una personalizada del mismo nombre", () => {
+  const previous = PROJECT_SYSTEM_FOLDERS
+    .filter((folder) => !["documents.quotes", "documents.records", "documents.plans", "documents.additional"].includes(folder.key))
+    .map((folder, index) => ({ id: index + 1, name: folder.name, parentKey: folder.parentKey, systemKey: folder.key }));
+  const idOf = (key) => previous.find((folder) => folder.systemKey === key).id;
+  const folders = previous.map(({ parentKey, ...folder }) => ({ ...folder, parentId: parentKey ? idOf(parentKey) : null }));
+
+  assert.deepEqual(planMissingSystemFolders(folders), { blocked: [], conflicts: [], missing: ["documents.quotes", "documents.records", "documents.plans", "documents.additional"] });
+  // Una carpeta personalizada «cotizaciones» dentro de Documentos: conflicto informado, sin crear ni renombrar.
+  const withCustom = [...folders, { id: 900, name: " cotizaciones ", parentId: idOf("documents"), systemKey: null }];
+  assert.deepEqual(planMissingSystemFolders(withCustom), {
+    blocked: [],
+    conflicts: [{ existingSystemKey: null, folderId: 900, folderName: " cotizaciones ", systemKey: "documents.quotes" }],
+    missing: ["documents.records", "documents.plans", "documents.additional"],
+  });
+  // El mismo nombre en otra ubicación no es conflicto.
+  assert.deepEqual(planMissingSystemFolders([...folders, { id: 901, name: "Cotizaciones", parentId: idOf("renders"), systemKey: null }]).conflicts, []);
+  // Proyecto completo: nada que crear (idempotente).
+  const complete = PROJECT_SYSTEM_FOLDERS.map((folder, index) => ({ id: index + 1, name: folder.name, parentKey: folder.parentKey, systemKey: folder.key }));
+  const completeIds = new Map(complete.map((folder) => [folder.systemKey, folder.id]));
+  assert.deepEqual(planMissingSystemFolders(complete.map(({ parentKey, ...folder }) => ({ ...folder, parentId: parentKey ? completeIds.get(parentKey) : null }))), { blocked: [], conflicts: [], missing: [] });
+});
+
+test("sincronización: un conflicto en una carpeta madre bloquea sus hijas y nunca se resuelve solo", () => {
+  // Proyecto sin «Documentos» predeterminada y con una personalizada «Documentos» en la raíz.
+  const folders = [{ id: 1, name: "Portada del proyecto", parentId: null, systemKey: "cover" }, { id: 2, name: "Documentos", parentId: null, systemKey: null }];
+  const plan = planMissingSystemFolders(folders);
+  assert.deepEqual(plan.conflicts.map((conflict) => conflict.systemKey), ["documents"]);
+  assert.deepEqual(plan.blocked, ["documents.quotes", "documents.initial_proposal", "documents.records", "documents.plans", "documents.warranties", "documents.additional"]);
+  assert.equal(plan.missing.includes("documents.quotes"), false);
+  assert.ok(plan.missing.includes("renders.images.execution"));
 });

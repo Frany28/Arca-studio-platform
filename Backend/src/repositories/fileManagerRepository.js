@@ -1,5 +1,5 @@
 import { query } from "../config/db.js";
-import { PROJECT_SYSTEM_FOLDERS } from "../domain/projectFolderCatalog.js";
+import { PROJECT_SYSTEM_FOLDERS, QUOTE_DOCUMENTS_FOLDER_KEY } from "../domain/projectFolderCatalog.js";
 import { preciseCursorTimestampSql } from "../utils/pagination.js";
 
 // Administrador de archivos (Fase 1.2, B7): lecturas de PostgreSQL para métricas, árbol de proyectos
@@ -33,9 +33,25 @@ const SORTS = Object.freeze({
   size: { cast: "bigint", cursorSql: "coalesce(item.file_size, 0)::text", sql: "coalesce(item.file_size, 0)" },
 });
 
-// Carpeta en la que se muestran los PDF de cotizaciones: «Documentos» del proyecto de la versión
-// vigente. Es una integración lógica: el PDF sigue en su bucket privado y en quote_pdf_documents.
-export const QUOTE_DOCUMENTS_FOLDER_KEY = "documents";
+/**
+ * Subconsulta con la carpeta lógica de las cotizaciones de un proyecto: «Documentos › Cotizaciones» o,
+ * si el proyecto aún no se sincronizó con el catálogo ampliado, «Documentos». El PDF sigue en su bucket
+ * privado; toda consulta que ubique cotizaciones usa esta misma regla (domain/documentClassification.js).
+ *
+ * @param {string} projectSql - Expresión SQL con el proyecto de la versión vigente.
+ * @param {string} keyParam - Parámetro SQL con QUOTE_DOCUMENTS_FOLDER_KEY (p. ej. `$11`).
+ * @returns {string} Fragmento `(select folder.id, folder.name, folder.system_key ...)`.
+ */
+function quoteFolderSql(projectSql, keyParam) {
+  return `(
+    select folder.id, folder.name, folder.system_key
+    from public.project_folders folder
+    where folder.project_id = ${projectSql} and folder.deleted_at is null
+      and folder.system_key in (${keyParam}::text, 'documents')
+    order by (folder.system_key = ${keyParam}::text) desc, folder.id
+    limit 1
+  )`;
+}
 
 /**
  * Parámetros con el catálogo de carpetas predeterminadas (claves y nombres visibles) para unirlos
@@ -60,10 +76,12 @@ export function toContainsPattern(text) {
 /**
  * Calcula las métricas del administrador en un ámbito: todos los proyectos, un proyecto o una carpeta
  * con sus subcarpetas. Criterios (documentados en Backend/ARCHITECTURE.md, B7):
- * - archivos: archivos vigentes (no versiones);
+ * - archivos: archivos vigentes (no versiones) más las cotizaciones (una por cotización) del ámbito;
  * - espacio usado: suma de los objetos almacenados distintos de sus versiones no retiradas; un objeto
- *   reutilizado por restauraciones (misma clave) cuenta una sola vez;
- * - última carga: la versión más reciente con objeto propio (las restauraciones no son cargas).
+ *   reutilizado por restauraciones (misma clave) cuenta una sola vez; incluye los PDF de cotizaciones
+ *   disponibles de todas sus versiones (bucket privado), sin consultar el almacenamiento;
+ * - última carga: la versión más reciente con objeto propio (las restauraciones no son cargas; los PDF
+ *   generados por Cotizaciones tampoco).
  *
  * @param {{ projectId?: number|null, folderId?: number|null }} scope - Ámbito.
  * @returns {Promise<{ totalFiles: number, usedBytes: number, objectCount: number, lastUploadAt: Date|null }>} Métricas.
@@ -98,14 +116,30 @@ export async function readFileManagerMetrics({ folderId = null, projectId = null
         from scoped_versions
         where file_name is not null
         order by file_name
+      ),
+      -- Cotizaciones del ámbito (una por cotización, en su carpeta lógica) y sus PDF almacenados.
+      scoped_quotes as (
+        select quote_version.quote_id
+        from public.quote_versions quote_version
+        inner join public.projects project on project.id = quote_version.project_id and project.deleted_at is null
+        left join lateral ${quoteFolderSql("quote_version.project_id", "$3")} quote_folder on true
+        where quote_version.is_current
+          and ($1::bigint is null or quote_version.project_id = $1::bigint)
+          and ($2::bigint is null or quote_folder.id in (select id from scope_folders))
+      ),
+      quote_objects as (
+        select doc.size_bytes
+        from public.quote_pdf_documents doc
+        inner join public.quote_versions version on version.id = doc.quote_version_id
+        where doc.status = 'available' and version.quote_id in (select quote_id from scoped_quotes)
       )
       select
-        (select count(*) from scoped_files)::bigint as total_files,
-        (select coalesce(sum(object_size), 0) from stored_objects)::bigint as used_bytes,
-        (select count(*) from stored_objects)::bigint as object_count,
+        ((select count(*) from scoped_files) + (select count(*) from scoped_quotes))::bigint as total_files,
+        ((select coalesce(sum(object_size), 0) from stored_objects) + (select coalesce(sum(size_bytes), 0) from quote_objects))::bigint as used_bytes,
+        ((select count(*) from stored_objects) + (select count(*) from quote_objects))::bigint as object_count,
         (select max(created_at) from scoped_versions where restored_from_version_id is null) as last_upload_at
     `,
-    [projectId, folderId],
+    [projectId, folderId, QUOTE_DOCUMENTS_FOLDER_KEY],
   );
   const row = result.rows[0];
   return {
@@ -118,7 +152,7 @@ export async function readFileManagerMetrics({ folderId = null, projectId = null
 
 /**
  * Lista una página de proyectos del árbol, ordenados por nombre e id, con su cliente y su número de
- * archivos. La búsqueda opcional compara el nombre del proyecto o del cliente.
+ * archivos (incluidas sus cotizaciones). La búsqueda opcional compara el nombre del proyecto o del cliente.
  *
  * @param {{ cursor: [string, string]|null, limit: number, search?: string|null }} options - Página y búsqueda.
  * @returns {Promise<Array<object>>} Hasta `limit + 1` filas.
@@ -127,7 +161,8 @@ export async function listFileManagerProjects({ cursor, limit, search = null }) 
   const result = await query(
     `
       select project.id, project.name, project.status, client.name as client_name, lower(project.name) as sort_name,
-        (select count(*) from public.files file where file.project_id = project.id and ${ACTIVE_FILE_SQL})::bigint as file_count
+        ((select count(*) from public.files file where file.project_id = project.id and ${ACTIVE_FILE_SQL})
+          + (select count(*) from public.quote_versions quote_version where quote_version.project_id = project.id and quote_version.is_current))::bigint as file_count
       from public.projects project
       inner join public.clients client on client.id = project.client_id
       where project.deleted_at is null
@@ -142,7 +177,8 @@ export async function listFileManagerProjects({ cursor, limit, search = null }) 
 }
 
 /**
- * Lee las carpetas vigentes de varios proyectos con su nombre visible y su número de archivos directos.
+ * Lee las carpetas vigentes de varios proyectos con su nombre visible y su número de archivos directos
+ * (en la carpeta lógica de las cotizaciones, también sus cotizaciones).
  * El servicio las ordena por proyecto con orderFolderTree.
  *
  * @param {number[]} projectIds - Proyectos de la página.
@@ -155,12 +191,15 @@ export async function listFoldersOfProjects(projectIds) {
     `
       select folder.id, folder.project_id, folder.parent_id, folder.system_key,
         coalesce(catalog.name, folder.name) as name,
-        (select count(*) from public.files file where file.folder_id = folder.id and ${ACTIVE_FILE_SQL})::bigint as file_count
+        ((select count(*) from public.files file where file.folder_id = folder.id and ${ACTIVE_FILE_SQL})
+          + (select count(*) from public.quote_versions quote_version
+             where quote_version.project_id = folder.project_id and quote_version.is_current
+               and folder.id = (select quote_folder.id from ${quoteFolderSql("folder.project_id", "$4")} quote_folder)))::bigint as file_count
       from public.project_folders folder
       left join unnest($2::text[], $3::text[]) as catalog(key, name) on catalog.key = folder.system_key
       where folder.project_id = any($1::bigint[]) and folder.deleted_at is null
     `,
-    [projectIds, keys, names],
+    [projectIds, keys, names, QUOTE_DOCUMENTS_FOLDER_KEY],
   );
   return result.rows;
 }
@@ -234,7 +273,8 @@ export async function listFolderAncestors(folderIds) {
  * ordenación, el origen y el id de la fila como desempate.
  *
  * En Aprobados se incluyen, además, los PDF de cotizaciones (`source = 'quote'`): uno por cotización,
- * el de su versión comercial vigente, en la carpeta «Documentos» del proyecto de esa versión. No se
+ * el de su versión comercial vigente, en «Documentos › Cotizaciones» del proyecto de esa versión (o en
+ * «Documentos» si el proyecto aún no se sincronizó con el catálogo ampliado). No se
  * copian a `files`: se leen de `quote_versions` y `quote_pdf_documents`, con su estado (`pending`,
  * `available` o `error`; sin fila, la versión es anterior a la persistencia y se recupera al abrirla).
  * Las cotizaciones no pasan por revisión, por eso no aparecen en Pendientes ni Rechazados.
@@ -317,8 +357,8 @@ export async function listFileManagerItems({
           'application/pdf'::text as content_type,
           coalesce(doc.file_name, quote.code || '-v' || quote_version.version_number || '.pdf') as name,
           true as is_current,
-          null::bigint as file_id, null::smallint as access_policy, documents.id as folder_id, null::text as file_category,
-          documents.name as folder_name, documents.system_key as folder_classification_key,
+          null::bigint as file_id, null::smallint as access_policy, quote_folder.id as folder_id, null::text as file_category,
+          coalesce(quote_catalog.name, quote_folder.name) as folder_name, quote_folder.system_key as folder_classification_key,
           project.id as project_id, project.name as project_name, project.status as project_status,
           author.id as uploader_id, concat_ws(' ', author.first_name, author.last_name) as uploader_name,
           null::text as reviewer_name,
@@ -327,13 +367,8 @@ export async function listFileManagerItems({
         inner join public.quotes quote on quote.id = quote_version.quote_id
         inner join public.projects project on project.id = quote_version.project_id and project.deleted_at is null
         left join public.quote_pdf_documents doc on doc.quote_version_id = quote_version.id
-        left join lateral (
-          select folder.id, coalesce(catalog.name, folder.name) as name, folder.system_key
-          from public.project_folders folder
-          left join unnest($9::text[], $10::text[]) as catalog(key, name) on catalog.key = folder.system_key
-          where folder.project_id = quote_version.project_id and folder.system_key = $11::text and folder.deleted_at is null
-          order by folder.id limit 1
-        ) documents on true
+        left join lateral ${quoteFolderSql("quote_version.project_id", "$11")} quote_folder on true
+        left join unnest($9::text[], $10::text[]) as quote_catalog(key, name) on quote_catalog.key = quote_folder.system_key
         left join public.users author on author.id = quote_version.created_by
         where $12::boolean and quote_version.is_current
       ) item

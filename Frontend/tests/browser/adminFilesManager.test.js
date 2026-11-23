@@ -151,7 +151,13 @@ function createBackend({ enabled = true, failures = {}, quotes = false } = {}) {
     // Proyecto con dos cotizaciones: COT-012 (v1 y v2 disponibles) y COT-013 (v1 con fallo de almacenamiento).
     const cotizada = { client: { name: "Cliente Tres" }, fileCount: 0, folders: defaultFolders(500), id: 3, name: "Casa Cotizada", status: "in_progress" };
     state.projects.push(cotizada);
-    const folder = { id: 503, name: "Documentos", section: "documents" };
+    // Catálogo ampliado: «Documentos › Cotizaciones» (gestionada por Cotizaciones) y las demás categorías.
+    cotizada.folders.push(
+      { fileCount: 2, id: 510, name: "Cotizaciones", parentId: 503, systemKey: "documents.quotes" },
+      { fileCount: 0, id: 511, name: "Actas", parentId: 503, systemKey: "documents.records" },
+      { fileCount: 0, id: 512, name: "Planos", parentId: 503, systemKey: "documents.plans" },
+    );
+    const folder = { id: 510, name: "Cotizaciones", section: "quotes" };
     const quoteVersion = (quoteId, versionNumber, day, status) => ({
       createdAt: `2026-04-${String(day).padStart(2, "0")}T14:00:00.000Z`, createdBy: { id: 1, name: "Ana Admin" }, quoteId, versionNumber,
       pdf: { errorCode: status === "error" ? "QUOTE_PDF_STORAGE_ERROR" : null, fileName: `COT-0${quoteId}-v${versionNumber}.pdf`, size: status === "available" ? 40960 : null, status },
@@ -644,15 +650,26 @@ test("descarga la versión con el nombre del servidor", async (context) => {
   assert.equal(request.search.versionId, "3110");
 });
 
-test("cotizaciones: su PDF aparece en «Documentos» del proyecto; se ve, descarga y recorre su historial sin reemplazarlo", async (context) => {
+test("cotizaciones: su PDF aparece en «Documentos › Cotizaciones» del proyecto; se ve, descarga y recorre su historial sin reemplazarlo", async (context) => {
   const backend = createBackend({ quotes: true });
   const page = await openFiles(context, backend);
   const tree = page.getByRole("complementary", { name: "Proyectos" });
   await tree.getByRole("button", { name: "Mostrar carpetas de Casa Cotizada" }).click();
-  await tree.getByRole("button", { exact: true, name: "Documentos" }).click();
+  await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
+  for (const name of ["Cotizaciones", "Actas", "Planos"]) await tree.getByRole("button", { exact: true, name }).waitFor();
+  await tree.getByRole("button", { exact: true, name: "Cotizaciones" }).click();
   await page.getByRole("rowheader", { name: /COT-012-v2\.pdf/ }).waitFor();
   assert.deepEqual((await rowNames(page)).sort(), ["COT-012-v2.pdf", "COT-013-v1.pdf"]);
-  assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, projectId: itemRequests(backend).at(-1).search.projectId }, { folderId: "503", projectId: "3" });
+  assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, projectId: itemRequests(backend).at(-1).search.projectId }, { folderId: "510", projectId: "3" });
+  // Carpeta gestionada: sin subcarpetas ni archivos manuales.
+  assert.equal(await page.getByRole("button", { name: /^Nueva carpeta\. Cotizaciones genera/ }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: /^Nuevo archivo\. Las cotizaciones se generan/ }).isDisabled(), true);
+  // «Documentos» (con sus subcarpetas) las muestra una sola vez.
+  await tree.getByRole("button", { exact: true, name: "Documentos" }).click();
+  await page.waitForFunction(() => document.querySelectorAll("[data-admin-files-table] tbody tr").length === 2);
+  assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, includeSubfolders: itemRequests(backend).at(-1).search.includeSubfolders }, { folderId: "503", includeSubfolders: "true" });
+  await tree.getByRole("button", { exact: true, name: "Cotizaciones" }).click();
+  await waitUntil(() => itemRequests(backend).at(-1).search.folderId === "510");
 
   // Un PDF no disponible se informa y no se descarga; uno disponible sí, desde la API de Cotizaciones.
   const failedRow = page.locator("tr", { has: page.getByRole("rowheader", { name: /COT-013-v1\.pdf/ }) });

@@ -9,13 +9,18 @@ import { deepFreeze } from "./fileContexts.js";
 //   (`renders.models` se muestra como «Panorámicas» y contiene imágenes de 360°);
 // - las carpetas predeterminadas no se renombran, eliminan ni mueven;
 // - se pueden crear carpetas personalizadas dentro de otras, salvo en la portada;
-// - los documentos de garantías se guardan en «Documentos › Garantías» (`documents.warranties`).
+// - los documentos de garantías se guardan en «Documentos › Garantías» (`documents.warranties`);
+// - los PDF de cotizaciones se muestran en «Documentos › Cotizaciones» (`documents.quotes`), carpeta
+//   gestionada por su módulo (Fase de archivística: Cotizaciones, Actas, Planos y Documentos adicionales).
 // Las reglas que dependen de una decisión abierta se devuelven como `pending_decision` con su
 // identificador, nunca con un valor supuesto.
 
 export const FOLDER_NAME_MAX_LENGTH = 120;
 export const SYSTEM_FOLDER_KEY_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 export const WARRANTY_DOCUMENTS_FOLDER_KEY = "documents.warranties";
+// «Documentos › Cotizaciones»: ubicación lógica de los PDF generados por Cotizaciones. El PDF sigue
+// en su bucket privado y en quote_pdf_documents; la carpeta solo los agrupa en el administrador.
+export const QUOTE_DOCUMENTS_FOLDER_KEY = "documents.quotes";
 
 // Decisiones abiertas que afectan a este catálogo. Ver Backend/ARCHITECTURE.md (Fase 1.2).
 // Resueltas: D1 (garantías en documents.warranties), D6 («Panorámicas», imágenes de 360°) y la parte
@@ -59,10 +64,29 @@ export const PROJECT_SYSTEM_FOLDERS = deepFreeze([
   { key: "renders.videos.execution", name: "Ejecución", parentKey: "renders.videos", section: "videos", stage: "execution", content: null, pendingDecisions: ["D14"] },
   { key: "renders.videos.final_result", name: "Resultado final", parentKey: "renders.videos", section: "videos", stage: "final_result", content: null, pendingDecisions: ["D14"] },
   { key: "documents", name: "Documentos", parentKey: null, section: "documents", stage: null, content: null, pendingDecisions: ["D14"] },
+  // Cotizaciones: carpeta gestionada por su módulo. Muestra los PDF generados de las cotizaciones del
+  // proyecto (versión comercial vigente, con su historial) sin copiarlos; no admite subidas, movimientos
+  // ni subcarpetas, porque un PDF arbitrario rompería la correspondencia con los datos comerciales.
+  {
+    key: QUOTE_DOCUMENTS_FOLDER_KEY,
+    name: "Cotizaciones",
+    parentKey: "documents",
+    section: "quotes",
+    stage: null,
+    content: { acceptedExtensions: [], allowsSubfolders: false, managedBy: "quotes", maxFiles: 0, replaceOnly: false },
+    pendingDecisions: [],
+  },
   { key: "documents.initial_proposal", name: "Propuesta inicial", parentKey: "documents", section: "documents", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
+  // Actas (de inicio, de entrega, de reunión...) y planos técnicos: categorías documentales propias.
+  // Se clasifican al subirlos eligiendo la carpeta; nunca se deducen de la extensión (un PDF puede ser
+  // cualquiera de ellas).
+  { key: "documents.records", name: "Actas", parentKey: "documents", section: "records", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "documents.plans", name: "Planos", parentKey: "documents", section: "plans", stage: null, content: null, pendingDecisions: ["D14"] },
   // Documentos de garantías: se guardan aquí y se vinculan a garantías del mismo proyecto
   // (domain/projectWarrantyDocuments.js). Sus formatos dependen de D14.
   { key: WARRANTY_DOCUMENTS_FOLDER_KEY, name: "Garantías", parentKey: "documents", section: "warranties", stage: null, content: null, pendingDecisions: ["D14"] },
+  // Documentos que no pertenecen a otra categoría documental, elegidos expresamente por el usuario.
+  { key: "documents.additional", name: "Documentos adicionales", parentKey: "documents", section: "documents", stage: null, content: null, pendingDecisions: ["D14"] },
   // Los adjuntos de la solicitud de origen se reconocen hoy como «Archivos del cliente»
   // (origin_project_request_id). Qué más puede contener depende de D14.
   { key: "client_files", name: "Archivos del cliente", parentKey: null, section: "client_files", stage: null, content: null, pendingDecisions: ["D14"] },
@@ -324,7 +348,8 @@ function evaluateCustomFolderLocation(parent) {
 
 /**
  * Evalúa si una carpeta admite un archivo más según su contenido confirmado.
- * Solo la portada tiene reglas confirmadas (una imagen JPG o PNG, reemplazable); el resto depende de D14.
+ * La portada admite una imagen JPG o PNG reemplazable; una carpeta gestionada por un módulo
+ * (Cotizaciones) no admite archivos manuales; el resto depende de D14.
  *
  * @param {{ systemKey: string|null }} folder - Carpeta destino.
  * @param {{ extension: string, currentFileCount: number }} file - Extensión y archivos ya presentes.
@@ -332,6 +357,7 @@ function evaluateCustomFolderLocation(parent) {
  */
 export function evaluateFolderContent(folder, { currentFileCount, extension }) {
   const definition = folder?.systemKey ? getSystemFolder(folder.systemKey) : null;
+  if (definition?.content?.managedBy) return { outcome: "forbidden", reason: "FOLDER_MANAGED_BY_MODULE" };
   if (!definition?.content) return { decision: "D14", outcome: "pending_decision", reason: "FOLDER_CONTENT_UNDECIDED" };
   const normalizedExtension = String(extension ?? "").trim().toLowerCase().replace(/^\./, "");
   if (!definition.content.acceptedExtensions.includes(normalizedExtension)) return { outcome: "forbidden", reason: "FILE_TYPE_NOT_ACCEPTED" };
@@ -358,4 +384,54 @@ export function findSystemFolderNameCollisions(existing) {
     if (match) collisions.push({ folderId: String(folder.id), systemKey: match.key });
   }
   return collisions;
+}
+
+/**
+ * Indica si una carpeta predeterminada la gestiona otro módulo (p. ej. Cotizaciones): su contenido
+ * se genera allí y no se sube, mueve ni reemplaza a mano desde el administrador o la configuración.
+ *
+ * @param {string|null|undefined} systemKey - Clave funcional de la carpeta.
+ * @returns {string|null} Módulo que la gestiona o null.
+ */
+export function getFolderManagingModule(systemKey) {
+  return getSystemFolder(systemKey)?.content?.managedBy ?? null;
+}
+
+/**
+ * Planifica las carpetas predeterminadas que faltan en un proyecto existente sin tocar las suyas.
+ * Una carpeta del catálogo cuyo nombre ya usa otra carpeta en la misma ubicación (p. ej. una
+ * personalizada «Cotizaciones» dentro de «Documentos») es un CONFLICTO: no se crea, no se adopta ni
+ * se renombra la existente (cambiaría su significado o su propiedad); queda para revisión, junto con
+ * las carpetas del catálogo que dependen de ella.
+ *
+ * @param {Array<{ id: number|string, parentId: number|string|null, systemKey: string|null, name: string }>} folders -
+ *   Carpetas vigentes del proyecto.
+ * @returns {{ missing: string[], conflicts: Array<{ systemKey: string, folderId: number, folderName: string, existingSystemKey: string|null }>, blocked: string[] }}
+ *   Claves que se pueden crear, conflictos y claves bloqueadas por un conflicto de su madre.
+ */
+export function planMissingSystemFolders(folders) {
+  const bySystemKey = new Map(folders.filter((folder) => folder.systemKey).map((folder) => [folder.systemKey, folder]));
+  const unavailable = new Set();
+  const plan = { blocked: [], conflicts: [], missing: [] };
+  for (const definition of systemFolderCreationOrder()) {
+    if (bySystemKey.has(definition.key)) continue;
+    if (definition.parentKey && unavailable.has(definition.parentKey)) {
+      unavailable.add(definition.key);
+      plan.blocked.push(definition.key);
+      continue;
+    }
+    // Madre creada en este mismo plan: todavía no tiene hermanas, así que no puede haber conflicto.
+    const parent = definition.parentKey ? bySystemKey.get(definition.parentKey) : null;
+    const sibling = definition.parentKey && !parent ? null : folders.find((folder) => (
+      (folder.parentId === null || folder.parentId === undefined ? null : Number(folder.parentId)) === (parent ? Number(parent.id) : null)
+      && folderNameKey(folder.name) === folderNameKey(definition.name)
+    ));
+    if (sibling) {
+      unavailable.add(definition.key);
+      plan.conflicts.push({ existingSystemKey: sibling.systemKey ?? null, folderId: Number(sibling.id), folderName: sibling.name, systemKey: definition.key });
+    } else {
+      plan.missing.push(definition.key);
+    }
+  }
+  return plan;
 }

@@ -28,7 +28,7 @@ import {
   replaceTrackingConfiguration,
   updateProjectGeneralConfiguration,
 } from "../repositories/projectConfigurationRepository.js";
-import { evaluateFolderOperation } from "../domain/projectFolderCatalog.js";
+import { evaluateFolderOperation, getFolderManagingModule } from "../domain/projectFolderCatalog.js";
 import { assertWarrantyDocumentMove, saveStableProjectWarranties } from "./projectWarrantyService.js";
 
 const MISSING_REQUIREMENT_MESSAGES = Object.freeze({
@@ -361,6 +361,20 @@ export async function deleteProjectFolder({ folderId, projectId }) {
 }
 
 /**
+ * Rechaza una carpeta gestionada por otro módulo como destino de archivos manuales (subida o
+ * movimiento): «Documentos › Cotizaciones» solo muestra los PDF que genera Cotizaciones.
+ *
+ * @param {{ systemKey: string|null }|null} folder - Carpeta destino (null: raíz).
+ * @returns {void}
+ * @throws {ConflictError} PROJECT_FOLDER_MANAGED.
+ */
+function assertNotManagedFolder(folder) {
+  if (getFolderManagingModule(folder?.systemKey)) {
+    throw new ConflictError("PROJECT_FOLDER_MANAGED", "Esta carpeta la gestiona Cotizaciones: sus PDF se generan al guardar cada cotización.");
+  }
+}
+
+/**
  * Mueve un archivo del borrador a una carpeta del mismo proyecto o a la raíz.
  *
  * @param {{fileId: number, folderId: number|null, projectId: number}} params - Archivo y destino.
@@ -368,9 +382,11 @@ export async function deleteProjectFolder({ folderId, projectId }) {
  */
 export async function moveProjectFile({ fileId, folderId, projectId }) {
   await writeDraftConfiguration(projectId, async (client) => {
-    if (folderId && !(await findProjectFolder(client, projectId, folderId))) {
+    const target = folderId ? await findProjectFolder(client, projectId, folderId) : null;
+    if (folderId && !target) {
       throw new ValidationError("Los datos enviados no son válidos.", { "body.folderId": "La carpeta no existe." });
     }
+    assertNotManagedFolder(target);
     // B8: un documento que respalda garantías vigentes debe seguir en «Documentos › Garantías».
     await assertWarrantyDocumentMove(client, { fileId, targetFolderId: folderId });
     if (!(await moveProjectFileToFolder(client, { fileId, folderId, projectId }))) {
@@ -391,7 +407,9 @@ export async function assertDraftUploadTarget({ folderId, projectId }) {
   const record = await findProjectConfiguration(projectId);
   if (!record) throw new NotFoundError("PROJECT_NOT_FOUND", "Proyecto no encontrado.");
   if (record.project.status !== PROJECT_STATUS.DRAFT) throw new ConflictError("PROJECT_NOT_DRAFT", "Solo se puede configurar un proyecto en borrador.");
-  if (folderId && !(await findProjectFolder({ query }, projectId, folderId))) {
+  const target = folderId ? await findProjectFolder({ query }, projectId, folderId) : null;
+  if (folderId && !target) {
     throw new ValidationError("Los datos enviados no son válidos.", { "query.folderId": "La carpeta no existe." });
   }
+  assertNotManagedFolder(target);
 }

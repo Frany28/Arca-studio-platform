@@ -14,6 +14,7 @@ const RULE_ERRORS = Object.freeze({
   FILE_TYPE_NOT_ACCEPTED: ["PROJECT_FOLDER_FILE_TYPE_NOT_ACCEPTED", "Esta carpeta solo admite imágenes JPG o PNG."],
   FOLDER_FULL: ["PROJECT_FOLDER_FULL", "Esta carpeta ya tiene el máximo de archivos."],
   FOLDER_FULL_REPLACE_EXISTING: ["PROJECT_FOLDER_FULL", "La portada admite una sola imagen: reemplaza la existente."],
+  FOLDER_MANAGED_BY_MODULE: ["PROJECT_FOLDER_MANAGED", "Esta carpeta la gestiona Cotizaciones: sus PDF se generan al guardar cada cotización."],
 });
 
 /**

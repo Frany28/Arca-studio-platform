@@ -22,9 +22,13 @@ export const ADMIN_FILES_TYPE_OPTIONS = Object.freeze([
 
 // Carpeta predeterminada que no admite subcarpetas (una sola imagen de portada).
 const COVER_FOLDER_KEY = "cover";
+// «Documentos › Cotizaciones» (Backend/src/domain/projectFolderCatalog.js): carpeta gestionada por
+// Cotizaciones. Muestra sus PDF generados; no admite archivos manuales ni subcarpetas.
+export const QUOTES_FOLDER_KEY = "documents.quotes";
 // Mensajes de las reglas confirmadas y pendientes de carpetas (domain/projectFolderCatalog.js).
 export const FOLDER_RULE_MESSAGES = Object.freeze({
   coverNoSubfolders: "La portada admite una sola imagen: no admite subcarpetas.",
+  quotesManaged: "Cotizaciones genera el contenido de esta carpeta: no admite subcarpetas ni archivos manuales.",
   rootUndecided: "Crear carpetas en la raíz del proyecto está pendiente de decisión. Selecciona una carpeta.",
   selectFolder: "Selecciona una carpeta del árbol para crear una subcarpeta.",
   systemProtected: "Las carpetas predeterminadas no se pueden renombrar ni eliminar.",
@@ -62,7 +66,7 @@ export function buildFolderTree(folders) {
 
 /**
  * Indica qué se puede hacer con una carpeta según las reglas confirmadas: crear subcarpetas en
- * cualquiera salvo la portada; renombrar y retirar solo las personalizadas (retirar exige que estén
+ * cualquiera salvo la portada y Cotizaciones; renombrar y retirar solo las personalizadas (retirar exige que estén
  * vacías y lo comprueba el backend).
  *
  * @param {{ systemKey: string|null }|null} folder - Carpeta seleccionada (null: raíz o ninguna).
@@ -72,6 +76,9 @@ export function getFolderCapabilities(folder) {
   if (!folder) return { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.selectFolder };
   if (folder.systemKey === COVER_FOLDER_KEY) {
     return { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.coverNoSubfolders };
+  }
+  if (folder.systemKey === QUOTES_FOLDER_KEY) {
+    return { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.quotesManaged };
   }
   return { canCreateChild: true, canManage: !folder.systemKey, createReason: "" };
 }
@@ -140,5 +147,6 @@ export function getUploadDisabledReason(project, folder) {
   if (UPLOAD_READ_ONLY_STATUSES[project.status]) return UPLOAD_READ_ONLY_STATUSES[project.status];
   if (!folder) return "Los archivos se suben dentro de una carpeta: selecciona una.";
   if (folder.systemKey === "cover" && Number(folder.fileCount) >= 1) return "La portada ya tiene su imagen: usa «Reemplazar archivo».";
+  if (folder.systemKey === QUOTES_FOLDER_KEY) return "Las cotizaciones se generan desde Cotizaciones al guardar cada una.";
   return "";
 }

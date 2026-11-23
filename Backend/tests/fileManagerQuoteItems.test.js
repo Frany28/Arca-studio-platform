@@ -66,7 +66,7 @@ test("elementos: una cotización se distingue del archivo, sin fileId ni revisi�
     restoredFromVersionId: null, review: null, size: null, source: "quote",
     uploadedBy: { id: 2, name: "Admin Arca" }, versionId: 40, versionNumber: 3,
   });
-  assert.equal(calls[0][10], "documents", "carpeta «Documentos» del catálogo");
+  assert.equal(calls[0][10], "documents.quotes", "carpeta «Documentos › Cotizaciones» del catálogo");
   assert.equal(calls[0][11], true, "Aprobados incluye cotizaciones");
   assert.deepEqual(decodeCursor(response.body.nextCursor, 6), ["approved", "date", "desc", QUOTE_ROW.cursor_value, 1, "40"], "el cursor guarda el origen");
 });

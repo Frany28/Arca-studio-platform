@@ -4,6 +4,7 @@ import { mapRequestToDraftProject } from "../domain/projectConfiguration.js";
 import { pageResult } from "../utils/pagination.js";
 import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
 import { ensureProjectSystemFolders } from "./projectSystemFolderRepository.js";
+import { CLIENT_FILES_FOLDER_KEY } from "../domain/documentClassification.js";
 
 // Última edición administrativa de cada solicitud que cambió respuestas relevantes para la revisión
 // técnica, según la auditoría (`project_request.admin_update` con `reviewRelevantFields` no vacío).
@@ -595,18 +596,24 @@ export async function decideProjectRequest({
       // Los adjuntos pasan al proyecto en la misma transacción. chk_files_owner exige un único dueño:
       // se libera project_request_id y origin_project_request_id conserva la trazabilidad. Es la misma
       // fila (mismas versiones, objetos y comentarios); no se copia nada en el almacenamiento.
+      // Clasificación documental (domain/documentClassification.js): un adjunto de la solicitud de
+      // origen se ubica en «Archivos del cliente»; solo cambia su carpeta lógica, nunca el objeto.
       await client.query(
         `
           update public.files
           set project_id = $1,
               origin_project_request_id = project_request_id,
               project_request_id = null,
+              folder_id = coalesce(folder_id, (
+                select folder.id from public.project_folders folder
+                where folder.project_id = $1 and folder.system_key = $3 and folder.deleted_at is null
+              )),
               updated_at = now()
           where project_request_id = $2
             and deleted_at is null
             and status <> 'deleted'
         `,
-        [project.id, projectRequestId],
+        [project.id, projectRequestId, CLIENT_FILES_FOLDER_KEY],
       );
       nextStatus = "converted";
     }

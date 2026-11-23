@@ -1,5 +1,5 @@
 import { NotFoundError } from "../errors/appError.js";
-import { PROJECT_SYSTEM_FOLDERS, systemFolderCreationOrder } from "../domain/projectFolderCatalog.js";
+import { planMissingSystemFolders, PROJECT_SYSTEM_FOLDERS, systemFolderCreationOrder } from "../domain/projectFolderCatalog.js";
 
 // Creación idempotente de las carpetas predeterminadas de un proyecto (Fase 1.2). Se ejecuta dentro
 // de la transacción que crea el proyecto, de modo que un fallo revierte proyecto y carpetas juntos.
@@ -21,6 +21,13 @@ const INSERT_LEVEL_SQL = `
   on conflict (project_id, system_key) where system_key is not null and deleted_at is null do nothing
 `;
 
+// Carpetas vigentes del proyecto (también personalizadas) para detectar conflictos de nombre.
+const PROJECT_FOLDERS_SQL = `
+  select id, parent_id, system_key, name
+  from public.project_folders
+  where project_id = $1 and deleted_at is null
+`;
+
 const SYSTEM_TREE_SQL = `
   select folder.system_key, parent.system_key as parent_key
   from public.project_folders folder
@@ -34,11 +41,13 @@ const SYSTEM_TREE_SQL = `
  * Agrupa el catálogo por profundidad conservando el orden de Figma dentro de cada nivel.
  * Cada grupo se inserta con una sola sentencia después de que existan sus madres.
  *
+ * @param {Set<string>} [excluded] - Claves que no se crean (conflictos de nombre y sus dependientes).
  * @returns {Array<Array<object>>} Niveles del árbol, de la raíz a las hojas.
  */
-function catalogLevels() {
+function catalogLevels(excluded = new Set()) {
   const levels = [];
   for (const folder of systemFolderCreationOrder()) {
+    if (excluded.has(folder.key)) continue;
     const depth = folder.key.split(".").length - 1;
     (levels[depth] ??= []).push(folder);
   }
@@ -48,23 +57,33 @@ function catalogLevels() {
 /**
  * Crea las carpetas predeterminadas que falten en un proyecto y comprueba el árbol resultante.
  * Bloquea la fila del proyecto para serializar ejecuciones simultáneas; es idempotente y no adopta
- * ni renombra carpetas existentes. Debe llamarse dentro de la transacción que crea el proyecto.
+ * ni renombra carpetas existentes. Debe llamarse dentro de una transacción (alta o sincronización).
+ * Con `skipNameConflicts` (proyectos existentes) una carpeta del catálogo cuyo nombre ya ocupa otra
+ * en su ubicación no se crea y se devuelve como conflicto; en las altas, cualquier incoherencia es error.
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
- * @param {{ projectId: number, createdBy: number }} options - Proyecto y usuario que lo crea.
- * @returns {Promise<{ created: number, total: number }>} Carpetas creadas ahora y total del catálogo.
+ * @param {{ projectId: number, createdBy: number, skipNameConflicts?: boolean }} options - Proyecto, usuario y modo.
+ * @returns {Promise<{ created: number, total: number, conflicts: Array<object>, blocked: string[] }>}
+ *   Carpetas creadas ahora, total del catálogo, conflictos y claves bloqueadas por un conflicto.
  * @throws {NotFoundError} PROJECT_NOT_FOUND si el proyecto no existe o está eliminado.
  * @throws {Error} PROJECT_SYSTEM_FOLDERS_INCONSISTENT si el árbol no coincide con el catálogo.
  */
-export async function ensureProjectSystemFolders(client, { createdBy, projectId }) {
+export async function ensureProjectSystemFolders(client, { createdBy, projectId, skipNameConflicts = false }) {
   const project = await client.query(
     "select id from public.projects where id = $1 and deleted_at is null for update",
     [projectId],
   );
   if (!project.rows[0]) throw new NotFoundError("PROJECT_NOT_FOUND", "No se encontro el proyecto.");
 
+  let pending = { blocked: [], conflicts: [] };
+  if (skipNameConflicts) {
+    const current = await client.query(PROJECT_FOLDERS_SQL, [projectId]);
+    pending = planMissingSystemFolders(current.rows.map((row) => ({ id: row.id, name: row.name, parentId: row.parent_id, systemKey: row.system_key })));
+  }
+  const excluded = new Set([...pending.conflicts.map((conflict) => conflict.systemKey), ...pending.blocked]);
+
   let created = 0;
-  for (const level of catalogLevels()) {
+  for (const level of catalogLevels(excluded)) {
     const result = await client.query(INSERT_LEVEL_SQL, [
       projectId,
       createdBy,
@@ -76,13 +95,13 @@ export async function ensureProjectSystemFolders(client, { createdBy, projectId 
   }
 
   const existing = await client.query(SYSTEM_TREE_SQL, [projectId]);
-  const problems = findSystemTreeProblems(existing.rows);
+  const problems = findSystemTreeProblems(existing.rows, excluded);
   if (problems.length) {
     throw Object.assign(new Error(`Árbol de carpetas predeterminadas incoherente: ${problems.join("; ")}`), {
       code: "PROJECT_SYSTEM_FOLDERS_INCONSISTENT",
     });
   }
-  return { created, total: PROJECT_SYSTEM_FOLDERS.length };
+  return { blocked: pending.blocked, conflicts: pending.conflicts, created, total: PROJECT_SYSTEM_FOLDERS.length };
 }
 
 /**
@@ -90,14 +109,18 @@ export async function ensureProjectSystemFolders(client, { createdBy, projectId 
  * Las claves que ya no estén en el catálogo se ignoran: retirar una carpeta del catálogo no la borra.
  *
  * @param {Array<{ system_key: string, parent_key: string|null }>} rows - Carpetas con clave del proyecto.
+ * @param {Set<string>} [excluded] - Claves omitidas a propósito (conflictos en revisión).
  * @returns {string[]} Problemas encontrados; vacío si el árbol es coherente.
  */
-export function findSystemTreeProblems(rows) {
+export function findSystemTreeProblems(rows, excluded = new Set()) {
   const byKey = new Map(rows.map((row) => [row.system_key, row.parent_key ?? null]));
   const problems = [];
   for (const folder of PROJECT_SYSTEM_FOLDERS) {
-    if (!byKey.has(folder.key)) problems.push(`falta ${folder.key}`);
-    else if (byKey.get(folder.key) !== folder.parentKey) problems.push(`madre incorrecta en ${folder.key}`);
+    if (!byKey.has(folder.key)) {
+      if (!excluded.has(folder.key)) problems.push(`falta ${folder.key}`);
+    } else if (byKey.get(folder.key) !== folder.parentKey) {
+      problems.push(`madre incorrecta en ${folder.key}`);
+    }
   }
   return problems;
 }
