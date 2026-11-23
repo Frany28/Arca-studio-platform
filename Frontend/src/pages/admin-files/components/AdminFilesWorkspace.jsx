@@ -191,10 +191,6 @@ function AdminFilesWorkspace({ onMetricsStale }) {
       <AdminFilesToolbar
         query={items.search.query}
         onQueryChange={items.search.setQuery}
-        extensions={items.extensions}
-        onExtensionsChange={items.setExtensions}
-        hasFilters={items.hasFilters}
-        onClearFilters={items.clearFilters}
         newAction={newAction}
       />
       <div aria-busy={items.loading || undefined}>{content}</div>

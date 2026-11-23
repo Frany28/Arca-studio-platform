@@ -470,7 +470,8 @@ test("métricas, pestañas, orden, búsqueda, tipos y paginación por cursor con
   await page.getByLabel("Buscar archivos por nombre").fill("garant");
   await page.waitForFunction(() => document.querySelectorAll("[data-admin-files-table] tbody tr").length === 1);
   assert.equal(itemRequests(backend).at(-1).search.search, "garant");
-  await page.getByRole("button", { name: "Quitar filtros" }).click();
+  assert.equal(await page.locator("[data-admin-files-toolbar]").getByRole("button", { name: /Filtrar archivos por tipo|Quitar filtros/ }).count(), 0, "La barra no tiene filtros, como en Figma");
+  await page.getByLabel("Buscar archivos por nombre").fill("");
   await page.waitForFunction(() => document.querySelectorAll("[data-admin-files-table] tbody tr").length === 10);
 
   await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
@@ -521,6 +522,17 @@ test("el árbol acota la tabla, busca carpetas y gestiona carpetas personalizada
   assert.equal(branch.current, null, "Solo la carpeta seleccionada es la ubicación actual");
   assert.equal(selectedFolder.current, "true");
   assert.equal(selectedFolder.height, 36, "La superficie de la fila respeta la geometría de Figma");
+  const arrow = tree.getByRole("button", { name: "Ocultar carpetas de Documentos" });
+  await arrow.hover();
+  const arrowHover = await arrow.evaluate(async (button) => {
+    const row = button.closest("[data-tree-row]");
+    await Promise.all(row.getAnimations().map((animation) => animation.finished));
+    const box = button.getBoundingClientRect();
+    return { arrow: getComputedStyle(button).backgroundColor, row: getComputedStyle(row).backgroundColor, size: [box.width, box.height] };
+  });
+  assert.equal(arrowHover.arrow, "rgba(0, 0, 0, 0)", "La flecha no pinta un fondo propio al pasar el cursor");
+  assert.equal(arrowHover.row, branch.background, "El hover lo muestra la fila completa");
+  assert.deepEqual(arrowHover.size, [36, 36], "La flecha conserva su geometría");
   assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, includeSubfolders: itemRequests(backend).at(-1).search.includeSubfolders }, { folderId: "104", includeSubfolders: "true" });
 
   await create.click();

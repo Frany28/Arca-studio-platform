@@ -51,21 +51,19 @@ function TreeRow({ actionsDisabled, activeBranch = false, children, depth, expan
         </button>
         {menu}
         {hasChildren ? (
-          <Button
-            theme="Primary"
-            type="Ghost"
-            size="S"
-            showText={false}
-            showLeftIcon
-            iconLeft={<ArrowDown2 size="20" color="currentColor" className={clsx("transition-transform duration-200", expanded && "rotate-180")} />}
-            showRightIcon={false}
-            tooltip={false}
+          // Chevron sin superficie propia (Figma 3727:682770): el hover lo pinta la fila entera; el
+          // Button Ghost añadía su fondo primary-10 encima. El foco usa el mismo anillo que la fila.
+          <button
+            type="button"
+            className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-2)] bg-transparent text-[var(--color-text-200)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-primary-300)] disabled:cursor-not-allowed disabled:text-[var(--color-neutral-500)]"
             disabled={actionsDisabled}
             aria-expanded={expanded}
             aria-label={`${expanded ? "Ocultar" : "Mostrar"} carpetas de ${label}`}
             onClick={onToggle}
-          />
-        ) : <span className="size-[32px] shrink-0" aria-hidden="true" />}
+          >
+            <ArrowDown2 size="20" color="currentColor" aria-hidden="true" className={clsx("transition-transform duration-200 motion-reduce:transition-none", expanded && "rotate-180")} />
+          </button>
+        ) : <span className="size-9 shrink-0" aria-hidden="true" />}
       </div>
       {hasChildren && expanded ? <ul className="flex flex-col gap-[12px]">{children}</ul> : null}
     </li>
