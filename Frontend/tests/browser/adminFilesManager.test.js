@@ -786,12 +786,16 @@ test("U2 · «Revisar» abre el PDF con historial; aprobar confirma lo que devue
   await viewer.getByRole("button", { name: "Aprobar" }).click();
   const result = page.locator("[data-admin-file-review-result]");
   await result.getByText("Archivo aprobado correctamente").waitFor();
-  await result.getByText(/La V2 de «Propuesta pendiente\.pdf» es ahora la versión vigente\. Aún no se comparte con el cliente/).waitFor();
+  // Figma 3795:579327: texto, icono de éxito y «Cancelar»/«Aceptar» (la operación ya está confirmada).
+  await result.getByText("El archivo se ha aprobado exitosamente y ya está disponible según los permisos del proyecto, esto será notificado a los usuarios pertinentes.").waitFor();
+  assert.deepEqual(await result.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.textContent.trim()).filter(Boolean)), ["Cancelar", "Aceptar"]);
   assert.equal(reviewRequests(backend, "approve").length, 1);
   assert.equal(await viewerDialog(page).count(), 0, "el visor se cierra tras aprobar");
   await page.getByText("No hay archivos pendientes").waitFor();
   assert.ok(metricsReads(backend) > metricsBefore, "las métricas se vuelven a leer");
-  await result.getByRole("button", { name: "Aceptar" }).click();
+  await result.getByRole("button", { name: "Cancelar" }).click();
+  await result.waitFor({ state: "detached" });
+  assert.equal(reviewRequests(backend, "approve").length, 1, "cerrar la confirmación no repite la aprobación");
   // Compartir con el cliente es independiente: aprobar no llamó a las audiencias.
   assert.equal(backend.requests.filter((request) => request.path.includes("/audiences")).length, 0);
 });
@@ -802,6 +806,15 @@ test("U2 · rechazar exige motivo, lo envía y conserva la versión rechazada", 
   const viewer = await openPendingReview(page);
   await viewer.getByRole("button", { name: "Rechazar" }).click();
   const reason = page.locator("[data-admin-file-reason='reject']");
+  // Figma 3727:683721: 400 × 260, solo el campo con su indicador obligatorio, «Volver» y «Enviar».
+  await page.waitForTimeout(400);
+  const box = await reason.boundingBox();
+  assert.deepEqual([Math.round(box.width), Math.round(box.height)], [400, 260]);
+  const hint = await reason.getByText(/Máximo 500 caracteres/).boundingBox();
+  assert.ok(hint.width <= 1 && hint.height <= 1, "sin línea de ayuda visible (solo para lectores de pantalla)");
+  await reason.getByText("Motivo del rechazo", { exact: true }).waitFor();
+  assert.equal(await reason.getByRole("textbox", { name: /Motivo del rechazo/ }).getAttribute("maxlength"), "500");
+  await reason.getByRole("textbox", { name: /Motivo del rechazo/ }).fill("     ");
   await reason.getByRole("button", { name: "Enviar" }).click();
   await reason.getByText("Escribe el motivo del rechazo.").waitFor();
   assert.equal(reviewRequests(backend, "reject").length, 0, "sin motivo no se envía");
@@ -809,7 +822,15 @@ test("U2 · rechazar exige motivo, lo envía y conserva la versión rechazada", 
   await reason.getByRole("button", { name: "Enviar" }).click();
   const result = page.locator("[data-admin-file-review-result]");
   await result.getByText("Archivo rechazado correctamente").waitFor();
-  await result.getByText(/se conserva con su motivo\. La versión vigente no cambia\./).waitFor();
+  await result.getByText("La carga del archivo se ha rechazado exitosamente, esto será notificado a los usuarios pertinentes.").waitFor();
+  assert.equal(await result.locator("svg[class*='danger-100']").evaluate((icon) => getComputedStyle(icon).color), await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--color-danger-100)";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }), "icono de rechazo en rojo (Figma 3795:579509)");
   assert.deepEqual(reviewRequests(backend, "reject")[0].body, { reason: "Falta la firma del cliente." });
   await result.getByRole("button", { name: "Aceptar" }).click();
   await page.getByRole("tab", { name: "Rechazados" }).click();
@@ -1345,9 +1366,10 @@ test("U3 · «Reemplazar archivo» desde la tabla (no en Pendientes) y restaurar
   assert.ok(backend.requests.some((candidate) => candidate.method === "POST" && candidate.path === "/api/projects/2/files/40/versions"));
 
   await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
-  await page.getByRole("button", { name: "Más opciones para Fachada v2.png, versión 2" }).click();
-  assert.equal(await page.getByRole("menuitem", { name: /Reemplazar archivo/ }).count(), 0, "una fila pendiente no se reemplaza");
-  await page.keyboard.press("Escape");
+  // Figma 3727:683264: la fila pendiente solo ofrece «Revisar» (no se reemplaza, descarga ni abre menú desde la tabla).
+  await page.getByRole("button", { name: "Revisar Fachada v2.png, versión 2" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Más opciones para Fachada v2.png, versión 2" }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Descargar Fachada v2.png, versión 2" }).count(), 0);
 
   await page.getByRole("tab", { name: "Aprobados" }).click();
   await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();

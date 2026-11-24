@@ -112,7 +112,9 @@ function AdminFileReasonDialog({ kind, onClose, onSubmit, subject }) {
             aria-describedby={fieldError ? `${formId}-error ${formId}-hint` : `${formId}-hint`}
             disabled={submitting}
             maxLength={copy.maxLength}
-            rows={5}
+            rows={kind === "reject" ? 4 : 5}
+            // Rechazo (Figma 3727:683721): el modal mide 400 × 260 (cuerpo 187 y pie 73).
+            minHeight={kind === "reject" ? 99 : undefined}
             className="max-w-none pr-[24px]"
             onChange={(event) => {
               setReason(event.target.value);
@@ -123,7 +125,9 @@ function AdminFileReasonDialog({ kind, onClose, onSubmit, subject }) {
           {/* TextArea oculta su ayuda mientras tiene el foco y la muestra al perderlo: al pulsar
               «Enviar» el pie se desplazaba entre mousedown y mouseup y el clic no llegaba. La ayuda y el
               error, que recibe el foco, se muestran aquí con un alto estable y asociados al campo. */}
-          <p id={`${formId}-hint`} className="text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-100)]">{subject} · Máximo {copy.maxLength} caracteres.</p>
+          {/* Rechazo (Figma 3727:683721): solo el campo; el archivo y el límite quedan para lectores de
+              pantalla. La restauración, sin diseño propio, los muestra. */}
+          <p id={`${formId}-hint`} className={kind === "reject" ? "sr-only" : "text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-100)]"}>{subject} · Máximo {copy.maxLength} caracteres.</p>
           {fieldError ? <p id={`${formId}-error`} className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{fieldError}</p> : null}
           {submitError ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}
         </form>

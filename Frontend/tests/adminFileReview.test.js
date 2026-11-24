@@ -87,16 +87,14 @@ test("history labels and restore availability follow the backend rules", () => {
   assert.match(getRestoreAvailability(approvedOld, [pending, current, approvedOld]).reason, /pendiente/);
 });
 
-test("success messages state only what the API confirmed: approval does not share", () => {
-  const approved = describeReviewResult("approve", { currentVersionId: 9, sharedWithClient: false, version: { id: 9, versionNumber: 3 } }, "Acta.pdf");
+test("success messages reproduce Figma (3795:579327 / 3795:579509) without promising sharing", () => {
+  const approved = describeReviewResult("approve");
   assert.equal(approved.title, "Archivo aprobado correctamente");
-  assert.match(approved.description, /V3 de «Acta\.pdf» es ahora la versión vigente/);
-  assert.match(approved.description, /Aún no se comparte con el cliente/);
-  assert.doesNotMatch(approved.description, /visible en el proyecto|notificado/);
-  const rejected = describeReviewResult("reject", { currentVersionId: 8, sharedWithClient: false, version: { id: 9, versionNumber: 3 } }, "Acta.pdf");
+  assert.equal(approved.description, "El archivo se ha aprobado exitosamente y ya está disponible según los permisos del proyecto, esto será notificado a los usuarios pertinentes.");
+  assert.doesNotMatch(approved.description, /compart|cliente|públic/i);
+  const rejected = describeReviewResult("reject");
   assert.equal(rejected.title, "Archivo rechazado correctamente");
-  assert.match(rejected.description, /se conserva con su motivo\. La versión vigente no cambia/);
-  assert.match(describeReviewResult("reject", { currentVersionId: null, version: { versionNumber: 1 } }, "A").description, /sin versión vigente/);
+  assert.equal(rejected.description, "La carga del archivo se ha rechazado exitosamente, esto será notificado a los usuarios pertinentes.");
   assert.match(describeRestoreResult({ review: { status: "pending" }, versionNumber: 5 }, { versionNumber: 2 }), /V5 a partir de la V2, que se conserva en el historial\. La nueva versión queda pendiente de revisión/);
 });
 

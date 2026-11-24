@@ -30,6 +30,7 @@ import {
   approvePendingFileVersion,
   findActiveAudienceGrants,
   findProjectFileContext,
+  insertFileReviewNotification,
   insertPendingFileVersion,
   listFileVersions,
   rejectPendingFileVersion,
@@ -343,8 +344,36 @@ export async function reviewProjectFileVersion({ action, fileId, projectId, reas
       userId: actor.id,
       versionId: reviewed.id,
     });
+    // Aviso a quien subió la versión (p. ej. el cliente), en la misma transacción que la decisión.
+    await insertFileReviewNotification(client, {
+      ...describeReviewNotification({ action, fileName: target.originalName || context.file.title, reason: reviewed.reviewReason, versionNumber: reviewed.versionNumber }),
+      createdBy: actor.id,
+      projectId: Number(projectId),
+      userId: target.uploadedBy,
+      versionId: reviewed.id,
+    });
     return { currentVersionId, sharedWithClient: false, version: toVersionView(reviewed, { canSeeReview: true, currentVersionId }) };
   });
+}
+
+/**
+ * Textos de la notificación de una revisión para quien subió la versión. Aprobar no comparte la
+ * versión con nadie (DA3), así que el aviso no promete visibilidad; el rechazo incluye su motivo,
+ * que el autor de la versión puede conocer.
+ *
+ * @param {{ action: "approve"|"reject", fileName: string, versionNumber: number, reason?: string|null }} review - Decisión.
+ * @returns {{ title: string, message: string, type: string }} Notificación.
+ */
+export function describeReviewNotification({ action, fileName, reason = null, versionNumber }) {
+  if (action === "approve") {
+    return { message: `La versión V${versionNumber} de «${fileName}» fue aprobada por el equipo de ARCA Studio.`, title: "Archivo aprobado", type: "project_file.version_approved" };
+  }
+  return {
+    // El motivo puede terminar en punto: se normaliza para no duplicarlo.
+    message: `La versión V${versionNumber} de «${fileName}» fue rechazada. Motivo: ${String(reason ?? "").trim().replace(/[.\s]+$/, "")}. Puedes subir una versión corregida.`,
+    title: "Archivo rechazado",
+    type: "project_file.version_rejected",
+  };
 }
 
 /**

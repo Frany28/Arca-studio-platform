@@ -27,14 +27,17 @@ const { objectStorage } = await import("../src/services/objectStorage.js");
  */
 function mockUploadDatabase(context) {
   const statements = [];
+  statements.params = [];
   context.mock.method(pool, "query", async (sql) => {
     if (/nextval/.test(sql)) return { rows: [{ id: "500" }] };
     return { rows: [] };
   });
   const client = {
-    async query(sql) {
+    async query(sql, params = []) {
       const text = String(sql).replace(/\s+/g, " ").trim();
       statements.push(text);
+      statements.params.push(params);
+      if (/^select id from public\.project_folders where project_id = \$1 and system_key = \$2/.test(text)) return { rows: params[1] === "client_files" ? [{ id: "41" }] : [] };
       if (/^select status from public\.projects/.test(text)) return { rows: [{ status: "in_process" }] };
       if (/from public\.projects project/.test(text)) {
         return { rows: [{ assigned_architect_id: 70, client_id: 1, id: 15, is_assignee: false, is_public: false, status: "in_process" }] };
@@ -58,7 +61,7 @@ function mockUploadDatabase(context) {
  * @param {boolean} reviewRequired - Activación de la revisión.
  * @returns {Promise<object>} Archivo registrado.
  */
-function uploadAs(reviewRequired) {
+function uploadAs(reviewRequired, user = { id: 70, role: { code: "architect" } }) {
   return uploadProjectFile({
     body: Readable.from([Buffer.from("%PDF")]),
     contentType: "application/pdf",
@@ -66,7 +69,7 @@ function uploadAs(reviewRequired) {
     projectId: 15,
     reviewRequired,
     size: 4,
-    user: { id: 70, role: { code: "architect" } },
+    user,
   });
 }
 
@@ -123,6 +126,22 @@ test("activación encendida: la v1 nace pendiente, sin vigente y con la polític
   assert.match(fileInsert, /access_policy\) values \(\$1, \$2, \$3, \$4, \$5, \$6, null, \$7::file_status, \$8, 1\)/);
   assert.match(versionInsert, /content_type, review_status\) values \(\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, false, \$9, 'pending'\)/);
   assert.deepEqual([file.reviewStatus, file.versionId], ["pending", 900]);
+});
+
+test("subida del cliente: queda pendiente y se ubica en «Archivos del cliente»; la del equipo sin carpeta, pendiente de clasificar", async (context) => {
+  const statements = mockUploadDatabase(context);
+  const file = await uploadAs(true, { clientId: 1, id: 81, role: { code: "client" } });
+  const index = statements.findIndex((sql) => sql.startsWith("insert into public.files"));
+  assert.equal(statements.params[index][2], 81, "registra quién subió");
+  assert.equal(statements.params[index].at(-1), 41, "folder_id de «Archivos del cliente»");
+  assert.equal(file.reviewStatus, "pending", "no se aprueba automáticamente");
+  const lookup = statements.findIndex((sql) => sql.startsWith("select id from public.project_folders where project_id = $1 and system_key = $2"));
+  assert.ok(lookup > statements.findIndex((sql) => sql.startsWith("select status from public.projects")), "se resuelve con el proyecto bloqueado");
+
+  const team = mockUploadDatabase(context);
+  await uploadAs(true);
+  const teamIndex = team.findIndex((sql) => sql.startsWith("insert into public.files"));
+  assert.equal(team.params[teamIndex].at(-1), null, "sin categoría comprobable no se asigna carpeta");
 });
 
 test("claves de objeto: el identificador de intento solo se añade a las versiones nuevas", () => {

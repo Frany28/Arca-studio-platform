@@ -280,8 +280,8 @@ function AdminUserTableSkeleton() {
 // Tabla del administrador de archivos (Figma 3727:683873): nombre, versión, proyecto (solo en
 // pendientes y rechazados), tipo, peso, fecha, autor y acciones. Usa la geometría de la tabla
 // (config/adminFilesTable.js) para no saltar al terminar la carga.
-function AdminFilesTableSkeleton({ rows, showProject }) {
-  const options = { showProject };
+function AdminFilesTableSkeleton({ review = false, rows, showProject }) {
+  const options = { review, showProject };
   return (
     <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
       <div className="w-full overflow-x-auto">
@@ -913,7 +913,7 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
   } else if (preset === "adminUserTable") {
     content = <AdminUserTableSkeleton />;
   } else if (preset === "adminFilesTable") {
-    content = <AdminFilesTableSkeleton rows={itemCount} showProject={variant === "withProject"} />;
+    content = <AdminFilesTableSkeleton rows={itemCount} showProject={variant === "withProject" || variant === "review"} review={variant === "review"} />;
   } else if (preset === "adminFilesTree") {
     content = <AdminFilesTreeSkeleton rows={itemCount} />;
   } else if (preset === "measurementUnitTable") {

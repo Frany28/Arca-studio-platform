@@ -149,7 +149,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   const filtered = items.hasFilters || (showTree && Boolean(selection.projectId));
   let content;
   if (items.loading) {
-    content = <Loader preset="adminFilesTable" variant={showTree ? undefined : "withProject"} count={items.items.length || ADMIN_FILES_PAGE_SIZE} label="Cargando archivos" />;
+    content = <Loader preset="adminFilesTable" variant={showTree ? undefined : tab === "pending" ? "review" : "withProject"} count={items.items.length || ADMIN_FILES_PAGE_SIZE} label="Cargando archivos" />;
   } else if (items.error) {
     content = (
       <div className="rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">

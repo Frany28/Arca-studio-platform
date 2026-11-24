@@ -258,3 +258,30 @@ export async function rejectPendingFileVersion(client, { fileId, reason, reviewe
   await client.query("update public.files set updated_at = now() where id = $1", [fileId]);
   return toVersion(result.rows[0]);
 }
+
+/**
+ * Notifica a quien subió una versión que el administrador la aprobó o rechazó. Se inserta en la misma
+ * transacción que la decisión: como la transición desde `pending` ocurre una sola vez (bloqueo y
+ * actualización condicional), nunca se duplica. Solo se notifica a un usuario activo distinto del revisor.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción de la revisión.
+ * @param {object} notification - Destinatario, autor, proyecto, versión, textos y tipo.
+ * @param {number} notification.userId - Usuario que subió la versión.
+ * @param {number} notification.createdBy - Administrador que decidió.
+ * @param {number} notification.projectId - Proyecto.
+ * @param {number} notification.versionId - Versión revisada.
+ * @param {string} notification.title - Título (≤150).
+ * @param {string} notification.message - Mensaje.
+ * @param {string} notification.type - Tipo estable (`project_file.version_approved` o `_rejected`).
+ * @returns {Promise<boolean>} true si se registró.
+ */
+export async function insertFileReviewNotification(client, { createdBy, message, projectId, title, type, userId, versionId }) {
+  const result = await client.query(
+    `insert into public.notifications (user_id, project_id, created_by, title, message, type, entity_type, entity_id)
+     select u.id, $2, $3, $4, $5, $6, 'file_version', $7
+     from public.users u
+     where u.id = $1 and u.id <> $3 and u.deleted_at is null and u.status = 'active'`,
+    [userId, projectId, createdBy, title, message, type, versionId],
+  );
+  return result.rowCount === 1;
+}

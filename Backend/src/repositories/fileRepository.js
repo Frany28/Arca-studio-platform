@@ -21,6 +21,7 @@ import {
 } from "../domain/projectStatus.js";
 import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
 import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
+import { resolveDocumentLocation, resolveUploadOrigin } from "../domain/documentClassification.js";
 
 const DEFAULT_FILE_STATUS = "active";
 
@@ -633,6 +634,25 @@ export async function findExistingProjectFile({
 }
 
 /**
+ * Carpeta lógica de una subida sin carpeta elegida (domain/documentClassification.js): el archivo
+ * adicional del cliente va a «Archivos del cliente»; el resto, o un proyecto sin esa carpeta, queda
+ * pendiente de clasificación. Se lee con el proyecto ya bloqueado.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción.
+ * @param {{ projectId: number, user: { role?: { code?: string } } }} upload - Proyecto y usuario.
+ * @returns {Promise<number|null>} Carpeta o null.
+ */
+async function resolveAutomaticFolder(client, { projectId, user }) {
+  const location = resolveDocumentLocation({ origin: resolveUploadOrigin({ folderId: null, uploaderRole: user?.role?.code ?? null }) });
+  if (location.status !== "classified") return null;
+  const result = await client.query(
+    "select id from public.project_folders where project_id = $1 and system_key = $2 and deleted_at is null",
+    [projectId, location.folderKey],
+  );
+  return result.rows[0] ? Number(result.rows[0].id) : null;
+}
+
+/**
  * Guarda el archivo y su versión coordinando PostgreSQL con el almacenamiento existente.
  * Transfiere el objeto sin conexiones ni bloqueos abiertos (P0-1) y lo registra en una transacción
  * corta que bloquea el proyecto y rechaza, ya serializados, archived, finished, eliminado y duplicados.
@@ -779,6 +799,7 @@ export async function uploadProjectFile({
         if (!folder.rowCount) throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
       }
       if (verifyTarget) await verifyTarget(client);
+      const targetFolderId = folderId || await resolveAutomaticFolder(client, { projectId, user });
 
       // Bajo el bloqueo del proyecto, las cargas simultáneas con el mismo nombre se serializan aquí.
       if (await findExistingProjectFile({ originalName: safeOriginalName, projectId }, client)) {
@@ -801,8 +822,8 @@ export async function uploadProjectFile({
       // Activación apagada: exactamente las sentencias anteriores (no dependen de las columnas de B3).
       // Encendida: política 1.2 y v1 pendiente, sin versión vigente hasta que el administrador la apruebe.
       const fileResult = reviewRequired
-        ? await client.query(INSERT_REVIEWED_PROJECT_FILE_SQL, [...fileIdentity, DEFAULT_FILE_STATUS, folderId])
-        : await client.query(INSERT_LEGACY_PROJECT_FILE_SQL, [...fileIdentity, versionNumber, DEFAULT_FILE_STATUS, folderId]);
+        ? await client.query(INSERT_REVIEWED_PROJECT_FILE_SQL, [...fileIdentity, DEFAULT_FILE_STATUS, targetFolderId])
+        : await client.query(INSERT_LEGACY_PROJECT_FILE_SQL, [...fileIdentity, versionNumber, DEFAULT_FILE_STATUS, targetFolderId]);
       const versionResult = reviewRequired
         ? await client.query(INSERT_PENDING_FIRST_VERSION_SQL, [...versionValues, fileType])
         : await client.query(INSERT_LEGACY_FIRST_VERSION_SQL, versionValues);

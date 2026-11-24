@@ -85,15 +85,17 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
     ...(!quote && canLinkWarranties(item) ? [{ icon: ShieldTick, id: "warranties", label: "Garantías" }] : []),
   ];
   const downloadUnavailable = Boolean(quoteStatus && !quoteStatus.available);
+  // Pendientes (Figma 3727:683264): solo «Revisar». Descargar y el historial están en el visor.
+  if (tab === "pending") {
+    return (
+      <Button theme="Primary" type="Outline" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={actionsDisabled} aria-label={`Revisar ${label}`} onClick={(event) => onOpen(item, event.currentTarget)}>
+        Revisar
+      </Button>
+    );
+  }
   return (
     <div className="flex items-center gap-[4px]">
-      {tab === "pending" ? (
-        <Button theme="Primary" type="Outline" size="S" fitContent showLeftIcon={false} showRightIcon={false} disabled={actionsDisabled} aria-label={`Revisar ${label}`} onClick={(event) => onOpen(item, event.currentTarget)}>
-          Revisar
-        </Button>
-      ) : (
-        <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} disabled={actionsDisabled} tooltip="Ver archivo" aria-label={`Ver ${label}`} onClick={(event) => onOpen(item, event.currentTarget)} />
-      )}
+      <Button theme="Primary" type="Ghost" size="S" showText={false} showLeftIcon iconLeft={<Eye size="20" color="currentColor" />} showRightIcon={false} disabled={actionsDisabled} tooltip="Ver archivo" aria-label={`Ver ${label}`} onClick={(event) => onOpen(item, event.currentTarget)} />
       <Button
         theme="Primary"
         type="Ghost"
@@ -148,7 +150,10 @@ function RowActions({ actionsDisabled, downloading, item, onDownload, onOpen, on
  * @returns {import("react").ReactElement} Tabla.
  */
 function AdminFilesTable({ actionsDisabled, downloadingQuoteKey = null, downloadingVersionId, items, onDownload, onOpen, onReplace, onSort, onWarranties, sort, tab }) {
-  const options = { showProject: tab !== "approved" };
+  const options = { review: tab === "pending", showProject: tab !== "approved" };
+  // En Pendientes, «Revisar» queda fija a la derecha si el viewport obliga a desplazar la tabla: es la
+  // acción crítica de la fila y nunca debe quedar oculta (sin efecto cuando la tabla cabe, como en Figma).
+  const stickyActions = tab === "pending" ? "sticky right-0 z-[1]" : "";
   const columns = getAdminFilesColumns(options);
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]" data-admin-files-table>
@@ -168,7 +173,7 @@ function AdminFilesTable({ actionsDisabled, downloadingQuoteKey = null, download
               <SortableHeader field="size" label="Peso" sort={sort} disabled={actionsDisabled} onSort={onSort} />
               <SortableHeader field="date" label="Fecha" sort={sort} disabled={actionsDisabled} onSort={onSort} />
               <th scope="col" className={HEADER_CELL}>Subido por</th>
-              <th scope="col" className={HEADER_CELL}>Acciones</th>
+              <th scope="col" className={`${HEADER_CELL} ${stickyActions} ${stickyActions ? "bg-[var(--color-neutral-200)]" : ""}`}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -178,7 +183,7 @@ function AdminFilesTable({ actionsDisabled, downloadingQuoteKey = null, download
                 : downloadingVersionId === item.versionId;
               const uploader = item.uploadedBy?.name || "Sin autor";
               return (
-                <tr key={getAdminFileItemKey(item)} className="h-[68px] bg-[var(--color-neutral-100)]" data-version-id={item.versionId} data-item-source={item.source || "file"}>
+                <tr key={getAdminFileItemKey(item)} className={`${tab === "pending" ? "h-[65px]" : "h-[68px]"} bg-[var(--color-neutral-100)]`} data-version-id={item.versionId} data-item-source={item.source || "file"}>
                   <NameCell item={item} tab={tab} />
                   <td className={`${BODY_CELL} tabular-nums`}>v{item.versionNumber}</td>
                   {options.showProject ? <td className={BODY_CELL} title={item.project?.name}>{item.project?.name}</td> : null}
@@ -195,7 +200,7 @@ function AdminFilesTable({ actionsDisabled, downloadingQuoteKey = null, download
                   <td className="px-[24px] py-[16px]">
                     <Badge label={uploader} theme="Neutral" size="M" truncate className="max-w-full" />
                   </td>
-                  <td className="px-[16px] py-[16px]">
+                  <td className={`px-[16px] py-[16px] ${stickyActions} ${stickyActions ? "bg-[var(--color-neutral-100)]" : ""}`}>
                     <RowActions item={item} tab={tab} downloading={downloading} actionsDisabled={actionsDisabled} onDownload={onDownload} onOpen={onOpen} onReplace={onReplace} onWarranties={onWarranties} />
                   </td>
                 </tr>

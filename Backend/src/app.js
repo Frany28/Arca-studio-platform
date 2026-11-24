@@ -18,6 +18,7 @@ import routes from "./routes/index.js";
 import { measurementUnitDenominationRouter, measurementUnitRouter } from "./routes/measurementUnits.js";
 import quoteRoutes from "./routes/quotes.js";
 import serviceCatalogRoutes from "./routes/serviceCatalog.js";
+import notificationRoutes from "./routes/notifications.js";
 import supportRoutes from "./routes/support.js";
 import { normalizeError } from "./errors/appError.js";
 import { loadProjectFileReviewActivation } from "./middlewares/projectFileReview.js";
@@ -47,6 +48,7 @@ app.use("/api/environment-comments", environmentCommentRoutes);
 app.use("/api/geoapify", geoapifyRoutes);
 app.use("/api/project-requests", projectRequestRoutes);
 app.use("/api/projects", projectRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api", routes);
 

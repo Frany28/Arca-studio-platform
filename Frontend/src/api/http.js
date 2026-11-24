@@ -4,6 +4,7 @@ import { authApi } from "./authApi.js";
 import { environmentCommentsApi } from "./environmentCommentsApi.js";
 import { fileManagerApi } from "./fileManagerApi.js";
 import { measurementUnitsApi } from "./measurementUnitsApi.js";
+import { notificationsApi } from "./notificationsApi.js";
 import { projectConfigurationApi } from "./projectConfigurationApi.js";
 import { projectRequestsApi } from "./projectRequestsApi.js";
 import { projectsApi } from "./projectsApi.js";
@@ -17,6 +18,7 @@ export { getApiUrl } from "./client.js";
 export { environmentCommentsApi } from "./environmentCommentsApi.js";
 export { fileManagerApi } from "./fileManagerApi.js";
 export { measurementUnitsApi } from "./measurementUnitsApi.js";
+export { notificationsApi } from "./notificationsApi.js";
 export { projectConfigurationApi } from "./projectConfigurationApi.js";
 export { projectRequestsApi } from "./projectRequestsApi.js";
 export { projectsApi } from "./projectsApi.js";
@@ -37,6 +39,7 @@ export const api = {
   environmentComments: environmentCommentsApi,
   fileManager: fileManagerApi,
   measurementUnits: measurementUnitsApi,
+  notifications: notificationsApi,
   projectConfiguration: projectConfigurationApi,
   projectRequests: projectRequestsApi,
   projects: projectsApi,

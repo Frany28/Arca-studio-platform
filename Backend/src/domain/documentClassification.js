@@ -13,6 +13,9 @@ import { getSystemFolder, QUOTE_DOCUMENTS_FOLDER_KEY } from "./projectFolderCata
 // clasificación» con una sugerencia para revisión; nunca se asigna de forma arbitraria.
 
 export const DOCUMENT_ORIGINS = Object.freeze({
+  // Archivo adicional que el cliente aporta a su proyecto («Subir archivos» del proyecto). No elige
+  // carpeta: su origen es comprobable (lo subió el cliente) y su ubicación es «Archivos del cliente».
+  CLIENT_UPLOAD: "client_upload",
   // Archivo subido a una carpeta elegida por el usuario (administrador o configuración del borrador).
   FOLDER_UPLOAD: "folder_upload",
   // Archivo anterior a las carpetas, sin ubicación registrada.
@@ -54,10 +57,22 @@ export function resolveFileOrigin({ folderId = null, originProjectRequestId = nu
 }
 
 /**
+ * Determina el origen de una subida nueva: con carpeta elegida, esa carpeta; sin ella, el rol de quien
+ * sube distingue al cliente (archivo adicional suyo) del equipo, cuya categoría no se puede deducir.
+ *
+ * @param {{ folderId?: number|null, uploaderRole?: string|null }} upload - Carpeta elegida y rol.
+ * @returns {string} Uno de DOCUMENT_ORIGINS.
+ */
+export function resolveUploadOrigin({ folderId = null, uploaderRole = null }) {
+  if (folderId !== null && folderId !== undefined) return DOCUMENT_ORIGINS.FOLDER_UPLOAD;
+  return uploaderRole === "client" ? DOCUMENT_ORIGINS.CLIENT_UPLOAD : DOCUMENT_ORIGINS.LEGACY_UPLOAD;
+}
+
+/**
  * Resuelve la ubicación lógica de un documento.
  *
  * - Cotización: siempre «Documentos › Cotizaciones» (`documents.quotes`).
- * - Adjunto de la solicitud de origen: «Archivos del cliente» (`client_files`).
+ * - Adjunto de la solicitud de origen o archivo adicional del cliente: «Archivos del cliente».
  * - Subida a una carpeta: la carpeta elegida, que ya es su clasificación (no se reubica).
  * - Archivo heredado sin carpeta: pendiente, con la carpeta de su categoría como sugerencia.
  *
@@ -74,6 +89,8 @@ export function resolveDocumentLocation({ fileCategory = null, folderKey = null,
       return { folderKey: QUOTE_DOCUMENTS_FOLDER_KEY, reason: "QUOTE_PDF", status: "classified", suggestedKey: null };
     case DOCUMENT_ORIGINS.REQUEST_ATTACHMENT:
       return { folderKey: CLIENT_FILES_FOLDER_KEY, reason: "REQUEST_ATTACHMENT", status: "classified", suggestedKey: null };
+    case DOCUMENT_ORIGINS.CLIENT_UPLOAD:
+      return { folderKey: CLIENT_FILES_FOLDER_KEY, reason: "CLIENT_UPLOAD", status: "classified", suggestedKey: null };
     case DOCUMENT_ORIGINS.FOLDER_UPLOAD:
       return { folderKey, reason: "CHOSEN_FOLDER", status: "kept", suggestedKey: null };
     case DOCUMENT_ORIGINS.LEGACY_UPLOAD:

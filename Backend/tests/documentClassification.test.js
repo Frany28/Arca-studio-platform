@@ -8,6 +8,7 @@ import {
   describeCatalogPath,
   resolveDocumentLocation,
   resolveFileOrigin,
+  resolveUploadOrigin,
 } from "../src/domain/documentClassification.js";
 import { evaluateManagedUpload, resolveManagedFileCategory } from "../src/domain/fileManagerUpload.js";
 import { getSystemFolder } from "../src/domain/projectFolderCatalog.js";
@@ -78,4 +79,11 @@ test("al convertir una solicitud en proyecto, sus adjuntos se ubican en «Archiv
   const source = await readFile(new URL("../src/repositories/projectRequestWorkflowRepository.js", import.meta.url), "utf8");
   assert.match(source, /origin_project_request_id = project_request_id,[\s\S]*?folder_id = coalesce\(folder_id, \([\s\S]*?folder\.system_key = \$3 and folder\.deleted_at is null/);
   assert.match(source, /\[project\.id, projectRequestId, CLIENT_FILES_FOLDER_KEY\]/);
+});
+
+test("subidas nuevas: el archivo adicional del cliente va a «Archivos del cliente»; el del equipo sin carpeta queda pendiente", () => {
+  assert.equal(resolveUploadOrigin({ uploaderRole: "client" }), DOCUMENT_ORIGINS.CLIENT_UPLOAD);
+  assert.deepEqual(resolveDocumentLocation({ origin: DOCUMENT_ORIGINS.CLIENT_UPLOAD }), { folderKey: "client_files", reason: "CLIENT_UPLOAD", status: "classified", suggestedKey: null });
+  for (const uploaderRole of ["admin", "architect", null]) assert.equal(resolveUploadOrigin({ uploaderRole }), DOCUMENT_ORIGINS.LEGACY_UPLOAD, String(uploaderRole));
+  assert.equal(resolveUploadOrigin({ folderId: 9, uploaderRole: "client" }), DOCUMENT_ORIGINS.FOLDER_UPLOAD, "una carpeta elegida prevalece");
 });

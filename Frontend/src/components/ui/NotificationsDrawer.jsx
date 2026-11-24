@@ -7,6 +7,7 @@ import { ENVIRONMENT_DRAWER_RECENT_ACTIVITY } from "../../data/environmentDrawer
 import EmptyState from "./EmptyState/EmptyState.jsx";
 import Loader from "./Loader/Loader.jsx";
 import SideOverlayDrawer from "./SideOverlayDrawer.jsx";
+import Button from "./Button/Button.jsx";
 import ActivityItem from "./NotificationsDrawer/ActivityItem.jsx";
 import CommentCard from "./NotificationsDrawer/CommentCard.jsx";
 import MessageInput, { ReplyComposer } from "./NotificationsDrawer/MessageInput.jsx";
@@ -30,6 +31,9 @@ function NotificationsDrawer({
   recentActivityError = "",
   recentActivityLoading = false,
   onActivitySelect,
+  activityHasMore = false,
+  activityLoadingMore = false,
+  onLoadMoreActivity,
   onCommentSelect,
   onRefreshActivity,
   onRefreshComments,
@@ -342,6 +346,21 @@ function NotificationsDrawer({
                     }
                   />
                 ))}
+                {activityHasMore && onLoadMoreActivity ? (
+                  <Button
+                    theme="Primary"
+                    type="Link"
+                    size="S"
+                    fitContent
+                    showLeftIcon={false}
+                    showRightIcon={false}
+                    disabled={activityLoadingMore}
+                    className="self-start"
+                    onClick={onLoadMoreActivity}
+                  >
+                    {activityLoadingMore ? "Cargando..." : "Mostrar más"}
+                  </Button>
+                ) : null}
               </div>
             ) : (
               <div

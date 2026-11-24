@@ -108,6 +108,8 @@ async function openPage(context, role, { path = "/dashboard-arquitecto", login =
       "/api/admin/assignees": { assignees: REQUEST.assignees },
       "/api/projects/21/comments": { comments: [], nextCursor: null },
       "/api/environment-comments": { comments: [], nextCursor: null },
+      // Notificaciones propias del usuario (clientes y arquitectos) en «Actividad Reciente».
+      "/api/notifications": { nextCursor: null, notifications: [], unreadCount: 0 },
     };
     if (!payloads[endpoint]) {
       errors.push(`Petición no prevista: ${request.method()} ${endpoint}`);

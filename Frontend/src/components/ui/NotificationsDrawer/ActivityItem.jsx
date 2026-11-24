@@ -8,7 +8,8 @@ import FileAttachmentIcons from "../FileAttachmentIcons/FileAttachmentIcons.jsx"
 /**
  * Presenta una actividad preparada con autor, archivo o estado y fecha.
  * Si recibe onSelect utiliza un botón nativo y entrega id y type al callback local;
- * el drawer conecta ese callback con el objeto completo recibido del consumidor.
+ * el drawer conecta ese callback con el objeto completo recibido del consumidor. `unread` marca una
+ * notificación nueva (punto junto a la fecha y texto para lectores de pantalla).
  * @param {Object} props Datos de presentación y selección opcional.
  * @returns {import("react").ReactElement} Actividad con interacción opcional.
  */
@@ -25,6 +26,7 @@ export default function ActivityItem({
   fileSize,
   projectName,
   roleCode,
+  unread = false,
   onSelect,
 }) {
   const isInteractive = typeof onSelect === "function";
@@ -48,6 +50,7 @@ export default function ActivityItem({
         isInteractive && "cursor-pointer rounded-[8px] focus:outline-none",
       )}
       onClick={isInteractive ? () => onSelect({ id, type }) : undefined}
+      data-unread={unread || undefined}
     >
       <article className="flex w-full items-start gap-[8px] overflow-hidden rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-10)] p-[8px]">
         <Avatar size="M" name={displayName} {...avatar} decorative />
@@ -92,7 +95,13 @@ export default function ActivityItem({
         </div>
       </article>
 
-      <p className="w-full text-right text-[10px] font-normal leading-[12px] tracking-[-0.5px] text-[var(--color-text-100)]">
+      <p className="flex w-full items-center justify-end gap-[4px] text-right text-[10px] font-normal leading-[12px] tracking-[-0.5px] text-[var(--color-text-100)]">
+        {unread ? (
+          <>
+            <span aria-hidden="true" className="size-[6px] shrink-0 rounded-full bg-[var(--color-danger-100)]" />
+            <span className="sr-only">Nueva. </span>
+          </>
+        ) : null}
         {timestamp}
       </p>
     </Container>

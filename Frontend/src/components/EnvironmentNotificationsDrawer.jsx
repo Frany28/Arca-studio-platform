@@ -1,13 +1,34 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useInRouterContext, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext.jsx";
 import { useAdminRecentActivity } from "../hooks/useAdminRecentActivity.js";
+import { useUserNotifications } from "../hooks/useUserNotifications.js";
+import { getProjectPath } from "../utils/projectRoutes.js";
 import { useEnvironmentComments } from "../hooks/useProjectComments.js";
 import {
   getEnvironmentNotificationsPolicy,
   isAdministrator,
 } from "../utils/observationAccess.js";
 import NotificationsDrawer from "./ui/NotificationsDrawer.jsx";
+
+/**
+ * Expone `navigate` solo cuando el drawer está dentro de un Router (las páginas); fuera de él (p. ej.
+ * fixtures aislados) no se monta y seleccionar una notificación solo la marca como leída.
+ *
+ * @param {{ navigateRef: { current: Function|null } }} props - Referencia que recibe `navigate`.
+ * @returns {null} No pinta nada.
+ */
+function RouterNavigateBridge({ navigateRef }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigateRef.current = navigate;
+    return () => {
+      navigateRef.current = null;
+    };
+  }, [navigate, navigateRef]);
+  return null;
+}
 
 function mergeDrawerComments(environmentComments, projectComments) {
   const commentsById = new Map();
@@ -29,10 +50,6 @@ function EnvironmentNotificationsDrawer({
   onRefreshComments,
   onSubmitComment,
   open = false,
-  recentActivity = [],
-  recentActivityError = "",
-  recentActivityLoading = false,
-  onRefreshActivity,
   ...props
 }) {
   const { user } = useAuth();
@@ -42,6 +59,18 @@ function EnvironmentNotificationsDrawer({
     enabled: open && isAdmin,
     user,
   });
+  // Clientes y arquitectos: «Actividad Reciente» son sus notificaciones reales (/notifications), no
+  // datos de ejemplo. Seleccionar una la marca como leída y, si el usuario aún puede abrir su
+  // proyecto, lleva a él. El administrador conserva la actividad de auditoría.
+  const inRouter = useInRouterContext();
+  const navigateRef = useRef(null);
+  const userNotifications = useUserNotifications({ enabled: open && !isAdmin && Boolean(user) });
+  const handleNotificationSelect = (item) => {
+    const notification = item?.notification;
+    if (!notification) return;
+    userNotifications.markRead(notification);
+    if (notification.project) navigateRef.current?.(getProjectPath(notification.project));
+  };
   const {
     drawerComments: environmentComments,
     readError: environmentCommentsError,
@@ -61,20 +90,26 @@ function EnvironmentNotificationsDrawer({
   );
 
   return (
+    <>
+    {inRouter ? <RouterNavigateBridge navigateRef={navigateRef} /> : null}
     <NotificationsDrawer
       {...props}
       activityOnly={policy.activityOnly}
       open={open}
-      recentActivity={isAdmin ? adminActivity.activity : recentActivity}
+      recentActivity={isAdmin ? adminActivity.activity : userNotifications.items}
       recentActivityError={
-        isAdmin ? adminActivity.error : recentActivityError
+        isAdmin ? adminActivity.error : userNotifications.error
       }
       recentActivityLoading={
-        isAdmin ? adminActivity.loading : recentActivityLoading
+        isAdmin ? adminActivity.loading : userNotifications.loading
       }
       onRefreshActivity={
-        isAdmin ? adminActivity.refresh : onRefreshActivity
+        isAdmin ? adminActivity.refresh : userNotifications.refresh
       }
+      onActivitySelect={isAdmin ? props.onActivitySelect : handleNotificationSelect}
+      activityHasMore={!isAdmin && userNotifications.hasMore}
+      activityLoadingMore={!isAdmin && userNotifications.loadingMore}
+      onLoadMoreActivity={isAdmin ? undefined : userNotifications.loadMore}
       comments={mergedComments}
       commentsError={
         policy.observationsAllowed
@@ -99,6 +134,7 @@ function EnvironmentNotificationsDrawer({
         policy.observationsAllowed ? submitEnvironmentComment : undefined
       }
     />
+    </>
   );
 }
 

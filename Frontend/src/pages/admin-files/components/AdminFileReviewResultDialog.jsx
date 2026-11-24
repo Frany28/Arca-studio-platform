@@ -1,4 +1,4 @@
-import { TickCircle } from "iconsax-react";
+import { CloseCircle, TickCircle } from "iconsax-react";
 import { useId, useState } from "react";
 
 import Modal from "../../../components/ui/Modal/Modal.jsx";
@@ -6,23 +6,23 @@ import { useDialogKeyboard } from "../../../hooks/useDialogKeyboard.js";
 import { describeReviewResult } from "../utils/adminFileReview.js";
 
 /**
- * Aviso de una revisión confirmada (Figma 3795:580699 «Archivo aprobado correctamente» y
- * 3797:278032 «Archivo rechazado correctamente»). El texto se redacta con la respuesta de la API
- * (describeReviewResult): Figma anuncia que el archivo «ahora es visible», pero aprobar no comparte
- * con el cliente, así que el aviso lo dice expresamente. Figma muestra «Cancelar» y «Aceptar»; como
- * no hay nada que cancelar, solo se ofrece «Aceptar». Conserva el último aviso durante la salida.
+ * Confirmación de una revisión (Figma 3795:579327 «Archivo aprobado correctamente» y 3795:579509
+ * «Archivo rechazado correctamente»): icono de éxito o de rechazo, título, texto de Figma y los dos
+ * botones del diseño. Solo se abre con la respuesta confirmada de la API; la operación ya está
+ * persistida, así que «Cancelar» y «Aceptar» solo cierran (ninguno repite ni deshace nada).
  *
- * @param {Object} props - Revisión confirmada y cierre.
- * @param {{ action: "approve"|"reject", result: Object, name: string }|null} props.review - Revisión; null cierra.
+ * @param {Object} props - Revisión confirmada o null y cierre.
+ * @param {{ action: "approve"|"reject", result: Object, name: string }|null} props.review - Revisión.
  * @param {() => void} props.onClose - Cierra el aviso.
- * @returns {import("react").ReactElement} Modal en portal.
+ * @returns {import("react").ReactElement} Modal.
  */
 function AdminFileReviewResultDialog({ onClose, review }) {
   const dialogId = useId();
   const [shown, setShown] = useState(review);
   if (review && review !== shown) setShown(review);
   const displayed = review ?? shown;
-  const texts = displayed ? describeReviewResult(displayed.action, displayed.result, displayed.name) : { description: "", title: "" };
+  const texts = displayed ? describeReviewResult(displayed.action) : { description: "", title: "" };
+  const rejected = displayed?.action === "reject";
 
   useDialogKeyboard({
     open: Boolean(review),
@@ -40,11 +40,15 @@ function AdminFileReviewResultDialog({ onClose, review }) {
       transitionPreset="fade-scale"
       title={<span id={`${dialogId}-title`}>{texts.title}</span>}
       description={<span id={`${dialogId}-description`}>{texts.description}</span>}
-      icon={<TickCircle size="20" color="currentColor" className="size-5 text-[var(--color-success-200)]" aria-hidden="true" />}
+      icon={rejected
+        ? <CloseCircle size="20" color="currentColor" className="size-5 text-[var(--color-danger-100)]" aria-hidden="true" />
+        : <TickCircle size="20" color="currentColor" className="size-5 text-[var(--color-success-200)]" aria-hidden="true" />}
       primaryActionLabel="Aceptar"
-      showSecondaryAction={false}
+      secondaryActionLabel="Cancelar"
+      showSecondaryAction
       onClose={onClose}
       onPrimaryAction={onClose}
+      onSecondaryAction={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby={`${dialogId}-title`}

@@ -9,7 +9,6 @@ import Button from "../components/ui/Button/Button.jsx";
 import NotificationsDrawer from "../components/EnvironmentNotificationsDrawer.jsx";
 import ResponsiveSideNavigation from "../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
 import useMobileNavigationDrawer from "../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../data/clientDrawerData.js";
 import useHomeProjectRequests from "./home/hooks/useHomeProjectRequests.js";
 import useHomeProjects from "./home/hooks/useHomeProjects.js";
 import useHomeNotifications from "./home/hooks/useHomeNotifications.js";
@@ -212,7 +211,6 @@ function Home({ view = "dashboard" }) {
             comments={notificationComments}
             commentsError={drawerCommentsError}
             commentsLoading={drawerCommentsLoading}
-            recentActivity={CLIENT_DRAWER_RECENT_ACTIVITY}
             onActivitySelect={handleActivitySelect}
             onCommentSelect={openImageComment}
             onSubmitComment={commentsProjectId ? submitComment : undefined}

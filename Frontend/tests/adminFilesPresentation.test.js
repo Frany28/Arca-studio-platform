@@ -116,6 +116,10 @@ test("table geometry adds Proyecto only outside the approved tree view", () => {
   assert.equal(getAdminFilesColumns({ showProject: true })[2].id, "project");
   assert.equal(getAdminFilesTableMinWidth({ showProject: true }) - getAdminFilesTableMinWidth({ showProject: false }), 176);
   assert.match(getAdminFilesGridTemplate({ showProject: false }), /^minmax\(0,1fr\) 88px/);
+  // Pendientes (Figma 3727:683264): «Revisar» como única acción y la tabla cabe en 1032 px (1440 con menú).
+  assert.deepEqual(getAdminFilesColumns({ review: true, showProject: true }).map((column) => column.id), ["name", "version", "project", "type", "size", "date", "uploadedBy", "actions"]);
+  assert.ok(getAdminFilesTableMinWidth({ review: true, showProject: true }) <= 1032);
+  assert.equal(getAdminFilesColumns({ review: true, showProject: true }).at(-1).width, 128);
 });
 
 test("the file manager API builds the documented admin routes", async () => {

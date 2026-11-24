@@ -57,6 +57,11 @@ async function openPage(context, props = {}, { theme = "light", consumer = "", .
   page.on("pageerror", (error) => errors.push(error.message));
   // Los imports de src/api forman parte del componente; solo se bloquean endpoints.
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
+    // Clientes y arquitectos leen sus notificaciones reales al abrir el drawer (única API prevista).
+    if (new URL(route.request().url()).pathname === "/api/notifications" && route.request().method() === "GET") {
+      await route.fulfill({ json: { nextCursor: null, notifications: [], unreadCount: 0 } });
+      return;
+    }
     errors.push(`API inesperada: ${route.request().url()}`);
     await route.abort();
   });

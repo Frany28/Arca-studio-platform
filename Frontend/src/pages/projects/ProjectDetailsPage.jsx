@@ -10,7 +10,6 @@ import Loader from "../../components/ui/Loader/Loader.jsx";
 import TabPanel from "../../components/ui/TabPanel.jsx";
 import ResponsiveSideNavigation from "../../components/ui/SideNavigation/ResponsiveSideNavigation.jsx";
 import useMobileNavigationDrawer from "../../components/ui/SideNavigation/hooks/useMobileNavigationDrawer.js";
-import { CLIENT_DRAWER_RECENT_ACTIVITY } from "../../data/clientDrawerData.js";
 import ProjectDetailTabMenu from "./components/ProjectDetailTabMenu.jsx";
 import ProjectOverviewHeader from "./components/ProjectOverviewHeader.jsx";
 import ProjectActivePanel from "./components/ProjectActivePanel.jsx";
@@ -268,7 +267,6 @@ export default function ProjectDetailsPage({
             comments={notificationComments}
             commentsError={projectCommentsError}
             commentsLoading={projectCommentsLoading}
-            recentActivity={CLIENT_DRAWER_RECENT_ACTIVITY}
             onActivitySelect={handleActivitySelect}
             onCommentSelect={openImageComment}
             onSubmitComment={projectIsReadOnly ? undefined : handleSubmitComment}

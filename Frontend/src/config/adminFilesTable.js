@@ -16,34 +16,52 @@ const BASE_COLUMNS = Object.freeze([
   { id: "actions", width: 176 },
 ]);
 
+// «Pendientes por aprobación» (Figma 3727:683264): cada fila solo ofrece «Revisar» (la descarga y el
+// historial están en el visor), así que Acciones es estrecha y la tabla, con Proyecto, cabe en el área
+// de contenido a 1440 px (1032 px con el menú lateral abierto) sin ocultar «Revisar». Nombre conserva
+// los 160 px de Figma como mínimo y absorbe el resto.
+const REVIEW_COLUMNS = Object.freeze([
+  { id: "name", width: null },
+  { id: "version", width: 72 },
+  { id: "project", width: 160 },
+  { id: "type", width: 96 },
+  { id: "size", width: 104 },
+  { id: "date", width: 136 },
+  { id: "uploadedBy", width: 168 },
+  { id: "actions", width: 128 },
+]);
+
 // Ancho mínimo de Nombre antes de desplazar la tabla en horizontal.
 export const ADMIN_FILES_NAME_MIN_WIDTH = 200;
+const REVIEW_NAME_MIN_WIDTH = 160;
 
 /**
  * Columnas de la tabla según la pestaña: «Proyecto» solo cuando la tabla no está acotada por el
- * árbol (pendientes y rechazados, como en Figma).
+ * árbol (pendientes y rechazados, como en Figma); `review` usa la geometría de Pendientes.
  *
- * @param {{ showProject: boolean }} options - Presentación.
+ * @param {{ showProject: boolean, review?: boolean }} options - Presentación.
  * @returns {ReadonlyArray<{id: string, width: number|null}>} Columnas en orden.
  */
-export function getAdminFilesColumns({ showProject }) {
+export function getAdminFilesColumns({ review = false, showProject }) {
+  if (review) return REVIEW_COLUMNS;
   return BASE_COLUMNS.filter((column) => showProject || column.id !== "project");
 }
 
 /**
  * Ancho mínimo de la tabla con sus columnas.
  *
- * @param {{ showProject: boolean }} options - Presentación.
+ * @param {{ showProject: boolean, review?: boolean }} options - Presentación.
  * @returns {number} Píxeles.
  */
 export function getAdminFilesTableMinWidth(options) {
-  return getAdminFilesColumns(options).reduce((total, column) => total + (column.width ?? ADMIN_FILES_NAME_MIN_WIDTH), 0);
+  const nameMinWidth = options.review ? REVIEW_NAME_MIN_WIDTH : ADMIN_FILES_NAME_MIN_WIDTH;
+  return getAdminFilesColumns(options).reduce((total, column) => total + (column.width ?? nameMinWidth), 0);
 }
 
 /**
  * Plantilla de columnas CSS Grid equivalente al `colgroup`, para el skeleton.
  *
- * @param {{ showProject: boolean }} options - Presentación.
+ * @param {{ showProject: boolean, review?: boolean }} options - Presentación.
  * @returns {string} Valor de `grid-template-columns`.
  */
 export function getAdminFilesGridTemplate(options) {

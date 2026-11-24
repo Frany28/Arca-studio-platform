@@ -159,29 +159,24 @@ export function getReplaceAvailability(version, versions) {
 }
 
 /**
- * Textos del aviso de una revisión confirmada, redactados solo con lo que devuelve la API: aprobar
- * convierte la versión en vigente y no la comparte (la acción de compartir es independiente);
- * rechazar conserva la versión rechazada y no cambia la vigente.
+ * Textos de la confirmación de una revisión (Figma 3795:579327 y 3795:579509), que solo se muestra
+ * cuando la API confirmó la operación. Figma dice «ahora es visible en el proyecto»; el texto lo
+ * precisa («disponible según los permisos del proyecto»): la versión aprobada pasa a ser la vigente
+ * para quien ya podía ver el archivo; aprobar no la comparte con el cliente ni la publica (DA3). «Notificado» corresponde al aviso que recibe quien
+ * subió la versión (notifications, en la misma transacción de la decisión).
  *
  * @param {"approve"|"reject"} action - Acción confirmada.
- * @param {{ version: Object, currentVersionId: number|null, sharedWithClient: boolean }} result - Respuesta.
- * @param {string} fileName - Nombre visible del archivo.
- * @returns {{ title: string, description: string }} Textos.
+ * @returns {{ title: string, description: string }} Textos de Figma.
  */
-export function describeReviewResult(action, result, fileName) {
-  const number = result?.version?.versionNumber;
+export function describeReviewResult(action) {
   if (action === "approve") {
-    const current = result?.currentVersionId === result?.version?.id
-      ? `La V${number} de «${fileName}» es ahora la versión vigente.`
-      : `La V${number} de «${fileName}» quedó aprobada.`;
-    const sharing = result?.sharedWithClient
-      ? " También está compartida con el cliente."
-      : " Aún no se comparte con el cliente: compartirla es una acción independiente.";
-    return { description: current + sharing, title: "Archivo aprobado correctamente" };
+    return {
+      description: "El archivo se ha aprobado exitosamente y ya está disponible según los permisos del proyecto, esto será notificado a los usuarios pertinentes.",
+      title: "Archivo aprobado correctamente",
+    };
   }
-  const current = result?.currentVersionId ? " La versión vigente no cambia." : " El archivo sigue sin versión vigente.";
   return {
-    description: `Se rechazó la V${number} de «${fileName}» y se conserva con su motivo.${current}`,
+    description: "La carga del archivo se ha rechazado exitosamente, esto será notificado a los usuarios pertinentes.",
     title: "Archivo rechazado correctamente",
   };
 }
