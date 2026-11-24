@@ -310,9 +310,11 @@ test("carpetas fuera de draft: anidadas, reglas confirmadas, decisiones pendient
   const search = await api("/admin/files/folders?search=encimera");
   assert.deepEqual(search.body.folders[0].path.map((segment) => segment.name), ["Renders e imágenes", "Imágenes", "Ejecución", "Cocina", "Detalles", "Encimera"]);
 
+  // D7 resuelta: carpetas personalizadas en la raíz; D14: también dentro de «Cotizaciones».
   const root = await api(path, { body: { name: "Raíz", parentId: null }, method: "POST" });
-  assert.deepEqual([root.status, root.body.code], [409, "PROJECT_FOLDER_DECISION_PENDING"], "D7");
-  assert.match(root.body.message, /D7/);
+  assert.deepEqual([root.status, root.body.folder.parentId], [201, null]);
+  const quotesChild = await api(path, { body: { name: "Borradores", parentId: seed.quinta.folders["documents.quotes"] }, method: "POST" });
+  assert.equal(quotesChild.status, 201);
   const cover = await api(path, { body: { name: "Extra", parentId: seed.quinta.folders.cover }, method: "POST" });
   assert.deepEqual([cover.status, cover.body.code], [409, "PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED"]);
   const repeated = await api(path, { body: { name: " cocina ", parentId: seed.quinta.folders["renders.images.execution"] }, method: "POST" });

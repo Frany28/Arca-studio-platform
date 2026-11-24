@@ -9,7 +9,7 @@ import Input from "../../../components/ui/Input/Input.jsx";
 import Loader from "../../../components/ui/Loader/Loader.jsx";
 import ScrollBar from "../../../components/ui/ScrollBar/ScrollBar.jsx";
 import { useVerticalScrollBar } from "../../../hooks/useVerticalScrollBar.js";
-import { FOLDER_RULE_MESSAGES, buildFolderTree, formatFolderPath, getFolderCapabilities } from "../utils/adminFilesPresentation.js";
+import { buildFolderTree, formatFolderPath, getFolderCapabilities } from "../utils/adminFilesPresentation.js";
 
 // Figma 3727:683873: superficies de 36 px cada 48 px, margen de 8 px y sangría de 17 px.
 const INDENT_PX = 17;
@@ -172,10 +172,9 @@ function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFol
   const { viewportRef, scrollState, hasOverflow, syncScrollState, handlePositionChange } = useVerticalScrollBar();
   const project = tree.projects.find((candidate) => candidate.id === selection.projectId) || null;
   const selectedFolder = project?.folders.find((folder) => folder.id === selection.folderId) || null;
-  // Con un proyecto seleccionado sin carpeta, la creación sería en la raíz: pendiente de decisión (D7).
-  const capabilities = project && !selectedFolder
-    ? { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.rootUndecided }
-    : getFolderCapabilities(selectedFolder);
+  // Con un proyecto seleccionado sin carpeta, la carpeta nueva va a su raíz (D7 resuelta).
+  const capabilities = getFolderCapabilities(selectedFolder, { project });
+  const createTargetName = selectedFolder?.name ?? project?.name ?? "";
   const projectNodes = useMemo(
     () => tree.projects.map((candidate) => ({ project: candidate, roots: buildFolderTree(candidate.folders) })),
     [tree.projects],
@@ -261,8 +260,8 @@ function AdminFilesTree({ actionsDisabled, expanded, onCreateFolder, onRemoveFol
           iconLeft={<Add size="20" color="currentColor" />}
           showRightIcon={false}
           disabled={actionsDisabled || !capabilities.canCreateChild}
-          tooltip={capabilities.canCreateChild ? `Nueva carpeta en ${selectedFolder.name}` : capabilities.createReason}
-          aria-label={capabilities.canCreateChild ? `Nueva carpeta en ${selectedFolder.name}` : `Nueva carpeta. ${capabilities.createReason}`}
+          tooltip={capabilities.canCreateChild ? `Nueva carpeta en ${createTargetName}` : capabilities.createReason}
+          aria-label={capabilities.canCreateChild ? `Nueva carpeta en ${createTargetName}` : `Nueva carpeta. ${capabilities.createReason}`}
           onClick={() => onCreateFolder(project, selectedFolder)}
         />
       </div>

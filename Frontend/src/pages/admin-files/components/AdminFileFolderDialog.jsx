@@ -34,7 +34,8 @@ function AdminFileFolderDialog({ dialog, onClose, onSubmit }) {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const focusInvalidField = useInvalidFieldFocus({ getContainer: () => document.getElementById(FORM_ID) });
-  const location = renaming ? dialog.project.name : `${dialog.project.name} › ${dialog.parent.name}`;
+  // Sin madre, la carpeta nueva va a la raíz del proyecto.
+  const location = renaming || !dialog.parent ? dialog.project.name : `${dialog.project.name} › ${dialog.parent.name}`;
 
   useDialogKeyboard({
     open: true,
@@ -92,7 +93,7 @@ function AdminFileFolderDialog({ dialog, onClose, onSubmit }) {
           <div className="flex flex-col gap-[4px] pr-[28px]">
             <h2 id="admin-file-folder-title" className="text-heading-6 m-0 text-[var(--color-text-300)]">{copy.title}</h2>
             <p id="admin-file-folder-location" className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={location}>
-              {renaming ? `Proyecto: ${location}` : `Dentro de: ${location}`}
+              {renaming ? `Proyecto: ${location}` : dialog.parent ? `Dentro de: ${location}` : `Dentro de: ${location} (raíz del proyecto)`}
             </p>
           </div>
           <Input

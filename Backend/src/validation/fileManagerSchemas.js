@@ -78,5 +78,6 @@ export const projectWarrantiesReadSchema = z.object({ params: z.object({ project
 // y la carpeta destino es obligatoria (crear archivos en la raíz no se ofrece).
 export const fileManagerUploadSchema = z.object({
   params: z.object({ projectId: positiveId }),
-  query: z.object({ folderId: positiveId }).passthrough(),
+  // Sin `folderId`, el archivo se sube a la raíz del proyecto (ubicación explícita del usuario).
+  query: z.object({ folderId: positiveId.optional() }).passthrough(),
 });

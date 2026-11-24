@@ -8,7 +8,8 @@ const PANORAMA_SECTION = "models_3d";
  * Categoría de un archivo subido desde el administrador. Conserva la regla de siempre (imagen,
  * vídeo o documento según el formato) y clasifica como `panorama` las imágenes que caen en
  * «Panorámicas» o en una de sus subcarpetas, para que el proyecto y el administrador las abran con
- * el visor 360. Un vídeo o documento en «Panorámicas» conserva su categoría (contenido pendiente de D14).
+ * el visor 360. Un vídeo o documento en «Panorámicas» conserva su categoría: la ubicación lógica no
+ * cambia la categoría técnica, que refleja el contenido real.
  *
  * @param {string|null} classificationKey - Clave de la carpeta predeterminada más cercana.
  * @param {string} fileType - Tipo MIME normalizado.
@@ -23,8 +24,8 @@ export function resolveManagedFileCategory(classificationKey, fileType) {
 
 /**
  * Decide si una carpeta admite un archivo más con las reglas de contenido confirmadas del catálogo:
- * solo la portada las tiene (una imagen JPG o PNG que se reemplaza). En el resto de carpetas el
- * contenido sigue pendiente de D14, así que se admite cualquier formato que acepte la subida.
+ * solo la portada las tiene (una imagen JPG o PNG que se reemplaza). El resto de carpetas y la raíz
+ * (D14 resuelta) admiten cualquier formato que acepte la subida.
  *
  * @param {{ systemKey: string|null, fileCount: number }} target - Carpeta destino.
  * @param {string} extension - Extensión del archivo.

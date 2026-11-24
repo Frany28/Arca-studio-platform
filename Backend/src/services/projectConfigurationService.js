@@ -17,6 +17,7 @@ import {
   finalizeProjectConfiguration,
   findProjectConfiguration,
   findProjectFolder,
+  findProjectFolderDepth,
   insertProjectFolder,
   listProjectConfigurationFiles,
   listProjectFolders,
@@ -28,7 +29,7 @@ import {
   replaceTrackingConfiguration,
   updateProjectGeneralConfiguration,
 } from "../repositories/projectConfigurationRepository.js";
-import { evaluateFolderOperation, getFolderManagingModule } from "../domain/projectFolderCatalog.js";
+import { evaluateFolderOperation } from "../domain/projectFolderCatalog.js";
 import { assertWarrantyDocumentMove, saveStableProjectWarranties } from "./projectWarrantyService.js";
 
 const MISSING_REQUIREMENT_MESSAGES = Object.freeze({
@@ -287,9 +288,9 @@ export async function getProjectConfigurationFiles(projectId) {
 
 /**
  * Crea una carpeta personalizada (en la raíz o dentro de otra del mismo proyecto) en un borrador.
- * Regla confirmada del catálogo: se admite dentro de cualquier carpeta salvo en la portada, que
- * responde 409 PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED. La raíz depende de D7 y conserva el
- * comportamiento vigente hasta decidirla.
+ * Regla del catálogo: en la raíz (D7 resuelta) y dentro de cualquier carpeta salvo en la portada, que
+ * responde 409 PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED, y sin superar MAX_FOLDER_DEPTH (409
+ * PROJECT_FOLDER_TOO_DEEP).
  *
  * @param {{name: string, parentId: number|null, projectId: number, user: {id: number}}} params - Carpeta.
  * @returns {Promise<object>} Carpeta creada.
@@ -301,11 +302,14 @@ export async function createProjectFolder({ name, parentId, projectId, user }) {
       const project = await lockProjectForConfiguration(client, projectId);
       if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Proyecto no encontrado.");
       if (project.status !== PROJECT_STATUS.DRAFT) throw new ConflictError("PROJECT_NOT_DRAFT", "Solo se puede configurar un proyecto en borrador.");
-      const parent = parentId ? await findProjectFolder(client, projectId, parentId) : null;
-      if (parentId && !parent) {
+      const found = parentId ? await findProjectFolder(client, projectId, parentId) : null;
+      if (parentId && !found) {
         throw new ValidationError("Los datos enviados no son válidos.", { "body.parentId": "La carpeta superior no existe." });
       }
-      if (evaluateFolderOperation({ operation: "create_child", parent }).outcome === "forbidden") {
+      const parent = found ? { ...found, depth: await findProjectFolderDepth(client, found.id) } : null;
+      const verdict = evaluateFolderOperation({ operation: "create_child", parent });
+      if (verdict.reason === "FOLDER_TOO_DEEP") throw new ConflictError("PROJECT_FOLDER_TOO_DEEP", "Se alcanzó la profundidad máxima de carpetas.");
+      if (verdict.outcome === "forbidden") {
         throw new ConflictError("PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED", "Esta carpeta no admite subcarpetas.");
       }
       return insertProjectFolder(client, { createdBy: user.id, name, parentId, projectId });
@@ -361,20 +365,6 @@ export async function deleteProjectFolder({ folderId, projectId }) {
 }
 
 /**
- * Rechaza una carpeta gestionada por otro módulo como destino de archivos manuales (subida o
- * movimiento): «Documentos › Cotizaciones» solo muestra los PDF que genera Cotizaciones.
- *
- * @param {{ systemKey: string|null }|null} folder - Carpeta destino (null: raíz).
- * @returns {void}
- * @throws {ConflictError} PROJECT_FOLDER_MANAGED.
- */
-function assertNotManagedFolder(folder) {
-  if (getFolderManagingModule(folder?.systemKey)) {
-    throw new ConflictError("PROJECT_FOLDER_MANAGED", "Esta carpeta la gestiona Cotizaciones: sus PDF se generan al guardar cada cotización.");
-  }
-}
-
-/**
  * Mueve un archivo del borrador a una carpeta del mismo proyecto o a la raíz.
  *
  * @param {{fileId: number, folderId: number|null, projectId: number}} params - Archivo y destino.
@@ -386,7 +376,6 @@ export async function moveProjectFile({ fileId, folderId, projectId }) {
     if (folderId && !target) {
       throw new ValidationError("Los datos enviados no son válidos.", { "body.folderId": "La carpeta no existe." });
     }
-    assertNotManagedFolder(target);
     // B8: un documento que respalda garantías vigentes debe seguir en «Documentos › Garantías».
     await assertWarrantyDocumentMove(client, { fileId, targetFolderId: folderId });
     if (!(await moveProjectFileToFolder(client, { fileId, folderId, projectId }))) {
@@ -411,5 +400,4 @@ export async function assertDraftUploadTarget({ folderId, projectId }) {
   if (folderId && !target) {
     throw new ValidationError("Los datos enviados no son válidos.", { "query.folderId": "La carpeta no existe." });
   }
-  assertNotManagedFolder(target);
 }

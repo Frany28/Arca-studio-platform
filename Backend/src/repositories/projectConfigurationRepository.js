@@ -479,3 +479,26 @@ export async function moveProjectFileToFolder(client, { fileId, folderId, projec
   );
   return result.rowCount > 0;
 }
+
+/**
+ * Profundidad de una carpeta del proyecto: 1 para las de la raíz y +1 por cada ancestro. La cadena
+ * se recorre con un tope, de modo que un ciclo heredado no bloquea la consulta.
+ *
+ * @param {{ query: Function }} executor - Cliente o pool.
+ * @param {number} folderId - Carpeta.
+ * @returns {Promise<number>} Profundidad (0 si no existe).
+ */
+export async function findProjectFolderDepth(executor, folderId) {
+  const result = await executor.query(
+    `with recursive chain as (
+       select id, parent_id, 1 as depth from public.project_folders where id = $1 and deleted_at is null
+       union all
+       select parent.id, parent.parent_id, chain.depth + 1
+       from public.project_folders parent inner join chain on parent.id = chain.parent_id
+       where chain.depth < 64
+     )
+     select coalesce(max(depth), 0)::int as depth from chain`,
+    [folderId],
+  );
+  return Number(result.rows[0]?.depth ?? 0);
+}

@@ -22,15 +22,16 @@ export const ADMIN_FILES_TYPE_OPTIONS = Object.freeze([
 
 // Carpeta predeterminada que no admite subcarpetas (una sola imagen de portada).
 const COVER_FOLDER_KEY = "cover";
-// «Documentos › Cotizaciones» (Backend/src/domain/projectFolderCatalog.js): carpeta gestionada por
-// Cotizaciones. Muestra sus PDF generados; no admite archivos manuales ni subcarpetas.
+// «Documentos › Cotizaciones» (Backend/src/domain/projectFolderCatalog.js): muestra los PDF que
+// genera Cotizaciones y admite además subcarpetas y archivos manuales (D14 resuelta).
 export const QUOTES_FOLDER_KEY = "documents.quotes";
+// Profundidad máxima de carpetas (MAX_FOLDER_DEPTH del backend; la raíz es 0).
+export const MAX_FOLDER_DEPTH = 12;
 // Mensajes de las reglas confirmadas y pendientes de carpetas (domain/projectFolderCatalog.js).
 export const FOLDER_RULE_MESSAGES = Object.freeze({
   coverNoSubfolders: "La portada admite una sola imagen: no admite subcarpetas.",
-  quotesManaged: "Cotizaciones genera el contenido de esta carpeta: no admite subcarpetas ni archivos manuales.",
-  rootUndecided: "Crear carpetas en la raíz del proyecto está pendiente de decisión. Selecciona una carpeta.",
-  selectFolder: "Selecciona una carpeta del árbol para crear una subcarpeta.",
+  selectFolder: "Selecciona un proyecto o una carpeta del árbol para crear una carpeta.",
+  tooDeep: "Se alcanzó la profundidad máxima de carpetas.",
   systemProtected: "Las carpetas predeterminadas no se pueden renombrar ni eliminar.",
 });
 
@@ -65,22 +66,63 @@ export function buildFolderTree(folders) {
 }
 
 /**
- * Indica qué se puede hacer con una carpeta según las reglas confirmadas: crear subcarpetas en
- * cualquiera salvo la portada y Cotizaciones; renombrar y retirar solo las personalizadas (retirar exige que estén
- * vacías y lo comprueba el backend).
+ * Profundidad de una carpeta en su proyecto (1 en la raíz), siguiendo sus madres con un tope.
  *
- * @param {{ systemKey: string|null }|null} folder - Carpeta seleccionada (null: raíz o ninguna).
+ * @param {Array<{ id: number, parentId: number|null }>} folders - Carpetas del proyecto.
+ * @param {number|null} folderId - Carpeta (null: raíz, profundidad 0).
+ * @returns {number} Profundidad.
+ */
+export function getFolderDepth(folders, folderId) {
+  const byId = new Map((folders || []).map((folder) => [folder.id, folder]));
+  let depth = 0;
+  for (let current = byId.get(folderId); current && depth < 64; current = byId.get(current.parentId)) depth += 1;
+  return depth;
+}
+
+/**
+ * Indica qué se puede hacer en la ubicación seleccionada: crear carpetas en la raíz del proyecto
+ * (D7 resuelta) o dentro de cualquier carpeta, predeterminada o personalizada, salvo la portada y
+ * sin superar la profundidad máxima; renombrar y retirar solo las personalizadas (retirar exige que
+ * estén vacías y lo comprueba el backend). Sin proyecto no hay ubicación.
+ *
+ * @param {{ systemKey: string|null, id?: number }|null} folder - Carpeta seleccionada (null: raíz o ninguna).
+ * @param {{ project?: { folders?: Array<Object> }|null }} [context] - Proyecto seleccionado (habilita la raíz).
  * @returns {{ canCreateChild: boolean, createReason: string, canManage: boolean }} Permisos.
  */
-export function getFolderCapabilities(folder) {
-  if (!folder) return { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.selectFolder };
+export function getFolderCapabilities(folder, { project = null } = {}) {
+  if (!folder) {
+    return project
+      ? { canCreateChild: true, canManage: false, createReason: "" }
+      : { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.selectFolder };
+  }
   if (folder.systemKey === COVER_FOLDER_KEY) {
     return { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.coverNoSubfolders };
   }
-  if (folder.systemKey === QUOTES_FOLDER_KEY) {
-    return { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.quotesManaged };
+  if (project && getFolderDepth(project.folders, folder.id) >= MAX_FOLDER_DEPTH) {
+    return { canCreateChild: false, canManage: !folder.systemKey, createReason: FOLDER_RULE_MESSAGES.tooDeep };
   }
   return { canCreateChild: true, canManage: !folder.systemKey, createReason: "" };
+}
+
+/**
+ * Destinos de una subida: la raíz del proyecto y cada carpeta (en el orden del árbol) con su ruta
+ * legible, para el selector «Destino» del diálogo.
+ *
+ * @param {{ name: string, folders?: Array<{ id: number, parentId: number|null, name: string }> }} project - Proyecto.
+ * @returns {Array<{ id: string, label: string, folder: Object|null }>} Opciones (`root` o `folder-<id>`).
+ */
+export function getUploadDestinations(project) {
+  const folders = project?.folders || [];
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  const pathOf = (folder) => {
+    const names = [];
+    for (let current = folder; current && names.length < 64; current = byId.get(current.parentId)) names.unshift(current.name);
+    return names.join(" › ");
+  };
+  return [
+    { folder: null, id: "root", label: "Raíz del proyecto" },
+    ...folders.map((folder) => ({ folder, id: `folder-${folder.id}`, label: pathOf(folder) })),
+  ];
 }
 
 /**
@@ -135,18 +177,16 @@ const UPLOAD_READ_ONLY_STATUSES = Object.freeze({ archived: "El proyecto está a
 
 /**
  * Motivo por el que «+ Nuevo» no puede subir a la selección del árbol, o cadena vacía si puede.
- * Los archivos se suben dentro de una carpeta (crear archivos en la raíz no se ofrece); la portada
- * admite una sola imagen, que se reemplaza. El backend vuelve a comprobar cada regla.
+ * Se sube a la raíz del proyecto o a cualquier carpeta (D7 y D14 resueltas); la portada admite una
+ * sola imagen, que se reemplaza. El backend vuelve a comprobar cada regla.
  *
  * @param {{ status?: string }|null} project - Proyecto seleccionado.
  * @param {{ systemKey?: string|null, fileCount?: number }|null} folder - Carpeta seleccionada.
  * @returns {string} Motivo o "".
  */
 export function getUploadDisabledReason(project, folder) {
-  if (!project) return "Selecciona una carpeta del árbol para subir archivos.";
+  if (!project) return "Selecciona un proyecto o una carpeta del árbol para subir archivos.";
   if (UPLOAD_READ_ONLY_STATUSES[project.status]) return UPLOAD_READ_ONLY_STATUSES[project.status];
-  if (!folder) return "Los archivos se suben dentro de una carpeta: selecciona una.";
-  if (folder.systemKey === "cover" && Number(folder.fileCount) >= 1) return "La portada ya tiene su imagen: usa «Reemplazar archivo».";
-  if (folder.systemKey === QUOTES_FOLDER_KEY) return "Las cotizaciones se generan desde Cotizaciones al guardar cada una.";
+  if (folder?.systemKey === "cover" && Number(folder.fileCount) >= 1) return "La portada ya tiene su imagen: usa «Reemplazar archivo».";
   return "";
 }

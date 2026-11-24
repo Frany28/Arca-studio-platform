@@ -13,6 +13,9 @@ import {
   formatFileDate,
   formatFolderPath,
   getFolderCapabilities,
+  getFolderDepth,
+  getUploadDestinations,
+  MAX_FOLDER_DEPTH,
   getUploadDisabledReason,
   QUOTES_FOLDER_KEY,
   getItemsEmptyCopy,
@@ -66,20 +69,32 @@ test("folders in API preorder become a nested tree that keeps orphans", () => {
   assert.deepEqual(buildFolderTree(null), []);
 });
 
-test("folder capabilities respect cover, protected defaults and the pending root decision", () => {
+test("folder capabilities: root of a selected project, any folder (Cotizaciones included) except the cover, and a maximum depth", () => {
   assert.deepEqual(getFolderCapabilities(null), { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.selectFolder });
+  const project = { folders: [{ id: 1, parentId: null }, { id: 2, parentId: 1 }] };
+  assert.deepEqual(getFolderCapabilities(null, { project }), { canCreateChild: true, canManage: false, createReason: "" }, "raíz del proyecto (D7 resuelta)");
   assert.equal(getFolderCapabilities({ systemKey: "cover" }).canCreateChild, false);
   assert.equal(getFolderCapabilities({ systemKey: "cover" }).createReason, FOLDER_RULE_MESSAGES.coverNoSubfolders);
   assert.deepEqual(getFolderCapabilities({ systemKey: "documents.warranties" }), { canCreateChild: true, canManage: false, createReason: "" });
   assert.deepEqual(getFolderCapabilities({ systemKey: null }), { canCreateChild: true, canManage: true, createReason: "" });
-  // «Documentos › Cotizaciones» la gestiona su módulo: sin subcarpetas ni archivos manuales.
-  assert.deepEqual(getFolderCapabilities({ systemKey: QUOTES_FOLDER_KEY }), { canCreateChild: false, canManage: false, createReason: FOLDER_RULE_MESSAGES.quotesManaged });
-  for (const systemKey of ["documents.records", "documents.plans", "documents.additional"]) {
+  assert.deepEqual(getFolderCapabilities({ systemKey: QUOTES_FOLDER_KEY }), { canCreateChild: true, canManage: false, createReason: "" }, "Cotizaciones admite subcarpetas");
+  for (const systemKey of ["documents.records", "documents.plans", "documents.additional", "renders.images", "renders.videos", "renders.models", "client_files"]) {
     assert.deepEqual(getFolderCapabilities({ systemKey }), { canCreateChild: true, canManage: false, createReason: "" }, systemKey);
   }
-  assert.match(getUploadDisabledReason({ status: "in_progress" }, { fileCount: 3, systemKey: QUOTES_FOLDER_KEY }), /Cotizaciones/);
+  const deep = { folders: Array.from({ length: MAX_FOLDER_DEPTH }, (_, index) => ({ id: index + 1, parentId: index === 0 ? null : index })) };
+  assert.equal(getFolderDepth(deep.folders, MAX_FOLDER_DEPTH), MAX_FOLDER_DEPTH);
+  assert.deepEqual(getFolderCapabilities({ id: MAX_FOLDER_DEPTH, systemKey: null }, { project: deep }), { canCreateChild: false, canManage: true, createReason: FOLDER_RULE_MESSAGES.tooDeep });
+  assert.equal(getFolderCapabilities({ id: MAX_FOLDER_DEPTH - 1, systemKey: null }, { project: deep }).canCreateChild, true);
+  assert.equal(getUploadDisabledReason({ status: "in_progress" }, { fileCount: 3, systemKey: QUOTES_FOLDER_KEY }), "");
   assert.equal(getUploadDisabledReason({ status: "in_progress" }, { fileCount: 0, systemKey: "documents.plans" }), "");
-  assert.match(FOLDER_RULE_MESSAGES.rootUndecided, /pendiente de decisión/);
+});
+
+test("upload destinations: project root first, then every folder with its readable path", () => {
+  const destinations = getUploadDestinations({ folders: [{ id: 10, name: "Documentos", parentId: null }, { id: 11, name: "Cotizaciones", parentId: 10 }, { id: 12, name: "Borradores", parentId: 11 }], name: "Casa" });
+  assert.deepEqual(destinations.map(({ id, label }) => [id, label]), [
+    ["root", "Raíz del proyecto"], ["folder-10", "Documentos"], ["folder-11", "Documentos › Cotizaciones"], ["folder-12", "Documentos › Cotizaciones › Borradores"],
+  ]);
+  assert.equal(destinations[0].folder, null);
 });
 
 test("formats keep visible names readable", () => {

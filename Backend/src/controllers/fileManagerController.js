@@ -59,7 +59,7 @@ export const deleteFileManagerFolderHandler = respond((req) => deleteFileManager
 export async function postFileManagerFile(req, res, next) {
   try {
     const projectId = Number(req.params.projectId);
-    const folderId = Number(req.validatedQuery.folderId);
+    const folderId = req.validatedQuery.folderId ? Number(req.validatedQuery.folderId) : null;
     await assertFileManagerUploadTarget({ folderId, projectId, user: req.user });
     /**
      * Registra la carga validada en la carpeta destino.

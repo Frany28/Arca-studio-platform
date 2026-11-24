@@ -23,14 +23,19 @@ export const WARRANTY_DOCUMENTS_FOLDER_KEY = "documents.warranties";
 export const QUOTE_DOCUMENTS_FOLDER_KEY = "documents.quotes";
 
 // Decisiones abiertas que afectan a este catálogo. Ver Backend/ARCHITECTURE.md (Fase 1.2).
-// Resueltas: D1 (garantías en documents.warranties), D6 («Panorámicas», imágenes de 360°) y la parte
-// de D13 sobre crear carpetas personalizadas dentro de las predeterminadas.
+// Resueltas: D1 (garantías en documents.warranties), D6 («Panorámicas», imágenes de 360°), la parte
+// de D13 sobre crear carpetas personalizadas dentro de las predeterminadas, D7 (se admiten carpetas
+// personalizadas en la raíz del proyecto) y D14 (cualquier carpeta, también las agrupadoras y
+// «Cotizaciones», admite subcarpetas y archivos de cualquier formato aceptado por la subida; la
+// portada conserva su regla de Figma: una sola imagen JPG o PNG y sin subcarpetas).
 export const FOLDER_PENDING_DECISIONS = deepFreeze({
   D2: "«Antes»: fase o clasificación de su contenido (render en fase inicial o imagen de referencia).",
-  D7: "Carpetas personalizadas en la raíz del proyecto.",
   D13: "Mover carpetas personalizadas a otra ubicación.",
-  D14: "Contenido admitido por cada carpeta (salvo la portada) y si las carpetas agrupadoras admiten archivos directos.",
 });
+
+// Profundidad máxima de una carpeta (la raíz del proyecto es 0 y sus carpetas, 1). Evita árboles
+// patológicos; el catálogo llega a 4 niveles.
+export const MAX_FOLDER_DEPTH = 12;
 
 // Árbol confirmado, en su orden visual. `section` es la sección funcional del proyecto a la que
 // pertenece la carpeta y `stage`, la fase que indica su nombre. Ambos son identificadores estables:
@@ -49,47 +54,50 @@ export const PROJECT_SYSTEM_FOLDERS = deepFreeze([
     content: { acceptedExtensions: ["jpeg", "jpg", "png"], allowsSubfolders: false, maxFiles: 1, replaceOnly: true },
     pendingDecisions: [],
   },
-  { key: "renders", name: "Renders e imágenes", parentKey: null, section: "renders", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "renders", name: "Renders e imágenes", parentKey: null, section: "renders", stage: null, content: null, pendingDecisions: [] },
   // Clave conservada de «Modelos 3D»: la sección se llama «Panorámicas» y contiene imágenes de 360°.
-  { key: "renders.models", name: "Panorámicas", parentKey: "renders", section: "models_3d", stage: null, content: null, pendingDecisions: ["D14"] },
-  { key: "renders.models.initial_proposal", name: "Propuesta inicial", parentKey: "renders.models", section: "models_3d", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.models.final_proposal", name: "Propuesta final", parentKey: "renders.models", section: "models_3d", stage: "final_proposal", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.images", name: "Imágenes", parentKey: "renders", section: "images", stage: null, content: null, pendingDecisions: ["D14"] },
-  { key: "renders.images.initial_proposal", name: "Propuesta inicial", parentKey: "renders.images", section: "images", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.images.initial_proposal.before", name: "Antes", parentKey: "renders.images.initial_proposal", section: "images", stage: null, content: null, pendingDecisions: ["D2", "D14"] },
-  { key: "renders.images.execution", name: "Ejecución", parentKey: "renders.images", section: "images", stage: "execution", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.images.final_result", name: "Resultado final", parentKey: "renders.images", section: "images", stage: "final_result", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.videos", name: "Videos", parentKey: "renders", section: "videos", stage: null, content: null, pendingDecisions: ["D14"] },
-  { key: "renders.videos.initial_proposal", name: "Propuesta inicial", parentKey: "renders.videos", section: "videos", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.videos.execution", name: "Ejecución", parentKey: "renders.videos", section: "videos", stage: "execution", content: null, pendingDecisions: ["D14"] },
-  { key: "renders.videos.final_result", name: "Resultado final", parentKey: "renders.videos", section: "videos", stage: "final_result", content: null, pendingDecisions: ["D14"] },
-  { key: "documents", name: "Documentos", parentKey: null, section: "documents", stage: null, content: null, pendingDecisions: ["D14"] },
-  // Cotizaciones: carpeta gestionada por su módulo. Muestra los PDF generados de las cotizaciones del
-  // proyecto (versión comercial vigente, con su historial) sin copiarlos; no admite subidas, movimientos
-  // ni subcarpetas, porque un PDF arbitrario rompería la correspondencia con los datos comerciales.
+  { key: "renders.models", name: "Panorámicas", parentKey: "renders", section: "models_3d", stage: null, content: null, pendingDecisions: [] },
+  { key: "renders.models.initial_proposal", name: "Propuesta inicial", parentKey: "renders.models", section: "models_3d", stage: "initial_proposal", content: null, pendingDecisions: [] },
+  { key: "renders.models.final_proposal", name: "Propuesta final", parentKey: "renders.models", section: "models_3d", stage: "final_proposal", content: null, pendingDecisions: [] },
+  { key: "renders.images", name: "Imágenes", parentKey: "renders", section: "images", stage: null, content: null, pendingDecisions: [] },
+  { key: "renders.images.initial_proposal", name: "Propuesta inicial", parentKey: "renders.images", section: "images", stage: "initial_proposal", content: null, pendingDecisions: [] },
+  { key: "renders.images.initial_proposal.before", name: "Antes", parentKey: "renders.images.initial_proposal", section: "images", stage: null, content: null, pendingDecisions: ["D2"] },
+  { key: "renders.images.execution", name: "Ejecución", parentKey: "renders.images", section: "images", stage: "execution", content: null, pendingDecisions: [] },
+  { key: "renders.images.final_result", name: "Resultado final", parentKey: "renders.images", section: "images", stage: "final_result", content: null, pendingDecisions: [] },
+  { key: "renders.videos", name: "Videos", parentKey: "renders", section: "videos", stage: null, content: null, pendingDecisions: [] },
+  { key: "renders.videos.initial_proposal", name: "Propuesta inicial", parentKey: "renders.videos", section: "videos", stage: "initial_proposal", content: null, pendingDecisions: [] },
+  { key: "renders.videos.execution", name: "Ejecución", parentKey: "renders.videos", section: "videos", stage: "execution", content: null, pendingDecisions: [] },
+  { key: "renders.videos.final_result", name: "Resultado final", parentKey: "renders.videos", section: "videos", stage: "final_result", content: null, pendingDecisions: [] },
+  { key: "documents", name: "Documentos", parentKey: null, section: "documents", stage: null, content: null, pendingDecisions: [] },
+  // Cotizaciones: muestra los PDF generados por su módulo (versión comercial vigente, con su
+  // historial) sin copiarlos. Esos documentos son virtuales (no tienen fila en `files`), así que no se
+  // pueden reemplazar ni mover desde aquí; la carpeta admite además subcarpetas y archivos manuales,
+  // que tienen identidad y versiones propias. `generatedBy` identifica al módulo que la alimenta.
   {
     key: QUOTE_DOCUMENTS_FOLDER_KEY,
     name: "Cotizaciones",
     parentKey: "documents",
     section: "quotes",
     stage: null,
-    content: { acceptedExtensions: [], allowsSubfolders: false, managedBy: "quotes", maxFiles: 0, replaceOnly: false },
+    content: null,
+    generatedBy: "quotes",
     pendingDecisions: [],
   },
-  { key: "documents.initial_proposal", name: "Propuesta inicial", parentKey: "documents", section: "documents", stage: "initial_proposal", content: null, pendingDecisions: ["D14"] },
+  { key: "documents.initial_proposal", name: "Propuesta inicial", parentKey: "documents", section: "documents", stage: "initial_proposal", content: null, pendingDecisions: [] },
   // Actas (de inicio, de entrega, de reunión...) y planos técnicos: categorías documentales propias.
   // Se clasifican al subirlos eligiendo la carpeta; nunca se deducen de la extensión (un PDF puede ser
   // cualquiera de ellas).
-  { key: "documents.records", name: "Actas", parentKey: "documents", section: "records", stage: null, content: null, pendingDecisions: ["D14"] },
-  { key: "documents.plans", name: "Planos", parentKey: "documents", section: "plans", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "documents.records", name: "Actas", parentKey: "documents", section: "records", stage: null, content: null, pendingDecisions: [] },
+  { key: "documents.plans", name: "Planos", parentKey: "documents", section: "plans", stage: null, content: null, pendingDecisions: [] },
   // Documentos de garantías: se guardan aquí y se vinculan a garantías del mismo proyecto
-  // (domain/projectWarrantyDocuments.js). Sus formatos dependen de D14.
-  { key: WARRANTY_DOCUMENTS_FOLDER_KEY, name: "Garantías", parentKey: "documents", section: "warranties", stage: null, content: null, pendingDecisions: ["D14"] },
+  // (domain/projectWarrantyDocuments.js). Admiten cualquier formato aceptado por la subida.
+  { key: WARRANTY_DOCUMENTS_FOLDER_KEY, name: "Garantías", parentKey: "documents", section: "warranties", stage: null, content: null, pendingDecisions: [] },
   // Documentos que no pertenecen a otra categoría documental, elegidos expresamente por el usuario.
-  { key: "documents.additional", name: "Documentos adicionales", parentKey: "documents", section: "documents", stage: null, content: null, pendingDecisions: ["D14"] },
+  { key: "documents.additional", name: "Documentos adicionales", parentKey: "documents", section: "documents", stage: null, content: null, pendingDecisions: [] },
   // Los adjuntos de la solicitud de origen se reconocen hoy como «Archivos del cliente»
-  // (origin_project_request_id). Qué más puede contener depende de D14.
-  { key: "client_files", name: "Archivos del cliente", parentKey: null, section: "client_files", stage: null, content: null, pendingDecisions: ["D14"] },
+  // (origin_project_request_id) y los archivos adicionales que sube el cliente; admite además
+  // subcarpetas y archivos del equipo.
+  { key: "client_files", name: "Archivos del cliente", parentKey: null, section: "client_files", stage: null, content: null, pendingDecisions: [] },
 ]);
 
 const FOLDERS_BY_KEY = new Map(PROJECT_SYSTEM_FOLDERS.map((folder) => [folder.key, folder]));
@@ -330,15 +338,16 @@ export function evaluateFolderOperation({ folder = null, operation, parent = nul
 }
 
 /**
- * Decide si se puede crear una carpeta personalizada dentro de una ubicación (regla confirmada:
- * dentro de otras carpetas, respetando las restricciones de las predeterminadas). Portada:
- * prohibido, porque admite una sola imagen; raíz del proyecto: pendiente de D7.
+ * Decide si se puede crear una carpeta personalizada en una ubicación: en la raíz (D7 resuelta) y
+ * dentro de cualquier carpeta, predeterminada o personalizada, salvo la portada (una sola imagen) y
+ * sin superar MAX_FOLDER_DEPTH. `parent.depth` es la profundidad de la madre (1 en la raíz).
  *
- * @param {{ systemKey: string|null }|null} parent - Carpeta madre o null para la raíz.
- * @returns {{ outcome: "allowed"|"forbidden"|"pending_decision", reason: string, decision?: string }} Resultado.
+ * @param {{ systemKey: string|null, depth?: number }|null} parent - Carpeta madre o null para la raíz.
+ * @returns {{ outcome: "allowed"|"forbidden", reason: string }} Resultado.
  */
 function evaluateCustomFolderLocation(parent) {
-  if (!parent) return { decision: "D7", outcome: "pending_decision", reason: "ROOT_CUSTOM_FOLDER_UNDECIDED" };
+  if (!parent) return { outcome: "allowed", reason: "ROOT_CUSTOM_FOLDER" };
+  if (Number.isFinite(parent.depth) && parent.depth >= MAX_FOLDER_DEPTH) return { outcome: "forbidden", reason: "FOLDER_TOO_DEEP" };
   if (!parent.systemKey) return { outcome: "allowed", reason: "INSIDE_CUSTOM_FOLDER" };
   if (getSystemFolder(parent.systemKey)?.content?.allowsSubfolders === false) {
     return { outcome: "forbidden", reason: "FOLDER_DOES_NOT_ALLOW_SUBFOLDERS" };
@@ -348,8 +357,8 @@ function evaluateCustomFolderLocation(parent) {
 
 /**
  * Evalúa si una carpeta admite un archivo más según su contenido confirmado.
- * La portada admite una imagen JPG o PNG reemplazable; una carpeta gestionada por un módulo
- * (Cotizaciones) no admite archivos manuales; el resto depende de D14.
+ * La portada admite una imagen JPG o PNG reemplazable; el resto de carpetas (también las agrupadoras
+ * y «Cotizaciones») admiten cualquier formato aceptado por la subida (D14 resuelta).
  *
  * @param {{ systemKey: string|null }} folder - Carpeta destino.
  * @param {{ extension: string, currentFileCount: number }} file - Extensión y archivos ya presentes.
@@ -357,8 +366,8 @@ function evaluateCustomFolderLocation(parent) {
  */
 export function evaluateFolderContent(folder, { currentFileCount, extension }) {
   const definition = folder?.systemKey ? getSystemFolder(folder.systemKey) : null;
-  if (definition?.content?.managedBy) return { outcome: "forbidden", reason: "FOLDER_MANAGED_BY_MODULE" };
-  if (!definition?.content) return { decision: "D14", outcome: "pending_decision", reason: "FOLDER_CONTENT_UNDECIDED" };
+  // D14 resuelta: sin regla propia (todas salvo la portada), cualquier formato que acepte la subida.
+  if (!definition?.content) return { outcome: "allowed", reason: "CONTENT_ACCEPTED" };
   const normalizedExtension = String(extension ?? "").trim().toLowerCase().replace(/^\./, "");
   if (!definition.content.acceptedExtensions.includes(normalizedExtension)) return { outcome: "forbidden", reason: "FILE_TYPE_NOT_ACCEPTED" };
   if (currentFileCount >= definition.content.maxFiles) {
@@ -387,14 +396,15 @@ export function findSystemFolderNameCollisions(existing) {
 }
 
 /**
- * Indica si una carpeta predeterminada la gestiona otro módulo (p. ej. Cotizaciones): su contenido
- * se genera allí y no se sube, mueve ni reemplaza a mano desde el administrador o la configuración.
+ * Indica qué módulo genera documentos en una carpeta predeterminada (p. ej. Cotizaciones). Es solo
+ * informativo: la carpeta admite además archivos manuales y subcarpetas; los documentos generados no
+ * son filas de `files` y por eso nunca se reemplazan ni mueven mediante operaciones manuales.
  *
  * @param {string|null|undefined} systemKey - Clave funcional de la carpeta.
- * @returns {string|null} Módulo que la gestiona o null.
+ * @returns {string|null} Módulo que genera documentos en ella o null.
  */
 export function getFolderManagingModule(systemKey) {
-  return getSystemFolder(systemKey)?.content?.managedBy ?? null;
+  return getSystemFolder(systemKey)?.generatedBy ?? null;
 }
 
 /**

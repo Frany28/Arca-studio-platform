@@ -6,7 +6,8 @@ import { api } from "../../../api/http.js";
 const CONFLICT_MESSAGES = Object.freeze({
   PROJECT_ARCHIVED: "El proyecto está archivado: sus carpetas no se pueden modificar.",
   PROJECT_FINALIZED: "El proyecto está finalizado: sus carpetas no se pueden modificar.",
-  PROJECT_FOLDER_DECISION_PENDING: "Crear carpetas en la raíz del proyecto está pendiente de decisión.",
+  PROJECT_FOLDER_DECISION_PENDING: "Esta operación de carpetas está pendiente de decisión.",
+  PROJECT_FOLDER_TOO_DEEP: "Se alcanzó la profundidad máxima de carpetas.",
   PROJECT_FOLDER_NOT_EMPTY: "Solo se pueden retirar carpetas vacías: esta carpeta contiene archivos o subcarpetas.",
   PROJECT_FOLDER_PROTECTED: "Las carpetas predeterminadas no se pueden renombrar ni eliminar.",
   PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED: "Esta carpeta no admite subcarpetas.",
@@ -55,7 +56,7 @@ export function useAdminFileFolderActions({ feedback, onFolderCreated, onFolderR
     const { folder, mode, parent, project } = dialog;
     try {
       if (mode === "create") {
-        const response = await api.fileManager.createFolder({ name, parentId: parent.id, projectId: project.id });
+        const response = await api.fileManager.createFolder({ name, parentId: parent?.id ?? null, projectId: project.id });
         onFoldersChange(project.id, response?.folders || []);
         if (response?.folder) onFolderCreated(response.folder, project.id);
         feedback.notify("success", "Carpeta creada", `La carpeta «${response?.folder?.name || name}» se creó en ${project.name}.`);

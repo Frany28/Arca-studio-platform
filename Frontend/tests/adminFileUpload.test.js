@@ -31,9 +31,10 @@ test("validation mirrors the backend document policy and the confirmed cover rul
   assert.match(getFormatsLabel(cover), /Una sola imagen/);
 });
 
-test("«+ Nuevo» needs a folder; root, read-only projects and a full cover explain why not", () => {
-  assert.match(getUploadDisabledReason(null, null), /Selecciona una carpeta/);
-  assert.match(getUploadDisabledReason({ status: "in_process" }, null), /dentro de una carpeta/);
+test("«+ Nuevo» needs a project; root and any folder are valid; read-only projects and a full cover explain why not", () => {
+  assert.match(getUploadDisabledReason(null, null), /Selecciona un proyecto o una carpeta/);
+  assert.equal(getUploadDisabledReason({ status: "in_process" }, null), "", "raíz del proyecto (D7/D14 resueltas)");
+  assert.equal(getUploadDisabledReason({ status: "in_process" }, { fileCount: 4, systemKey: "documents.quotes" }), "", "Cotizaciones admite archivos manuales");
   assert.match(getUploadDisabledReason({ status: "archived" }, { systemKey: null }), /archivado/);
   assert.match(getUploadDisabledReason({ status: "finished" }, { systemKey: null }), /finalizado/);
   assert.match(getUploadDisabledReason({ status: "in_process" }, { fileCount: 1, systemKey: "cover" }), /usa «Reemplazar archivo»/);

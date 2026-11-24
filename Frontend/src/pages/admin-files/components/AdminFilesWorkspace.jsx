@@ -131,7 +131,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
     if (kind === "upload") tree.reload();
     const target = uploadDialog?.target;
     const texts = describeUploadResult(kind, kind === "upload"
-      ? { location: `${target?.project.name} › ${target?.folder.name}`, name: result?.file?.title || meta.file.name }
+      ? { location: meta.destination || `${target?.project.name}${target?.folder ? ` › ${target.folder.name}` : " (raíz del proyecto)"}`, name: result?.file?.title || meta.file.name }
       : { name: uploadDialog?.file?.name || meta.file.name, versionNumber: result?.version?.versionNumber });
     feedback.notify("success", texts.title, texts.description, meta.file.name);
   }

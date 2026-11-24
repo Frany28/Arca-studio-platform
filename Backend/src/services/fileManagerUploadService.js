@@ -5,8 +5,8 @@ import { findFolderUploadTarget } from "../repositories/fileManagerRepository.js
 import { findProjectForFileUpload, uploadProjectFile } from "../repositories/fileRepository.js";
 import { assertProjectOperationallyMutable } from "./projectService.js";
 
-// Subida desde el administrador de archivos (Fase 1.2, U3): un archivo nuevo dentro de una carpeta
-// del proyecto. Reutiliza la carga de proyectos (firma, límites, streaming, registro con la v1
+// Subida desde el administrador de archivos (Fase 1.2, U3): un archivo nuevo en una carpeta del
+// proyecto o en su raíz (`folderId` null), conservando la ubicación elegida. Reutiliza la carga de proyectos (firma, límites, streaming, registro con la v1
 // pendiente y compensación del objeto si no llega a registrarse) y añade la carpeta destino, la
 // regla confirmada de la portada y la categoría de las panorámicas.
 
@@ -14,19 +14,19 @@ const RULE_ERRORS = Object.freeze({
   FILE_TYPE_NOT_ACCEPTED: ["PROJECT_FOLDER_FILE_TYPE_NOT_ACCEPTED", "Esta carpeta solo admite imágenes JPG o PNG."],
   FOLDER_FULL: ["PROJECT_FOLDER_FULL", "Esta carpeta ya tiene el máximo de archivos."],
   FOLDER_FULL_REPLACE_EXISTING: ["PROJECT_FOLDER_FULL", "La portada admite una sola imagen: reemplaza la existente."],
-  FOLDER_MANAGED_BY_MODULE: ["PROJECT_FOLDER_MANAGED", "Esta carpeta la gestiona Cotizaciones: sus PDF se generan al guardar cada cotización."],
 });
 
 /**
- * Lee el destino de la carga: clave propia, clasificación heredada y archivos activos.
- * Lanza 404 si la carpeta no pertenece al proyecto o fue retirada.
+ * Lee el destino de la carga: clave propia, clasificación heredada y archivos activos. La raíz del
+ * proyecto (`folderId` null) no tiene reglas; una carpeta ajena o retirada responde 404.
  *
- * @param {{ projectId: number, folderId: number }} request - Proyecto y carpeta.
+ * @param {{ projectId: number, folderId: number|null }} request - Proyecto y carpeta (null: raíz).
  * @param {{ query: Function }} [executor] - Cliente o pool.
  * @returns {Promise<{ systemKey: string|null, classificationKey: string|null, fileCount: number }>} Destino.
  * @throws {NotFoundError} PROJECT_FOLDER_NOT_FOUND.
  */
 async function readTarget(request, executor) {
+  if (!request.folderId) return { classificationKey: null, fileCount: 0, systemKey: null };
   const target = await findFolderUploadTarget(request, executor);
   if (!target) throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "Carpeta no encontrada.");
   return target;
@@ -34,7 +34,7 @@ async function readTarget(request, executor) {
 
 /**
  * Aplica la regla de contenido de la carpeta a la extensión subida.
- * Solo la portada tiene reglas confirmadas; el resto de carpetas depende de D14 y admite la carga.
+ * Solo la portada tiene reglas propias; el resto de carpetas y la raíz admiten la carga (D14 resuelta).
  *
  * @param {Object} target - Destino leído.
  * @param {string} extension - Extensión del archivo.

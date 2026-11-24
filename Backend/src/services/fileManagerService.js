@@ -13,6 +13,7 @@ import {
 import {
   deleteEmptyProjectFolder,
   findProjectFolder,
+  findProjectFolderDepth,
   insertProjectFolder,
   listProjectFolders,
   lockProjectForConfiguration,
@@ -28,9 +29,9 @@ import { assertOperationallyMutableProjectState } from "./projectMutationPolicy.
 // visibilidad (audiencias) son independientes: aquí no se comparte ni se publica nada.
 //
 // Carpetas: se aplican solo las reglas confirmadas del catálogo (domain/projectFolderCatalog.js):
-// personalizadas dentro de otras carpetas salvo la portada; las predeterminadas no se renombran ni
-// eliminan; se eliminan solo las personalizadas vacías (borrado lógico). Crear en la raíz depende de
-// D7 y mover carpetas de D13: la API responde 409 PROJECT_FOLDER_DECISION_PENDING y no ofrece mover.
+// personalizadas en la raíz (D7 resuelta) y dentro de cualquier carpeta salvo la portada, hasta
+// MAX_FOLDER_DEPTH niveles; las predeterminadas no se renombran ni eliminan; se eliminan solo las
+// personalizadas vacías (borrado lógico). Mover carpetas depende de D13 y no se ofrece.
 
 /**
  * Lanza el error de cursor inválido con el contrato habitual de validación.
@@ -286,6 +287,7 @@ function assertFolderRule(evaluation) {
     throw new ConflictError("PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED", "Esta carpeta no admite subcarpetas.");
   }
   if (evaluation.reason === "FOLDER_NOT_EMPTY") throw new ConflictError("PROJECT_FOLDER_NOT_EMPTY", "La carpeta tiene archivos o subcarpetas.");
+  if (evaluation.reason === "FOLDER_TOO_DEEP") throw new ConflictError("PROJECT_FOLDER_TOO_DEEP", "Se alcanzó la profundidad máxima de carpetas.");
   throw new ConflictError("PROJECT_FOLDER_PROTECTED", "Las carpetas predeterminadas del proyecto no se pueden renombrar ni eliminar.");
 }
 
@@ -310,16 +312,17 @@ async function writeFolders(projectId, write) {
 }
 
 /**
- * Crea una carpeta personalizada dentro de otra carpeta del proyecto (anidada a cualquier nivel),
- * salvo en la portada. En la raíz depende de D7. Queda auditada.
+ * Crea una carpeta personalizada en la raíz del proyecto o dentro de cualquier carpeta (también
+ * predeterminadas o «Cotizaciones»), salvo en la portada y sin superar MAX_FOLDER_DEPTH. Queda auditada.
  *
  * @param {{ projectId: number, parentId: number|null, name: string, user: object }} request - Carpeta.
  * @returns {Promise<{ folder: object, folders: object[] }>} Carpeta creada y árbol del proyecto.
  */
 export async function createFileManagerFolder({ name, parentId, projectId, user }) {
   return writeFolders(projectId, async (client) => {
-    const parent = parentId ? await findProjectFolder(client, projectId, parentId) : null;
-    if (parentId && !parent) throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "La carpeta superior no existe.");
+    const found = parentId ? await findProjectFolder(client, projectId, parentId) : null;
+    if (parentId && !found) throw new NotFoundError("PROJECT_FOLDER_NOT_FOUND", "La carpeta superior no existe.");
+    const parent = found ? { ...found, depth: await findProjectFolderDepth(client, found.id) } : null;
     assertFolderRule(evaluateFolderOperation({ operation: "create_child", parent }));
     const folder = await insertProjectFolder(client, { createdBy: user.id, name, parentId, projectId });
     await insertAuditLog({

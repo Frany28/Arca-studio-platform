@@ -179,11 +179,12 @@ export const fileManagerApi = {
   },
 
   /**
-   * Sube un archivo nuevo a una carpeta del proyecto (U3). La v1 nace pendiente de revisión.
+   * Sube un archivo nuevo a la raíz del proyecto o a una de sus carpetas (U3). La v1 nace pendiente
+   * de revisión; sin `folderId` el archivo queda en la raíz.
    *
    * @param {Object} options - Destino, archivo y seguimiento.
    * @param {number} options.projectId - Proyecto.
-   * @param {number} options.folderId - Carpeta destino (obligatoria).
+   * @param {number|null} [options.folderId] - Carpeta destino (null: raíz del proyecto).
    * @param {File} options.file - Archivo.
    * @param {(progress: {loaded: number, total: number, progress: number}) => void} [options.onUploadProgress] - Progreso.
    * @param {AbortSignal} [options.signal] - Cancela la transferencia.

@@ -1013,8 +1013,11 @@ Validación, capturas y diferencias respecto a Figma:
   `ArrowSwapVertical` de `TableHeaderLabel`, compartido con las demás tablas del administrador;
   Figma dibuja `arrow-3` (`ArrangeVertical`), pendiente de unificar en todas ellas a la vez porque su
   variante Bold no distingue el orden aplicado.
-- Carpetas: «+» crea una subcarpeta en la carpeta seleccionada; está deshabilitado sin carpeta,
-  en la raíz del proyecto (decisión D7 pendiente) y en la portada. Solo las carpetas
+- Carpetas: «+» crea una carpeta en la ubicación seleccionada: la raíz del proyecto (D7) o
+  cualquier carpeta, también «Cotizaciones» (D14). Está deshabilitado sin proyecto, en la portada y
+  al llegar a 12 niveles. «Nuevo archivo» abre el diálogo con un selector «Destino»
+  (`DropdownMenu` de texto con la ruta completa). Propone la selección del árbol y permite elegir la
+  raíz u otra carpeta; el archivo queda donde se eligió. Solo las carpetas
   personalizadas ofrecen «Renombrar» y «Retirar carpeta» (solo vacías, lo comprueba el backend);
   las predeterminadas («Panorámicas», «Documentos › Garantías», etc.) no tienen acciones. No se
   ofrece mover carpetas (D13). El formulario reutiliza el patrón Modal + Input (Figma no lo diseña).

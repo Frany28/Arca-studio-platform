@@ -197,7 +197,9 @@ Dominio puro. El catálogo de carpetas participa en las altas de proyectos (ver 
   - la sección se hereda de la carpeta predeterminada más cercana, nunca del nombre visible;
   - el nombre visible de una carpeta predeterminada sale del catálogo (`resolveFolderDisplayName`), así un proyecto que guardó «Modelos 3D» se muestra como «Panorámicas» sin migrar datos;
   - las colisiones de nombre con carpetas existentes se informan sin adoptarlas.
-- Lo que depende de una decisión abierta se devuelve como `pending_decision` con su identificador (`FOLDER_PENDING_DECISIONS`): D2 («Antes»), D7 (carpetas personalizadas en la raíz), D13 (mover carpetas personalizadas) y D14 (contenido admitido por carpeta, salvo la portada). D1 y D6 están resueltas.
+- Lo que depende de una decisión abierta se devuelve como `pending_decision` con su identificador (`FOLDER_PENDING_DECISIONS`): D2 («Antes») y D13 (mover carpetas personalizadas). D1, D6, D7 y D14 están resueltas:
+  - **D7**: se crean carpetas personalizadas y se suben archivos en la raíz del proyecto.
+  - **D14**: la ubicación no restringe el contenido. Cualquier carpeta admite archivos de cualquier formato admitido por la subida y subcarpetas, incluidas las predeterminadas («Cotizaciones», «Imágenes», «Videos», «Panorámicas», «Archivos del cliente»). La ubicación elegida se conserva: no se reubica por extensión. Única excepción: la portada (Figma), una sola imagen JPG/PNG y sin subcarpetas.
 - Pruebas: `tests/fileContexts.test.js` (contrasta políticas y prefijos con el código actual) y `tests/projectFolderCatalog.test.js` (árbol, «Panorámicas», «Garantías», coherencia, inmutabilidad, protección, nombre visible y decisiones pendientes).
 
 ### Dominio de archivos: conservación, revisión, versiones y audiencias (B2, Fase 1.2)
@@ -292,10 +294,12 @@ No modifica filas: las carpetas existentes quedan como personalizadas y los proy
 - El listado añade `systemKey` y muestra el nombre del catálogo en las predeterminadas («Panorámicas» aunque la fila guarde «Modelos 3D»).
 - **Catálogo B2**: los drafts nuevos nacen con 18 carpetas, incluidas «Panorámicas» (`renders.models`) y «Documentos › Garantías» (`documents.warranties`). Los proyectos creados con el catálogo anterior (17) no reciben «Garantías» hasta el comando de compatibilidad; `ensureProjectSystemFolders` la añadiría sin tocar las demás si se ejecutara sobre ellos.
 - **Catálogo de archivística**: 22 carpetas. «Documentos» añade Cotizaciones (`documents.quotes`), Actas (`documents.records`), Planos (`documents.plans`) y Documentos adicionales (`documents.additional`). Ver «Archivística: clasificación documental y sincronización».
-- **Crear carpetas personalizadas** (regla confirmada): dentro de cualquier carpeta salvo la portada, que responde 409 `PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED`. La raíz sigue admitiéndolas como hasta ahora, a la espera de D7.
+- **Crear carpetas personalizadas**: en la raíz del proyecto (D7) y dentro de cualquier carpeta, predeterminada o personalizada, salvo la portada (409 `PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED`).
+  - Profundidad máxima: `MAX_FOLDER_DEPTH` = 12 niveles; la raíz es 0. `findProjectFolderDepth` la calcula con una CTE recursiva acotada, de modo que un ciclo en los datos no la vuelve infinita. Superarla responde 409 `PROJECT_FOLDER_TOO_DEEP`.
+  - Se mantienen el nombre único entre hermanas, la auditoría y la protección de las predeterminadas, que no se renombran ni se retiran.
+  - No hay ciclos posibles: una carpeta nueva siempre cuelga de una existente y no hay ruta para mover carpetas (D13).
 - **Sin cambios (dependen de decisiones abiertas)**:
   - mover carpetas personalizadas (D13; la API no tiene esa ruta);
-  - el contenido admitido por carpeta (D14), incluida la regla de la portada, que no se aplica todavía a las subidas;
   - la ubicación de los adjuntos heredados de la solicitud: desde la archivística, las conversiones nuevas los ubican en «Archivos del cliente» y la sincronización ubica los existentes.
 - **Añadir una carpeta predeterminada más adelante**:
   1. incorporarla a `PROJECT_SYSTEM_FOLDERS` con una clave nueva y definitiva, derivada de la de su madre (las pruebas del catálogo exigen coherencia, y la del árbol exige actualizar `FIGMA_TREE`). Nunca reutilizar ni renombrar una clave existente; para cambiar solo el nombre visible basta con cambiar `name` (así se hizo con «Panorámicas»);
@@ -324,7 +328,10 @@ Organización de los documentos en su carpeta según su **origen** y su **catego
 
 - **Ubicación lógica y física.** La lógica es la carpeta del administrador: `files.folder_id` o la carpeta virtual de las cotizaciones. La física es el objeto en su bucket (`file_versions.file_name`; las cotizaciones, `quote_pdf_documents.object_key` en el bucket privado). Cambiar la ubicación lógica nunca traslada, copia ni reescribe el objeto ni sus versiones. Tampoco concede acceso: carpeta, revisión y audiencias siguen siendo independientes.
 - **Catálogo ampliado** (claves históricas sin cambios). «Documentos» contiene, en este orden: Cotizaciones (`documents.quotes`, sección `quotes`), Propuesta inicial, Actas (`documents.records`, sección `records`), Planos (`documents.plans`, sección `plans`), Garantías y Documentos adicionales (`documents.additional`). No existía una categoría equivalente.
-- **Cotizaciones** es una carpeta *gestionada* (`content.managedBy = "quotes"`, `getFolderManagingModule`). Muestra los PDF generados y no admite subidas del administrador ni de la configuración del borrador, ni movimientos (409 `PROJECT_FOLDER_MANAGED`), ni subcarpetas (409 `PROJECT_FOLDER_SUBFOLDERS_NOT_ALLOWED`). Es predeterminada y está protegida.
+- **Cotizaciones** muestra los PDF que genera el módulo de Cotizaciones (`generatedBy: "quotes"`, `getFolderManagingModule`) y, desde D14, admite también subcarpetas y archivos manuales.
+  - Los PDF generados son filas virtuales (`quote_pdf_documents`, sin fila en `files`): una subida manual crea un archivo propio, con su identidad y sus versiones, y nunca los reemplaza ni versiona.
+  - Esos PDF solo se ven, descargan y recorren desde las rutas de Cotizaciones.
+  - Es predeterminada y está protegida: no se renombra ni se retira.
 - **Reglas centralizadas** (`domain/documentClassification.js`, `resolveDocumentLocation`):
   - Cotización (`quote_pdf`): `documents.quotes`.
   - Adjunto de la solicitud de origen (`request_attachment`, `origin_project_request_id`): `client_files`. La conversión de una solicitud en proyecto (`projectRequestWorkflowRepository`) lo aplica en la misma transacción, sin pisar una carpeta ya asignada.
@@ -573,12 +580,12 @@ API de la pantalla «Gestión de archivos» (Figma 3727:682730): métricas, árb
 - nombre repetido entre hermanas: 400 con `body.name`;
 - archivado o finalizado: 409 `PROJECT_ARCHIVED` o `PROJECT_FINALIZED`.
 
-Crear en la raíz depende de D7 y responde 409 `PROJECT_FOLDER_DECISION_PENDING`. La configuración del draft conserva su comportamiento anterior, que sí lo permite, hasta decidir D7. Mover carpetas depende de D13 y no se ofrece. Cada cambio se audita (`project_folder.created`, `renamed` y `deleted`) en la misma transacción.
+Se crean carpetas en la raíz (D7) y en cualquier carpeta salvo la portada, hasta `MAX_FOLDER_DEPTH` (409 `PROJECT_FOLDER_TOO_DEEP`); la configuración del draft aplica las mismas reglas. Mover carpetas depende de D13 y no se ofrece. Cada cambio se audita (`project_folder.created`, `renamed` y `deleted`) en la misma transacción.
 
 **Fuera de B7.**
 - Subida, reemplazo, aprobación, rechazo, historial, restauración y descarga: ya existen en las rutas de versiones de B4. La tabla las usa por `fileId` y `versionId`. Los PDF de cotizaciones usan las rutas de Cotizaciones por `quote.id` y número de versión.
 - Mover archivos entre carpetas fuera de draft: hoy solo en la configuración del draft, que desde B8 aplica la regla de los documentos de garantía.
-- Interfaz: U1 (pantalla principal) consume estas rutas desde `Frontend/src/pages/admin-files` (`api.fileManager`); con la activación apagada presenta el administrador como no disponible y lee las métricas generales de `/admin/dashboard-metrics`. U2 añade el visor por tipo, aprobar y rechazar, historial con descarga y restauración y los vínculos de garantías, con las rutas de versiones (B4) y de garantías (B8); para elegir visor y ofrecer garantías, `FileManagerItem` incluye `fileCategory` y `folder.section` (sección del catálogo de la carpeta predeterminada más cercana, resuelta en SQL con un `lateral` recursivo sobre los ancestros). U3 añade `POST /admin/files/projects/:projectId/files` (`services/fileManagerUploadService.js` y `domain/fileManagerUpload.js`): reutiliza `uploadProjectFile` (streaming, firma, límites y `storeThenRecord`, que compensa el objeto si el registro falla) con la carpeta destino, la regla confirmada de la portada comprobada antes de transferir y de nuevo bajo el bloqueo del proyecto (`verifyTarget`), y la categoría `panorama` para las imágenes de «Panorámicas» (`resolveFileCategory`). El reemplazo usa la ruta de versiones (B4); `X-Change-Note` se añadió a las cabeceras CORS. Con la revisión activada, `file_versions.original_name` guarda el nombre legible de la v1 y de los reemplazos (la clave de almacenamiento sigue saneada); apagada, nada cambia. Detalle de interfaz en `Frontend/DESIGN_SYSTEM.md`, «Gestión de archivos (administrador)».
+- Interfaz: U1 (pantalla principal) consume estas rutas desde `Frontend/src/pages/admin-files` (`api.fileManager`); con la activación apagada presenta el administrador como no disponible y lee las métricas generales de `/admin/dashboard-metrics`. U2 añade el visor por tipo, aprobar y rechazar, historial con descarga y restauración y los vínculos de garantías, con las rutas de versiones (B4) y de garantías (B8); para elegir visor y ofrecer garantías, `FileManagerItem` incluye `fileCategory` y `folder.section` (sección del catálogo de la carpeta predeterminada más cercana, resuelta en SQL con un `lateral` recursivo sobre los ancestros). U3 añade `POST /admin/files/projects/:projectId/files` (`services/fileManagerUploadService.js` y `domain/fileManagerUpload.js`): reutiliza `uploadProjectFile` (streaming, firma, límites y `storeThenRecord`, que compensa el objeto si el registro falla) con la carpeta destino (`folderId` opcional: sin ella, la raíz del proyecto; cualquier carpeta, también «Cotizaciones»), la regla confirmada de la portada comprobada antes de transferir y de nuevo bajo el bloqueo del proyecto (`verifyTarget`), y la categoría `panorama` para las imágenes de «Panorámicas» (`resolveFileCategory`). El reemplazo usa la ruta de versiones (B4); `X-Change-Note` se añadió a las cabeceras CORS. Con la revisión activada, `file_versions.original_name` guarda el nombre legible de la v1 y de los reemplazos (la clave de almacenamiento sigue saneada); apagada, nada cambia. Detalle de interfaz en `Frontend/DESIGN_SYSTEM.md`, «Gestión de archivos (administrador)».
 
 **Pruebas.** `tests/fileManager.integration.test.js` (opcional: `ARCA_FILE_MANAGER_DB_TESTS=1` y `ARCA_FILE_MANAGER_TEST_DATABASE_URL` local). Cubre:
 - métricas globales, por proyecto y por carpeta con subcarpetas, con un objeto reutilizado por una restauración contado una vez y la restauración excluida de la última carga;
@@ -589,7 +596,7 @@ Crear en la raíz depende de D7 y responde 409 `PROJECT_FOLDER_DECISION_PENDING`
 - filtros de ámbito, texto y extensiones;
 - los tres órdenes en ambos sentidos recorriendo páginas de uno en uno;
 - cursores de otra consulta (400);
-- carpetas anidadas en tres niveles, D7, portada, nombre repetido, protegidas, no vacías, estados del proyecto y auditoría;
+- carpetas anidadas en tres niveles, en la raíz (D7) y dentro de «Cotizaciones» (D14), portada, nombre repetido, protegidas, no vacías, estados del proyecto y auditoría;
 - altas simultáneas con el mismo nombre;
 - permisos y activación apagada.
 

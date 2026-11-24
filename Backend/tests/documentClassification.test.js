@@ -63,9 +63,11 @@ test("la ruta legible de una sugerencia sale del catálogo", () => {
   assert.equal(describeCatalogPath(null), "");
 });
 
-test("subida al administrador: Cotizaciones rechaza archivos manuales; las demás categorías documentales los admiten", () => {
-  assert.deepEqual(evaluateManagedUpload({ fileCount: 0, systemKey: "documents.quotes" }, "pdf"), { allowed: false, reason: "FOLDER_MANAGED_BY_MODULE" });
-  for (const systemKey of ["documents.records", "documents.plans", "documents.additional", "documents.warranties"]) {
+test("subida al administrador: cualquier carpeta (Cotizaciones incluida) y la raíz admiten archivos manuales; la portada conserva su regla", () => {
+  assert.equal(evaluateManagedUpload({ fileCount: 0, systemKey: "documents.quotes" }, "pdf").allowed, true);
+  assert.equal(evaluateManagedUpload({ fileCount: 0, systemKey: null }, "mp4").allowed, true, "raíz o carpeta personalizada");
+  assert.deepEqual(evaluateManagedUpload({ fileCount: 1, systemKey: "cover" }, "png"), { allowed: false, reason: "FOLDER_FULL_REPLACE_EXISTING" });
+  for (const systemKey of ["documents.records", "documents.plans", "documents.additional", "documents.warranties", "renders", "renders.images", "client_files"]) {
     assert.equal(evaluateManagedUpload({ fileCount: 3, systemKey }, "pdf").allowed, true, systemKey);
   }
   // Las panorámicas siguen clasificándose por su carpeta, no por la extensión.

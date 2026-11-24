@@ -262,10 +262,10 @@ function createBackend({ enabled = true, failures = {}, media = [], quotes = fal
       section = SECTION_BY_KEY[current.systemKey] || null;
     }
     const id = 800 + state.items.length;
-    const entry = item(id, { day: 28, extension, fileCategory: extension === "png" && section === "models_3d" ? "panorama" : undefined, folder: { id: folder.id, name: folder.name, section }, isCurrent: false, name, project, size: request.postDataBuffer()?.length || 10, status: "pending" });
+    const entry = item(id, { day: 28, extension, fileCategory: extension === "png" && section === "models_3d" ? "panorama" : undefined, folder: folder ? { id: folder.id, name: folder.name, section } : null, isCurrent: false, name, project, size: request.postDataBuffer()?.length || 10, status: "pending" });
     entry.contentType = extension === "pdf" ? "application/pdf" : "image/png";
     state.items.push(entry);
-    folder.fileCount += 1;
+    if (folder) folder.fileCount += 1;
     return { id: entry.fileId, reviewStatus: "pending", title: name, versionId: entry.versionId };
   }
 
@@ -336,7 +336,6 @@ function createBackend({ enabled = true, failures = {}, media = [], quotes = fal
       const project = state.projects.find((candidate) => candidate.id === Number(folderMatch[1]));
       const folderId = folderMatch[2] ? Number(folderMatch[2]) : null;
       if (method === "POST") {
-        if (body.parentId === null) return json(route, 409, { code: "PROJECT_FOLDER_DECISION_PENDING", message: "Pendiente" });
         const siblings = project.folders.filter((folder) => folder.parentId === body.parentId);
         if (siblings.some((folder) => folder.name.toLowerCase() === body.name.trim().toLowerCase())) {
           return json(route, 400, { code: "VALIDATION_ERROR", fields: { "body.name": ["Ya existe una carpeta con ese nombre en esta ubicación."] }, message: "Datos inválidos" });
@@ -436,11 +435,11 @@ function createBackend({ enabled = true, failures = {}, media = [], quotes = fal
         const handled = await state.uploadHook({ folder, name, project, record: () => recordUpload(project, folder, name, request), route });
         if (handled) return handled;
       }
-      if (!folder) return json(route, 404, { code: "PROJECT_FOLDER_NOT_FOUND", message: "Carpeta no encontrada." });
+      if (params.folderId && !folder) return json(route, 404, { code: "PROJECT_FOLDER_NOT_FOUND", message: "Carpeta no encontrada." });
       if (state.items.some((candidate) => candidate.project.id === project.id && candidate.name.toLowerCase() === name.toLowerCase())) {
         return json(route, 409, { code: "DUPLICATE_PROJECT_FILE", message: "Ese archivo ya existe en este proyecto." });
       }
-      if (folder.systemKey === "cover" && folder.fileCount >= 1) return json(route, 409, { code: "PROJECT_FOLDER_FULL", message: "La portada admite una sola imagen: reemplaza la existente." });
+      if (folder?.systemKey === "cover" && folder.fileCount >= 1) return json(route, 409, { code: "PROJECT_FOLDER_FULL", message: "La portada admite una sola imagen: reemplaza la existente." });
       return json(route, 201, { file: recordUpload(project, folder, name, request) });
     }
     const replaceMatch = /^\/api\/projects\/(\d+)\/files\/(\d+)\/versions$/.exec(path);
@@ -593,7 +592,8 @@ test("el árbol acota la tabla, busca carpetas y gestiona carpetas personalizada
   await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
   await page.waitForFunction(() => document.querySelectorAll("[data-admin-files-table] tbody tr").length === 10);
   assert.equal(itemRequests(backend).at(-1).search.projectId, "1");
-  assert.match(await create.getAttribute("aria-label"), /pendiente de decisión/, "La raíz depende de D7");
+  assert.equal(await create.getAttribute("aria-label"), "Nueva carpeta en Quinta Bella Vista", "La raíz admite carpetas (D7 resuelta)");
+  assert.equal(await create.isDisabled(), false);
 
   await tree.getByRole("button", { exact: true, name: "Portada del proyecto" }).click();
   assert.match(await create.getAttribute("aria-label"), /no admite subcarpetas/);
@@ -709,9 +709,9 @@ test("cotizaciones: su PDF aparece en «Documentos › Cotizaciones» del proyec
   await page.getByRole("rowheader", { name: /COT-012-v2\.pdf/ }).waitFor();
   assert.deepEqual((await rowNames(page)).sort(), ["COT-012-v2.pdf", "COT-013-v1.pdf"]);
   assert.deepEqual({ folderId: itemRequests(backend).at(-1).search.folderId, projectId: itemRequests(backend).at(-1).search.projectId }, { folderId: "510", projectId: "3" });
-  // Carpeta gestionada: sin subcarpetas ni archivos manuales.
-  assert.equal(await page.getByRole("button", { name: /^Nueva carpeta\. Cotizaciones genera/ }).isDisabled(), true);
-  assert.equal(await page.getByRole("button", { name: /^Nuevo archivo\. Las cotizaciones se generan/ }).isDisabled(), true);
+  // D14 resuelta: «Cotizaciones» admite subcarpetas y archivos manuales; sus PDF generados siguen gestionados.
+  assert.equal(await page.getByRole("button", { name: "Nueva carpeta en Cotizaciones" }).isDisabled(), false);
+  assert.equal(await page.getByRole("button", { exact: true, name: "Nuevo archivo" }).isDisabled(), false);
   // «Documentos» (con sus subcarpetas) las muestra una sola vez.
   await tree.getByRole("button", { exact: true, name: "Documentos" }).click();
   await page.waitForFunction(() => document.querySelectorAll("[data-admin-files-table] tbody tr").length === 2);
@@ -1185,17 +1185,18 @@ test("U3 · «+ Nuevo» sube a la carpeta elegida, valida antes de transferir y 
   const page = await openFiles(context, backend);
   const nuevo = page.getByRole("button", { name: /^Nuevo archivo/ });
   await nuevo.waitFor();
-  assert.match(await nuevo.getAttribute("aria-label"), /Selecciona una carpeta/);
+  assert.match(await nuevo.getAttribute("aria-label"), /Selecciona un proyecto o una carpeta/);
   assert.equal(await nuevo.isDisabled(), true);
   const tree = page.getByRole("complementary", { name: "Proyectos" });
   await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
-  assert.match(await nuevo.getAttribute("aria-label"), /dentro de una carpeta/, "la raíz no admite archivos nuevos");
+  assert.equal(await nuevo.isDisabled(), false, "la raíz del proyecto admite archivos nuevos (D7 resuelta)");
   await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
   await tree.getByRole("button", { exact: true, name: "Garantías" }).click();
   await nuevo.click();
 
   const dialog = uploadDialog(page);
-  await dialog.getByText("Dentro de: Quinta Bella Vista › Garantías").waitFor();
+  await dialog.getByText("Dentro de: Quinta Bella Vista › Documentos › Garantías").waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Destino: Documentos › Garantías" }).count(), 1, "propone la carpeta seleccionada");
   await dialog.getByText("Formatos PDF, DOCX, XLSX, JPEG, PNG y MP4, hasta 50 MB.").waitFor();
   const input = dialog.locator("input[type='file']");
   await input.setInputFiles([{ buffer: Buffer.from("hola"), mimeType: "text/plain", name: "notas.txt" }]);
@@ -1208,7 +1209,7 @@ test("U3 · «+ Nuevo» sube a la carpeta elegida, valida antes de transferir y 
   const treeBefore = treeReads();
   await dialog.getByRole("button", { name: "Confirmar" }).click();
   await dialog.waitFor({ state: "detached" });
-  await page.getByText("«Certificado techo.pdf» se subió a Quinta Bella Vista › Garantías. Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
+  await page.getByText("«Certificado techo.pdf» se subió a Quinta Bella Vista › Documentos › Garantías. Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
   const uploadRequest = backend.requests.find((request) => request.method === "POST" && request.path === "/api/admin/files/projects/1/files");
   assert.deepEqual(uploadRequest.search, { folderId: "104" });
   await waitUntil(() => metricsReads(backend) > metricsBefore && treeReads() > treeBefore);
@@ -1285,7 +1286,7 @@ test("U3 · cancelar una carga en curso reconcilia con lo guardado: sin registro
   await dialog.locator("form").getByText("Subiendo...").waitFor();
   await dialog.getByRole("button", { name: "Eliminar archivo Registrado.pdf" }).click();
   await dialog.waitFor({ state: "detached" });
-  await page.getByText(/«Registrado\.pdf» se subió a Quinta Bella Vista › Garantías\. Queda pendiente de revisión/).waitFor();
+  await page.getByText(/«Registrado\.pdf» se subió a Quinta Bella Vista › Documentos › Garantías\. Queda pendiente de revisión/).waitFor();
   assert.equal(backend.items.filter((entry) => entry.name === "Registrado.pdf").length, 1, "la carga registrada se conserva una sola vez");
 });
 
@@ -1741,4 +1742,91 @@ for (const [theme, width] of [["dark", 1440], ["light", 375], ["dark", 375]]) {
     const colors = await reason.locator("[data-admin-file-reason-description]").evaluate((element) => ({ background: getComputedStyle(element.closest("[role=dialog]")).backgroundColor, color: getComputedStyle(element).color }));
     assert.notEqual(colors.color, colors.background, "texto legible sobre su fondo");
   });
+}
+
+test("D7 y D14 · carpetas y archivos en la raíz y en «Cotizaciones», con selector de destino", async (context) => {
+  const backend = createBackend({ quotes: true });
+  const page = await openFiles(context, backend);
+  const tree = page.getByRole("complementary", { name: "Proyectos" });
+  const nuevo = page.getByRole("button", { exact: true, name: "Nuevo archivo" });
+
+  // Carpeta en la raíz del proyecto.
+  await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
+  await tree.getByRole("button", { name: "Nueva carpeta en Quinta Bella Vista" }).click();
+  const folderDialog = page.getByRole("dialog", { name: "Nueva carpeta" });
+  await folderDialog.getByText("Dentro de: Quinta Bella Vista (raíz del proyecto)").waitFor();
+  await folderDialog.getByLabel("Nombre de la carpeta").fill("Contratos");
+  await folderDialog.getByRole("button", { name: "Crear" }).click();
+  await folderDialog.waitFor({ state: "detached" });
+  await tree.getByRole("button", { exact: true, name: "Contratos" }).waitFor();
+  assert.deepEqual(backend.requests.filter((request) => request.method === "POST").at(-1).body, { name: "Contratos", parentId: null });
+
+  // Archivo en la raíz (la creación conserva la selección del proyecto): sin `folderId`.
+  await nuevo.click();
+  let dialog = uploadDialog(page);
+  await dialog.getByText("Dentro de: Quinta Bella Vista (raíz del proyecto)").waitFor();
+  await dialog.getByRole("button", { name: "Destino: Raíz del proyecto" }).waitFor();
+  await dialog.locator("input[type='file']").setInputFiles([pdfFile("Acta de inicio.pdf")]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText("«Acta de inicio.pdf» se subió a Quinta Bella Vista (raíz del proyecto). Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
+  const rootUpload = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/files/projects/1/files").at(-1);
+  assert.deepEqual(rootUpload.search, {}, "la raíz no envía carpeta");
+
+  // Subcarpeta dentro de «Cotizaciones» y subida elegida desde el selector.
+  await tree.getByRole("button", { name: "Mostrar carpetas de Casa Cotizada" }).click();
+  await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).last().click();
+  await tree.getByRole("button", { exact: true, name: "Cotizaciones" }).click();
+  await tree.getByRole("button", { name: "Nueva carpeta en Cotizaciones" }).click();
+  await folderDialog.getByText("Dentro de: Casa Cotizada › Cotizaciones").waitFor();
+  await folderDialog.getByLabel("Nombre de la carpeta").fill("Borradores");
+  await folderDialog.getByRole("button", { name: "Crear" }).click();
+  await folderDialog.waitFor({ state: "detached" });
+  const created = backend.requests.filter((request) => request.method === "POST" && /\/folders$/.test(request.path)).at(-1);
+  assert.deepEqual(created.body, { name: "Borradores", parentId: 510 });
+  await tree.getByRole("button", { exact: true, name: "Borradores" }).waitFor();
+
+  // La selección sigue en «Cotizaciones»: el diálogo la propone y el selector cambia el destino.
+  await nuevo.click();
+  dialog = uploadDialog(page);
+  await dialog.getByText("Dentro de: Casa Cotizada › Documentos › Cotizaciones").waitFor();
+  await dialog.getByRole("button", { name: "Destino: Documentos › Cotizaciones" }).click();
+  await page.getByRole("menuitem", { name: "Documentos › Cotizaciones › Borradores" }).click();
+  await dialog.getByText("Dentro de: Casa Cotizada › Documentos › Cotizaciones › Borradores").waitFor();
+  await dialog.locator("input[type='file']").setInputFiles([pdfFile("Propuesta comercial.pdf")]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  const quoteUpload = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/files/projects/3/files").at(-1);
+  const borradoresId = backend.projects.find((project) => project.id === 3).folders.find((folder) => folder.name === "Borradores").id;
+  assert.deepEqual(quoteUpload.search, { folderId: String(borradoresId) });
+  assert.notEqual(quoteUpload.search.folderId, "510", "se respeta el destino elegido, no la carpeta seleccionada");
+});
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [375, 768, 1440]) {
+    test(`selector de destino de «Nuevo archivo» cabe en el diálogo (${theme}, ${width} px)`, async (context) => {
+      const backend = createBackend();
+      const page = await openFiles(context, backend, { theme, viewport: { height: 900, width } });
+      const tree = page.getByRole("complementary", { name: "Proyectos" });
+      await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
+      await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
+      await tree.getByRole("button", { exact: true, name: "Garantías" }).click();
+      await page.getByRole("button", { exact: true, name: "Nuevo archivo" }).click();
+      const dialog = uploadDialog(page);
+      const trigger = dialog.getByRole("button", { name: "Destino: Documentos › Garantías" });
+      await trigger.waitFor();
+      await page.waitForTimeout(300);
+      const layout = await page.evaluate(() => {
+        const box = document.querySelector("[data-admin-file-upload='upload']").getBoundingClientRect();
+        const select = [...document.querySelectorAll("[data-admin-file-upload='upload'] button")].find((button) => button.getAttribute("aria-label")?.startsWith("Destino:")).getBoundingClientRect();
+        return { dialog: { left: box.left, right: box.right }, overflow: document.documentElement.scrollWidth - innerWidth, select: { left: select.left, right: select.right }, width: innerWidth };
+      });
+      assert.ok(layout.overflow <= 0, `la página no desborda (${layout.overflow} px)`);
+      assert.ok(layout.dialog.left >= 0 && layout.dialog.right <= layout.width, "el diálogo cabe en el viewport");
+      assert.ok(layout.select.left >= layout.dialog.left && layout.select.right <= layout.dialog.right, "el selector cabe en el diálogo");
+      await trigger.click();
+      await page.getByRole("menuitem", { name: "Raíz del proyecto" }).waitFor();
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/upload-destination-${theme}-${width}.png` });
+    });
+  }
 }
