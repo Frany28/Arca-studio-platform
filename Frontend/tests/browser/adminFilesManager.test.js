@@ -1681,3 +1681,64 @@ test("visor adaptativo: la panorámica conserva su visor 360 a todo el espacio y
   assert.equal(await page.locator("[data-admin-file-media]").count(), 0, "el PDF usa el modal de documentos");
   assert.equal(await page.locator("[data-admin-file-document]").count(), 1);
 });
+
+
+test("restaurar: explica la versión que se creará, cancela sin cambios, evita envíos dobles y conserva el motivo ante un 409", async (context) => {
+  const backend = createBackend({ failures: { "POST /api/projects/:id/files/:id/versions/:id/restore": { body: { code: "FILE_VERSION_OBJECT_MISSING", message: "Sin contenido" }, status: 409 } } });
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+  await history.locator("li[data-version-number='3']").waitFor();
+
+  await viewer.getByRole("button", { name: "Opciones de la versión 3" }).click();
+  await page.getByRole("menuitem", { name: "Restaurar versión" }).click();
+  const reason = page.locator("[data-admin-file-reason='restore']");
+  await reason.getByText("Se creará la V13 con el contenido de la V3. Las versiones anteriores se conservan y la nueva quedará pendiente de revisión; la versión vigente no cambia hasta aprobarla.").waitFor();
+  await reason.getByText("Garantía impermeabilización.pdf · V3 · Máximo 255 caracteres.", { exact: true }).waitFor();
+  await reason.getByRole("button", { name: "Volver" }).click();
+  await reason.waitFor({ state: "detached" });
+  assert.equal(reviewRequests(backend, "restore").length, 0, "cancelar no envía nada");
+
+  // Retrasa la respuesta para observar la carga y un segundo clic.
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route((url) => url.pathname.endsWith("/restore"), async (route) => {
+    await gate;
+    await route.fallback();
+  });
+  await viewer.getByRole("button", { name: "Opciones de la versión 3" }).click();
+  await page.getByRole("menuitem", { name: "Restaurar versión" }).click();
+  await reason.getByRole("textbox", { name: /Motivo de la restauración/ }).fill("Se vuelve a la versión firmada.");
+  await reason.getByRole("button", { name: "Restaurar" }).click();
+  const busy = reason.getByRole("button", { name: "Restaurando..." });
+  await busy.waitFor();
+  assert.equal(await busy.isDisabled(), true, "deshabilitado durante la operación");
+  await busy.click({ force: true }).catch(() => {});
+  release();
+  await reason.getByRole("alert").getByText("El contenido de esa versión no está disponible en el almacenamiento: no se puede restaurar.").waitFor();
+  assert.equal(await reason.getByRole("textbox", { name: /Motivo de la restauración/ }).inputValue(), "Se vuelve a la versión firmada.", "conserva el motivo");
+  assert.equal(reviewRequests(backend, "restore").length, 1, "una sola petición");
+  assert.equal(await history.locator("li").count(), 10, "no aparece ninguna versión nueva");
+});
+
+for (const [theme, width] of [["dark", 1440], ["light", 375], ["dark", 375]]) {
+  test(`restaurar: el diálogo cabe y se lee (${theme}, ${width} px)`, async (context) => {
+    const backend = createBackend();
+    const page = await openFiles(context, backend, { theme, viewport: { height: 844, width } });
+    await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).scrollIntoViewIfNeeded();
+    await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+    const viewer = viewerDialog(page);
+    await viewer.getByRole("list", { name: "Versiones del archivo" }).locator("li[data-version-number='3']").waitFor();
+    await viewer.getByRole("button", { name: "Opciones de la versión 3" }).scrollIntoViewIfNeeded();
+    await viewer.getByRole("button", { name: "Opciones de la versión 3" }).click();
+    await page.getByRole("menuitem", { name: "Restaurar versión" }).click();
+    const reason = page.locator("[data-admin-file-reason='restore']");
+    await reason.locator("[data-admin-file-reason-description]").waitFor();
+    await page.waitForTimeout(300);
+    const box = await reason.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= width + 0.5 && box.y >= 0 && box.y + box.height <= 844 + 0.5, "dentro del viewport");
+    const colors = await reason.locator("[data-admin-file-reason-description]").evaluate((element) => ({ background: getComputedStyle(element.closest("[role=dialog]")).backgroundColor, color: getComputedStyle(element).color }));
+    assert.notEqual(colors.color, colors.background, "texto legible sobre su fondo");
+  });
+}

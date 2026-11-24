@@ -11,7 +11,7 @@ import { useAdminFileReviewOperations } from "../hooks/useAdminFileReviewOperati
 import { useAdminFileVersionContent } from "../hooks/useAdminFileVersionContent.js";
 import { useAdminFileVersions } from "../hooks/useAdminFileVersions.js";
 import { formatExtension, formatFileDate } from "../utils/adminFilesPresentation.js";
-import { canLinkWarranties, describeRestoreResult, formatDisplayedVersionSuffix, getReplaceAvailability, getViewerKind, isMediaViewerKind } from "../utils/adminFileReview.js";
+import { canLinkWarranties, describeRestorePlan, describeRestoreResult, formatDisplayedVersionSuffix, getReplaceAvailability, getViewerKind, isMediaViewerKind } from "../utils/adminFileReview.js";
 import { describeUploadResult } from "../utils/adminFileUpload.js";
 import AdminFileReasonDialog from "./AdminFileReasonDialog.jsx";
 import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
@@ -371,6 +371,7 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
           key={`${reasonDialog.kind}-${reasonDialog.version.id}`}
           kind={reasonDialog.kind}
           subject={`${displayName} · V${reasonDialog.version.versionNumber}`}
+          description={reasonDialog.kind === "restore" ? describeRestorePlan(reasonDialog.version, history.versions) : ""}
           onClose={() => setReasonDialog(null)}
           onSubmit={submitReason}
         />

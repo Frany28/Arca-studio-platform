@@ -23,7 +23,7 @@ import {
   resolveCurrentVersion,
   resolveInitialReviewStatus,
 } from "../domain/projectFileReview.js";
-import { ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
+import { AppError, ConflictError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { insertAuditLog } from "../repositories/auditLogRepository.js";
 import { getFileType, isFileVersionObjectRecorded } from "../repositories/fileRepository.js";
 import {
@@ -241,9 +241,35 @@ export async function replaceProjectFileVersion({ changeNote, fileId, projectId,
 }
 
 /**
+ * Comprueba que el contenido de la versión que se restaura sigue en el almacenamiento antes de
+ * registrar la nueva, que reutiliza su mismo objeto (no lo copia). Sin clave u objeto no se crea una
+ * versión que no se podría revisar ni servir; un fallo del almacenamiento no se confunde con ausencia.
+ *
+ * @param {string|null} storageKey - Clave del objeto de la versión de origen.
+ * @returns {Promise<void>}
+ * @throws {ConflictError|AppError} FILE_VERSION_OBJECT_MISSING (409) o FILE_STORAGE_UNAVAILABLE (503).
+ */
+async function assertRestorableObject(storageKey) {
+  /**
+   * Error público del contenido ausente.
+   *
+   * @returns {ConflictError} 409 FILE_VERSION_OBJECT_MISSING.
+   */
+  const missing = () => new ConflictError("FILE_VERSION_OBJECT_MISSING", "El contenido de esa versión no está disponible en el almacenamiento: no se puede restaurar.");
+  if (!storageKey) throw missing();
+  let stored;
+  try {
+    stored = await objectStorage.head(storageKey, { bucket: process.env.SUPABASE_STORAGE_BUCKET });
+  } catch (cause) {
+    throw new AppError({ cause, code: "FILE_STORAGE_UNAVAILABLE", message: "No se pudo comprobar el contenido de la versión. Inténtalo de nuevo.", status: 503 });
+  }
+  if (!stored) throw missing();
+}
+
+/**
  * Restaura una versión aprobada creando una versión nueva pendiente que reutiliza su objeto
  * almacenado (misma clave, sin copiar) y registra su procedencia. Exige motivo, una sola pendiente
- * por archivo y que el usuario pueda ver la versión de origen.
+ * por archivo, que el usuario pueda ver la versión de origen y que su objeto siga almacenado.
  *
  * @param {object} request - Datos de la restauración.
  * @param {number} request.projectId - Proyecto.
@@ -267,6 +293,8 @@ export async function restoreProjectFileVersion({ changeNote, fileId, projectId,
     }
     const plan = planNewVersion({ changeNote, kind: "restore", restoreFromVersionId: source.id, versions });
     if (plan.outcome !== "allowed") throw toVersionRuleError(plan, "body.changeNote");
+    // Con el archivo bloqueado y el usuario ya autorizado: el contenido original debe existir.
+    await assertRestorableObject(plan.storage.storageKey);
     const version = await insertPendingFileVersion(client, {
       changeNote: plan.changeNote,
       contentType: source.contentType ?? context.file.fileType,

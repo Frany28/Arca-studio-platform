@@ -6,6 +6,7 @@ import {
   canLinkWarranties,
   describeOperationError,
   describeRestoreResult,
+  describeRestorePlan,
   describeReviewResult,
   describeVersionNote,
   formatDisplayedVersionSuffix,
@@ -131,4 +132,11 @@ test("U2 API calls use the documented version, review and warranty routes", asyn
   assert.equal(request.options.method, "DELETE");
 
   assert.equal(fileManagerApi.getVersionContentUrl({ fileId: 7, projectId: 3, versionId: 70 }), "/api/projects/3/files/7/content?versionId=70");
+});
+
+test("restore plan explains the new version, that history is kept and that it stays pending", () => {
+  const text = describeRestorePlan({ versionNumber: 2 }, [{ versionNumber: 5 }, { versionNumber: 4 }, { versionNumber: 2 }]);
+  assert.equal(text, "Se creará la V6 con el contenido de la V2. Las versiones anteriores se conservan y la nueva quedará pendiente de revisión; la versión vigente no cambia hasta aprobarla.");
+  assert.match(describeRestorePlan({ versionNumber: 3 }, []), /^Se creará la V4 con el contenido de la V3\./);
+  assert.equal(describeOperationError({ code: "FILE_VERSION_OBJECT_MISSING" }, "x").stale, false);
 });

@@ -37,11 +37,13 @@ const COPY = Object.freeze({
  * @param {Object} props - Operación, contexto y callbacks.
  * @param {"reject"|"restore"} props.kind - Operación.
  * @param {string} props.subject - Versión afectada («Acta.pdf · V3»).
+ * @param {string} [props.description] - Consecuencia de la operación, visible antes de confirmar
+ *   (la restauración explica qué versión se crea y que el historial se conserva).
  * @param {() => void} props.onClose - Cierra sin enviar.
  * @param {(reason: string) => Promise<{ok: boolean, message?: string, fieldError?: string}>} props.onSubmit - Envía.
  * @returns {import("react").ReactElement} Modal en portal.
  */
-function AdminFileReasonDialog({ kind, onClose, onSubmit, subject }) {
+function AdminFileReasonDialog({ description = "", kind, onClose, onSubmit, subject }) {
   const copy = COPY[kind];
   const formId = useId();
   const titleId = `${formId}-title`;
@@ -109,7 +111,7 @@ function AdminFileReasonDialog({ kind, onClose, onSubmit, subject }) {
             placeholder={copy.placeholder}
             state={fieldError ? "Error" : "Default"}
             showHint={false}
-            aria-describedby={fieldError ? `${formId}-error ${formId}-hint` : `${formId}-hint`}
+            aria-describedby={[fieldError ? `${formId}-error` : "", `${formId}-hint`, description ? `${formId}-description` : ""].filter(Boolean).join(" ")}
             disabled={submitting}
             maxLength={copy.maxLength}
             rows={kind === "reject" ? 4 : 5}
@@ -128,6 +130,7 @@ function AdminFileReasonDialog({ kind, onClose, onSubmit, subject }) {
           {/* Rechazo (Figma 3727:683721): solo el campo; el archivo y el límite quedan para lectores de
               pantalla. La restauración, sin diseño propio, los muestra. */}
           <p id={`${formId}-hint`} className={kind === "reject" ? "sr-only" : "text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-100)]"}>{subject} · Máximo {copy.maxLength} caracteres.</p>
+          {description ? <p id={`${formId}-description`} className="text-body-3 m-0 text-[var(--color-text-200)]" data-admin-file-reason-description>{description}</p> : null}
           {fieldError ? <p id={`${formId}-error`} className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{fieldError}</p> : null}
           {submitError ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}
         </form>

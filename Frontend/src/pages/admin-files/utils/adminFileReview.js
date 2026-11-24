@@ -182,6 +182,20 @@ export function describeReviewResult(action) {
 }
 
 /**
+ * Explica, antes de confirmar, qué hará la restauración: la versión nueva (siguiente número del
+ * historial cargado, cuyo primer elemento es la más reciente) con el contenido de la elegida, que
+ * las anteriores se conservan y que queda pendiente de revisión sin cambiar la vigente.
+ *
+ * @param {{ versionNumber: number }} source - Versión que se restaura.
+ * @param {Array<{ versionNumber: number }>} versions - Versiones cargadas del archivo.
+ * @returns {string} Texto del diálogo.
+ */
+export function describeRestorePlan(source, versions) {
+  const next = Math.max(Number(source.versionNumber), ...(versions || []).map((version) => Number(version.versionNumber))) + 1;
+  return `Se creará la V${next} con el contenido de la V${source.versionNumber}. Las versiones anteriores se conservan y la nueva quedará pendiente de revisión; la versión vigente no cambia hasta aprobarla.`;
+}
+
+/**
  * Texto del aviso de una restauración confirmada: la versión nueva queda pendiente de revisión.
  *
  * @param {{ versionNumber: number, review?: { status: string } }} version - Versión creada.
@@ -203,6 +217,8 @@ const OPERATION_ERRORS = Object.freeze({
   FILE_VERSION_NOT_APPROVED: { message: "Solo se pueden restaurar versiones aprobadas.", stale: true },
   FILE_VERSION_NOT_FOUND: { message: "La versión ya no está disponible.", stale: true },
   FILE_VERSION_NOT_PENDING: { message: "Esta versión ya fue revisada. Se actualizó la información.", stale: true },
+  FILE_VERSION_OBJECT_MISSING: { message: "El contenido de esa versión no está disponible en el almacenamiento: no se puede restaurar.", stale: false },
+  FILE_STORAGE_UNAVAILABLE: { message: "No se pudo comprobar el contenido de la versión. Inténtalo de nuevo.", stale: false },
   FILE_VERSION_PENDING_REVIEW: { message: "El archivo ya tiene una versión pendiente de revisión. Revísala antes de restaurar otra.", stale: true },
   FILE_VERSIONING_UNAVAILABLE: { message: "Este archivo heredado todavía no admite versiones.", stale: false },
   PROJECT_ARCHIVED: { message: "El proyecto está archivado: sus archivos no se pueden modificar.", stale: false },

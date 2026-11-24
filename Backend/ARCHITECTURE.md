@@ -361,7 +361,7 @@ Lo comprueban `tests/projectFileVersions.test.js`, que compara el SQL literal de
 - toda versión nueva nace pendiente, también las subidas del administrador y del cliente (DA2);
 - una sola pendiente por archivo (PR1);
 - reemplazar exige motivo y conserva las versiones anteriores;
-- restaurar una versión aprobada crea una pendiente nueva, registra `restored_from_version_id` y reutiliza el objeto almacenado (PR2). Restaurar la vigente no está prohibido;
+- restaurar una versión aprobada crea una pendiente nueva, registra `restored_from_version_id` y reutiliza el objeto almacenado (PR2). Restaurar la vigente no está prohibido. Antes de registrarla, con el archivo bloqueado y el usuario autorizado, comprueba con HEAD que el objeto de origen sigue en el almacenamiento (409 `FILE_VERSION_OBJECT_MISSING` si falta o no tiene clave; 503 `FILE_STORAGE_UNAVAILABLE` si no se puede comprobar): nunca registra una versión sin contenido. La conservación impide borrar un objeto compartido por varias versiones;
 - rechazar exige motivo de 1 a 500 caracteres (PR4);
 - aprobar no comparte con el cliente (DA3): no crea autorizaciones y la respuesta devuelve `sharedWithClient: false`.
 
