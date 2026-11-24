@@ -1047,11 +1047,18 @@ Validación, capturas y diferencias respecto a Figma:
     versión», «Descargar»); el motivo de una opción deshabilitada va en `hint` (`title` y nombre
     accesible) para no alargar la etiqueta.
   - Imágenes, vídeos y panorámicas (Figma `3941:671103`, `3941:675497`, `3940:666189`; drawer
-    `3940:666330`) no usan el modal de 790 px: el escenario de galería de Proyectos ocupa todo el
-    espacio libre con 24 px de margen (1080 × 976 a 1440 × 1024; 664 px de ancho a 1024) y el
-    drawer de 312 px queda pegado al borde derecho. Por debajo de 921 px se apilan como en los
-    visores de Proyectos (escenario de 62 dvh, mín. 360 px; 58 dvh y 300 px desde 520 px; el
-    historial debajo). Los escenarios son los de Proyectos, extraídos a `components/ui/Gallery`:
+    `3940:666330`) no usan el modal de 790 px. El drawer de 312 px queda pegado al borde derecho y
+    el escenario de galería se dimensiona con la proporción natural de cada imagen o vídeo
+    (`naturalWidth/Height` al cargar, `videoWidth/Height` en `loadedmetadata`; sin peticiones
+    extra): `width = min(100cqw, --media-max-h × proporción)` y `aspect-ratio`, centrado en el
+    espacio libre con 24 px de margen (contenedor de consulta `MEDIA_FRAME`, en
+    `adminFileViewerLayout.js`). Así el render ocupa su propio rectángulo, como en Figma (1080 × 976
+    para esa imagen), sin franjas ni recortes, y una imagen vertical estrecha el escenario. El alto
+    máximo es todo el alto libre en escritorio y 62 dvh (58 dvh desde 520 px) por debajo de 921 px,
+    donde se apilan como en Proyectos con el historial debajo. Hasta conocer las dimensiones (y
+    para la panorámica, cuyo visor 360 usa todo el espacio) se usa el escenario completo anterior.
+    Las dimensiones se guardan con la URL de su versión: una carga tardía de otra versión no
+    cambia el escenario. Los escenarios son los de Proyectos, extraídos a `components/ui/Gallery`:
     `ImageViewerStage` (logo, «Cerrar», degradados y carrusel; `fit="cover"` con `ImageHighlighter`
     en Proyectos y `fit="contain"` aquí, sin recortes para imágenes verticales) y
     `VideoViewerStage` (reproducción, `PlaybackBar`, pantalla completa; aquí sin «Comentar

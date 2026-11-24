@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { deflateSync } from "node:zlib";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
@@ -120,13 +121,48 @@ startxref
 const SAMPLE_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
 
 /**
+ * PNG válido de un color con las dimensiones pedidas (proporciones reales para el visor adaptativo).
+ *
+ * @param {number} width - Ancho en píxeles.
+ * @param {number} height - Alto en píxeles.
+ * @returns {Buffer} Imagen PNG.
+ */
+function pngOf(width, height) {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buffer) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc(body));
+    return Buffer.concat([length, body, checksum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3, 0x9a)]);
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+/**
  * Backend simulado del administrador de archivos con estado en memoria.
  *
  * @param {{ enabled?: boolean, failures?: Object, quotes?: boolean }} [options] - Activación, fallos inyectados y
  *   PDF de cotizaciones de «Casa Cotizada» (solo con `quotes`, para no alterar los demás recuentos).
  * @returns {Object} Estado y manejador.
  */
-function createBackend({ enabled = true, failures = {}, quotes = false } = {}) {
+function createBackend({ enabled = true, failures = {}, media = [], quotes = false } = {}) {
   const quinta = { client: { name: "Cliente Uno" }, fileCount: 13, folders: defaultFolders(100), id: 1, name: "Quinta Bella Vista", status: "in_progress" };
   const apto = { client: { name: "Cliente Dos" }, fileCount: 1, folders: defaultFolders(200), id: 2, name: "Apartamento JC", status: "in_progress" };
   quinta.folders.push({ fileCount: 0, id: 150, name: "Planos de obra", parentId: 103, systemKey: null });
@@ -147,6 +183,17 @@ function createBackend({ enabled = true, failures = {}, quotes = false } = {}) {
     { code: "G-02", documents: [{ fileId: 30 }], endDate: "2027-06-01", id: 6, model: "Aluminio", product: "Ventanas", startDate: "2026-02-01" },
   ];
   const state = { items, projects: [quinta, apto], quoteDocuments: new Map(), requests: [], warranties: warrantyList };
+  // Medios con contenido propio (visor adaptativo): imágenes y vídeos de proporciones reales.
+  for (const [index, medium] of media.entries()) {
+    const entry = item(900 + index, {
+      day: 24, extension: medium.extension, fileCategory: medium.fileCategory, fileId: medium.fileId ?? 900 + index,
+      folder: { id: 201, name: "Renders e imágenes", section: "renders" }, isCurrent: medium.isCurrent ?? true, name: medium.name, project: apto,
+      size: medium.bytes.length, versionNumber: medium.versionNumber ?? 1,
+    });
+    entry.contentType = medium.contentType;
+    entry.bytes = medium.bytes;
+    state.items.push(entry);
+  }
   if (quotes) {
     // Proyecto con dos cotizaciones: COT-012 (v1 y v2 disponibles) y COT-013 (v1 con fallo de almacenamiento).
     const cotizada = { client: { name: "Cliente Tres" }, fileCount: 0, folders: defaultFolders(500), id: 3, name: "Casa Cotizada", status: "in_progress" };
@@ -316,6 +363,7 @@ function createBackend({ enabled = true, failures = {}, quotes = false } = {}) {
     if (contentMatch) {
       const entry = state.items.find((candidate) => candidate.versionId === Number(params.versionId));
       const png = entry?.extension === "png";
+      if (entry?.bytes) return route.fulfill({ body: entry.bytes, contentType: entry.contentType, status: 200 });
       return route.fulfill({
         body: png ? SAMPLE_PNG : SAMPLE_PDF,
         contentType: png ? "image/png" : "application/pdf",
@@ -932,7 +980,8 @@ test("U2 · las imágenes se abren en el visor con la versión indicada", async 
   await image.waitFor();
   assert.match(await image.getAttribute("src"), /\/api\/projects\/2\/files\/40\/content\?versionId=400$/);
   // Escenario de galería de Proyectos (Figma 3941:671103): 24 px de margen, imagen sin recortes y
-  // el historial de 312 px pegado al borde derecho.
+  // el historial de 312 px pegado al borde derecho. El escenario toma la proporción de la imagen
+  // (la de muestra es cuadrada) y se centra en el espacio libre, sin franjas.
   await page.waitForTimeout(400);
   const layout = await page.evaluate(() => {
     const box = (selector) => document.querySelector(selector).getBoundingClientRect();
@@ -942,13 +991,16 @@ test("U2 · las imágenes se abren en el visor con la versión indicada", async 
       drawer: { right: drawer.right, width: drawer.width },
       fit: getComputedStyle(document.querySelector("[data-admin-file-media] img[alt='Fachada.png']")).objectFit,
       layout: document.querySelector("[data-admin-file-viewer]").dataset.adminFileViewerLayout,
-      stage: { left: stage.left, right: stage.right, top: stage.top },
+      stage: { bottom: stage.bottom, height: stage.height, left: stage.left, right: stage.right, top: stage.top, width: stage.width },
       viewport: innerWidth,
+      viewportHeight: innerHeight,
     };
   });
   assert.equal(layout.layout, "media");
   assert.equal(layout.fit, "contain", "la imagen conserva su proporción sin recortarse");
-  assert.deepEqual(layout.stage, { left: 24, right: layout.viewport - 312 - 24, top: 24 });
+  assert.equal(Math.round(layout.stage.width), Math.round(layout.stage.height), "imagen cuadrada → escenario cuadrado");
+  assert.deepEqual([layout.stage.top, layout.viewportHeight - layout.stage.bottom], [24, 24], "ocupa el alto libre con 24 px de margen");
+  assert.ok(Math.abs((layout.stage.left - 24) - (layout.viewport - 312 - 24 - layout.stage.right)) <= 1, "centrado en el ancho libre");
   assert.deepEqual(layout.drawer, { right: layout.viewport, width: 312 });
   assert.equal(await viewerDialog(page).getByRole("button", { name: "Comentar video" }).count(), 0);
   await viewerDialog(page).getByRole("button", { name: "Cerrar visor" }).click();
@@ -1439,3 +1491,193 @@ for (const theme of ["light", "dark"]) {
     });
   }
 }
+
+
+// ---------------------------------------------------------------------------------------------
+// Visor multimedia adaptativo: el escenario toma la proporción natural de cada imagen o vídeo.
+
+const RATIOS = [
+  ["horizontal-16x9.png", 1600, 900],
+  ["horizontal-4x3.png", 1200, 900],
+  ["vertical-9x16.png", 900, 1600],
+  ["vertical-3x4.png", 900, 1200],
+  ["cuadrada-1x1.png", 1000, 1000],
+  ["pequena.png", 120, 80],
+  ["alta-resolucion.png", 6000, 4000],
+];
+
+/**
+ * Mide el escenario multimedia, la imagen o el vídeo y el drawer del visor abierto.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @returns {Promise<Object>} Medidas.
+ */
+function measureMediaViewer(page) {
+  return page.evaluate(() => {
+    const stage = document.querySelector("[data-admin-file-media]");
+    const media = stage.querySelector("img, video");
+    const drawer = document.querySelector("[data-admin-file-history-drawer]");
+    const box = stage.getBoundingClientRect();
+    const drawerBox = drawer.getBoundingClientRect();
+    const natural = media.tagName === "IMG" ? [media.naturalWidth, media.naturalHeight] : [media.videoWidth, media.videoHeight];
+    return {
+      drawer: { bottom: drawerBox.bottom, left: drawerBox.left, right: drawerBox.right, top: drawerBox.top, width: drawerBox.width },
+      fitted: stage.dataset.mediaFitted === "true",
+      media: { height: media.getBoundingClientRect().height, width: media.getBoundingClientRect().width },
+      natural,
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+      stage: { bottom: box.bottom, height: box.height, left: box.left, right: box.right, top: box.top, width: box.width },
+      viewport: { height: window.innerHeight, width: window.innerWidth },
+    };
+  });
+}
+
+/**
+ * Comprueba la proporción del escenario, su ajuste al viewport y la independencia del drawer.
+ *
+ * @param {Object} measure - Medidas de measureMediaViewer.
+ * @param {string} label - Contexto del fallo.
+ * @returns {void}
+ */
+function assertFittedStage(measure, label) {
+  const [naturalWidth, naturalHeight] = measure.natural;
+  assert.ok(measure.fitted, `${label}: escenario ajustado`);
+  assert.ok(Math.abs(measure.stage.width / measure.stage.height - naturalWidth / naturalHeight) < 0.02, `${label}: conserva la proporción ${naturalWidth}×${naturalHeight} (${measure.stage.width}×${measure.stage.height})`);
+  assert.ok(Math.abs(measure.media.width - measure.stage.width) <= 1 && Math.abs(measure.media.height - measure.stage.height) <= 1, `${label}: sin franjas ni recortes`);
+  assert.ok(measure.stage.left >= 0 && measure.stage.right <= measure.viewport.width + 0.5 && measure.stage.top >= 0, `${label}: dentro del viewport`);
+  assert.equal(measure.overflow, false, `${label}: sin desplazamiento horizontal`);
+  if (measure.viewport.width >= 921) {
+    assert.equal(Math.round(measure.drawer.width), 312, `${label}: drawer de Figma`);
+    assert.ok(measure.stage.right <= measure.drawer.left, `${label}: sin superponerse al drawer`);
+    assert.ok(measure.stage.bottom <= measure.viewport.height + 0.5, `${label}: cabe en alto`);
+  } else {
+    assert.ok(measure.drawer.top >= measure.stage.bottom, `${label}: historial debajo, accesible`);
+  }
+}
+
+/**
+ * Abre el visor de un medio desde el ojo de su fila en Aprobados.
+ *
+ * @param {import("playwright").Page} page - Página.
+ * @param {string} name - Nombre del archivo.
+ * @returns {Promise<void>}
+ */
+async function openMedia(page, name) {
+  await page.getByRole("button", { exact: true, name: `Ver ${name}, versión 1` }).click();
+  await page.locator("[data-admin-file-media][data-media-fitted='true']").waitFor();
+  await page.waitForTimeout(250);
+}
+
+test("visor adaptativo: cada imagen conserva su proporción natural sin franjas, dentro del viewport y con el drawer de 312 px", async (context) => {
+  const backend = createBackend({ media: RATIOS.map(([name, width, height]) => ({ bytes: pngOf(width, height), contentType: "image/png", extension: "png", name })) });
+  const page = await openFiles(context, backend);
+  for (const [name, width, height] of RATIOS) {
+    await openMedia(page, name);
+    const measure = await measureMediaViewer(page);
+    assert.deepEqual(measure.natural, [width, height]);
+    assertFittedStage(measure, name);
+    // Una imagen vertical no ocupa el ancho libre: estrecha el escenario en lugar de dejar franjas.
+    if (height > width) assert.ok(measure.stage.width < measure.stage.height, `${name}: escenario vertical`);
+    await viewerDialog(page).getByRole("button", { name: "Cerrar visor" }).click();
+    await viewerDialog(page).waitFor({ state: "detached" });
+  }
+});
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [1920, 1440, 1280, 1024, 768, 430, 390, 375, 360]) {
+    test(`visor adaptativo responsive: horizontal y vertical (${theme}, ${width} px)`, async (context) => {
+      const backend = createBackend({ media: [
+        { bytes: pngOf(1600, 900), contentType: "image/png", extension: "png", name: "horizontal-16x9.png" },
+        { bytes: pngOf(900, 1600), contentType: "image/png", extension: "png", name: "vertical-9x16.png" },
+      ] });
+      const page = await openFiles(context, backend, { theme, viewport: { height: width >= 921 ? 900 : 844, width } });
+      for (const name of ["horizontal-16x9.png", "vertical-9x16.png"]) {
+        await page.getByRole("button", { exact: true, name: `Ver ${name}, versión 1` }).scrollIntoViewIfNeeded();
+        await openMedia(page, name);
+        assertFittedStage(await measureMediaViewer(page), `${name} ${theme} ${width}`);
+        await viewerDialog(page).getByRole("button", { name: "Cerrar visor" }).click();
+        await viewerDialog(page).waitFor({ state: "detached" });
+      }
+    });
+  }
+}
+
+test("visor adaptativo: al cambiar de versión (horizontal → vertical) el escenario se ajusta y el drawer no cambia", async (context) => {
+  const backend = createBackend({ media: [
+    { bytes: pngOf(900, 1600), contentType: "image/png", extension: "png", fileId: 950, isCurrent: true, name: "render-versiones.png", versionNumber: 2 },
+    { bytes: pngOf(1600, 900), contentType: "image/png", extension: "png", fileId: 950, isCurrent: false, name: "render-versiones.png", versionNumber: 1 },
+  ] });
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { exact: true, name: "Ver render-versiones.png, versión 2" }).click();
+  await page.locator("[data-admin-file-media][data-media-fitted='true']").waitFor();
+  await page.waitForTimeout(250);
+  const vertical = await measureMediaViewer(page);
+  assertFittedStage(vertical, "V2 vertical");
+  await viewerDialog(page).getByRole("button", { name: "Opciones de la versión 1" }).click();
+  await page.getByRole("menuitem", { exact: true, name: "Ver" }).click();
+  await page.waitForFunction(() => {
+    const box = document.querySelector("[data-admin-file-media][data-media-fitted='true']")?.getBoundingClientRect();
+    return box && box.width > box.height;
+  });
+  await page.waitForTimeout(250);
+  const horizontal = await measureMediaViewer(page);
+  assertFittedStage(horizontal, "V1 horizontal");
+  assert.deepEqual(horizontal.drawer, vertical.drawer, "el drawer no cambia de tamaño ni posición");
+});
+
+test("visor adaptativo: vídeos horizontal y vertical con su proporción real y sus controles", async (context) => {
+  // Vídeos WebM reales grabados en el navegador (canvas + MediaRecorder): 16:9 y 9:16.
+  const recorder = await browser.newPage();
+  const record = (width, height) => recorder.evaluate(async ([w, h]) => {
+    const canvas = Object.assign(document.createElement("canvas"), { height: h, width: w });
+    const context2d = canvas.getContext("2d");
+    const stream = canvas.captureStream(15);
+    const media = new MediaRecorder(stream, { mimeType: "video/webm" });
+    const chunks = [];
+    media.ondataavailable = (event) => chunks.push(event.data);
+    const done = new Promise((resolve) => { media.onstop = resolve; });
+    media.start();
+    for (let frame = 0; frame < 12; frame += 1) {
+      context2d.fillStyle = frame % 2 ? "#4a7" : "#47a";
+      context2d.fillRect(0, 0, w, h);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    media.stop();
+    await done;
+    const buffer = await new Blob(chunks, { type: "video/webm" }).arrayBuffer();
+    return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  }, [width, height]);
+  const horizontalVideo = Buffer.from(await record(640, 360), "base64");
+  const verticalVideo = Buffer.from(await record(360, 640), "base64");
+  await recorder.close();
+  const backend = createBackend({ media: [
+    { bytes: horizontalVideo, contentType: "video/webm", extension: "webm", fileCategory: "video", name: "recorrido-horizontal.webm" },
+    { bytes: verticalVideo, contentType: "video/webm", extension: "webm", fileCategory: "video", name: "recorrido-vertical.webm" },
+  ] });
+  const page = await openFiles(context, backend);
+  for (const [name, width, height] of [["recorrido-horizontal.webm", 640, 360], ["recorrido-vertical.webm", 360, 640]]) {
+    await openMedia(page, name);
+    const measure = await measureMediaViewer(page);
+    assert.deepEqual(measure.natural, [width, height]);
+    assertFittedStage(measure, name);
+    await viewerDialog(page).getByRole("button", { name: /Reproducir/ }).first().waitFor();
+    await viewerDialog(page).getByRole("button", { name: "Cerrar visor" }).click();
+    await viewerDialog(page).waitFor({ state: "detached" });
+  }
+});
+
+test("visor adaptativo: la panorámica conserva su visor 360 a todo el espacio y el PDF su visor de documentos", async (context) => {
+  const backend = createBackend({ media: [{ bytes: pngOf(2000, 1000), contentType: "image/png", extension: "png", fileCategory: "panorama", name: "sala-360.png" }] });
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { exact: true, name: "Ver sala-360.png, versión 1" }).click();
+  await viewerDialog(page).locator("canvas").first().waitFor();
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator("[data-admin-file-media]").getAttribute("data-media-fitted"), null, "la panorámica no se reduce a un <img>");
+  await viewerDialog(page).getByRole("button", { name: "Cerrar visor" }).click();
+  await viewerDialog(page).waitFor({ state: "detached" });
+
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  await viewerDialog(page).locator("canvas").first().waitFor();
+  assert.equal(await page.locator("[data-admin-file-media]").count(), 0, "el PDF usa el modal de documentos");
+  assert.equal(await page.locator("[data-admin-file-document]").count(), 1);
+});

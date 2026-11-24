@@ -18,7 +18,7 @@ import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
 import AdminFileVersionHistory from "./AdminFileVersionHistory.jsx";
 import AdminFileVersionSurface from "./AdminFileVersionSurface.jsx";
 import AdminFileWarrantyDialog from "./AdminFileWarrantyDialog.jsx";
-import { DOCUMENT_AREA, DRAWER, MODAL_AREA, MODAL_BOX, VIEWER_LAYOUT } from "./adminFileViewerLayout.js";
+import { DOCUMENT_AREA, DRAWER, getFittedMediaStyle, MEDIA_FRAME, MEDIA_STAGE_FITTED, MODAL_AREA, MODAL_BOX, VIEWER_LAYOUT } from "./adminFileViewerLayout.js";
 
 const DEFAULT_VIEW = Object.freeze({ page: 1, zoom: 100 });
 
@@ -90,6 +90,9 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
   const [views, setViews] = useState({});
   const [reasonDialog, setReasonDialog] = useState(null);
   const [warrantiesOpen, setWarrantiesOpen] = useState(false);
+  // Dimensiones naturales del recurso mostrado (imagen o vídeo), ligadas a su URL: una respuesta de
+  // otra versión (cambio rápido) nunca ajusta el escenario de la actual.
+  const [mediaSize, setMediaSize] = useState(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
   const operations = useAdminFileReviewOperations({
     onStale: () => {
@@ -213,17 +216,20 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
   };
 
   const mediaLayout = isMediaViewerKind(kind);
+  const mediaSrc = api.fileManager.getVersionContentUrl(versionRef);
+  const fittedSize = (kind === "image" || kind === "video") && mediaSize?.src === mediaSrc ? mediaSize : null;
   const surface = (
     <AdminFileVersionSurface
       kind={kind}
       content={content}
-      src={api.fileManager.getVersionContentUrl(versionRef)}
+      src={mediaSrc}
       title={displayName}
       view={view}
       onClose={closeIfIdle}
       onViewChange={(next) => setViews((current) => ({ ...current, [displayed.id]: next }))}
       onDownload={() => downloadVersion(displayed)}
       downloading={downloading}
+      onMediaSize={setMediaSize}
     />
   );
   const historyPanel = (
@@ -286,7 +292,17 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
           {mediaLayout ? (
             <>
               <div className={MEDIA_AREA} onClick={closeOnBackdrop}>
-                <div className={MEDIA_STAGE} data-admin-file-media aria-busy={busy || undefined}>{surface}</div>
+                <div className={MEDIA_FRAME} onClick={closeOnBackdrop}>
+                  <div
+                    className={fittedSize ? MEDIA_STAGE_FITTED : MEDIA_STAGE}
+                    style={fittedSize ? getFittedMediaStyle(fittedSize) : undefined}
+                    data-admin-file-media
+                    data-media-fitted={fittedSize ? "true" : undefined}
+                    aria-busy={busy || undefined}
+                  >
+                    {surface}
+                  </div>
+                </div>
               </div>
               <aside className={MEDIA_DRAWER} aria-label="Historial de versiones" data-admin-file-history-drawer>
                 {historyPanel}

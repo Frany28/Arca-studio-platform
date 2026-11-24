@@ -12,3 +12,23 @@ export const MODAL_BOX = "flex w-[790px] max-w-full flex-col overflow-hidden rou
 // Área del documento: 527 px en escritorio (Figma), 213 px en móvil y toda la altura libre en tablet.
 export const DOCUMENT_AREA = "h-[527px] min-h-[200px] max-[767px]:h-[213px] max-[767px]:min-h-0 min-[768px]:max-h-[calc(100dvh-211px)] min-[768px]:max-[1279px]:h-auto min-[768px]:max-[1279px]:max-h-none min-[768px]:max-[1279px]:flex-1";
 export const DRAWER = "flex w-full flex-1 flex-col rounded-t-[var(--radius-3)] bg-[var(--color-neutral-100)] p-[16px] shadow-[var(--shadow-e2)] min-[768px]:h-full min-[768px]:w-[312px] min-[768px]:flex-none min-[768px]:overflow-y-auto min-[768px]:overscroll-contain min-[768px]:rounded-t-none min-[768px]:rounded-l-[var(--radius-3)]";
+
+// Marco del escenario: contenedor de consulta (container queries) que centra el escenario. En
+// escritorio mide todo el espacio libre (ancho y alto); por debajo de 921 px solo el ancho, y el alto
+// máximo lo marca `--media-max-h`.
+export const MEDIA_FRAME = "flex w-full min-w-0 items-center justify-center [container-type:inline-size] min-[921px]:size-full min-[921px]:min-h-0 min-[921px]:[container-type:size]";
+// Escenario ajustado a la proporción natural de la imagen o el vídeo (Figma 3941:671103: el render
+// ocupa su propio rectángulo, sin franjas): ancho = min(ancho libre, alto máximo × proporción) y
+// alto por `aspect-ratio`. Sin recortes ni deformación; nunca supera el viewport.
+export const MEDIA_STAGE_FITTED = "flex min-w-0 flex-none [--media-max-h:62dvh] max-[520px]:[--media-max-h:58dvh] min-[921px]:[--media-max-h:100cqh]";
+
+/**
+ * Estilo del escenario para unas dimensiones naturales: conserva su relación de aspecto y escala
+ * hasta el límite que primero alcance (ancho del marco o alto máximo), en CSS, sin medir la ventana.
+ *
+ * @param {{ width: number, height: number }} size - Dimensiones naturales del recurso.
+ * @returns {{ aspectRatio: string, width: string }} Estilo en línea.
+ */
+export function getFittedMediaStyle({ height, width }) {
+  return { aspectRatio: `${width} / ${height}`, width: `min(100cqw, calc(var(--media-max-h) * ${width / height}))` };
+}

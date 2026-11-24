@@ -428,6 +428,8 @@ function PlaybackBar({
  * @param {(marker: Object) => void} [props.onMarkerClick] - Pulsar un marcador.
  * @param {boolean} [props.showCommentButton=true] - Muestra «Comentar video».
  * @param {() => void} [props.onVideoError] - El vídeo no se pudo cargar.
+ * @param {(size: { width: number, height: number }) => void} [props.onVideoMetadata] - Dimensiones
+ *   naturales del vídeo al cargar sus metadatos (Gestión de archivos ajusta el escenario a ellas).
  * @param {string} [props.className] - Tamaño y forma del escenario.
  * @returns {import("react").ReactElement} Escenario.
  */
@@ -441,6 +443,7 @@ export default function VideoViewerStage({
   onCommentClick,
   onMarkerClick,
   onVideoError,
+  onVideoMetadata,
   poster,
   showCommentButton = true,
   videoRef: externalVideoRef,
@@ -540,6 +543,10 @@ export default function VideoViewerStage({
           onClick={handleTogglePlay}
           onDurationChange={(event) => {
             setDuration(event.currentTarget.duration || 0);
+          }}
+          onLoadedMetadata={(event) => {
+            const { videoHeight, videoWidth } = event.currentTarget;
+            if (videoWidth > 0 && videoHeight > 0) onVideoMetadata?.({ height: videoHeight, width: videoWidth });
           }}
           onLoadedData={(event) => {
             setDuration(event.currentTarget.duration || 0);

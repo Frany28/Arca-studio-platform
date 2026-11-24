@@ -49,7 +49,7 @@ const MEDIA_ERROR = "Comprueba tu conexión e inténtalo nuevamente.";
  * @param {{ src: string, title: string, onClose: () => void }} props - Imagen y cierre.
  * @returns {import("react").ReactElement} Escenario.
  */
-function ImageMediaStage({ onClose, src, title }) {
+function ImageMediaStage({ onClose, onMediaSize, src, title }) {
   const [status, setStatus] = useState("loading");
   return (
     <ImageViewerStage
@@ -59,7 +59,11 @@ function ImageMediaStage({ onClose, src, title }) {
       closeLabel="Cerrar visor"
       className="size-full"
       onClose={onClose}
-      onImageLoad={() => setStatus("ready")}
+      onImageLoad={(event) => {
+        setStatus("ready");
+        const { naturalHeight, naturalWidth } = event?.currentTarget ?? {};
+        if (naturalWidth > 0 && naturalHeight > 0) onMediaSize?.({ height: naturalHeight, src, width: naturalWidth });
+      }}
       onImageError={() => setStatus("error")}
     >
       {status === "loading" ? <Loader preset="documentPreview" label={`Cargando ${title}`} className="absolute inset-0" /> : null}
@@ -75,7 +79,7 @@ function ImageMediaStage({ onClose, src, title }) {
  * @param {{ src: string, title: string, onClose: () => void }} props - Vídeo y cierre.
  * @returns {import("react").ReactElement} Escenario.
  */
-function VideoMediaStage({ onClose, src, title }) {
+function VideoMediaStage({ onClose, onMediaSize, src, title }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     // El error conserva «Cerrar» del escenario: sin él solo quedarían Escape y el fondo.
@@ -94,6 +98,7 @@ function VideoMediaStage({ onClose, src, title }) {
       showCommentButton={false}
       onClose={onClose}
       onVideoError={() => setFailed(true)}
+      onVideoMetadata={(size) => onMediaSize?.({ ...size, src })}
     />
   );
 }
@@ -134,14 +139,16 @@ function PanoramaMediaStage({ onClose, src, title }) {
  * @param {() => void} props.onDownload - Descarga la versión mostrada.
  * @param {boolean} props.downloading - Descarga en curso.
  * @param {() => void} [props.onClose] - «Cerrar» de los escenarios de imagen, vídeo y panorámica.
+ * @param {(size: { src: string, width: number, height: number }) => void} [props.onMediaSize] - Dimensiones
+ *   naturales de la imagen o el vídeo cargados (el visor ajusta su escenario a esa proporción).
  * @returns {import("react").ReactElement} Visor.
  */
-function AdminFileVersionSurface({ content, downloading, kind, onClose, onDownload, onViewChange, src, title, view }) {
+function AdminFileVersionSurface({ content, downloading, kind, onClose, onDownload, onMediaSize, onViewChange, src, title, view }) {
   let surface;
   if (kind === "image") {
-    surface = <ImageMediaStage key={src} src={src} title={title} onClose={onClose} />;
+    surface = <ImageMediaStage key={src} src={src} title={title} onClose={onClose} onMediaSize={onMediaSize} />;
   } else if (kind === "video") {
-    surface = <VideoMediaStage key={src} src={src} title={title} onClose={onClose} />;
+    surface = <VideoMediaStage key={src} src={src} title={title} onClose={onClose} onMediaSize={onMediaSize} />;
   } else if (kind === "panorama") {
     surface = <PanoramaMediaStage key={src} src={src} title={title} onClose={onClose} />;
   } else if (kind === "unsupported") {
