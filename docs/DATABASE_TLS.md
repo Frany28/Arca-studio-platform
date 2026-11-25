@@ -58,6 +58,8 @@
 ## Límites y riesgos pendientes
 
 - **Prisma CLI (migraciones)** no usa este módulo: conecta con su propio motor usando `DIRECT_URL` (o `DATABASE_URL`). Su TLS se configura con parámetros de esa URL, y la verificación del certificado depende de la versión de Prisma. Antes de ejecutar migraciones remotas, configurar `DIRECT_URL` con la CA de Supabase según la documentación de Prisma 7 y comprobarlo. Esos parámetros pertenecen a `DIRECT_URL`, no a `DATABASE_URL`: en un despliegue, `DATABASE_URL` con `sslrootcert` impide arrancar.
+  - **Comprobado con Prisma 7.8.0 (24/11/2026)** contra un PostgreSQL local con CA propia y contra staging: el motor de migraciones solo valida la cadena y el nombre del host con `sslmode=require&sslcert=<ruta de la CA>&sslaccept=strict`. Sin `sslaccept=strict` acepta una CA ajena, y `sslmode=verify-full&sslrootcert=…` (formato de libpq) **se ignora en silencio** y también acepta una CA ajena. Con la CA de Supabase (`Supabase Root 2021 CA`) y `sslaccept=strict`, una CA ajena se rechaza con `P1011`. Usar una ruta absoluta para `sslcert`, fuera del repositorio.
+  - Las herramientas libpq (`psql`, `pg_dump`, `pg_restore`) sí validan con `PGSSLMODE=verify-full` y `PGSSLROOTCERT=<ruta de la CA>`.
 - La CA de Supabase puede rotarse. Si cambia, la conexión fallará con un error de verificación: actualizar `DATABASE_SSL_CA_CERT` con el certificado nuevo del panel, nunca desactivar la verificación.
 - En local, sin CA, la conexión remota sigue sin verificarse (con aviso). Se recomienda configurar también la CA en el `.env` local.
 - Los certificados de cliente (mTLS) no se admiten por URL. Si se necesitaran, habría que añadirlos a la política de `databaseTls.js`.
