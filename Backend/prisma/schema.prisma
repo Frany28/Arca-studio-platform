@@ -928,6 +928,12 @@ model quote_versions {
   is_current     Boolean       @default(true)
   created_by     BigInt
   created_at     DateTime      @default(now()) @db.Timestamptz(6)
+  /// Restauración comercial: versión de origen (misma cotización), motivo e identificador de envío; NULL en guardados normales.
+  restored_from_version_number Int?
+  restore_reason               String? @db.VarChar(500)
+  restore_request_id           String? @db.Uuid
+  restored_from  quote_versions? @relation("quote_version_restorations", fields: [quote_id, restored_from_version_number], references: [quote_id, version_number], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_versions_restored_from")
+  restorations   quote_versions[] @relation("quote_version_restorations")
   quotes         quotes        @relation(fields: [quote_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_versions_quote")
   clients        clients       @relation(fields: [client_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_versions_client")
   projects       projects      @relation(fields: [project_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_quote_versions_project")
@@ -936,6 +942,7 @@ model quote_versions {
   quote_pdf_document quote_pdf_documents?
 
   @@unique([quote_id, version_number], map: "uq_quote_versions_quote_version")
+  @@unique([quote_id, restore_request_id], map: "uq_quote_versions_restore_request")
   @@index([services_total, quote_id], map: "quote_versions_current_total_idx", where: raw("is_current"))
   @@index([client_id], map: "idx_quote_versions_client_id")
   @@index([project_id], map: "idx_quote_versions_project_id")

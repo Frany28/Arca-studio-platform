@@ -18,6 +18,8 @@ import { PROJECT_SYSTEM_FOLDERS } from "../src/domain/projectFolderCatalog.js";
  */
 
 const MIGRATION = "20261117120000_project_folder_system_keys";
+// Independiente de las carpetas: el código actual de cotizaciones lee y escribe sus columnas.
+const QUOTE_RESTORATIONS_MIGRATION = "20261124120000_quote_version_restorations";
 const enabled = process.env.ARCA_PROJECT_FOLDERS_DB_TESTS === "1" && process.env.ARCA_PROJECT_FOLDERS_TEST_DATABASE_URL;
 const skip = !enabled && "Requiere PostgreSQL local, ARCA_PROJECT_FOLDERS_DB_TESTS=1 y ARCA_PROJECT_FOLDERS_TEST_DATABASE_URL.";
 
@@ -172,6 +174,7 @@ before(async () => {
   await rows(`insert into public._prisma_migrations (id, checksum, migration_name, finished_at, applied_steps_count)
     values ($1, 'ensayo-local', $2, now(), 1)`, [randomUUID(), MIGRATION]);
   checks.postcheck = await runCheck("postcheck");
+  await applyMigration(database.client, QUOTE_RESTORATIONS_MIGRATION);
 
   const [unit] = await rows("select id::int from public.measurement_units where code = 'square_meter'");
   Object.assign(process.env, { DATABASE_POOL_MAX: "8", DATABASE_URL: database.databaseUrl, NODE_ENV: "test" });

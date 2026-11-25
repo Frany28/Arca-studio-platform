@@ -90,7 +90,8 @@ function VersionStep({ actionsDisabled, displayed, getActions, isLast, onSelect,
  * @param {Object} props - Historial (useAdminFileVersions), versión mostrada, alta y callbacks.
  * @param {{ allowed: boolean, reason: string, onClick: () => void }} props.addVersion - «+» (reemplazo).
  * @param {(version: Object, versions: Array<Object>) => Array<Object>} [props.getVersionActions] - Menú de cada versión
- *   (por defecto ver, restaurar y descargar; los PDF de cotizaciones solo ven y descargan).
+ *   (por defecto ver, restaurar y descargar; los PDF de cotizaciones usan la restauración comercial,
+ *   que crea directamente la versión vigente en lugar de una pendiente de revisión).
  * @returns {import("react").ReactElement} Contenido del drawer.
  */
 function AdminFileVersionHistory({ actionsDisabled, addVersion, displayedVersionId, getVersionActions = versionActions, history, onDownload, onRestore, onView }) {

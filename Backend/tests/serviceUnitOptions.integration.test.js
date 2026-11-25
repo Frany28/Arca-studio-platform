@@ -15,6 +15,7 @@ const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TES
 const MIGRATION = "20261027120000_service_unit_options";
 const QUOTE_REFERENCE_VAT_MIGRATION = "20261031120000_quote_reference_vat";
 const QUOTE_SUBMISSION_MIGRATION = "20261102122000_quote_submission_id";
+const QUOTE_RESTORATIONS_MIGRATION = "20261124120000_quote_version_restorations";
 const SINGLE_UNIT_MIGRATION = "20261030120000_service_single_unit_option";
 
 let database;
@@ -159,6 +160,8 @@ before(async () => {
   await applyMigration(database.client, QUOTE_REFERENCE_VAT_MIGRATION);
   // Idempotencia del alta (independiente de las unidades), necesaria para crear cotizaciones.
   await applyMigration(database.client, QUOTE_SUBMISSION_MIGRATION);
+  // Trazabilidad de la restauración comercial: el código actual lee y escribe sus columnas.
+  await applyMigration(database.client, QUOTE_RESTORATIONS_MIGRATION);
   ids = { admin: admin.id, client: client.id, denomination: denomination.id, legacy: legacy.id, legacyVersion: legacyVersion.id, project: project.id, unit };
 
   // Servicios con unidades alternativas y una cotización que usó una alternativa, como antes de la unidad única.

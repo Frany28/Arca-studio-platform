@@ -1026,6 +1026,13 @@ Validación, capturas y diferencias respecto a Figma:
   la descarga de su versión y «Más opciones» con «Historial de versiones» y, en «Documentos ›
   Garantías» y sus subcarpetas (`folder.section === "warranties"`), «Garantías». La columna
   Acciones mide 176 px. «Más opciones» incluye también «Reemplazar archivo» (U3).
+- PDF de cotizaciones en el visor (`AdminQuotePdfViewerDialog`): el drawer reutiliza
+  `AdminFileVersionHistory` con «Ver», «Restaurar versión» (solo versiones históricas; la vigente
+  la muestra deshabilitada con su motivo) y «Descargar». Restaurar abre `AdminFileReasonDialog`
+  (tipo `quoteRestore`, motivo obligatorio de hasta 500 caracteres) con la explicación de la versión
+  que se creará y los datos restaurados. Es una restauración comercial sin revisión posterior: al
+  confirmar, el visor sigue abierto, muestra la versión nueva vigente con su PDF, el historial añade
+  «Restaurada desde Vn: motivo» y la tabla se recarga; el aviso indica si el PDF quedó disponible.
 - Visor con revisión (U2; modal `3727:682968`, drawer «Historial de versiones» `3934:182047`,
   composición escritorio `3727:682849`, tablet `3952:187549`, móvil `3953:297003`; revisión
   `3727:683878`, motivo `3727:683879`, avisos `3795:580699` y `3797:278032`): `AdminFileViewerDialog`

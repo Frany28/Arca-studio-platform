@@ -135,7 +135,7 @@ export async function failQuotePdf(versionId, token, code) {
 export async function listQuotePdfVersions(quoteId, { beforeVersion, limit }) {
   const result = await query(
     `select q.code, q.id as quote_id, v.id as version_id, v.version_number, v.is_current, v.created_at,
-       v.project_id, v.project_name, author.id as author_id, author.first_name as author_first_name, author.last_name as author_last_name,
+       v.project_id, v.project_name, v.restored_from_version_number, v.restore_reason, author.id as author_id, author.first_name as author_first_name, author.last_name as author_last_name,
        doc.status, doc.file_name, doc.size_bytes, doc.generated_at, doc.stored_at, doc.error_code
      from public.quotes q
      inner join public.quote_versions v on v.quote_id = q.id

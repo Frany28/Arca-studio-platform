@@ -8,6 +8,7 @@ import {
 } from "../domain/quote.js";
 import { describeClientNameError, normalizeClientName } from "../domain/clientName.js";
 import { describeProjectNameError, normalizeProjectName } from "../domain/projectName.js";
+import { QUOTE_RESTORE_REASON_MAX_LENGTH } from "../domain/quoteRestoration.js";
 import { QUOTE_DECIMAL_FORMATS } from "../domain/quoteTotals.js";
 import { decodeCursor } from "../utils/pagination.js";
 import { scaledDecimalText } from "./decimalSchemas.js";
@@ -196,6 +197,19 @@ export const quoteClientMatchesSchema = z.object({
   query: z.object({
     name: z.string().transform(normalizeClientName).pipe(z.string().min(2).max(150)),
   }).passthrough(),
+});
+
+// Restauración comercial de una versión histórica: motivo obligatorio, versión vigente leída e
+// identificador de envío (UUID) que hace idempotente el reintento de la misma restauración.
+export const quoteRestoreSchema = z.object({
+  params: z.object({ quoteId: positiveId, versionNumber: positiveId.max(2147483647) }),
+  body: z.object({
+    expectedVersion: z.number({ error: "Indica la versión vigente que estás viendo." }).int().min(1),
+    reason: z.string({ error: "Escribe el motivo de la restauración." }).trim()
+      .min(1, "Escribe el motivo de la restauración.")
+      .max(QUOTE_RESTORE_REASON_MAX_LENGTH, `Admite como máximo ${QUOTE_RESTORE_REASON_MAX_LENGTH} caracteres.`),
+    requestId: z.uuid({ error: "Identificador de envío inválido." }),
+  }).strict(),
 });
 
 export const quoteUpdateSchema = z.object({

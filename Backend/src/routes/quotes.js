@@ -12,6 +12,7 @@ import {
   patchQuote,
   postQuote,
   postQuotePdfRetry,
+  postQuoteVersionRestore,
 } from "../controllers/quoteController.js";
 import { adminRateLimits } from "../middlewares/actionRateLimits.js";
 import { requireAuth, requireRoles } from "../middlewares/auth.js";
@@ -25,6 +26,7 @@ import {
   quotePdfSchema,
   quotePdfVersionsSchema,
   quoteProjectOptionsSchema,
+  quoteRestoreSchema,
   quoteUpdateSchema,
 } from "../validation/quoteSchemas.js";
 
@@ -45,5 +47,8 @@ router.patch("/:quoteId", adminRateLimits.quoteWrite, validate(quoteUpdateSchema
 router.get("/:quoteId/pdf", adminRateLimits.quotePdf, validate(quotePdfSchema), getQuotePdfDocument);
 router.get("/:quoteId/pdf/versions", validate(quotePdfVersionsSchema), getQuotePdfVersions);
 router.post("/:quoteId/pdf/retry", adminRateLimits.quotePdf, validate(quotePdfSchema), postQuotePdfRetry);
+// Restauración comercial: crea una versión nueva vigente con el contenido de una histórica. No es la
+// restauración de archivos generales (/admin/files/.../restore), que sigue su flujo de revisión.
+router.post("/:quoteId/versions/:versionNumber/restore", adminRateLimits.quoteWrite, validate(quoteRestoreSchema), postQuoteVersionRestore);
 
 export default router;

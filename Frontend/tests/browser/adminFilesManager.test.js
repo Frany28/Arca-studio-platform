@@ -209,6 +209,7 @@ function createBackend({ enabled = true, failures = {}, media = [], quotes = fal
       createdAt: `2026-04-${String(day).padStart(2, "0")}T14:00:00.000Z`, createdBy: { id: 1, name: "Ana Admin" }, quoteId, versionNumber,
       pdf: { errorCode: status === "error" ? "QUOTE_PDF_STORAGE_ERROR" : null, fileName: `COT-0${quoteId}-v${versionNumber}.pdf`, size: status === "available" ? 40960 : null, status },
     });
+    state.quoteVersion = quoteVersion;
     state.quoteDocuments.set(12, [quoteVersion(12, 2, 3, "available"), quoteVersion(12, 1, 1, "available")]);
     state.quoteDocuments.set(13, [quoteVersion(13, 1, 2, "error")]);
     state.quoteItem = (quoteId) => {
@@ -460,6 +461,22 @@ function createBackend({ enabled = true, failures = {}, media = [], quotes = fal
       };
       state.items.push(created);
       return json(route, 201, { version: toFileVersion(created) });
+    }
+    // Restauración comercial: crea la versión vigente siguiente con su PDF (sin revisión posterior).
+    const restoreMatch = /^\/api\/admin\/quotes\/(\d+)\/versions\/(\d+)\/restore$/.exec(path);
+    if (restoreMatch && method === "POST" && state.quoteDocuments.has(Number(restoreMatch[1]))) {
+      const quoteId = Number(restoreMatch[1]);
+      const versions = state.quoteDocuments.get(quoteId);
+      if (body.expectedVersion !== versions[0].versionNumber) {
+        return json(route, 409, { code: "QUOTE_VERSION_CONFLICT", message: "Otro administrador modificó esta cotización." });
+      }
+      const versionNumber = versions[0].versionNumber + 1;
+      const created = { ...state.quoteVersion(quoteId, versionNumber, 5, "available"), restoredFrom: { reason: body.reason, versionNumber: Number(restoreMatch[2]) } };
+      versions.unshift(created);
+      return json(route, 201, {
+        message: "Versión restaurada.", replayed: false,
+        quote: { code: `COT-0${quoteId}`, currentVersion: versionNumber, id: quoteId, pdf: created.pdf, version: { createdAt: created.createdAt, createdBy: created.createdBy, restoredFrom: created.restoredFrom } },
+      });
     }
     const quoteMatch = /^\/api\/admin\/quotes\/(\d+)\/pdf(\/versions|\/retry)?$/.exec(path);
     if (quoteMatch && state.quoteDocuments.has(Number(quoteMatch[1]))) {
@@ -745,8 +762,8 @@ test("cotizaciones: su PDF aparece en «Documentos › Cotizaciones» del proyec
   assert.equal(await viewer.getByRole("button", { name: /^Subir una versión nueva\./ }).isDisabled(), true, "el PDF no se reemplaza a mano");
   await viewer.getByRole("button", { name: "Opciones de la versión 1" }).click();
   const versionMenu = page.getByRole("menu", { name: "Acciones para la versión 1" });
-  assert.deepEqual((await versionMenu.getByRole("menuitem").allInnerTexts()).map((text) => text.trim()), ["Ver", "Descargar"]);
-  await versionMenu.getByRole("menuitem", { name: "Ver" }).click();
+  assert.deepEqual((await versionMenu.getByRole("menuitem").allInnerTexts()).map((text) => text.trim()), ["Ver", "Restaurar versión", "Descargar"]);
+  await versionMenu.getByRole("menuitem", { exact: true, name: "Ver" }).click();
   await viewer.getByText(/V1 · Versión anterior/).waitFor();
   await waitUntil(() => backend.requests.some((request) => request.path === "/api/admin/quotes/12/pdf" && request.search.version === "1"));
   await viewer.getByRole("button", { name: "Editar cotización" }).waitFor();
@@ -771,6 +788,55 @@ test("cotizaciones: su PDF aparece en «Documentos › Cotizaciones» del proyec
   assert.equal(itemRequests(backend).at(-1).search.tab, "pending");
   assert.equal(await page.locator("[data-item-source='quote']").count(), 0, "las cotizaciones no pasan por revisión");
 });
+
+for (const { theme, viewport } of [{ theme: "light", viewport: { height: 1100, width: 1440 } }, { theme: "dark", viewport: { height: 844, width: 390 } }]) {
+  test(`cotizaciones: «Restaurar versión» pide motivo, crea la versión vigente con su PDF y actualiza historial y tabla (${theme}, ${viewport.width}px)`, async (context) => {
+    const backend = createBackend({ quotes: true });
+    const page = await openFiles(context, backend, { theme, viewport });
+    await page.getByRole("rowheader", { name: /COT-012-v2\.pdf/ }).first().waitFor();
+    await page.getByRole("button", { exact: true, name: "Ver COT-012-v2.pdf, versión 2" }).click();
+    const viewer = page.locator("[data-admin-quote-viewer]");
+    const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+    await history.locator("li").nth(1).waitFor();
+
+    // La vigente no se restaura; la histórica sí.
+    await viewer.getByRole("button", { name: "Opciones de la versión 2" }).click();
+    assert.equal(await page.getByRole("menu", { name: "Acciones para la versión 2" }).getByRole("menuitem", { name: "Restaurar versión" }).isDisabled(), true);
+    await page.keyboard.press("Escape");
+    await viewer.getByRole("button", { name: "Opciones de la versión 1" }).click();
+    await page.getByRole("menu", { name: "Acciones para la versión 1" }).getByRole("menuitem", { name: "Restaurar versión" }).click();
+
+    // Diálogo: explica la versión creada y los datos restaurados; el motivo es obligatorio.
+    const dialog = page.locator("[data-admin-file-reason='quoteRestore']");
+    await dialog.waitFor();
+    assert.match(await dialog.locator("[data-admin-file-reason-description]").innerText(), /Se creará la V3 con los datos comerciales de la V1/);
+    await dialog.getByRole("button", { name: "Restaurar" }).click();
+    await dialog.getByText("Escribe el motivo de la restauración.").waitFor();
+    assert.equal(backend.requests.filter((request) => request.path.endsWith("/restore")).length, 0);
+    const box = await dialog.boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= viewport.width, "El diálogo cabe en el ancho de la pantalla");
+
+    const loads = itemRequests(backend).length;
+    await dialog.locator("textarea").fill("El cliente aprobó la primera propuesta");
+    await dialog.getByRole("button", { name: "Restaurar" }).click();
+    await dialog.waitFor({ state: "detached" });
+    const restoreRequest = backend.requests.find((request) => request.path === "/api/admin/quotes/12/versions/1/restore");
+    assert.equal(restoreRequest.method, "POST");
+
+    // El visor sigue abierto, muestra V3 vigente y el historial conserva V2 y V1.
+    await page.getByText("Versión restaurada", { exact: true }).waitFor();
+    await viewer.waitFor();
+    await waitUntil(() => itemRequests(backend).length > loads);
+    await history.locator("li").nth(2).waitFor();
+    assert.deepEqual(await history.locator("li").evaluateAll((rows) => rows.map((row) => row.dataset.versionNumber)), ["3", "2", "1"]);
+    assert.equal(await history.locator("li[data-version-number='3']").getAttribute("aria-current"), "true");
+    await history.getByText("Restaurada desde V1: El cliente aprobó la primera propuesta").waitFor();
+    await waitUntil(() => backend.requests.some((request) => request.path === "/api/admin/quotes/12/pdf" && request.search.version === "3"));
+    await viewer.getByRole("button", { exact: true, name: "Cerrar" }).click();
+    await viewer.waitFor({ state: "detached" });
+    await page.getByRole("rowheader", { name: /COT-012-v3\.pdf/ }).first().waitFor();
+  });
+}
 
 test("estado de error con reintento y estado vacío por filtros", async (context) => {
   const backend = createBackend({ failures: { "GET /api/admin/files/items": { body: { code: "INTERNAL", message: "Error temporal del servidor." }, status: 500 } } });

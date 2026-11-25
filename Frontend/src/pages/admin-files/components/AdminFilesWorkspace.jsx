@@ -260,6 +260,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
           item={viewer.item}
           returnFocusTo={viewer.trigger}
           downloads={quoteDownloads}
+          feedback={feedback}
           onChanged={refreshAfterOperation}
           onClose={() => setViewer(null)}
         />

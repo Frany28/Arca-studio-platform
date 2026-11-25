@@ -193,6 +193,26 @@ export const quotesApi = {
   },
 
   /**
+   * Restaura una versión histórica como versión nueva y vigente (restauración comercial del
+   * administrador, sin aprobación posterior) y genera su PDF. Repetir el mismo `requestId` devuelve
+   * la versión ya creada (`replayed: true`) en lugar de crear otra.
+   *
+   * @param {Object} params - Cotización, versión de origen y confirmación.
+   * @param {number} params.quoteId - Cotización.
+   * @param {number} params.versionNumber - Versión histórica que se restaura.
+   * @param {number} params.expectedVersion - Versión vigente leída (409 QUOTE_VERSION_CONFLICT si cambió).
+   * @param {string} params.reason - Motivo obligatorio.
+   * @param {string} params.requestId - UUID del envío.
+   * @returns {Promise<{message: string, quote: Object, replayed: boolean}>} Versión creada con el estado de su PDF.
+   */
+  restoreQuoteVersion({ expectedVersion, quoteId, reason, requestId, versionNumber }) {
+    return apiRequest(`/admin/quotes/${encodeURIComponent(quoteId)}/versions/${encodeURIComponent(versionNumber)}/restore`, {
+      body: JSON.stringify({ expectedVersion, reason, requestId }),
+      method: "POST",
+    });
+  },
+
+  /**
    * Lista el historial de PDF de una cotización: sus versiones comerciales, de la más reciente a la
    * más antigua, con el estado de cada documento (`pending`, `available` o `error`).
    *

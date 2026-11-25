@@ -116,6 +116,8 @@ function quoteRow(state, quote, versionNumber) {
     reference_vat_amount: version.referenceVatAmount,
     reference_vat_enabled: version.referenceVatEnabled,
     reference_vat_rate: version.referenceVatRate,
+    restore_reason: version.restoreReason ?? null,
+    restored_from_version_number: version.restoredFromVersionNumber ?? null,
     services_total: version.servicesTotal,
     updated_at: quote.updatedAt,
     version_created_at: version.createdAt,
@@ -162,7 +164,8 @@ export function createQuoteDatabaseMock() {
           author_first_name: author?.firstName ?? null, author_id: author ? String(author.id) : null, author_last_name: author?.lastName ?? null,
           code: quote.code, created_at: version.createdAt, error_code: doc?.error_code ?? null, file_name: doc?.file_name ?? null,
           generated_at: doc?.generated_at ?? null, is_current: version.isCurrent, project_id: String(version.projectId), project_name: version.projectName,
-          quote_id: String(quote.id), size_bytes: doc?.size_bytes ?? null, status: doc?.status ?? null, stored_at: doc?.stored_at ?? null,
+          quote_id: String(quote.id), restore_reason: version.restoreReason ?? null,
+          restored_from_version_number: version.restoredFromVersionNumber ?? null, size_bytes: doc?.size_bytes ?? null, status: doc?.status ?? null, stored_at: doc?.stored_at ?? null,
           version_id: String(version.id), version_number: version.versionNumber,
         };
       });
@@ -263,6 +266,7 @@ export function createQuoteDatabaseMock() {
         clientId: params[2], clientName: params[3], createdAt: new Date().toISOString(), createdBy: params[9], id, isCurrent: true,
         notes: params[6], projectId: params[4], projectName: params[5], quoteId: params[0],
         referenceVatAmount: toNumeric(params[12], 2), referenceVatEnabled: params[10], referenceVatRate: params[11] === null ? null : toNumeric(params[11], 2),
+        restoreReason: params[14], restoreRequestId: params[15], restoredFromVersionNumber: params[13],
         servicesTotal: toNumeric(params[7], 2), versionNumber: params[1],
       });
       return result([{ id: String(id) }]);
@@ -294,6 +298,10 @@ export function createQuoteDatabaseMock() {
           unit_presentation_label: unitOption.presentationLabel, unit_rate: item.unitRate, unit_symbol: unitOption.unitSymbol,
         };
       }));
+    }
+    if (text.startsWith("select version_number, restored_from_version_number, restore_reason from public.quote_versions")) {
+      const version = state.versions.find((candidate) => candidate.quoteId === Number(params[0]) && candidate.restoreRequestId === params[1]);
+      return result(version ? [{ restore_reason: version.restoreReason, restored_from_version_number: version.restoredFromVersionNumber, version_number: version.versionNumber }] : []);
     }
     if (text.startsWith("select id from public.quotes where id = $1 for update")) {
       return result(state.quotes.some((quote) => quote.id === Number(params[0])) ? [{ id: String(params[0]) }] : []);

@@ -14,6 +14,7 @@ const skip = !enabled && "Requiere PostgreSQL local, ARCA_SERVICE_CATALOG_DB_TES
 let database;
 let db;
 let quotes;
+let restorations;
 let catalog;
 let ids;
 
@@ -69,6 +70,7 @@ before(async () => {
   Object.assign(process.env, { DATABASE_POOL_MAX: "5", DATABASE_URL: database.databaseUrl, NODE_ENV: "test" });
   db = await import("../src/config/db.js");
   quotes = await import("../src/services/quoteService.js");
+  restorations = await import("../src/services/quoteRestorationService.js");
   catalog = await import("../src/services/serviceCatalogService.js");
 });
 
@@ -176,4 +178,46 @@ test("IVA referencial: 16 % guardado con el redondeo del motor, la edición cons
   await assert.rejects(insertVersion(true, null, 0), { code: "23514" }, "IVA habilitado sin tasa");
   await assert.rejects(insertVersion(false, 16, 0), { code: "23514" }, "Tasa sin IVA habilitado");
   await assert.rejects(insertVersion(true, 100.01, 100.01), { code: "23514" }, "Tasa mayor que 100");
+});
+
+test("restauración: V1 sobre V3 crea V4 exacta; dos restauraciones simultáneas no duplican la versión y los CHECK protegen el origen", { skip }, async () => {
+  const service = await createService({ name: "Servicio restaurable" });
+  const user = { id: ids.admin };
+  const { quote: created } = await quotes.createQuote({ payload: quoteBody([{ quantity: "200.500", serviceId: service, unitRate: "14.33" }], { notes: "Original" }), user });
+  for (const [expectedVersion, quantity] of [[1, "3.000"], [2, "4.000"]]) {
+    await quotes.updateQuote({ payload: { ...quoteBody([{ quantity, serviceId: service, unitRate: "10.00" }]), expectedVersion }, quoteId: created.id, user });
+  }
+
+  const attempt = (reason) => restorations.restoreQuoteVersion({
+    payload: { expectedVersion: 3, reason, requestId: randomUUID() }, quoteId: created.id, user, versionNumber: 1,
+  });
+  const results = await Promise.allSettled([attempt("Primera"), attempt("Segunda")]);
+  const fulfilled = results.filter((result) => result.status === "fulfilled");
+  assert.equal(fulfilled.length, 1, "El bloqueo FOR UPDATE serializa las restauraciones");
+  assert.equal(results.find((result) => result.status === "rejected").reason.code, "QUOTE_VERSION_CONFLICT");
+  const restored = fulfilled[0].value.quote;
+  assert.equal(restored.currentVersion, 4);
+  assert.deepEqual([restored.servicesTotal, restored.referenceVat.amount, restored.notes], [created.servicesTotal, created.referenceVat.amount, "Original"]);
+
+  assert.deepEqual(await rows(`select version_number, is_current, restored_from_version_number as origin, restore_reason is not null as has_reason
+    from public.quote_versions where quote_id = $1 order by version_number`, [created.id]), [
+    { has_reason: false, is_current: false, origin: null, version_number: 1 },
+    { has_reason: false, is_current: false, origin: null, version_number: 2 },
+    { has_reason: false, is_current: false, origin: null, version_number: 3 },
+    { has_reason: true, is_current: true, origin: 1, version_number: 4 },
+  ]);
+  assert.deepEqual(await rows(`select i.quantity::text, i.unit_rate::text, i.subtotal::text from public.quote_items i
+    join public.quote_versions v on v.id = i.quote_version_id where v.quote_id = $1 and v.version_number = 4`, [created.id]),
+  [{ quantity: "200.500", subtotal: "2873.17", unit_rate: "14.33" }]);
+  const [audit] = await rows("select user_id::int, new_values from public.audit_logs where action = 'quote.version_restore' and entity_id = $1", [created.id]);
+  assert.deepEqual([audit.user_id, audit.new_values.restoredFromVersion, audit.new_values.versionNumber], [ids.admin, 1, 4]);
+
+  const insertRestored = (origin, reason, requestId) => rows(`insert into public.quote_versions (quote_id, version_number, client_id, client_name, project_id, project_name,
+      services_total, created_by, is_current, restored_from_version_number, restore_reason, restore_request_id)
+    values ($1, 50, $2, 'C', $3, 'P', 0, $4, false, $5, $6, $7)`, [created.id, ids.client, ids.project, ids.admin, origin, reason, requestId]);
+  await assert.rejects(insertRestored(1, null, randomUUID()), { code: "23514" }, "Origen sin motivo");
+  await assert.rejects(insertRestored(1, "  ", randomUUID()), { code: "23514" }, "Motivo vacío");
+  await assert.rejects(insertRestored(60, "Motivo", randomUUID()), { code: "23514" }, "Origen posterior a la versión");
+  await assert.rejects(insertRestored(40, "Motivo", randomUUID()), { code: "23503" }, "Origen inexistente en la cotización");
+  await assert.rejects(rows("update public.quote_versions set restore_reason = 'x' where quote_id = $1 and version_number = 4", [created.id]), { code: "55000" });
 });

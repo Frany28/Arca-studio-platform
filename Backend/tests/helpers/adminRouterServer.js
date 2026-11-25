@@ -39,7 +39,7 @@ export async function startAdminRouterServer(context, { pool, respond, routes })
   for (const [mountPath, router] of routes) app.use(mountPath, router);
   app.use((error, _req, res, _next) => {
     const normalized = normalizeError(error);
-    res.status(normalized.status).json({ code: normalized.code, message: normalized.publicMessage, fields: normalized.fields });
+    res.status(normalized.status).json({ code: normalized.code, message: normalized.publicMessage, fields: normalized.fields, ...(normalized.details ? { details: normalized.details } : {}) });
   });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));

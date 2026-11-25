@@ -6,6 +6,7 @@ import TextArea from "../../../components/ui/TextArea/TextArea.jsx";
 import { useDialogKeyboard } from "../../../hooks/useDialogKeyboard.js";
 import { useInvalidFieldFocus } from "../../../hooks/useInvalidFieldFocus.js";
 import { REJECT_REASON_MAX_LENGTH, RESTORE_NOTE_MAX_LENGTH } from "../utils/adminFileReview.js";
+import { QUOTE_RESTORE_REASON_MAX_LENGTH } from "../utils/adminQuoteDocuments.js";
 
 const COPY = Object.freeze({
   reject: {
@@ -26,16 +27,26 @@ const COPY = Object.freeze({
     submit: "Restaurar",
     submitting: "Restaurando...",
   },
+  // Restauración comercial de una cotización: crea la versión vigente y su PDF, sin revisión posterior.
+  quoteRestore: {
+    close: "Cerrar motivo de la restauración",
+    empty: "Escribe el motivo de la restauración.",
+    label: "Motivo de la restauración",
+    maxLength: QUOTE_RESTORE_REASON_MAX_LENGTH,
+    placeholder: "Ej. \"El cliente aprobó la propuesta de la versión 1.\"",
+    submit: "Restaurar",
+    submitting: "Restaurando...",
+  },
 });
 
 /**
  * Motivo obligatorio de una operación (Figma 3727:683879, «Motivo del rechazo»): rechazar una
- * versión pendiente o restaurar una aprobada. Conserva lo escrito ante un error, lo señala junto al
+ * versión pendiente, restaurar una aprobada o restaurar una versión comercial de una cotización. Conserva lo escrito ante un error, lo señala junto al
  * campo (motivo inválido) o bajo el formulario (conflictos) y bloquea el envío mientras la petición
  * está en curso. Escape y «Volver» cierran sin enviar.
  *
  * @param {Object} props - Operación, contexto y callbacks.
- * @param {"reject"|"restore"} props.kind - Operación.
+ * @param {"reject"|"restore"|"quoteRestore"} props.kind - Operación.
  * @param {string} props.subject - Versión afectada («Acta.pdf · V3»).
  * @param {string} [props.description] - Consecuencia de la operación, visible antes de confirmar
  *   (la restauración explica qué versión se crea y que el historial se conserva).

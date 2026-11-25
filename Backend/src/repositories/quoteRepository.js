@@ -52,6 +52,18 @@ function toUserName(firstName, lastName) {
 }
 
 /**
+ * Describe el origen de una versión creada por una restauración comercial: número de la versión
+ * restaurada y motivo del administrador. Un guardado normal no tiene origen.
+ *
+ * @param {{ restored_from_version_number?: number|null, restore_reason?: string|null }} row - Fila de quote_versions.
+ * @returns {{ versionNumber: number, reason: string }|null} Origen o null.
+ */
+export function toRestoredFrom(row) {
+  if (row.restored_from_version_number === null || row.restored_from_version_number === undefined) return null;
+  return { reason: row.restore_reason, versionNumber: Number(row.restored_from_version_number) };
+}
+
+/**
  * Transforma una fila del listado en la representación pública de una cotización.
  * Los importes se conservan como texto decimal de PostgreSQL para no perder precisión. El IVA
  * referencial es el guardado con la versión (informativo, no fiscal); sin tasa, deshabilitado.
@@ -194,6 +206,7 @@ export async function findQuoteById(quoteId, executor = { query }, versionNumber
   const result = await executor.query(
     `select ${QUOTE_SUMMARY_COLUMNS},
        v.id as version_id, v.notes, v.created_at as version_created_at,
+       v.restored_from_version_number, v.restore_reason,
        author.id as author_id, author.first_name as author_first_name, author.last_name as author_last_name,
        editor.id as editor_id, editor.first_name as editor_first_name, editor.last_name as editor_last_name,
        (editor.profile_photo_url is not null and btrim(editor.profile_photo_url) <> '') as editor_has_profile_photo
@@ -220,6 +233,7 @@ export async function findQuoteById(quoteId, executor = { query }, versionNumber
         name: toUserName(row.editor_first_name, row.editor_last_name),
       },
       id: Number(row.version_id),
+      restoredFrom: toRestoredFrom(row),
     },
   };
 }
@@ -237,6 +251,27 @@ export async function lockQuoteForUpdate(client, quoteId) {
   const locked = await client.query("select id from public.quotes where id = $1 for update", [quoteId]);
   if (!locked.rows[0]) return null;
   return findQuoteById(quoteId, client);
+}
+
+/**
+ * Busca la versión creada por una restauración anterior con el mismo identificador de envío en la
+ * cotización. Debe ejecutarse con la cotización bloqueada FOR UPDATE: en READ COMMITTED la sentencia
+ * ve la restauración que confirmó la transacción que tenía el bloqueo.
+ *
+ * @param {{ query: Function }} client - Cliente de la transacción en curso.
+ * @param {number} quoteId - Cotización.
+ * @param {string} requestId - UUID del envío de la restauración.
+ * @returns {Promise<{ versionNumber: number, restoredFrom: { versionNumber: number, reason: string } }|null>}
+ *   Versión ya creada o null si el envío es nuevo.
+ */
+export async function findQuoteRestoreRequest(client, quoteId, requestId) {
+  const result = await client.query(
+    `select version_number, restored_from_version_number, restore_reason
+     from public.quote_versions where quote_id = $1 and restore_request_id = $2::uuid`,
+    [quoteId, requestId],
+  );
+  const row = result.rows[0];
+  return row ? { restoredFrom: toRestoredFrom(row), versionNumber: Number(row.version_number) } : null;
 }
 
 /**
@@ -350,18 +385,23 @@ export async function retireCurrentQuoteVersion(client, quoteId) {
  *   referencial calculado por el motor.
  * @param {string} version.currency - Moneda (USD).
  * @param {number} version.userId - Administrador responsable.
+ * @param {{ fromVersionNumber: number, reason: string, requestId: string }|null} [version.restoration] -
+ *   Origen de una restauración comercial; ausente o null en un guardado normal.
  * @returns {Promise<number>} Id de la versión.
  */
 export async function insertQuoteVersion(client, version) {
+  const restoration = version.restoration ?? null;
   const result = await client.query(
     `insert into public.quote_versions (
        quote_id, version_number, client_id, client_name, project_id, project_name, notes, services_total, currency_code, created_by,
-       reference_vat_enabled, reference_vat_rate, reference_vat_amount
-     ) values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9, $10, $11, $12::numeric, $13::numeric)
+       reference_vat_enabled, reference_vat_rate, reference_vat_amount,
+       restored_from_version_number, restore_reason, restore_request_id
+     ) values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9, $10, $11, $12::numeric, $13::numeric, $14, $15, $16::uuid)
      returning id`,
     [version.quoteId, version.versionNumber, version.client.id, version.client.name, version.project.id,
       version.project.name, version.notes, version.servicesTotal, version.currency, version.userId,
-      version.referenceVat.enabled, version.referenceVat.rate, version.referenceVat.amount],
+      version.referenceVat.enabled, version.referenceVat.rate, version.referenceVat.amount,
+      restoration?.fromVersionNumber ?? null, restoration?.reason ?? null, restoration?.requestId ?? null],
   );
   return Number(result.rows[0].id);
 }

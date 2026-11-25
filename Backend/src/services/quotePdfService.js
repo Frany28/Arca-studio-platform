@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 
 import { AppError, NotFoundError, ValidationError } from "../errors/appError.js";
 import { buildQuotePdfReservation, QUOTE_PDF_LAYOUTS, QUOTE_PDF_MAX_BYTES, toQuotePdfStatus } from "../domain/quotePdfDocument.js";
-import { findQuoteById } from "../repositories/quoteRepository.js";
+import { findQuoteById, toRestoredFrom } from "../repositories/quoteRepository.js";
 import { decodeCursor, encodeCursor } from "../utils/pagination.js";
 import * as documents from "../repositories/quotePdfRepository.js";
 import { objectStorage } from "./objectStorage.js";
@@ -286,7 +286,8 @@ export async function getQuotePdf({ ifNoneMatch, quoteId, versionNumber, signal 
  * Historial de PDF de una cotización: cada versión comercial con su documento (o su estado si
  * aún no está disponible), de la más reciente a la más antigua. Es el mismo historial comercial de
  * `quote_versions`, no una segunda historia: el administrador de archivos lo muestra tal cual y
- * cada documento se lee con `getQuotePdf` (bytes originales verificados), sin regenerarlo.
+ * cada documento se lee con `getQuotePdf` (bytes originales verificados), sin regenerarlo. Las
+ * versiones creadas por una restauración comercial incluyen `restoredFrom` (versión de origen y motivo).
  *
  * @param {{ quoteId: number, cursor?: string, limit?: number }} options - Cotización y página.
  * @returns {Promise<{ quote: object, versions: object[], nextCursor: string|null }>} Página.
@@ -313,6 +314,8 @@ export async function listQuotePdfVersions({ cursor, limit = 10, quoteId }) {
         isCurrent: Boolean(row.is_current),
         pdf: { ...pdf, fileName: pdf.fileName || `${row.code}-v${row.version_number}.pdf` },
         project: { id: Number(row.project_id), name: row.project_name },
+        // Versión creada por una restauración comercial: origen y motivo; null en guardados normales.
+        restoredFrom: toRestoredFrom(row),
         versionId: Number(row.version_id),
         versionNumber: Number(row.version_number),
       };

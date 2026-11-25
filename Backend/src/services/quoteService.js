@@ -46,7 +46,7 @@ import { decodeCursor, pageResult, parsePageLimit } from "../utils/pagination.js
 import { PROJECT_NAME_ALREADY_EXISTS, createDraftProject } from "./projectService.js";
 import { QUOTE_VERSION_CONFLICT_MESSAGE, translateQuoteError } from "./quoteErrors.js";
 
-const QUOTE_NOT_FOUND_MESSAGE = "La cotización solicitada no existe.";
+export const QUOTE_NOT_FOUND_MESSAGE = "La cotización solicitada no existe.";
 // Máximo de coincidencias mostradas y confirmables (acknowledged*Ids admite 50).
 const CLIENT_NAME_MATCH_LIMIT = 50;
 
@@ -311,12 +311,13 @@ async function resolveQuoteLines(client, { current, items, referenceVat }) {
 /**
  * Registra la versión vigente, sus conceptos y la reserva del PDF con su instantánea completa.
  * Todas las escrituras comparten la transacción comercial, sin transferencias S3 dentro de ella.
+ * La comparten el alta, la edición y la restauración comercial (`version.restoration`).
  *
  * @param {{ query: Function }} client - Cliente de la transacción en curso.
- * @param {object} version - Datos resueltos de la versión.
+ * @param {object} version - Datos resueltos de la versión (ver insertQuoteVersion).
  * @returns {Promise<void>}
  */
-async function writeQuoteVersion(client, version) {
+export async function writeQuoteVersion(client, version) {
   const versionId = await insertQuoteVersion(client, { ...version, currency: QUOTE_CURRENCY });
   await insertQuoteItems(client, versionId, version.lines);
   const quote = await findQuoteById(version.quoteId, client);
@@ -468,12 +469,13 @@ export async function createQuote({ payload, user }) {
 
 /**
  * Representa el contenido versionado de una cotización guardada con la misma forma que el
- * contenido resuelto de un guardado, para compararlos.
+ * contenido resuelto de un guardado, para compararlos. También compara una versión de origen
+ * restaurada con la vigente.
  *
  * @param {object} quote - Cotización de findQuoteById.
  * @returns {object} Contenido comparable.
  */
-function toStoredContent(quote) {
+export function toStoredContent(quote) {
   return {
     clientId: quote.client.id,
     items: quote.items.map((item) => ({

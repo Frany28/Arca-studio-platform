@@ -17,6 +17,8 @@ const PROJECT_NAME_UNIQUE_CONSTRAINT = "uq_projects_client_active_name";
 const PROJECT_NAME_TAKEN_MESSAGE = "Ya existe un proyecto con este nombre para el cliente. Selecciónalo en las sugerencias.";
 // Respaldo del bloqueo consultivo del envío (lockQuoteSubmission).
 const SUBMISSION_UNIQUE_CONSTRAINT = "uq_quotes_created_by_submission";
+// Respaldo del bloqueo FOR UPDATE de la cotización ante dos envíos simultáneos de la misma restauración.
+const RESTORE_REQUEST_UNIQUE_CONSTRAINT = "uq_quote_versions_restore_request";
 const FOREIGN_KEY_FIELDS = Object.freeze({
   fk_quote_items_service: "items",
   fk_quote_items_service_version: "items",
@@ -46,7 +48,7 @@ export function translateQuoteError(error) {
       if (error.constraint === PROJECT_NAME_UNIQUE_CONSTRAINT) {
         return new ValidationError(undefined, { newProjectName: PROJECT_NAME_TAKEN_MESSAGE });
       }
-      if (error.constraint === SUBMISSION_UNIQUE_CONSTRAINT) {
+      if (error.constraint === SUBMISSION_UNIQUE_CONSTRAINT || error.constraint === RESTORE_REQUEST_UNIQUE_CONSTRAINT) {
         return new ConflictError("QUOTE_CONCURRENT_UPDATE", "La cotización se está guardando en este momento. Inténtalo de nuevo.", error);
       }
       return new ConflictError("QUOTE_CONFLICT", "La cotización entra en conflicto con un registro existente.", error);

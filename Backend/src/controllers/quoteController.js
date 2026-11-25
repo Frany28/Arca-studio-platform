@@ -11,6 +11,7 @@ import {
   getQuotesPage,
   updateQuote,
 } from "../services/quoteService.js";
+import { restoreQuoteVersion } from "../services/quoteRestorationService.js";
 import { getFileResponseSecurity } from "../utils/fileResponseSecurity.js";
 
 // Las lecturas no se guardan en caché: editar con una versión antigua provocaría conflictos 409.
@@ -124,6 +125,34 @@ export async function patchQuote(req, res, next) {
       changed: result.changed,
       message: result.changed ? "Cotización actualizada correctamente." : "No había cambios para guardar.",
       quote: result.quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Restaura una versión histórica como versión nueva y vigente (operación comercial del
+ * administrador, sin aprobación posterior). Responde 201 con la versión creada y el estado de su
+ * PDF, o 200 con `replayed: true` si el envío repetía una restauración ya aplicada.
+ *
+ * @param {import("express").Request} req - Solicitud con cotización, versión y cuerpo validados.
+ * @param {import("express").Response} res - Respuesta HTTP.
+ * @param {Function} next - Continúa con el middleware de errores.
+ * @returns {Promise<void>}
+ */
+export async function postQuoteVersionRestore(req, res, next) {
+  try {
+    const { quote, replayed } = await restoreQuoteVersion({
+      payload: req.body,
+      quoteId: req.params.quoteId,
+      user: req.user,
+      versionNumber: req.params.versionNumber,
+    });
+    res.set("Cache-Control", NO_STORE).status(replayed ? 200 : 201).json({
+      message: replayed ? "La versión ya estaba restaurada." : `Versión ${req.params.versionNumber} restaurada como versión ${quote.currentVersion}.`,
+      quote,
+      replayed,
     });
   } catch (error) {
     next(error);
