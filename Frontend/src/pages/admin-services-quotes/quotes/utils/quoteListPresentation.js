@@ -4,8 +4,8 @@ import { fromDayKey } from "../../../../components/ui/DateRangePicker/dateRangeC
 // y filtran con el calendario del navegador: un día local se traduce a instantes exactos para la
 // API, de modo que «20 Mar 2026» incluye toda esa jornada en la zona de quien consulta.
 
-export const QUOTE_SORT_FIELDS = Object.freeze({ CODE: "code", TOTAL: "total" });
-export const DEFAULT_QUOTE_SORT = Object.freeze({ direction: "asc", sort: QUOTE_SORT_FIELDS.CODE });
+export const QUOTE_SORT_FIELDS = Object.freeze({ CODE: "code", CREATED: "createdAt", TOTAL: "total" });
+export const DEFAULT_QUOTE_SORT = Object.freeze({ direction: "desc", sort: QUOTE_SORT_FIELDS.CREATED });
 
 /**
  * Convierte el intervalo de días elegido en los instantes que espera la API: `createdFrom` es la

@@ -1,7 +1,7 @@
 import { pool, query } from "../config/db.js";
 import { isProjectFileReviewEnabled } from "../config/projectFileReview.js";
 import { mapRequestToDraftProject } from "../domain/projectConfiguration.js";
-import { pageResult } from "../utils/pagination.js";
+import { pageResult, preciseCursorTimestampSql } from "../utils/pagination.js";
 import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
 import { ensureProjectSystemFolders } from "./projectSystemFolderRepository.js";
 import { CLIENT_FILES_FOLDER_KEY } from "../domain/documentClassification.js";
@@ -276,14 +276,15 @@ export async function listProjectRequestReviewQueue({ cursor, limit, user }) {
 
   if (cursor) {
     params.push(cursor[0], cursor[1]);
-    cursorCondition = "and (request.updated_at, request.id) < ($3::timestamptz, $4::bigint)";
+    cursorCondition = "and (request.created_at, request.id) < ($3::timestamptz, $4::bigint)";
   }
 
   params.push(limit + 1);
   const result = await query(
     `
       select
-${WORKFLOW_REQUEST_COLUMNS}
+${WORKFLOW_REQUEST_COLUMNS},
+      ${preciseCursorTimestampSql("request.created_at")} as created_at_cursor
       from public.project_requests request
 ${workflowRequestRelations()}
       where request.deleted_at is null
@@ -301,7 +302,7 @@ ${workflowRequestRelations()}
           )
         )
         ${cursorCondition}
-      order by request.updated_at desc, request.id desc
+      order by request.created_at desc, request.id desc
       limit $${params.length}
     `,
     params,
@@ -312,7 +313,7 @@ ${workflowRequestRelations()}
     result.rows,
     limit,
     (row) => (isAdmin ? toWorkflowRequest(row) : { ...toWorkflowRequest(row), clientName: null }),
-    (row) => [row.updated_at, Number(row.id)],
+    (row) => [row.created_at_cursor, String(row.id)],
   );
 }
 

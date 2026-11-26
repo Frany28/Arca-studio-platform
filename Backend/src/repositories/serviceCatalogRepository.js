@@ -1,3 +1,4 @@
+import { preciseCursorTimestampSql } from "../utils/pagination.js";
 import { query } from "../config/db.js";
 import { SERVICE_UNIT_POSITION, formatUnitOptionLabel } from "../domain/serviceUnitOptions.js";
 import { toContainsPattern } from "../utils/sqlPatterns.js";
@@ -72,12 +73,12 @@ function toService(row) {
 }
 
 /**
- * Lista servicios del catálogo en orden de visualización estable (sort_order, id) con cursor.
+ * Lista servicios del catálogo en orden descendente de creación (fecha e id) con cursor.
  * Pide un elemento adicional para que el servicio determine si existe otra página. Filtra
  * por texto en nombre o código, estado, unidad y tipo, siempre con parámetros.
  *
  * @param {object} options - Filtros y paginación.
- * @param {Array<number>|null} options.cursor - [sortOrder, id] del último servicio visto.
+ * @param {Array<string>|null} options.cursor - [fecha de creación, id] del último servicio visto.
  * @param {number} options.limit - Tamaño de página.
  * @param {string} [options.search] - Texto a buscar en nombre o código.
  * @param {boolean} [options.isActive] - Filtra por estado.
@@ -88,15 +89,15 @@ function toService(row) {
  */
 export async function listServices({ cursor, isActive, kind, limit, measurementUnitId, search, unitDenominationId }) {
   const result = await query(
-    `select ${SERVICE_COLUMNS}
+    `select ${SERVICE_COLUMNS}, ${preciseCursorTimestampSql("s.created_at")} as created_at_cursor
      ${SERVICE_FROM}
      where ($1::text is null or s.name ilike $1 escape '\\' or s.code ilike $1 escape '\\')
        and ($2::boolean is null or s.is_active = $2)
        and ($3::bigint is null or s.measurement_unit_id = $3)
        and ($4::public.service_kind is null or s.kind = $4)
-       and ($5::integer is null or (s.sort_order, s.id) > ($5, $6::bigint))
+       and ($5::timestamptz is null or (s.created_at, s.id) < ($5::timestamptz, $6::bigint))
        and ($8::bigint is null or s.unit_denomination_id = $8)
-     order by s.sort_order, s.id
+     order by s.created_at desc, s.id desc
      limit $7`,
     [
       search ? toContainsPattern(search) : null,
@@ -109,7 +110,7 @@ export async function listServices({ cursor, isActive, kind, limit, measurementU
       unitDenominationId ?? null,
     ],
   );
-  return result.rows.map(toService);
+  return result.rows.map((row) => ({ ...toService(row), cursorCreatedAt: row.created_at_cursor }));
 }
 
 /**

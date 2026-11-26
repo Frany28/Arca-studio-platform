@@ -22,7 +22,7 @@ export const QUOTE_NOTES_MAX_LENGTH = 2000;
 export const QUOTE_MAX_ITEMS = 100;
 
 /** Órdenes del listado (encabezados N° y Total de Figma 5771:488506). */
-export const QUOTE_SORT_FIELDS = Object.freeze({ CODE: "code", TOTAL: "total" });
+export const QUOTE_SORT_FIELDS = Object.freeze({ CODE: "code", CREATED: "createdAt", TOTAL: "total" });
 export const QUOTE_SORT_DIRECTIONS = Object.freeze({ ASC: "asc", DESC: "desc" });
 
 const QUOTE_CODE_PREFIX = "COT-";

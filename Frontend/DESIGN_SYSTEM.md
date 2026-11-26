@@ -529,8 +529,8 @@ a una intervención independiente de la validación del contrato del riel.
   pertenece al viewport de la tabla; el documento y el shell no recortan desbordamientos.
   La variante por defecto del dashboard conserva sus cinco proyectos por página.
 - Orden: solicitudes y proyectos (draft, en espera, en progreso, finalizados y archivados) forman
-  una sola lista por última actividad, de la más reciente a la más antigua (`updatedAt`, con
-  `createdAt` como respaldo; los empates conservan el orden de la API), sin agrupar por tipo ni estado
+  una sola lista por fecha de creación, de la más reciente a la más antigua
+  (`createdAt`), sin agrupar por tipo ni estado
   (`pages/admin-projects/utils/adminProjectRowOrder.js`). Búsqueda, filtros y paginación conservan
   ese orden.
 - Búsqueda, filtros, selección, paginación y estados visuales reutilizan los contratos

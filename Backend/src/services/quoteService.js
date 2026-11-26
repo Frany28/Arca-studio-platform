@@ -52,7 +52,7 @@ const CLIENT_NAME_MATCH_LIMIT = 50;
 
 /**
  * Obtiene una página del listado de cotizaciones con búsqueda, intervalo de fechas y orden por
- * código o por total, paginada por cursor. No usa caché: los datos cambian por edición directa.
+ * fecha de creación, código o total, paginada por cursor. No usa caché: los datos cambian por edición directa.
  *
  * @param {object} filters - Consulta validada por quoteListSchema.
  * @returns {Promise<{ quotes: Array<object>, nextCursor: string|null }>} Página del listado.
@@ -68,10 +68,13 @@ export async function getQuotesPage(filters) {
     search: filters.search,
     sort: filters.sort,
   });
-  const cursorValues = filters.sort === QUOTE_SORT_FIELDS.TOTAL
-    ? (quote) => [quote.servicesTotal, String(quote.id)]
-    : (quote) => [String(quote.id), String(quote.id)];
-  const page = pageResult(rows, limit, (quote) => quote, cursorValues);
+  const cursorKey = {
+    [QUOTE_SORT_FIELDS.CODE]: (quote) => String(quote.id),
+    [QUOTE_SORT_FIELDS.CREATED]: (quote) => quote.cursorCreatedAt,
+    [QUOTE_SORT_FIELDS.TOTAL]: (quote) => quote.servicesTotal,
+  }[filters.sort];
+  const page = pageResult(rows, limit, ({ cursorCreatedAt, ...quote }) => quote,
+    (quote) => [cursorKey(quote), String(quote.id)]);
   return { nextCursor: page.nextCursor, quotes: page.items };
 }
 

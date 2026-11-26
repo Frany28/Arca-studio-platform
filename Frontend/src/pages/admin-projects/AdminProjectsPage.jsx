@@ -23,7 +23,7 @@ import ProjectSettingsModal from "./components/ProjectSettingsModal.jsx";
 import { useAdminProjectRequestRows } from "./hooks/useAdminProjectRequestRows.js";
 import { useProjectRowActions } from "./hooks/useProjectRowActions.js";
 import { getAdminProjectMetrics } from "./utils/adminProjectMetrics.js";
-import { sortByLatestActivity } from "./utils/adminProjectRowOrder.js";
+import { sortByNewestCreation } from "./utils/adminProjectRowOrder.js";
 import { isProjectRequestRow } from "./utils/projectRequestRows.js";
 import { getProjectRowActions } from "./utils/projectRowActions.js";
 
@@ -38,7 +38,7 @@ const EDIT_RETURN_TARGET = Object.freeze({ label: "Gestión de proyectos", to: "
  * tras la respuesta del servidor. Edición y acciones masivas permanecen fuera de esta fase.
  * La tabla incluye las solicitudes abiertas (Figma 3727:686417) con el estado «Solicitud»: su ojo
  * abre el detalle de la solicitud y sus responsables usan el contrato de solicitudes. Todas las
- * filas se ordenan por última actividad (`sortByLatestActivity`), sin agrupar por estado.
+ * filas se ordenan por fecha de creación (`sortByNewestCreation`), sin agrupar por estado.
  * @returns {import("react").ReactElement} Página administrativa responsive con datos reales.
  */
 export default function AdminProjectsPage() {
@@ -62,10 +62,10 @@ export default function AdminProjectsPage() {
   const { requestRows, requestsError, requestsLoading, updateRequestAssignees } = useAdminProjectRequestRows({
     enabled: Boolean(user), requestKey,
   });
-  // Una sola lista por última actividad (decisión del usuario): solicitudes y proyectos de
+  // Una sola lista por fecha de creación: solicitudes y proyectos de
   // cualquier estado se mezclan de la más reciente a la más antigua. Las solicitudes conservan su
   // forma de proyecto con id prefijado.
-  const tableRows = useMemo(() => sortByLatestActivity([...requestRows, ...projectRows]), [projectRows, requestRows]);
+  const tableRows = useMemo(() => sortByNewestCreation([...requestRows, ...projectRows]), [projectRows, requestRows]);
   const metrics = useMemo(() => getAdminProjectMetrics(projects), [projects]);
   const display = (value) => value === null || value === undefined ? "—" : NUMBER_FORMATTER.format(value);
   const { dialog } = rowActions;

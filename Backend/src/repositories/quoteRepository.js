@@ -1,3 +1,4 @@
+import { preciseCursorTimestampSql } from "../utils/pagination.js";
 import { query } from "../config/db.js";
 import { QUOTE_SORT_DIRECTIONS, QUOTE_SORT_FIELDS } from "../domain/quote.js";
 import { formatUnitOptionLabel } from "../domain/serviceUnitOptions.js";
@@ -14,11 +15,15 @@ const QUOTE_FROM = `
   inner join public.quote_versions v on v.quote_id = q.id and v.is_current`;
 
 // Fragmentos de orden en lista blanca: la consulta solo interpola estas constantes, nunca la entrada.
-// Los valores del cursor ocupan los parámetros $4 (y $5 por total); el código deriva del id.
+// Los valores del cursor ocupan los parámetros $4 (y $5 por fecha o total); el código deriva del id.
 const LIST_ORDERS = Object.freeze({
   [QUOTE_SORT_FIELDS.CODE]: Object.freeze({
     [QUOTE_SORT_DIRECTIONS.ASC]: { cursor: "q.id > $4::bigint", order: "q.id asc" },
     [QUOTE_SORT_DIRECTIONS.DESC]: { cursor: "q.id < $4::bigint", order: "q.id desc" },
+  }),
+  [QUOTE_SORT_FIELDS.CREATED]: Object.freeze({
+    [QUOTE_SORT_DIRECTIONS.ASC]: { cursor: "(q.created_at, q.id) > ($4::timestamptz, $5::bigint)", order: "q.created_at asc, q.id asc" },
+    [QUOTE_SORT_DIRECTIONS.DESC]: { cursor: "(q.created_at, q.id) < ($4::timestamptz, $5::bigint)", order: "q.created_at desc, q.id desc" },
   }),
   [QUOTE_SORT_FIELDS.TOTAL]: Object.freeze({
     [QUOTE_SORT_DIRECTIONS.ASC]: { cursor: "(v.services_total, q.id) > ($4::numeric, $5::bigint)", order: "v.services_total asc, q.id asc" },
@@ -28,7 +33,7 @@ const LIST_ORDERS = Object.freeze({
 
 /**
  * Valores del cursor en el orden de sus parámetros: por código solo el id; por total, el
- * total y el id de desempate.
+ * total y el id de desempate. Por fecha lleva el instante y el id.
  *
  * @param {string} sort - Campo de orden.
  * @param {Array<string>|null} cursor - [clave, id] del último registro visto.
@@ -36,7 +41,7 @@ const LIST_ORDERS = Object.freeze({
  */
 function cursorParameters(sort, cursor) {
   if (!cursor) return [];
-  return sort === QUOTE_SORT_FIELDS.TOTAL ? [cursor[0], cursor[1]] : [cursor[1]];
+  return sort === QUOTE_SORT_FIELDS.CODE ? [cursor[1]] : cursor;
 }
 
 /**
@@ -144,7 +149,7 @@ export async function listQuotes({ createdBefore, createdFrom, cursor, direction
   const order = LIST_ORDERS[sort][direction];
   const cursorValues = cursorParameters(sort, cursor);
   const result = await query(
-    `select ${QUOTE_SUMMARY_COLUMNS}
+    `select ${QUOTE_SUMMARY_COLUMNS}, ${preciseCursorTimestampSql("q.created_at")} as created_at_cursor
      ${QUOTE_FROM}
      where ($1::text is null or q.code ilike $1 escape '\\' or v.client_name ilike $1 escape '\\' or v.project_name ilike $1 escape '\\')
        and ($2::timestamptz is null or q.created_at >= $2)
@@ -154,7 +159,7 @@ export async function listQuotes({ createdBefore, createdFrom, cursor, direction
      limit $${4 + cursorValues.length}`,
     [search ? toContainsPattern(search) : null, createdFrom ?? null, createdBefore ?? null, ...cursorValues, limit + 1],
   );
-  return result.rows.map(toQuoteSummary);
+  return result.rows.map((row) => ({ ...toQuoteSummary(row), cursorCreatedAt: row.created_at_cursor }));
 }
 
 /**

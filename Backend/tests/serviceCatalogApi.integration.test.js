@@ -295,7 +295,7 @@ test("listado: búsqueda literal por nombre o código generado, filtros y pagina
   assert.deepEqual((await catalog.getServicesPage({ kind: "turnkey" })).services.map((s) => s.id).sort((a, b) => a - b), [created.llave, created.llavePunto, created.puntos].sort((a, b) => a - b));
   assert.ok((await catalog.getServicesPage({ measurementUnitId: ids.point })).services.every((s) => s.measurementUnit.id === ids.point));
 
-  const all = await rows("select id::int, sort_order from public.services order by sort_order, id");
+  const all = await rows("select id::int from public.services order by created_at desc, id desc");
   const seen = [];
   let cursor;
   do {

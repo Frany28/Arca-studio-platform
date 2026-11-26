@@ -35,8 +35,7 @@ const presentationLabel = z.union([z.string(), z.null()]).optional()
   .refine((value) => !value || value.length <= PRESENTATION_LABEL_MAX_LENGTH, `Admite como máximo ${PRESENTATION_LABEL_MAX_LENGTH} caracteres.`);
 
 /**
- * Comprueba que un cursor del catálogo contenga el orden de visualización y el id del último
- * servicio de la página anterior, ambos enteros no negativos.
+ * Comprueba la fecha de creación y el id del último registro de la página anterior.
  *
  * @param {string|undefined} value - Cursor opaco recibido.
  * @returns {boolean} true si el cursor está ausente o es válido.
@@ -44,7 +43,7 @@ const presentationLabel = z.union([z.string(), z.null()]).optional()
 function isValidCatalogCursor(value) {
   if (!value) return true;
   const decoded = decodeCursor(value);
-  return Boolean(decoded && Number.isInteger(decoded[0]) && decoded[0] >= 0 && /^\d+$/.test(String(decoded[1])));
+  return Boolean(decoded && z.iso.datetime().safeParse(decoded[0]).success && /^\d+$/.test(String(decoded[1])));
 }
 
 const serviceIdParams = z.object({ serviceId: positiveId });

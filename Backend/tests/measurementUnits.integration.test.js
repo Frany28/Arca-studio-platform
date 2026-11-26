@@ -653,9 +653,8 @@ test("listado de denominaciones: filtros, búsqueda literal y paginación por cu
     cursor = page.nextCursor;
   } while (cursor);
   assert.deepEqual(seen, all.map((item) => item.id));
-  // Orden: unidad base (sort_order) y después texto.
-  const order = all.map((item) => [item.measurementUnit.sortOrder, item.denomination]);
-  assert.deepEqual(order, [...order].sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0)));
+  const expected = await rows("select id::int from public.measurement_unit_denominations order by created_at desc, id desc");
+  assert.deepEqual(seen, expected.map((item) => item.id));
   assert.ok((await units.getDenominationsPage({ measurementUnitId: ids.units.square_meter })).unitDenominations.every((item) => item.measurementUnit.code === "square_meter"));
   assert.ok((await units.getDenominationsPage({ status: "inactive" })).unitDenominations.every((item) => !item.isActive));
   assert.deepEqual((await units.getDenominationsPage({ search: "%" })).unitDenominations, []);
