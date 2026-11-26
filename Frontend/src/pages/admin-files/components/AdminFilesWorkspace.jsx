@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
 import EmptyState from "../../../components/ui/EmptyState/EmptyState.jsx";
@@ -13,11 +13,11 @@ import { useAdminFileVersionDownload } from "../hooks/useAdminFileVersionDownloa
 import { useAdminQuotePdfDownload } from "../hooks/useAdminQuotePdfDownload.js";
 import { ADMIN_FILES_PAGE_SIZE, useAdminFilesItems } from "../hooks/useAdminFilesItems.js";
 import { useAdminFilesTree } from "../hooks/useAdminFilesTree.js";
+import { describeReviewResult } from "../utils/adminFileReview.js";
 import { describeUploadResult } from "../utils/adminFileUpload.js";
 import { ADMIN_FILES_TABS, getItemsEmptyCopy, getUploadDisabledReason } from "../utils/adminFilesPresentation.js";
 import { isQuoteItem } from "../utils/adminQuoteDocuments.js";
 import AdminFileFolderDialog from "./AdminFileFolderDialog.jsx";
-import AdminFileReviewResultDialog from "./AdminFileReviewResultDialog.jsx";
 import AdminFileUploadDialog from "./AdminFileUploadDialog.jsx";
 import AdminFileViewerDialog from "./AdminFileViewerDialog.jsx";
 import AdminFileWarrantyDialog from "./AdminFileWarrantyDialog.jsx";
@@ -63,12 +63,19 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   const items = useAdminFilesItems();
   const tree = useAdminFilesTree({ enabled: true });
   const feedback = useAlertFeedback();
+  const tabsRef = useRef(null);
+  const focusTabAfterReview = useRef(false);
   const [selection, setSelection] = useState(NO_SCOPE);
   const [expanded, setExpanded] = useState(() => new Set());
   const [viewer, setViewer] = useState(null);
   const [warrantyItem, setWarrantyItem] = useState(null);
-  const [reviewResult, setReviewResult] = useState(null);
   const [uploadDialog, setUploadDialog] = useState(null);
+  useEffect(() => {
+    // El visor ya ejecutó su limpieza de foco y la fila revisada puede haber desaparecido.
+    if (viewer || !focusTabAfterReview.current) return;
+    focusTabAfterReview.current = false;
+    tabsRef.current?.querySelector('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
+  }, [viewer]);
   const downloads = useAdminFileVersionDownload({
     onError: (message, name) => feedback.notify("danger", "No se pudo descargar el archivo", message, name),
   });
@@ -146,6 +153,21 @@ function AdminFilesWorkspace({ onMetricsStale }) {
     onMetricsStale();
   }
 
+  /**
+   * Cierra el visor tras la revisión confirmada y devuelve el foco a la pestaña activa:
+   * la fila que abrió el visor puede salir de la lista cuando cambia de estado.
+   *
+   * @param {"approve"|"reject"} action - Revisión confirmada por la API.
+   * @returns {void}
+   */
+  function handleReviewed(action) {
+    focusTabAfterReview.current = true;
+    setViewer(null);
+    refreshAfterOperation();
+    const { title, description } = describeReviewResult(action);
+    feedback.notify("success", title, description);
+  }
+
   const filtered = items.hasFilters || (showTree && Boolean(selection.projectId));
   let content;
   if (items.loading) {
@@ -218,6 +240,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   return (
     <div className="flex flex-col gap-[48px]">
       <HorizontalTabMenu
+        ref={tabsRef}
         items={TAB_LABELS}
         activeIndex={tabIndex}
         style="Underlined"
@@ -274,10 +297,7 @@ function AdminFilesWorkspace({ onMetricsStale }) {
           feedback={feedback}
           onChanged={refreshAfterOperation}
           onClose={() => setViewer(null)}
-          onReviewed={(review) => {
-            setViewer(null);
-            setReviewResult(review);
-          }}
+          onReviewed={handleReviewed}
         />
       ) : null}
       {uploadDialog ? (
@@ -295,7 +315,6 @@ function AdminFilesWorkspace({ onMetricsStale }) {
           onClose={() => setWarrantyItem(null)}
         />
       ) : null}
-      <AdminFileReviewResultDialog review={reviewResult} onClose={() => setReviewResult(null)} />
       <StatusConfirmationModal
         change={folders.removal}
         submitting={folders.removing}

@@ -88,14 +88,14 @@ test("history labels and restore availability follow the backend rules", () => {
   assert.match(getRestoreAvailability(approvedOld, [pending, current, approvedOld]).reason, /pendiente/);
 });
 
-test("success messages reproduce Figma (3795:579327 / 3795:579509) without promising sharing", () => {
+test("review alerts describe completed actions without promising sharing", () => {
   const approved = describeReviewResult("approve");
   assert.equal(approved.title, "Archivo aprobado correctamente");
-  assert.equal(approved.description, "El archivo se ha aprobado exitosamente y ya está disponible según los permisos del proyecto, esto será notificado a los usuarios pertinentes.");
+  assert.equal(approved.description, "El archivo fue aprobado y está disponible según los permisos del proyecto.");
   assert.doesNotMatch(approved.description, /compart|cliente|públic/i);
   const rejected = describeReviewResult("reject");
   assert.equal(rejected.title, "Archivo rechazado correctamente");
-  assert.equal(rejected.description, "La carga del archivo se ha rechazado exitosamente, esto será notificado a los usuarios pertinentes.");
+  assert.equal(rejected.description, "El motivo del rechazo quedó guardado en el historial de versiones.");
   assert.match(describeRestoreResult({ review: { status: "pending" }, versionNumber: 5 }, { versionNumber: 2 }), /V5 a partir de la V2, que se conserva en el historial\. La nueva versión queda pendiente de revisión/);
 });
 
@@ -106,7 +106,12 @@ test("409 conflicts and stale responses map to readable messages and a refresh",
   assert.equal(describeOperationError({ code: "WARRANTY_RETIRED" }, "x").stale, true);
   assert.equal(describeOperationError({ code: "VALIDATION_ERROR", fields: { "body.reason": ["Escribe el motivo."] } }, "x").fieldError, "Escribe el motivo.");
   assert.equal(describeOperationError({ code: "VALIDATION_ERROR", fields: { "body.changeNote": "Muy largo" } }, "x").fieldError, "Muy largo");
-  assert.equal(describeOperationError({ message: "Error del servidor" }, "x").message, "Error del servidor");
+  assert.deepEqual(describeOperationError({
+    code: "INTERNAL_ERROR",
+    fields: { "body.reason": "Detalle interno" },
+    message: "Detalle interno del servidor",
+    status: 500,
+  }, "Inténtalo de nuevo."), { fieldError: "", message: "Inténtalo de nuevo.", stale: false });
 });
 
 test("U2 API calls use the documented version, review and warranty routes", async () => {

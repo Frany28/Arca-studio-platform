@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import clsx from "clsx";
 
 import Button from "../../../components/ui/Button/Button.jsx";
 import Modal, { ModalCloseButton } from "../../../components/ui/Modal/Modal.jsx";
@@ -38,6 +39,8 @@ const COPY = Object.freeze({
     submitting: "Restaurando...",
   },
 });
+
+const REJECT_TEXT_AREA_HEIGHT = 130;
 
 /**
  * Motivo obligatorio de una operación (Figma 3727:683879, «Motivo del rechazo»): rechazar una
@@ -105,7 +108,12 @@ function AdminFileReasonDialog({ description = "", kind, onClose, onSubmit, subj
         aria-modal="true"
         aria-labelledby={titleId}
         data-admin-file-reason={kind}
-        className="flex max-h-[calc(100dvh-32px)] w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]"
+        className={clsx(
+          "relative flex max-h-[calc(100dvh-32px)] w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]",
+          kind === "reject"
+            ? "border-0 after:pointer-events-none after:absolute after:inset-0 after:z-[2] after:rounded-[inherit] after:border after:border-[var(--color-neutral-200)] after:content-['']"
+            : "border border-[var(--color-neutral-200)]",
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         <form id={formId} className="relative flex min-h-0 flex-col gap-[8px] overflow-y-auto p-[16px]" onSubmit={handleSubmit} noValidate>
@@ -116,6 +124,8 @@ function AdminFileReasonDialog({ description = "", kind, onClose, onSubmit, subj
           <TextArea
             label={copy.label}
             required
+            aria-required={kind === "reject" ? "true" : undefined}
+            showRequiredIndicator={kind !== "reject"}
             showLabel
             showLabelInfo={false}
             value={reason}
@@ -125,10 +135,11 @@ function AdminFileReasonDialog({ description = "", kind, onClose, onSubmit, subj
             aria-describedby={[fieldError ? `${formId}-error` : "", `${formId}-hint`, description ? `${formId}-description` : ""].filter(Boolean).join(" ")}
             disabled={submitting}
             maxLength={copy.maxLength}
-            rows={kind === "reject" ? 4 : 5}
-            // Rechazo (Figma 3727:683721): el modal mide 400 × 260 (cuerpo 187 y pie 73).
-            minHeight={kind === "reject" ? 99 : undefined}
-            className="max-w-none pr-[24px]"
+            rows={5}
+            // Solo el rechazo tiene una geometría aprobada en Figma: la superficie completa del
+            // campo mide 130 px. Las restauraciones conservan el alto anterior del TextArea.
+            fieldHeight={kind === "reject" ? REJECT_TEXT_AREA_HEIGHT : undefined}
+            className={kind === "reject" ? "max-w-none" : "max-w-none pr-[24px]"}
             onChange={(event) => {
               setReason(event.target.value);
               setFieldError("");
@@ -145,7 +156,14 @@ function AdminFileReasonDialog({ description = "", kind, onClose, onSubmit, subj
           {fieldError ? <p id={`${formId}-error`} className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{fieldError}</p> : null}
           {submitError ? <p className="text-body-3 m-0 text-[var(--color-danger-100)]" role="alert">{submitError}</p> : null}
         </form>
-        <footer className="flex items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
+        <footer
+          className={clsx(
+            "flex items-center gap-[16px] p-[16px]",
+            kind === "reject"
+              ? "relative before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[var(--color-neutral-200)] before:content-['']"
+              : "border-t border-[var(--color-neutral-200)]",
+          )}
+        >
           <Button theme="Primary" type="Outline" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting} className="!h-[41px] !w-full min-w-0 flex-1" onClick={onClose}>Volver</Button>
           <Button theme="Primary" type="Solid" size="M" showLeftIcon={false} showRightIcon={false} disabled={submitting} className="!h-[41px] !w-full min-w-0 flex-1" htmlType="submit" form={formId}>
             {submitting ? copy.submitting : copy.submit}

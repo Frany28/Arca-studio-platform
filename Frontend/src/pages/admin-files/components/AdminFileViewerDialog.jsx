@@ -76,7 +76,7 @@ function versionFromItem(item) {
  * @param {Object} props.item - Fila de la tabla (FileManagerItem).
  * @param {HTMLElement|null} [props.returnFocusTo] - Control que abrió el visor.
  * @param {() => void} props.onClose - Cierra el visor.
- * @param {(review: { action: "approve"|"reject", result: Object, name: string }) => void} props.onReviewed - Revisión confirmada.
+ * @param {(action: "approve"|"reject") => void} props.onReviewed - Revisión confirmada.
  * @param {() => void} props.onChanged - Recarga tabla y métricas.
  * @param {{ notify: Function }} props.feedback - Avisos de la página.
  * @param {{ download: Function, downloadingVersionId: number|null }} props.downloads - Descargas (useAdminFileVersionDownload).
@@ -142,9 +142,8 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
    */
   async function approve() {
     const outcome = await operations.approve({ ...file, versionId: displayed.id });
-    if (!outcome.ok) return;
-    onChanged();
-    onReviewed({ action: "approve", name: displayName, result: outcome.result });
+    if (outcome.ok) onReviewed("approve");
+    else if (outcome.message) feedback.notify("danger", "No se pudo aprobar el archivo", outcome.message);
   }
 
   /**
@@ -159,8 +158,11 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
       const outcome = await operations.reject({ ...file, versionId: target.id }, reason);
       if (outcome.ok) {
         setReasonDialog(null);
-        onChanged();
-        onReviewed({ action: "reject", name: displayName, result: outcome.result });
+        onReviewed("reject");
+      } else if (!outcome.fieldError && outcome.message) {
+        // El diálogo conserva el borrador; la alerta es el único aviso para errores generales.
+        feedback.notify("danger", "No se pudo rechazar el archivo", outcome.message);
+        return { ok: false };
       }
       return outcome;
     }
@@ -238,22 +240,18 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
       displayedVersionId={displayed.id}
       actionsDisabled={busy}
       addVersion={{ ...replaceAvailability, onClick: () => setReplaceOpen(true) }}
-      onView={(version) => {
-        operations.clearError();
-        setDisplayedVersionId(version.id);
-      }}
+      onView={(version) => setDisplayedVersionId(version.id)}
       onDownload={downloadVersion}
       onRestore={(version) => setReasonDialog({ kind: "restore", version })}
     />
   );
   // Sin el modal de documentos, el drawer de medios recoge lo que su cabecera y su pie mostraban:
-  // la versión que se ve si no es la vigente, el error de una operación y las acciones de revisión
+  // la versión que se ve si no es la vigente y las acciones de revisión
   // y de garantías. «Cerrar» es la X del escenario y «Reemplazar», el «+» del historial.
   const showWarranties = !pending && canLinkWarranties(item);
-  const mediaPanel = versionSuffix || operations.error || pending || showWarranties ? (
+  const mediaPanel = versionSuffix || pending || showWarranties ? (
     <div className="mt-auto flex flex-col gap-[12px] border-t border-[var(--color-neutral-200)] pt-[16px]" data-admin-file-media-actions>
       {versionSuffix ? <p className="text-body-3 m-0 text-[var(--color-text-200)]" data-admin-file-viewer-status>Mostrando {versionSuffix}</p> : null}
-      {operations.error ? <p role="alert" className="text-body-3 m-0 text-[var(--color-danger-100)]">{operations.error}</p> : null}
       {pending || showWarranties ? (
         <div className="flex flex-wrap gap-[12px]">
           {pending ? (
@@ -319,7 +317,6 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
                       {surface}
                     </div>
                   </div>
-                  {operations.error ? <p role="alert" className="text-body-3 m-0 border-t border-[var(--color-neutral-200)] px-[16px] py-[12px] text-[var(--color-danger-100)]">{operations.error}</p> : null}
                   <footer className="flex w-full shrink-0 flex-wrap items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
                     {pending ? (
                       <>

@@ -56,6 +56,7 @@ function TextArea({
   showHint = true,
   showLabelInfo = true,
   required = false,
+  showRequiredIndicator = required,
   disabled = false,
   value,
   defaultValue,
@@ -64,6 +65,7 @@ function TextArea({
   onBlur,
   rows = 5,
   minHeight = 130,
+  fieldHeight,
   resize = false,
   textareaClassName,
   style,
@@ -112,7 +114,7 @@ function TextArea({
         <Label
           htmlFor={textAreaId}
           label={label}
-          required={required}
+          required={showRequiredIndicator}
           information={showLabelInfo}
           infoIcon={labelInfoIcon}
           state={styles.labelState}
@@ -124,6 +126,7 @@ function TextArea({
           "relative flex w-full overflow-hidden rounded-[var(--radius-2)] transition-[border-color,box-shadow,background-color] duration-150",
           styles.shell,
         )}
+        style={fieldHeight == null ? undefined : { blockSize: `${fieldHeight}px` }}
         data-state={resolvedState.toLowerCase()}
         onMouseEnter={() => {
           if (!disabled) {
@@ -150,7 +153,10 @@ function TextArea({
             aria-invalid={resolvedAriaInvalid}
             rows={rows}
             className={clsx(
-              "text-body-3 min-h-[var(--textarea-min-height)] w-full flex-1 border-0 bg-transparent p-0 tracking-[-0.5px] outline-none",
+              "text-body-3 w-full flex-1 border-0 bg-transparent p-0 tracking-[-0.5px] outline-none",
+              fieldHeight == null
+                ? "min-h-[var(--textarea-min-height)]"
+                : "min-h-0",
               resize ? "resize-y" : "resize-none",
               disabled ? "cursor-not-allowed" : "cursor-text",
               styles.text,

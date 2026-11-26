@@ -872,6 +872,8 @@ const viewerDialog = (page) => page.locator("[data-admin-file-viewer]");
 const viewerHeader = (viewer) => viewer.locator("[data-admin-file-modal] article");
 const reviewRequests = (backend, action) => backend.requests.filter((request) => request.method === "POST" && request.path.endsWith(`/${action}`));
 const metricsReads = (backend) => backend.requests.filter((request) => request.path === "/api/admin/files/metrics").length;
+const reviewAlert = (page) => page.getByRole("alert", { name: "Gestión de archivos actualizada" });
+const reviewErrorAlert = (page) => page.getByRole("alert", { name: "Error en la gestión de archivos" });
 
 /**
  * Abre la pestaña de pendientes y el visor de «Propuesta pendiente.pdf» desde «Revisar».
@@ -898,19 +900,38 @@ test("U2 · «Revisar» abre el PDF con historial; aprobar confirma lo que devue
   assert.equal(backend.requests.find((request) => request.path === "/api/projects/1/files/50/content").search.versionId, "500");
 
   const metricsBefore = metricsReads(backend);
+  let release;
+  const responseGate = new Promise((resolve) => { release = resolve; });
+  await page.route((url) => url.pathname.endsWith("/approve"), async (route) => {
+    await responseGate;
+    await route.fallback();
+  });
   await viewer.getByRole("button", { name: "Aprobar" }).click();
-  const result = page.locator("[data-admin-file-review-result]");
+  const result = reviewAlert(page);
+  try {
+    const busy = viewer.getByRole("button", { name: "Aprobando..." });
+    await busy.waitFor();
+    assert.equal(await busy.isDisabled(), true);
+    assert.equal(await result.count(), 0, "la aprobación todavía no ha sido confirmada");
+    await busy.evaluate((button) => button.click());
+  } finally {
+    release();
+  }
   await result.getByText("Archivo aprobado correctamente").waitFor();
-  // Figma 3795:579327: texto, icono de éxito y «Cancelar»/«Aceptar» (la operación ya está confirmada).
-  await result.getByText("El archivo se ha aprobado exitosamente y ya está disponible según los permisos del proyecto, esto será notificado a los usuarios pertinentes.").waitFor();
-  assert.deepEqual(await result.getByRole("button").evaluateAll((buttons) => buttons.map((button) => button.textContent.trim()).filter(Boolean)), ["Cancelar", "Aceptar"]);
+  await result.getByText("El archivo fue aprobado y está disponible según los permisos del proyecto.").waitFor();
+  assert.equal(await result.count(), 1);
+  assert.equal(await result.getAttribute("aria-live"), "assertive");
+  assert.equal(await page.getByRole("dialog").count(), 0);
   assert.equal(reviewRequests(backend, "approve").length, 1);
   assert.equal(await viewerDialog(page).count(), 0, "el visor se cierra tras aprobar");
   await page.getByText("No hay archivos pendientes").waitFor();
   assert.ok(metricsReads(backend) > metricsBefore, "las métricas se vuelven a leer");
-  await result.getByRole("button", { name: "Cancelar" }).click();
-  await result.waitFor({ state: "detached" });
-  assert.equal(reviewRequests(backend, "approve").length, 1, "cerrar la confirmación no repite la aprobación");
+  const pendingTab = page.getByRole("tab", { name: "Pendientes por aprobación" });
+  await pendingTab.and(page.locator(":focus")).waitFor();
+  await pendingTab.press("ArrowLeft");
+  await page.getByRole("button", { name: "Ver Propuesta pendiente.pdf, versión 2" }).click();
+  await viewer.getByRole("list", { name: "Versiones del archivo" }).getByText("Versión actual", { exact: true }).waitFor();
+  assert.equal(await viewer.getByRole("button", { name: "Aprobar" }).count(), 0);
   // Compartir con el cliente es independiente: aprobar no llamó a las audiencias.
   assert.equal(backend.requests.filter((request) => request.path.includes("/audiences")).length, 0);
 });
@@ -921,35 +942,84 @@ test("U2 · rechazar exige motivo, lo envía y conserva la versión rechazada", 
   const viewer = await openPendingReview(page);
   await viewer.getByRole("button", { name: "Rechazar" }).click();
   const reason = page.locator("[data-admin-file-reason='reject']");
-  // Figma 3727:683721: 400 × 260, solo el campo con su indicador obligatorio, «Volver» y «Enviar».
+  // Figma 3727:683879: 400 px, campo de 130 px, X y pie «Volver» / «Enviar».
   await page.waitForTimeout(400);
   const box = await reason.boundingBox();
-  assert.deepEqual([Math.round(box.width), Math.round(box.height)], [400, 260]);
+  assert.equal(Math.round(box.width), 400);
+  const geometry = await reason.evaluate((dialog) => {
+    const form = dialog.querySelector("form");
+    const textarea = dialog.querySelector("textarea");
+    const field = textarea.parentElement.parentElement;
+    const close = dialog.querySelector("button[aria-label='Cerrar motivo del rechazo']");
+    const footer = dialog.querySelector("footer");
+    const buttons = [...footer.querySelectorAll("button")];
+    const dialogRect = dialog.getBoundingClientRect();
+    const fieldRect = field.getBoundingClientRect();
+    const closeRect = close.getBoundingClientRect();
+    const styles = getComputedStyle(dialog);
+    const borderStyles = getComputedStyle(dialog, "::after");
+    const formStyles = getComputedStyle(form);
+    const footerStyles = getComputedStyle(footer);
+    const footerDividerStyles = getComputedStyle(footer, "::before");
+    return {
+      borderColor: borderStyles.borderTopColor,
+      borderRadius: styles.borderRadius,
+      borderWidth: borderStyles.borderTopWidth,
+      buttonWidths: buttons.map((button) => button.getBoundingClientRect().width),
+      closeRight: dialogRect.right - closeRect.right,
+      closeTop: closeRect.top - dialogRect.top,
+      dialogHeight: dialogRect.height,
+      fieldHeight: fieldRect.height,
+      fieldRadius: getComputedStyle(field).borderRadius,
+      footerGap: footerStyles.columnGap,
+      footerTopBorder: footerDividerStyles.height,
+      formPadding: [formStyles.paddingTop, formStyles.paddingRight, formStyles.paddingBottom, formStyles.paddingLeft],
+    };
+  });
+  assert.equal(Math.round(geometry.dialogHeight), 260, "el diálogo conserva las dimensiones exteriores de Figma");
+  assert.equal(Math.round(geometry.fieldHeight), 130, "el campo completo mide 130 px como Figma 3727:683879");
+  assert.equal(geometry.borderWidth, "1px");
+  assert.notEqual(geometry.borderColor, "rgba(0, 0, 0, 0)");
+  assert.equal(geometry.borderRadius, "12px");
+  assert.equal(geometry.fieldRadius, "8px");
+  assert.deepEqual(geometry.formPadding, ["16px", "16px", "16px", "16px"]);
+  assert.ok(Math.abs(geometry.closeTop) <= 1 && Math.abs(geometry.closeRight) <= 1, "la X ocupa la esquina superior derecha");
+  assert.equal(geometry.footerTopBorder, "1px");
+  assert.equal(geometry.footerGap, "16px");
+  assert.ok(Math.abs(geometry.buttonWidths[0] - geometry.buttonWidths[1]) <= 1, "los botones se distribuyen por igual");
   const hint = await reason.getByText(/Máximo 500 caracteres/).boundingBox();
   assert.ok(hint.width <= 1 && hint.height <= 1, "sin línea de ayuda visible (solo para lectores de pantalla)");
   await reason.getByText("Motivo del rechazo", { exact: true }).waitFor();
-  assert.equal(await reason.getByRole("textbox", { name: /Motivo del rechazo/ }).getAttribute("maxlength"), "500");
-  await reason.getByRole("textbox", { name: /Motivo del rechazo/ }).fill("     ");
+  const reasonField = reason.getByRole("textbox", { name: /Motivo del rechazo/ });
+  assert.equal(await reasonField.evaluate((field) => field === document.activeElement), true, "el foco inicial queda en el motivo");
+  assert.equal(await reasonField.getAttribute("aria-required"), "true", "el motivo conserva su semántica de campo obligatorio");
+  assert.equal(await reason.getByText("*", { exact: true }).count(), 0, "Figma no muestra un indicador adicional junto a la etiqueta");
+  assert.equal(await reasonField.getAttribute("maxlength"), "500");
+  await reasonField.fill("     ");
   await reason.getByRole("button", { name: "Enviar" }).click();
-  await reason.getByText("Escribe el motivo del rechazo.").waitFor();
+  const validationError = reason.getByText("Escribe el motivo del rechazo.");
+  await validationError.waitFor();
+  const [errorBox, footerBox] = await Promise.all([
+    validationError.boundingBox(),
+    reason.locator("footer").boundingBox(),
+  ]);
+  assert.ok(errorBox.y + errorBox.height <= footerBox.y, "el error aumenta el cuerpo sin superponer el pie");
   assert.equal(reviewRequests(backend, "reject").length, 0, "sin motivo no se envía");
-  await reason.getByRole("textbox", { name: /Motivo del rechazo/ }).fill("  Falta la firma del cliente.  ");
+  await reasonField.fill("  Falta la firma del cliente.  ");
+  const metricsBefore = metricsReads(backend);
   await reason.getByRole("button", { name: "Enviar" }).click();
-  const result = page.locator("[data-admin-file-review-result]");
+  const result = reviewAlert(page);
   await result.getByText("Archivo rechazado correctamente").waitFor();
-  await result.getByText("La carga del archivo se ha rechazado exitosamente, esto será notificado a los usuarios pertinentes.").waitFor();
-  assert.equal(await result.locator("svg[class*='danger-100']").evaluate((icon) => getComputedStyle(icon).color), await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.color = "var(--color-danger-100)";
-    document.body.append(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  }), "icono de rechazo en rojo (Figma 3795:579509)");
+  await result.getByText("El motivo del rechazo quedó guardado en el historial de versiones.").waitFor();
+  assert.equal(await result.count(), 1);
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(reviewRequests(backend, "reject").length, 1);
   assert.deepEqual(reviewRequests(backend, "reject")[0].body, { reason: "Falta la firma del cliente." });
-  await result.getByRole("button", { name: "Aceptar" }).click();
+  await waitUntil(() => metricsReads(backend) > metricsBefore);
   await page.getByRole("tab", { name: "Rechazados" }).click();
   await page.getByRole("rowheader", { name: /Propuesta pendiente\.pdf/ }).getByText("Motivo: Falta la firma del cliente.").waitFor();
+  await page.getByRole("button", { name: "Ver Propuesta pendiente.pdf, versión 2" }).click();
+  await viewer.getByRole("list", { name: "Versiones del archivo" }).getByText("Motivo del rechazo: Falta la firma del cliente.").waitFor();
 });
 
 test("U2 · un 409 de versión ya revisada se informa sin cerrar el visor y recarga tabla e historial", async (context) => {
@@ -960,12 +1030,107 @@ test("U2 · un 409 de versión ya revisada se informa sin cerrar el visor y reca
   const itemReads = () => backend.requests.filter((request) => request.path === "/api/admin/files/items").length;
   const [versionsBefore, itemsBefore] = [versionReads(), itemReads()];
   await viewer.getByRole("button", { name: "Aprobar" }).click();
-  await viewer.getByRole("alert").getByText("Esta versión ya fue revisada. Se actualizó la información.").waitFor();
+  const alert = reviewErrorAlert(page);
+  await alert.getByText("No se pudo aprobar el archivo").waitFor();
+  await alert.getByText("Esta versión ya fue revisada. Se actualizó la información.").waitFor();
+  assert.equal(await alert.count(), 1);
   await waitUntil(() => versionReads() > versionsBefore && itemReads() > itemsBefore);
   assert.equal(await viewerDialog(page).count(), 1, "el visor sigue abierto con la versión mostrada");
   await viewerHeader(viewer).getByText("V2 · Pendiente de revisión").waitFor();
-  assert.equal(await page.locator("[data-admin-file-review-result]").getByText("Archivo aprobado correctamente").count(), 0);
+  assert.equal(await reviewAlert(page).count(), 0);
+  assert.equal(await page.getByRole("dialog").count(), 1);
 });
+
+test("U2 · error al rechazar conserva el motivo y permite reintentar con una sola alerta", async (context) => {
+  const operation = "POST /api/projects/:id/files/:id/versions/:id/reject";
+  const failures = {
+    [operation]: {
+      body: { code: "VALIDATION_ERROR", fields: { "body.reason": ["Revisa el motivo del rechazo."] } },
+      status: 400,
+    },
+  };
+  const backend = createBackend({ failures });
+  const page = await openFiles(context, backend);
+  const viewer = await openPendingReview(page);
+  await viewer.getByRole("button", { name: "Rechazar" }).click();
+  const dialog = page.locator("[data-admin-file-reason='reject']");
+  const field = dialog.getByRole("textbox", { name: "Motivo del rechazo" });
+  const send = dialog.getByRole("button", { name: "Enviar" });
+  await field.fill("Falta firmar el archivo.");
+  await send.click();
+  await dialog.getByRole("alert").getByText("Revisa el motivo del rechazo.").waitFor();
+  assert.equal(await field.inputValue(), "Falta firmar el archivo.");
+  assert.equal(await reviewErrorAlert(page).count(), 0, "la validación se indica junto al campo");
+
+  failures[operation] = { body: { code: "INTERNAL_ERROR", message: "Detalle interno del servidor" }, status: 500 };
+  await field.fill("Falta la firma del cliente.");
+  await send.click();
+  const error = reviewErrorAlert(page);
+  await error.getByText("No se pudo rechazar el archivo").waitFor();
+  await error.getByText("Intenta rechazar la versión de nuevo.").waitFor();
+  assert.equal(await error.count(), 1);
+  assert.equal(await dialog.getByRole("alert").count(), 0, "el error general solo se anuncia una vez");
+  assert.equal(await page.getByText("Detalle interno del servidor").count(), 0);
+  assert.equal(await reviewAlert(page).count(), 0);
+  assert.equal(await field.inputValue(), "Falta la firma del cliente.");
+
+  delete failures[operation];
+  await send.click();
+  await reviewAlert(page).getByText("Archivo rechazado correctamente").waitFor();
+  assert.deepEqual(reviewRequests(backend, "reject").map((request) => request.body), [
+    { reason: "Falta firmar el archivo." },
+    { reason: "Falta la firma del cliente." },
+    { reason: "Falta la firma del cliente." },
+  ]);
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(await reviewErrorAlert(page).count(), 0);
+});
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [375, 768, 1440]) {
+    test(`U2 · alertas de revisión responsive (${theme}, ${width} px)`, async (context) => {
+      const operation = "POST /api/projects/:id/files/:id/versions/:id/approve";
+      const failures = { [operation]: { body: { code: "INTERNAL_ERROR" }, status: 503 } };
+      const backend = createBackend({ failures });
+      const page = await openFiles(context, backend, { theme, viewport: { height: 900, width } });
+      const viewer = await openPendingReview(page);
+      const approve = viewer.getByRole("button", { name: "Aprobar", exact: true });
+      await approve.click();
+      await reviewErrorAlert(page).getByText("No se pudo aprobar el archivo").waitFor();
+      assert.equal(await reviewAlert(page).count(), 0);
+
+      for (const [alert, color, state] of [
+        [reviewErrorAlert(page), "--color-danger-200", "error"],
+        [reviewAlert(page), "--color-success-200", "success"],
+      ]) {
+        if (state === "success") {
+          delete failures[operation];
+          await approve.click();
+        }
+        await alert.and(page.locator(".auth-toast--visible")).waitFor();
+        const geometry = await alert.evaluate(async (node, token) => {
+          await Promise.all(node.getAnimations().map((animation) => animation.finished));
+          const probe = document.createElement("span");
+          node.append(probe);
+          probe.style.color = `var(${token})`;
+          const expectedBorder = getComputedStyle(probe).color;
+          probe.remove();
+          const { left, right, top, bottom } = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          return { left, right, top, bottom, border: style.borderTopColor, expectedBorder };
+        }, color);
+        const margin = width < 640 ? 16 : 24;
+        assert.ok(geometry.left >= margin - 1 && geometry.right <= width - margin + 1 && geometry.top >= 0);
+        assert.ok(Math.abs(geometry.bottom - (900 - margin)) <= 1);
+        assert.equal(geometry.border, geometry.expectedBorder);
+        assert.equal(await alert.getByRole("button", { name: "Cerrar alerta" }).count(), 1);
+        if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/review-alert-${state}-${theme}-${width}.png` });
+      }
+      assert.equal(await page.getByRole("dialog").count(), 0);
+      assert.equal(reviewRequests(backend, "approve").length, 2);
+    });
+  }
+}
 
 test("U2 · historial paginado: ver, descargar y restaurar con motivo (la nueva versión queda pendiente)", async (context) => {
   const backend = createBackend();
@@ -1182,7 +1347,7 @@ test("visor en móvil: el modal arriba y el historial como hoja inferior, sin de
 });
 
 for (const theme of ["light", "dark"]) {
-  for (const width of [375, 1440]) {
+  for (const width of [360, 375, 390, 768, 1440, 1920]) {
     test(`U2 · visor responsive sin desbordar (${theme}, ${width} px)`, async (context) => {
       const backend = createBackend();
       const page = await openFiles(context, backend, { theme, viewport: { height: 1000, width } });
@@ -1197,8 +1362,32 @@ for (const theme of ["light", "dark"]) {
       assert.ok(layout.right <= layout.width, "El visor cabe en el viewport");
       if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/viewer-${theme}-${width}.png` });
       await viewer.getByRole("button", { name: "Rechazar" }).click();
-      await page.locator("[data-admin-file-reason='reject']").waitFor();
+      const reason = page.locator("[data-admin-file-reason='reject']");
+      await reason.waitFor();
+      await page.waitForTimeout(400);
+      const reasonLayout = await reason.evaluate((dialog) => {
+        const rect = dialog.getBoundingClientRect();
+        const field = dialog.querySelector("textarea").parentElement.parentElement.getBoundingClientRect();
+        return {
+          fieldHeight: field.height,
+          left: rect.left,
+          overflow: document.documentElement.scrollWidth - innerWidth,
+          right: rect.right,
+          viewportWidth: innerWidth,
+          width: rect.width,
+        };
+      });
+      const expectedWidth = Math.min(400, width - 32);
+      assert.equal(Math.round(reasonLayout.width), expectedWidth, "400 px en escritorio y 16 px de margen por lado en móvil");
+      assert.equal(Math.round(reasonLayout.fieldHeight), 130, "el textarea conserva 130 px en todos los viewports");
+      assert.ok(Math.abs(reasonLayout.left - (width - expectedWidth) / 2) <= 1, "el diálogo permanece centrado");
+      assert.ok(reasonLayout.left >= 0 && reasonLayout.right <= reasonLayout.viewportWidth && reasonLayout.overflow <= 0, "sin recortes ni desbordamiento horizontal");
       if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/reject-${theme}-${width}.png` });
+      if (SCREENSHOT_DIR) {
+        await reason.locator("textarea").evaluate((field) => field.blur());
+        await page.waitForTimeout(50);
+        await reason.screenshot({ path: `${SCREENSHOT_DIR}/reason-dialog-${theme}-${width}.png` });
+      }
     });
   }
 }

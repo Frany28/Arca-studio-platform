@@ -1096,18 +1096,20 @@ Validación, capturas y diferencias respecto a Figma:
     `AdminFileReasonDialog` (TextArea + «Volver»/«Enviar» o «Restaurar»). La ayuda y el error se
     muestran fuera del TextArea: su ayuda desaparece con el foco y, al reaparecer, desplazaba el pie
     entre `mousedown` y `mouseup` y el clic en «Enviar» se perdía.
-  - Los avisos de aprobación y rechazo (`AdminFileReviewResultDialog`) se redactan con la respuesta
-    de la API (`describeReviewResult`). Figma dice «ahora es visible en el proyecto», pero aprobar no
-    comparte con el cliente (DA3): el aviso lo indica y compartir sigue siendo una acción aparte.
-    Figma muestra «Cancelar» y «Aceptar»; como no hay nada que cancelar, solo se ofrece «Aceptar».
+  - Tras una aprobación o un rechazo confirmados por la API, se cierra el visor, se recargan la
+    tabla y las métricas y el foco vuelve a la pestaña activa. El `AlertToast` de Gestión de
+    archivos muestra el resultado (`describeReviewResult`, tema Success) sin pedir confirmación.
+    El historial vuelve a leerse al abrir el visor. La aprobación hace vigente la versión según
+    los permisos del proyecto; compartirla con el cliente sigue siendo una acción aparte (DA3).
   - Historial: de la más reciente a la más antigua, 10 por página con «Mostrar más versiones»;
     cada versión ofrece «Ver», «Restaurar versión» (cualquier aprobada, también la vigente (B4, PR2), y sin otra
     pendiente; deshabilitada con su motivo) y «Descargar». Restaurar crea una versión nueva
     pendiente, conserva el historial y la muestra para revisarla; la recarga pide de una vez las
     versiones ya visibles para no volver a la primera página.
-  - Un 409 que deja la vista desactualizada (versión ya revisada, otra pendiente, garantía
-    retirada) se muestra en el visor, recarga tabla e historial y no cierra nada. Tras cada operación
-    confirmada se recargan la tabla y las métricas.
+  - Los errores generales al aprobar o rechazar usan el mismo `AlertToast` en tema Danger.
+    Se conserva el visor y, al rechazar, también el motivo escrito. Los errores de validación
+    del motivo se indican junto al campo. Si un 409 deja la vista desactualizada, se releen
+    tabla e historial sin cerrar el diálogo en uso.
 - Garantías (U2, B8): `AdminFileWarrantyDialog` lista las garantías vigentes del proyecto con una
   casilla por garantía; marcar vincula y desmarcar desvincula al momento, y el estado mostrado es
   `linkedWarrantyIds` de la respuesta. Figma no diseña este diálogo: reutiliza Modal y Checkbox.

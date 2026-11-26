@@ -159,24 +159,21 @@ export function getReplaceAvailability(version, versions) {
 }
 
 /**
- * Textos de la confirmación de una revisión (Figma 3795:579327 y 3795:579509), que solo se muestra
- * cuando la API confirmó la operación. Figma dice «ahora es visible en el proyecto»; el texto lo
- * precisa («disponible según los permisos del proyecto»): la versión aprobada pasa a ser la vigente
- * para quien ya podía ver el archivo; aprobar no la comparte con el cliente ni la publica (DA3). «Notificado» corresponde al aviso que recibe quien
- * subió la versión (notifications, en la misma transacción de la decisión).
+ * Textos de la alerta que aparece cuando la API confirma una revisión. La aprobación hace
+ * vigente la versión según los permisos del proyecto; compartirla es una acción aparte.
  *
  * @param {"approve"|"reject"} action - Acción confirmada.
- * @returns {{ title: string, description: string }} Textos de Figma.
+ * @returns {{ title: string, description: string }} Textos de la alerta.
  */
 export function describeReviewResult(action) {
   if (action === "approve") {
     return {
-      description: "El archivo se ha aprobado exitosamente y ya está disponible según los permisos del proyecto, esto será notificado a los usuarios pertinentes.",
+      description: "El archivo fue aprobado y está disponible según los permisos del proyecto.",
       title: "Archivo aprobado correctamente",
     };
   }
   return {
-    description: "La carga del archivo se ha rechazado exitosamente, esto será notificado a los usuarios pertinentes.",
+    description: "El motivo del rechazo quedó guardado en el historial de versiones.",
     title: "Archivo rechazado correctamente",
   };
 }
@@ -210,6 +207,7 @@ export function describeRestoreResult(version, source) {
 // Conflictos y respuestas obsoletas del contrato (B4 y B8). `stale` indica que la vista quedó
 // desactualizada: se recargan tabla e historial sin cerrar lo que el usuario estaba viendo.
 const OPERATION_ERRORS = Object.freeze({
+  FORBIDDEN: { message: "No tienes permisos para realizar esta operación.", stale: false },
   FILE_DECISION_PENDING: { message: "El archivo está archivado y su tratamiento sigue pendiente de decisión.", stale: false },
   FILE_NOT_ACTIVE: { message: "El archivo ya no está activo.", stale: true },
   FILE_NOT_FOUND: { message: "El archivo ya no está disponible.", stale: true },
@@ -239,12 +237,12 @@ const OPERATION_ERRORS = Object.freeze({
  * @returns {{ message: string, fieldError: string, stale: boolean }} Mensajes y si hay que recargar.
  */
 export function describeOperationError(error, fallback) {
-  const fields = error?.fields || {};
+  const fields = error?.code === "VALIDATION_ERROR" ? error.fields || {} : {};
   const field = fields["body.reason"] || fields["body.changeNote"] || fields.reason || fields.changeNote || "";
   const known = OPERATION_ERRORS[error?.code];
   return {
     fieldError: Array.isArray(field) ? field[0] || "" : field,
-    message: known?.message || error?.message || fallback,
+    message: known?.message || fallback,
     stale: Boolean(known?.stale),
   };
 }
