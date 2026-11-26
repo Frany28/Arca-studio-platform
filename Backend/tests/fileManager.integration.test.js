@@ -330,7 +330,8 @@ test("carpetas fuera de draft: anidadas, reglas confirmadas, decisiones pendient
   const deleteSystem = await api(`${path}/${seed.quinta.folders.cover}`, { method: "DELETE" });
   assert.deepEqual([deleteSystem.status, deleteSystem.body.code], [409, "PROJECT_FOLDER_PROTECTED"]);
   const audit = await rows("select action from public.audit_logs where entity_type = 'project_folder' order by id");
-  assert.deepEqual(audit.map((row) => row.action), ["project_folder.created", "project_folder.created", "project_folder.created", "project_folder.renamed", "project_folder.deleted"]);
+  // Cinco altas: tres niveles anidados, la de la raíz (D7) y la de «Cotizaciones» (D14).
+  assert.deepEqual(audit.map((row) => row.action), [...Array(5).fill("project_folder.created"), "project_folder.renamed", "project_folder.deleted"]);
 
   // Estados: draft admitido (lo prepara el administrador); archivado y finalizado, de solo lectura.
   assert.equal((await api(`/admin/files/projects/${seed.draft.id}/folders`, { body: { name: "Notas", parentId: seed.draft.folders.documents }, method: "POST" })).status, 201);
@@ -407,7 +408,7 @@ async function insertQuoteVersion({ at, current = true, pdf, projectId, quoteId,
 test("cotizaciones: su PDF vigente aparece en «Documentos › Cotizaciones», sin copiarse a files y solo en Aprobados", { skip }, async () => {
   const project = await createProject("Proyecto cotizado");
   const filesBefore = Number((await rows("select count(*)::int as n from public.files"))[0].n);
-  const quote = async () => Number((await rows("insert into public.quotes (code, created_by, updated_by) values ('COT-TMP', $1, $1) returning id", [seed.admin]))[0].id);
+  const quote = async () => Number((await rows("insert into public.quotes (code, created_by, updated_by) values ('COT-' || lpad((floor(random() * 1e9))::bigint::text, 9, '0'), $1, $1) returning id", [seed.admin]))[0].id);
   const withCode = async (id) => {
     await rows("update public.quotes set code = $2 where id = $1", [id, `COT-${String(id).padStart(3, "0")}`]);
     return id;

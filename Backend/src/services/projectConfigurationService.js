@@ -8,6 +8,7 @@ import {
 } from "../domain/projectConfiguration.js";
 import { normalizeProjectName } from "../domain/projectName.js";
 import { PROJECT_STATUS } from "../domain/projectStatus.js";
+import { hasFolderNameConflictForFile } from "../repositories/fileRepository.js";
 import { findQuoteClient } from "../repositories/quoteParticipantRepository.js";
 import { createDraftProject } from "./projectService.js";
 import { translateProjectConfigurationError } from "./projectConfigurationErrors.js";
@@ -365,10 +366,13 @@ export async function deleteProjectFolder({ folderId, projectId }) {
 }
 
 /**
- * Mueve un archivo del borrador a una carpeta del mismo proyecto o a la raíz.
+ * Mueve un archivo del borrador a una carpeta del mismo proyecto o a la raíz. El nombre lógico es
+ * único por carpeta: si el destino ya tiene otro archivo con ese nombre responde 409
+ * DUPLICATE_PROJECT_FILE sin mover nada (se comprueba con el proyecto bloqueado).
  *
  * @param {{fileId: number, folderId: number|null, projectId: number}} params - Archivo y destino.
  * @returns {Promise<{files: object[], folders: object[]}>} Archivos y carpetas actualizados.
+ * @throws {ValidationError|ConflictError|NotFoundError} Carpeta inexistente, homónimo o archivo ajeno.
  */
 export async function moveProjectFile({ fileId, folderId, projectId }) {
   await writeDraftConfiguration(projectId, async (client) => {
@@ -378,6 +382,9 @@ export async function moveProjectFile({ fileId, folderId, projectId }) {
     }
     // B8: un documento que respalda garantías vigentes debe seguir en «Documentos › Garantías».
     await assertWarrantyDocumentMove(client, { fileId, targetFolderId: folderId });
+    if (await hasFolderNameConflictForFile(client, { fileId, folderId, projectId })) {
+      throw new ConflictError("DUPLICATE_PROJECT_FILE", "Ya existe un archivo con ese nombre en la carpeta destino.");
+    }
     if (!(await moveProjectFileToFolder(client, { fileId, folderId, projectId }))) {
       throw new NotFoundError("FILE_NOT_FOUND", "Archivo no encontrado.");
     }

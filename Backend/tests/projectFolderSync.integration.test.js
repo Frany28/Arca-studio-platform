@@ -47,7 +47,9 @@ async function createLegacyProject(name) {
   await database.client.query("begin");
   await folders.ensureProjectSystemFolders(database.client, { createdBy: seed.admin, projectId: project.id });
   await database.client.query("commit");
-  await rows("update public.project_folders set deleted_at = now() where project_id = $1 and system_key = any($2::text[])", [project.id, NEW_KEYS]);
+  // Recién creadas y vacías: se eliminan (chk_project_folders_system_not_deleted impide el borrado lógico
+  // de una carpeta con clave), como si el proyecto nunca las hubiera tenido.
+  await rows("delete from public.project_folders where project_id = $1 and system_key = any($2::text[])", [project.id, NEW_KEYS]);
   const byKey = Object.fromEntries((await rows("select system_key, id::int from public.project_folders where project_id = $1 and system_key is not null and deleted_at is null", [project.id])).map((row) => [row.system_key, row.id]));
   return { folders: byKey, id: project.id };
 }
@@ -129,5 +131,29 @@ test("plan, aplicación idempotente y verificación sobre PostgreSQL real, sin p
 
   const again = await sync.applyFolderSyncPlan(database.client, { operatorUserId: seed.admin, plan, planSha256, target: "arca@test" });
   assert.deepEqual(again.summary, { classifiedFiles: 0, createdFolders: 0, errors: 0, projects: 2 });
+  assert.equal((await sync.verifyFolderSync(database.client, { target: "arca@test" })).ok, true);
+});
+
+test("homónimos sobre PostgreSQL real: los adjuntos heredados entran en «Archivos del cliente» con sufijo, sin violar el índice", { skip }, async () => {
+  const [request] = await rows("select origin_project_request_id::int as id from public.files where id = $1", [seed.files.attachment]);
+  // «fachada-cliente.jpg» ya está en «Archivos del cliente»; otro adjunto con el mismo nombre sigue en la raíz (dos en
+  // la raíz no pueden existir: lo impide uq_files_project_folder_title).
+  const second = await insertFile({ category: "image", name: "FACHADA-CLIENTE.jpg", projectId: seed.quinta.id, requestId: request.id });
+  const versionsBefore = await rows("select id::int, file_id::int, original_name, file_name from public.file_versions where file_id = any($1) order by id", [[second]]);
+  const text = sync.serializeFolderSyncPlan(await sync.buildFolderSyncPlan(database.client, { target: "arca@test" }));
+  const planSha256 = (await import("../src/services/projectFileCompatibilityService.js")).sha256(text);
+  const plan = sync.readFolderSyncPlan(text, planSha256);
+  const quinta = plan.projects.find((project) => project.projectId === seed.quinta.id);
+  assert.deepEqual(quinta.classify.map((file) => [file.fileId, file.logicalTitle]), [[second, "FACHADA-CLIENTE (2).jpg"]]);
+
+  const run = await sync.applyFolderSyncPlan(database.client, { operatorUserId: seed.admin, plan, planSha256, target: "arca@test" });
+  assert.equal(run.summary.errors, 0, JSON.stringify(run.results));
+  const placed = await rows(`select file.title, folder.system_key from public.files file join public.project_folders folder on folder.id = file.folder_id
+    where file.id = any($1) order by file.id`, [[seed.files.attachment, second]]);
+  assert.deepEqual(placed.map((row) => [row.title, row.system_key]), [["fachada-cliente.jpg", "client_files"], ["FACHADA-CLIENTE (2).jpg", "client_files"]]);
+  assert.deepEqual(await rows("select id::int, file_id::int, original_name, file_name from public.file_versions where file_id = any($1) order by id", [[second]]), versionsBefore, "nombre original y objeto intactos");
+  const audit = (await rows("select new_values from public.audit_logs where action = 'project_folders.synchronized' order by id desc limit 1"))[0];
+  assert.deepEqual(audit.new_values.renamedFiles.map((file) => file.title), ["FACHADA-CLIENTE (2).jpg"]);
+  assert.equal((await sync.applyFolderSyncPlan(database.client, { operatorUserId: seed.admin, plan, planSha256, target: "arca@test" })).summary.classifiedFiles, 0, "idempotente");
   assert.equal((await sync.verifyFolderSync(database.client, { target: "arca@test" })).ok, true);
 });

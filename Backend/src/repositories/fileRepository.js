@@ -604,16 +604,23 @@ export async function findProjectForFileUpload(projectId, user, executor = poolE
 }
 
 /**
- * Busca el archivo existente del proyecto y devuelve null cuando no existe un registro accesible.
- * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
+ * Busca un archivo independiente vigente con el mismo nombre lógico (`files.title`, sin distinguir
+ * mayúsculas) en la misma ubicación del proyecto. La unicidad es por carpeta: el mismo nombre se
+ * admite en carpetas distintas, y la raíz (`folder_id` NULL) es una ubicación propia, comparada con
+ * `IS NOT DISTINCT FROM` para que dos archivos en la raíz sí choquen. Solo lee PostgreSQL; quien
+ * escribe debe llamarla con el proyecto bloqueado para serializar operaciones simultáneas.
  *
- * @param {object} options - Opciones agrupadas necesarias para ejecutar la operación.
- * @param {string} options.originalName - Valor de `options.originalName` requerido por esta operación.
- * @param {string} options.projectId - Valor de `options.projectId` requerido por esta operación.
+ * @param {object} options - Nombre y ubicación.
+ * @param {string} options.originalName - Nombre lógico propuesto (se recorta).
+ * @param {number|string} options.projectId - Proyecto.
+ * @param {number|string|null} [options.folderId] - Carpeta destino; null es la raíz del proyecto.
+ * @param {number|string|null} [options.excludeFileId] - Archivo que se mueve (no choca consigo mismo).
  * @param {{ query: Function }} [executor] - Cliente de una transacción; por defecto, el pool compartido.
- * @returns {Promise<unknown>} Resultado producido por la operación.
+ * @returns {Promise<{ id: string, title: string }|null>} Archivo homónimo o null.
  */
 export async function findExistingProjectFile({
+  excludeFileId = null,
+  folderId = null,
   originalName,
   projectId,
 }, executor = poolExecutor) {
@@ -622,15 +629,34 @@ export async function findExistingProjectFile({
       select id, title
       from public.files
       where project_id = $1
+        and folder_id is not distinct from $3::bigint
+        and ($4::bigint is null or id <> $4::bigint)
         and deleted_at is null
         and status <> 'deleted'
         and lower(title) = lower($2)
       limit 1
     `,
-    [projectId, String(originalName || "").trim()],
+    [projectId, String(originalName || "").trim(), folderId ?? null, excludeFileId ?? null],
   );
 
   return result.rows[0] || null;
+}
+
+/**
+ * Comprueba si mover un archivo a otra ubicación del proyecto chocaría con un homónimo independiente
+ * en el destino. Usa el nombre lógico guardado del propio archivo (nunca uno enviado por el cliente).
+ *
+ * @param {{ query: Function }} executor - Cliente de la transacción con el proyecto bloqueado.
+ * @param {{ fileId: number, folderId: number|null, projectId: number }} move - Archivo y destino.
+ * @returns {Promise<boolean>} true si el destino ya tiene otro archivo con ese nombre.
+ */
+export async function hasFolderNameConflictForFile(executor, { fileId, folderId, projectId }) {
+  const moving = await executor.query(
+    "select title from public.files where id = $1 and project_id = $2 and deleted_at is null and status <> 'deleted'",
+    [fileId, projectId],
+  );
+  if (!moving.rows[0]) return false;
+  return Boolean(await findExistingProjectFile({ excludeFileId: fileId, folderId, originalName: moving.rows[0].title, projectId }, executor));
 }
 
 /**
@@ -704,7 +730,10 @@ export async function uploadProjectFile({
   const safeOriginalName = String(originalName || "archivo").trim();
   const fileType = getFileType(contentType, safeOriginalName);
   const fileExtension = getFileExtension(safeOriginalName);
+  // Comprobación previa a la transferencia en la ubicación que tendrá el archivo (la elegida o, sin
+  // carpeta, la automática); se repite con el proyecto bloqueado al registrar.
   const existingFile = await findExistingProjectFile({
+    folderId: folderId || await resolveAutomaticFolder(poolExecutor, { projectId, user }),
     originalName: safeOriginalName,
     projectId,
   });
@@ -801,8 +830,9 @@ export async function uploadProjectFile({
       if (verifyTarget) await verifyTarget(client);
       const targetFolderId = folderId || await resolveAutomaticFolder(client, { projectId, user });
 
-      // Bajo el bloqueo del proyecto, las cargas simultáneas con el mismo nombre se serializan aquí.
-      if (await findExistingProjectFile({ originalName: safeOriginalName, projectId }, client)) {
+      // Bajo el bloqueo del proyecto, las cargas simultáneas con el mismo nombre y destino se
+      // serializan aquí: la segunda ve la primera y responde DUPLICATE_PROJECT_FILE (nunca la versiona).
+      if (await findExistingProjectFile({ folderId: targetFolderId, originalName: safeOriginalName, projectId }, client)) {
         throw createDuplicateFileError("DUPLICATE_PROJECT_FILE");
       }
 

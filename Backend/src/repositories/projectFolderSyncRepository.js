@@ -36,6 +36,24 @@ export async function loadUnfolderedFiles(client) {
 }
 
 /**
+ * Lee los nombres lógicos de los archivos vigentes ubicados en carpetas predeterminadas, para que el
+ * plan no proponga ubicar un archivo donde ya existe otro con el mismo nombre (unicidad por carpeta).
+ *
+ * @param {{ query: Function }} client - Cliente PostgreSQL.
+ * @returns {Promise<Array<{ project_id: string, system_key: string, title: string }>>} Nombres ocupados.
+ */
+export async function loadSystemFolderFileTitles(client) {
+  const result = await client.query(`
+    select file.project_id, folder.system_key, file.title
+    from public.files file
+    inner join public.project_folders folder on folder.id = file.folder_id and folder.deleted_at is null and folder.system_key is not null
+    inner join public.projects project on project.id = file.project_id and project.deleted_at is null
+    where file.deleted_at is null and file.status <> 'deleted'
+    order by file.project_id, file.id`);
+  return result.rows;
+}
+
+/**
  * Cuenta las cotizaciones (versión comercial vigente) de cada proyecto vigente.
  *
  * @param {{ query: Function }} client - Cliente PostgreSQL.
@@ -55,21 +73,40 @@ export async function countProjectQuotes(client) {
  * Ubica archivos sin carpeta en la carpeta predeterminada indicada de su proyecto. Solo afecta a los
  * que siguen sin carpeta y cumplen la condición de origen del plan (adjuntos de la solicitud de
  * origen): un archivo ya ubicado por otra vía no se mueve. No crea versiones ni toca objetos.
+ * Asigna a la vez el nombre lógico planificado (el original o uno con sufijo, único en la carpeta);
+ * el nombre original sigue en sus versiones. Si un plan desactualizado chocara con un archivo ya
+ * ubicado allí, ese archivo se omite (sigue sin carpeta) en lugar de violar
+ * `uq_files_project_folder_title`; dos nombres iguales del mismo lote solo dejan entrar el de menor id.
  *
  * @param {{ query: Function }} client - Cliente de la transacción.
- * @param {{ projectId: number, fileIds: number[], systemKey: string }} move - Proyecto, archivos y destino.
+ * @param {{ projectId: number, files: Array<{ fileId: number, title: string }>, systemKey: string }} move -
+ *   Proyecto, archivos con su nombre lógico y destino.
  * @returns {Promise<number[]>} Archivos ubicados ahora.
  */
-export async function assignRequestAttachmentsToFolder(client, { fileIds, projectId, systemKey }) {
-  if (!fileIds.length) return [];
+export async function assignRequestAttachmentsToFolder(client, { files, projectId, systemKey }) {
+  if (!files.length) return [];
   const result = await client.query(`
+    with planned as (
+      select planned.id, planned.title
+      from unnest($1::bigint[], $4::text[]) as planned(id, title)
+    )
     update public.files file
-    set folder_id = target.id, updated_at = now()
-    from public.project_folders target
+    set folder_id = target.id, title = planned.title, updated_at = now()
+    from public.project_folders target, planned
     where target.project_id = $2 and target.system_key = $3 and target.deleted_at is null
-      and file.id = any($1::bigint[]) and file.project_id = $2 and file.folder_id is null
+      and planned.id = file.id and file.project_id = $2 and file.folder_id is null
       and file.origin_project_request_id is not null and file.deleted_at is null and file.status <> 'deleted'
-    returning file.id`, [fileIds, projectId, systemKey]);
+      and not exists (
+        select 1 from public.files homonym
+        where homonym.project_id = $2 and homonym.folder_id = target.id and homonym.id <> file.id
+          and homonym.deleted_at is null and homonym.status <> 'deleted'
+          and lower(homonym.title) = lower(planned.title)
+      )
+      and not exists (
+        select 1 from planned other
+        where other.id < planned.id and lower(other.title) = lower(planned.title)
+      )
+    returning file.id`, [files.map((file) => file.fileId), projectId, systemKey, files.map((file) => file.title)]);
   return result.rows.map((row) => Number(row.id));
 }
 

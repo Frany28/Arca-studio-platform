@@ -138,7 +138,7 @@ operation: (upload) => uploadProjectFile({ ...upload, configuringDraft: isAdmin,
     if (error.code === "DUPLICATE_PROJECT_FILE" || error.code === "23505") {
       res.status(409).json({
         code: "DUPLICATE_PROJECT_FILE",
-        message: "Ese archivo ya existe en este proyecto.",
+        message: "Ya existe un archivo con ese nombre en esta carpeta.",
       });
       return;
     }

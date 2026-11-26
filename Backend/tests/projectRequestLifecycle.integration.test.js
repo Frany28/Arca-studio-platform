@@ -1122,6 +1122,56 @@ test("Fase 1.2 (B5): el cliente conserva sus adjuntos en draft y después; una v
   }
 });
 
+test("PostgreSQL y HTTP: al aprobar, los adjuntos homónimos entran todos en «Archivos del cliente» con nombre lógico único", { skip }, async () => {
+  // La solicitud solo exige nombres únicos por autor (uq_files_project_request_user_title): tres autores
+  // pueden adjuntar «planta.png». Se simula reescribiendo título, autor y nombre original de dos adjuntos.
+  const { fileIds, headers, id } = await reviewedRequest([png("planta.png"), pdf("escritura.pdf"), pdf("memoria.pdf"), pdf("otro.pdf")]);
+  const authors = [seed.admin, seed.architect];
+  for (const [index, title] of ["PLANTA.png", "Planta.png"].entries()) {
+    await database.client.query("update public.files set title = $2, uploaded_by = $3 where id = $1", [fileIds[index + 1], title, authors[index]]);
+    await database.client.query("update public.file_versions set original_name = $2 where file_id = $1", [fileIds[index + 1], title]);
+  }
+  // Un cuarto adjunto ya se llama como el sufijo que tocaría: no se pisa.
+  await database.client.query("update public.files set title = 'planta (2).png' where id = $1", [fileIds[3]]);
+  const versionsBefore = (await database.client.query("select id, file_id, version_number, original_name, file_name from public.file_versions where file_id = any($1) order by id", [fileIds])).rows;
+  const objectsBefore = storage.size;
+
+  const approve = () => api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });
+  assert.equal((await approve()).status, 200);
+  const projectId = await convertedProjectId(id);
+  const placed = async () => (await database.client.query(`select file.id::int, file.title, folder.system_key from public.files file
+    left join public.project_folders folder on folder.id = file.folder_id where file.id = any($1) order by file.id`, [fileIds])).rows;
+  const after = await placed();
+  assert.deepEqual(after.map((row) => [row.title, row.system_key]), [
+    ["planta.png", "client_files"], ["PLANTA (3).png", "client_files"], ["Planta (4).png", "client_files"], ["planta (2).png", "client_files"],
+  ], "todos en «Archivos del cliente», el de menor id conserva el nombre y los sufijos no pisan uno real");
+  assert.deepEqual((await database.client.query("select file_id, version_number, original_name, file_name from public.file_versions where file_id = any($1) order by id", [fileIds])).rows,
+    versionsBefore.map(({ file_id: fileId, file_name: fileName, original_name: originalName, version_number: versionNumber }) => ({ file_id: fileId, file_name: fileName, original_name: originalName, version_number: versionNumber })),
+    "nombres originales, versiones y claves de almacenamiento intactos");
+  assert.equal(storage.size, objectsBefore, "sin objetos nuevos");
+
+  const audit = (await database.client.query("select new_values from public.audit_logs where entity_type = 'project_request' and entity_id = $1 and action = 'project_request.approve'", [id])).rows[0];
+  assert.deepEqual(audit.new_values.renamedAttachments, [
+    { fileId: fileIds[1], originalTitle: "PLANTA.png", title: "PLANTA (3).png" },
+    { fileId: fileIds[2], originalTitle: "Planta.png", title: "Planta (4).png" },
+  ]);
+
+  // El detalle de la solicitud conserva el nombre original; la configuración del proyecto muestra el lógico.
+  const detail = await api(`/project-requests/${id}`, { headers: headers.owner });
+  assert.deepEqual(detail.body.projectRequest.files.map((file) => file.name).slice(0, 3), ["planta.png", "PLANTA.png", "Planta.png"]);
+  const configuration = await api(`/admin/projects/${projectId}/configuration/files`, { headers: headers.admin });
+  assert.equal(configuration.status, 200, JSON.stringify(configuration.body));
+  assert.deepEqual(configuration.body.files.filter((file) => fileIds.includes(file.id)).map((file) => file.name).sort(), ["PLANTA (3).png", "Planta (4).png", "planta (2).png", "planta.png"]);
+  for (const fileId of fileIds.slice(0, 3)) {
+    assert.equal((await fetch(`${base}/project-requests/${id}/files/${fileId}/content`, { headers: headers.owner })).status, 200, "las descargas por la solicitud siguen funcionando");
+  }
+
+  // Conversión repetida: 409, sin otro proyecto ni nombres nuevos.
+  assert.equal((await approve()).status, 409);
+  assert.deepEqual(await placed(), after);
+  assert.equal(Number((await database.client.query("select count(*) from public.projects where public_slug = $1", [`solicitud-${id}`])).rows[0].count), 1);
+});
+
 test("PostgreSQL y HTTP: aprobar una solicitud sin adjuntos crea el borrador", { skip }, async () => {
   const { headers, id } = await reviewedRequest([]);
   const approved = await api(`/admin/project-requests/${id}/decision`, { body: { action: "approve" }, headers: headers.admin, method: "PATCH" });

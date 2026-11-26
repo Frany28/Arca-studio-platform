@@ -91,7 +91,7 @@ export const postFirstContact = handle(async (req) => recordFirstContact({ proje
  * @param {import("express").Request} req - Solicitud con `projectId` y `folderId` opcional.
  * @param {import("express").Response} res - Respuesta HTTP.
  * @param {Function} next - Middleware de errores.
- * @returns {Promise<void>} 201 con el archivo; 409 DUPLICATE_PROJECT_FILE si el nombre ya existe.
+ * @returns {Promise<void>} 201 con el archivo; 409 DUPLICATE_PROJECT_FILE si el nombre ya existe en la carpeta destino.
  */
 export async function postConfigurationFile(req, res, next) {
   try {
@@ -112,7 +112,7 @@ export async function postConfigurationFile(req, res, next) {
     sendPrivate(res, 201, { file });
   } catch (error) {
     if (error.code === "DUPLICATE_PROJECT_FILE" || error.code === "23505") {
-      sendPrivate(res, 409, { code: "DUPLICATE_PROJECT_FILE", message: "Ese archivo ya existe en este proyecto." });
+      sendPrivate(res, 409, { code: "DUPLICATE_PROJECT_FILE", message: "Ya existe un archivo con ese nombre en esta carpeta." });
       return;
     }
     next(error);

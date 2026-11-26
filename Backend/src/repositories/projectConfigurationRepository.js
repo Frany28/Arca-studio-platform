@@ -457,7 +457,9 @@ export async function listProjectConfigurationFiles(projectId) {
     folderId: toNumberOrNull(row.folder_id),
     fromClientRequest: row.origin_project_request_id !== null,
     id: Number(row.id),
-    name: row.original_name || row.title,
+    // La v1 (o un archivo sin versión vigente) se muestra con su nombre lógico, único en la carpeta;
+    // una versión posterior, con el nombre con el que se subió (utils/projectFileNameSql.js).
+    name: Number(row.current_version) > 1 ? row.original_name || row.title : row.title,
     size: toNumberOrNull(row.file_size),
     uploadedBy: row.uploaded_by_name || null,
     version: toNumberOrNull(row.current_version),

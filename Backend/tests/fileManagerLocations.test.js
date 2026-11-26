@@ -13,6 +13,8 @@ const { pool } = await import("../src/config/db.js");
 const { default: fileRoutes } = await import("../src/routes/fileManager.js");
 const { withProjectFileReviewState } = await import("../src/config/projectFileReview.js");
 const { fileManagerUploadSchema } = await import("../src/validation/fileManagerSchemas.js");
+const { evaluateManagedUpload, resolveManagedFileCategory } = await import("../src/domain/fileManagerUpload.js");
+const { resolveDocumentLocation, resolveUploadOrigin } = await import("../src/domain/documentClassification.js");
 
 const ADMIN = { id: 2, permissionCodes: [], role: { code: "admin" } };
 // Carpetas del proyecto 1: predeterminadas del catálogo y una cadena personalizada de 12 niveles.
@@ -47,7 +49,10 @@ function createDatabase() {
     const text = sql.replace(/\s+/g, " ").trim();
     const result = (rows) => ({ rowCount: rows.length, rows });
     if (/^(begin|commit|rollback)$/.test(text)) return result([]);
-    if (text.startsWith("select id, status, client_id from public.projects")) return result(Number(params[0]) === 1 ? [{ client_id: "4", id: "1", status: "in_process" }] : []);
+    // Los proyectos 1 y 2 existen; las carpetas simuladas pertenecen solo al 1.
+    if (text.startsWith("select id, status, client_id from public.projects")) {
+      return result([1, 2].includes(Number(params[0])) ? [{ client_id: "4", id: String(params[0]), status: "in_process" }] : []);
+    }
     if (text.startsWith("select id, parent_id, system_key from public.project_folders")) {
       const folder = state.folders.find((candidate) => candidate.id === Number(params[0]) && Number(params[1]) === 1 && !candidate.deleted);
       return result(folder ? [{ id: String(folder.id), parent_id: folder.parentId === null ? null : String(folder.parentId), system_key: folder.systemKey }] : []);
@@ -129,6 +134,17 @@ test("conserva las reglas: nombre repetido entre hermanas (400), portada sin sub
   assert.equal((await create(server, 999, "Huérfana")).status, 404);
 });
 
+test("una carpeta madre de otro proyecto responde 404 sin crear ni auditar nada", async (context) => {
+  const { database, server } = await start(context);
+  const before = database.state.folders.length;
+  for (const parentId of [111, 200]) {
+    const response = await server.send("POST", "/api/admin/files/projects/2/folders", { name: "Intrusa", parentId });
+    assert.deepEqual([response.status, response.body.code], [404, "PROJECT_FOLDER_NOT_FOUND"], String(parentId));
+  }
+  assert.equal(database.state.folders.length, before);
+  assert.equal(database.state.audits.length, 0);
+});
+
 test("crear carpetas sigue siendo exclusivo del administrador", async (context) => {
   for (const role of ["architect", "client"]) {
     const { database, server } = await start(context, { clientId: 4, id: 9, permissionCodes: ["projects.read", "projects.files.upload"], role: { code: role } });
@@ -137,6 +153,31 @@ test("crear carpetas sigue siendo exclusivo del administrador", async (context) 
   }
   const anonymous = await start(context, null);
   assert.equal((await create(anonymous.server, null, "Intento")).status, 401);
+});
+
+test("subida del administrador en cualquier ubicación: se acepta y conserva la carpeta elegida, sin reubicar por extensión", () => {
+  // Destinos: raíz (sin carpeta), personalizada, predeterminadas y «Cotizaciones»; formatos cruzados.
+  const cases = [
+    [null, "pdf", "application/pdf", "document"],
+    [null, "png", "image/png", "image"],
+    ["documents", "png", "image/png", "image"],
+    ["documents.quotes", "pdf", "application/pdf", "document"],
+    ["renders.images", "pdf", "application/pdf", "document"],
+    ["renders.videos", "png", "image/png", "image"],
+    ["renders.models", "png", "image/png", "panorama"],
+    ["client_files", "mp4", "video/mp4", "video"],
+  ];
+  for (const [systemKey, extension, fileType, category] of cases) {
+    assert.equal(evaluateManagedUpload({ fileCount: 3, systemKey }, extension).allowed, true, `${systemKey}: ${extension}`);
+    assert.equal(resolveManagedFileCategory(systemKey, fileType), category, `${systemKey}: ${fileType}`);
+  }
+  // Una carpeta personalizada sin ancestro predeterminado tampoco tiene reglas propias.
+  assert.equal(evaluateManagedUpload({ fileCount: 0, systemKey: null }, "dwg").allowed, true);
+  // Sin carpeta elegida, el equipo sube a la raíz (queda sin carpeta); solo el cliente va a «Archivos del cliente».
+  assert.equal(resolveDocumentLocation({ origin: resolveUploadOrigin({ folderId: null, uploaderRole: "admin" }) }).folderKey, null);
+  assert.equal(resolveUploadOrigin({ folderId: 111, uploaderRole: "admin" }), "folder_upload", "la carpeta elegida es la clasificación");
+  // La portada conserva su regla de Figma.
+  assert.equal(evaluateManagedUpload({ fileCount: 0, systemKey: "cover" }, "pdf").allowed, false);
 });
 
 test("subida del administrador: `folderId` es opcional (raíz del proyecto) y, si llega, debe ser un id válido", () => {

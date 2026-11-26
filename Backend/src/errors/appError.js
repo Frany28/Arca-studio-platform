@@ -115,7 +115,12 @@ export function normalizeError(error) {
     return createDatabaseSchemaNotReadyError(error);
   }
   if (error?.status && error?.publicMessage) return new AppError({ code: error.code || "REQUEST_ERROR", message: error.publicMessage, status: error.status, cause: error });
-  if (error?.code === "23505") return new ConflictError("RESOURCE_CONFLICT", "El recurso ya existe o fue modificado simultáneamente.", error);
+  // Nombre lógico repetido en la misma carpeta (uq_files_project_folder_title): el mismo 409 que la
+  // comprobación de la aplicación, para cualquier ruta que llegue a violar el índice.
+  if (error?.code === "23505" && error?.constraint === "uq_files_project_folder_title") {
+    return new ConflictError("DUPLICATE_PROJECT_FILE", "Ya existe un archivo con ese nombre en esta carpeta.", error);
+  }
+  if (error?.code === "23505") return new ConflictError("RESOURCE_CONFLICT","El recurso ya existe o fue modificado simultáneamente.", error);
   if (error?.type === "entity.too.large") return new AppError({ code: "PAYLOAD_TOO_LARGE", message: "El contenido supera el tamaño permitido.", status: 413, cause: error });
   return new AppError({ code: /^[0-9A-Z]{5}$/.test(error?.code || "") ? "INTERNAL_SERVER_ERROR" : error?.code || "INTERNAL_SERVER_ERROR", message: "Ocurrió un error inesperado.", status: error?.status || 500, cause: error });
 }

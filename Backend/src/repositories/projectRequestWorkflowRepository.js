@@ -5,6 +5,7 @@ import { pageResult, preciseCursorTimestampSql } from "../utils/pagination.js";
 import { requestAttachmentVersionIdSql } from "../utils/projectFileAudienceSql.js";
 import { ensureProjectSystemFolders } from "./projectSystemFolderRepository.js";
 import { CLIENT_FILES_FOLDER_KEY } from "../domain/documentClassification.js";
+import { assignUniqueFileNames } from "../domain/projectFileNames.js";
 
 // Última edición administrativa de cada solicitud que cambió respuestas relevantes para la revisión
 // técnica, según la auditoría (`project_request.admin_update` con `reviewRelevantFields` no vacío).
@@ -490,6 +491,54 @@ async function countOutdatedReviews(executor, projectRequestId) {
 }
 
 /**
+ * Incorpora los adjuntos de una solicitud al proyecto creado al aprobarla, en «Archivos del cliente», con
+ * las filas bloqueadas: los homónimos reciben un nombre lógico con sufijo (`assignUniqueFileNames`) y no
+ * se tocan versiones, nombres originales ni objetos. Idempotente: sin adjuntos pendientes no cambia nada.
+ *
+ * @param {import("pg").PoolClient} client - Cliente de la transacción de la decisión.
+ * @param {{ projectId: number|string, projectRequestId: number|string }} conversion - Proyecto y solicitud.
+ * @returns {Promise<Array<{ fileId: number, originalTitle: string, title: string }>>} Adjuntos renombrados.
+ */
+async function moveRequestAttachmentsToProject(client, { projectId, projectRequestId }) {
+  const attachments = (await client.query(
+    `
+      select id, title, folder_id from public.files
+      where project_request_id = $1 and deleted_at is null and status <> 'deleted'
+      order by id
+      for update
+    `,
+    [projectRequestId],
+  )).rows;
+  const unfoldered = attachments.filter((file) => file.folder_id === null);
+  const names = assignUniqueFileNames(unfoldered.map((file) => ({ id: file.id, title: file.title })));
+  const renamed = unfoldered
+    .filter((file) => names.get(Number(file.id)) !== file.title)
+    .map((file) => ({ fileId: Number(file.id), originalTitle: file.title, title: names.get(Number(file.id)) }));
+  await client.query(
+    `
+      update public.files
+      set project_id = $1,
+          origin_project_request_id = project_request_id,
+          project_request_id = null,
+          folder_id = coalesce(folder_id, (
+            select folder.id from public.project_folders folder
+            where folder.project_id = $1 and folder.system_key = $3 and folder.deleted_at is null
+          )),
+          title = coalesce((
+            select renamed.title from unnest($4::bigint[], $5::text[]) as renamed(id, title)
+            where renamed.id = files.id
+          ), title),
+          updated_at = now()
+      where project_request_id = $2
+        and deleted_at is null
+        and status <> 'deleted'
+    `,
+    [projectId, projectRequestId, CLIENT_FILES_FOLDER_KEY, renamed.map((file) => file.fileId), renamed.map((file) => file.title)],
+  );
+  return renamed;
+}
+
+/**
  * Procesa el valor de decide proyecto solicitud para completar la responsabilidad asignada al módulo.
  * Consulta o modifica PostgreSQL mediante parámetros y devuelve una representación estable.
  *
@@ -552,6 +601,7 @@ export async function decideProjectRequest({
     // El bloqueo FOR UPDATE de la solicitud impide decisiones/conversiones simultáneas.
     let project = null;
     let nextStatus;
+    let renamedAttachments = [];
     if (action === "request_changes") {
       nextStatus = "changes_requested";
     } else if (action === "reject") {
@@ -599,23 +649,13 @@ export async function decideProjectRequest({
       // fila (mismas versiones, objetos y comentarios); no se copia nada en el almacenamiento.
       // Clasificación documental (domain/documentClassification.js): un adjunto de la solicitud de
       // origen se ubica en «Archivos del cliente»; solo cambia su carpeta lógica, nunca el objeto.
-      await client.query(
-        `
-          update public.files
-          set project_id = $1,
-              origin_project_request_id = project_request_id,
-              project_request_id = null,
-              folder_id = coalesce(folder_id, (
-                select folder.id from public.project_folders folder
-                where folder.project_id = $1 and folder.system_key = $3 and folder.deleted_at is null
-              )),
-              updated_at = now()
-          where project_request_id = $2
-            and deleted_at is null
-            and status <> 'deleted'
-        `,
-        [project.id, projectRequestId, CLIENT_FILES_FOLDER_KEY],
-      );
+      // Todos los adjuntos van a «Archivos del cliente». El nombre lógico es único por carpeta
+      // (uq_files_project_folder_title), pero la solicitud solo lo exige por autor
+      // (uq_files_project_request_user_title): los homónimos reciben un sufijo determinista
+      // «nombre (2).ext» por orden de id (domain/projectFileNames.js). Solo cambia `files.title`; el
+      // nombre original sigue en sus versiones (`original_name`) y el objeto no se toca. La carpeta del
+      // proyecto recién creado está vacía, así que solo compiten entre sí.
+      renamedAttachments = await moveRequestAttachmentsToProject(client, { projectId: project.id, projectRequestId });
       nextStatus = "converted";
     }
 
@@ -651,6 +691,8 @@ export async function decideProjectRequest({
         JSON.stringify({ status: request.status }),
         JSON.stringify({
           convertedProjectId: project ? Number(project.id) : null,
+          // Nombre original → nombre lógico de los adjuntos homónimos incorporados con sufijo.
+          ...(renamedAttachments.length ? { renamedAttachments } : {}),
           status: nextStatus,
           ...(outdatedReviews > 0 && outdatedReviewsOverride
             ? { outdatedReviewsOverride: { justification: outdatedReviewsOverride.justification, outdatedReviews } }

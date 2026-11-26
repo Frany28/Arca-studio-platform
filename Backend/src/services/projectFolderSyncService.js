@@ -1,4 +1,5 @@
 import { CLIENT_FILES_FOLDER_KEY, describeCatalogPath, resolveDocumentLocation, resolveFileOrigin } from "../domain/documentClassification.js";
+import { assignUniqueFileNames } from "../domain/projectFileNames.js";
 import { planMissingSystemFolders, PROJECT_SYSTEM_FOLDERS, QUOTE_DOCUMENTS_FOLDER_KEY } from "../domain/projectFolderCatalog.js";
 import { isActiveAdmin } from "../repositories/projectFileCompatibilityRepository.js";
 import {
@@ -6,6 +7,7 @@ import {
   countProjectQuotes,
   insertFolderSyncAudit,
   loadProjectFolders,
+  loadSystemFolderFileTitles,
   loadUnfolderedFiles,
 } from "../repositories/projectFolderSyncRepository.js";
 import { ensureProjectSystemFolders } from "../repositories/projectSystemFolderRepository.js";
@@ -22,7 +24,9 @@ import { canonicalJson, sha256 } from "./projectFileCompatibilityService.js";
 // Nunca elimina carpetas ni archivos, no crea versiones, no mueve objetos de almacenamiento y no
 // cambia audiencias: la carpeta es solo la ubicación lógica (no concede acceso).
 
-export const FOLDER_SYNC_PLAN_VERSION = 1;
+// Versión 2: las entradas ubicables pueden llevar `logicalTitle` (homónimos con sufijo). Un plan de la
+// versión 1 se rechaza y hay que volver a planificar.
+export const FOLDER_SYNC_PLAN_VERSION = 2;
 export const FOLDER_SYNC_AUDIT_ACTION = "project_folders.synchronized";
 
 /**
@@ -39,16 +43,19 @@ function byProject(rows) {
 }
 
 /**
- * Planifica un proyecto: carpetas que faltan, conflictos, archivos ubicables y pendientes.
- * Las reglas de ubicación son las de domain/documentClassification.js; aquí no se decide ninguna.
+ * Planifica un proyecto: carpetas que faltan, conflictos, archivos ubicables y pendientes, con las reglas
+ * de domain/documentClassification.js. Un homónimo en la carpeta destino se ubica con un nombre lógico
+ * con sufijo «nombre (2).ext» (`logicalTitle`); su nombre original sigue en sus versiones.
  *
  * @param {object} project - Proyecto.
  * @param {Array<object>} folderRows - Carpetas vigentes del proyecto.
  * @param {Array<object>} fileRows - Archivos sin carpeta del proyecto.
  * @param {number} quotes - Cotizaciones vigentes del proyecto.
+ * @param {Array<{ system_key: string, title: string }>} [occupiedRows] - Nombres ya ubicados en
+ *   carpetas predeterminadas del proyecto.
  * @returns {object} Entrada del plan.
  */
-function planProject(project, folderRows, fileRows, quotes) {
+function planProject(project, folderRows, fileRows, quotes, occupiedRows = []) {
   const folders = folderRows.map((row) => ({ id: Number(row.id), name: row.name, parentId: row.parent_id === null ? null : Number(row.parent_id), systemKey: row.system_key ?? null }));
   const { blocked, conflicts, missing } = planMissingSystemFolders(folders);
   const present = new Set(folders.filter((folder) => folder.systemKey).map((folder) => folder.systemKey));
@@ -74,6 +81,13 @@ function planProject(project, folderRows, fileRows, quotes) {
       const suggestedKey = location.status === "classified" ? location.folderKey : location.suggestedKey;
       pending.push({ ...entry, reason, suggestedKey, suggestedPath: describeCatalogPath(suggestedKey) });
     }
+  }
+  // Nombre lógico único por carpeta destino, frente a lo ya ubicado y al resto del lote.
+  for (const folderKey of new Set(classify.map((file) => file.folderKey))) {
+    const batch = classify.filter((file) => file.folderKey === folderKey);
+    const taken = occupiedRows.filter((row) => row.system_key === folderKey).map((row) => row.title);
+    const names = assignUniqueFileNames(batch.map((file) => ({ id: file.fileId, title: file.title })), { taken });
+    for (const file of batch) if (names.get(file.fileId) !== file.title) file.logicalTitle = names.get(file.fileId);
   }
   return {
     classify,
@@ -130,8 +144,15 @@ export async function buildFolderSyncPlan(client, { now = new Date(), target }) 
   const { folders, projects } = await loadProjectFolders(client);
   const files = byProject(await loadUnfolderedFiles(client));
   const folderMap = byProject(folders);
+  const occupied = byProject(await loadSystemFolderFileTitles(client));
   const quotes = new Map((await countProjectQuotes(client)).map((row) => [Number(row.project_id), Number(row.quotes)]));
-  const entries = projects.map((project) => planProject(project, folderMap.get(Number(project.id)) || [], files.get(Number(project.id)) || [], quotes.get(Number(project.id)) || 0));
+  const entries = projects.map((project) => planProject(
+    project,
+    folderMap.get(Number(project.id)) || [],
+    files.get(Number(project.id)) || [],
+    quotes.get(Number(project.id)) || 0,
+    occupied.get(Number(project.id)) || [],
+  ));
   return {
     catalogKeys: PROJECT_SYSTEM_FOLDERS.map((folder) => folder.key),
     generatedAt: now.toISOString(),
@@ -176,12 +197,17 @@ export async function applyFolderSyncPlan(client, { operatorUserId, plan, planSh
     try {
       await client.query("begin");
       const folders = await ensureProjectSystemFolders(client, { createdBy: operatorUserId, projectId: entry.projectId, skipNameConflicts: true });
-      const planned = entry.classify.filter((file) => file.folderKey === CLIENT_FILES_FOLDER_KEY).map((file) => file.fileId);
-      const classified = await assignRequestAttachmentsToFolder(client, { fileIds: planned, projectId: entry.projectId, systemKey: CLIENT_FILES_FOLDER_KEY });
+      const planned = entry.classify.filter((file) => file.folderKey === CLIENT_FILES_FOLDER_KEY)
+        .map((file) => ({ fileId: file.fileId, title: file.logicalTitle ?? file.title }));
+      const classified = await assignRequestAttachmentsToFolder(client, { files: planned, projectId: entry.projectId, systemKey: CLIENT_FILES_FOLDER_KEY });
+      // Nombre original → nombre lógico de los ubicados con sufijo (el original sigue en sus versiones).
+      const renamedFiles = entry.classify
+        .filter((file) => file.logicalTitle && classified.includes(file.fileId))
+        .map((file) => ({ fileId: file.fileId, originalTitle: file.title, title: file.logicalTitle }));
       if (folders.created || classified.length) {
         await insertFolderSyncAudit(client, {
           action: FOLDER_SYNC_AUDIT_ACTION,
-          newValues: { classifiedFileIds: classified, conflicts: folders.conflicts, createdFolders: folders.created, planSha256 },
+          newValues: { classifiedFileIds: classified, conflicts: folders.conflicts, createdFolders: folders.created, planSha256, ...(renamedFiles.length ? { renamedFiles } : {}) },
           projectId: entry.projectId,
           userId: operatorUserId,
         });

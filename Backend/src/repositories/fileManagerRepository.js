@@ -1,6 +1,7 @@
 import { query } from "../config/db.js";
 import { PROJECT_SYSTEM_FOLDERS, QUOTE_DOCUMENTS_FOLDER_KEY } from "../domain/projectFolderCatalog.js";
 import { preciseCursorTimestampSql } from "../utils/pagination.js";
+import { projectFileVersionNameSql } from "../utils/projectFileNameSql.js";
 
 // Administrador de archivos (Fase 1.2, B7): lecturas de PostgreSQL para métricas, árbol de proyectos
 // y carpetas, búsqueda de carpetas y listados por estado de revisión. Solo archivos de proyectos
@@ -317,7 +318,7 @@ export async function listFileManagerItems({
           version.id as version_id, version.version_number, version.file_extension, version.file_size, version.created_at,
           version.review_status::text as review_status, version.review_reason, version.reviewed_at, version.restored_from_version_id,
           coalesce(version.content_type, file.file_type) as content_type,
-          coalesce(version.original_name, file.title) as name,
+          ${projectFileVersionNameSql("file", "version")} as name,
           (version.version_number = file.current_version) as is_current,
           file.id as file_id, file.access_policy, file.folder_id, file.file_category::text as file_category,
           coalesce(catalog.name, folder.name) as folder_name, classification.system_key as folder_classification_key,

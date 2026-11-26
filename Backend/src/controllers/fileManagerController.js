@@ -49,7 +49,7 @@ export const deleteFileManagerFolderHandler = respond((req) => deleteFileManager
 /**
  * Sube un archivo nuevo a una carpeta del proyecto (U3). Comprueba proyecto y carpeta antes de leer
  * el contenido y reutiliza la carga de documentos (formatos, límites, firma y compensación). La v1
- * nace pendiente de revisión; un nombre ya usado en el proyecto responde 409 DUPLICATE_PROJECT_FILE.
+ * nace pendiente de revisión; un nombre ya usado en la misma carpeta (o en la raíz) responde 409 DUPLICATE_PROJECT_FILE.
  *
  * @param {import("express").Request} req - Solicitud con `projectId` y `folderId` validados.
  * @param {import("express").Response} res - Respuesta HTTP.
@@ -76,7 +76,7 @@ export async function postFileManagerFile(req, res, next) {
     res.status(201).json({ file });
   } catch (error) {
     if (error.code === "DUPLICATE_PROJECT_FILE" || error.code === "23505") {
-      res.status(409).json({ code: "DUPLICATE_PROJECT_FILE", message: "Ese archivo ya existe en este proyecto." });
+      res.status(409).json({ code: "DUPLICATE_PROJECT_FILE", message: "Ya existe un archivo con ese nombre en esta carpeta." });
       return;
     }
     next(error);

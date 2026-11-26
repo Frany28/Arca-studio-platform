@@ -80,7 +80,16 @@ test("al convertir una solicitud en proyecto, sus adjuntos se ubican en «Archiv
   // Comprobación estructural de la sentencia (el flujo completo se cubre con PostgreSQL desechable).
   const source = await readFile(new URL("../src/repositories/projectRequestWorkflowRepository.js", import.meta.url), "utf8");
   assert.match(source, /origin_project_request_id = project_request_id,[\s\S]*?folder_id = coalesce\(folder_id, \([\s\S]*?folder\.system_key = \$3 and folder\.deleted_at is null/);
-  assert.match(source, /\[project\.id, projectRequestId, CLIENT_FILES_FOLDER_KEY\]/);
+  assert.match(source, /\[projectId, projectRequestId, CLIENT_FILES_FOLDER_KEY,/);
+});
+
+test("al convertir una solicitud, los adjuntos homónimos entran todos en «Archivos del cliente» con nombre lógico único", async () => {
+  // Bloquea los adjuntos, calcula los sufijos con el dominio y solo cambia files.title (no las versiones).
+  const source = await readFile(new URL("../src/repositories/projectRequestWorkflowRepository.js", import.meta.url), "utf8");
+  assert.match(source, /where project_request_id = \$1 and deleted_at is null and status <> 'deleted'\s+order by id\s+for update/);
+  assert.match(source, /assignUniqueFileNames\(/);
+  assert.match(source, /title = coalesce\(\([\s\S]*?unnest\(\$4::bigint\[\], \$5::text\[\]\)/);
+  assert.doesNotMatch(source, /update public\.file_versions/, "el nombre original de las versiones no se toca");
 });
 
 test("subidas nuevas: el archivo adicional del cliente va a «Archivos del cliente»; el del equipo sin carpeta queda pendiente", () => {

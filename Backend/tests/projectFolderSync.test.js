@@ -90,6 +90,12 @@ function createDatabase({ failProject = null } = {}) {
       if (text.startsWith("select file.id, file.project_id, file.title")) {
         return result(state.files.filter((file) => file.folderId === null).map((file) => ({ file_category: file.category, id: String(file.id), origin_project_request_id: file.requestId, project_id: String(file.projectId), title: file.title })));
       }
+      if (text.startsWith("select file.project_id, folder.system_key, file.title")) {
+        return result(state.files.flatMap((file) => {
+          const folder = state.folders.find((candidate) => candidate.id === file.folderId && !candidate.deleted && candidate.systemKey);
+          return folder ? [{ project_id: String(file.projectId), system_key: folder.systemKey, title: file.title }] : [];
+        }));
+      }
       if (text.startsWith("select quote_version.project_id, count(*)::int as quotes")) {
         const counts = new Map();
         for (const quote of state.quotes) counts.set(quote.projectId, (counts.get(quote.projectId) || 0) + 1);
@@ -119,13 +125,20 @@ function createDatabase({ failProject = null } = {}) {
         const folders = state.folders.filter((folder) => folder.projectId === params[0] && !folder.deleted);
         return result(folders.filter((folder) => folder.systemKey).map((folder) => ({ parent_key: folders.find((candidate) => candidate.id === folder.parentId)?.systemKey ?? null, system_key: folder.systemKey })));
       }
-      if (text.startsWith("update public.files file set folder_id = target.id")) {
-        const [fileIds, projectId, systemKey] = params;
+      if (text.startsWith("with planned as ( select planned.id, planned.title from unnest(")) {
+        const [fileIds, projectId, systemKey, titles] = params;
         if (projectId === failProject) throw Object.assign(new Error("fallo simulado"), { code: "SIMULATED" });
         const target = state.folders.find((folder) => folder.projectId === projectId && folder.systemKey === systemKey && !folder.deleted);
-        const moved = target ? state.files.filter((file) => fileIds.includes(file.id) && file.projectId === projectId && file.folderId === null && file.requestId !== null) : [];
-        for (const file of moved) file.folderId = target.id;
-        return result(moved.map((file) => ({ id: String(file.id) })));
+        const planned = fileIds.map((id, index) => ({ id, title: titles[index] }));
+        // Reproduce las condiciones: nunca dos nombres iguales en la carpeta destino.
+        const blocked = ({ id, title }) => state.files.some((other) => other.projectId === projectId && other.folderId === target.id && other.id !== id && other.title.toLowerCase() === title.toLowerCase())
+          || planned.some((other) => other.id < id && other.title.toLowerCase() === title.toLowerCase());
+        const moved = target ? planned.filter((entry) => {
+          const file = state.files.find((candidate) => candidate.id === entry.id);
+          return file && file.projectId === projectId && file.folderId === null && file.requestId !== null && !blocked(entry);
+        }) : [];
+        for (const entry of moved) Object.assign(state.files.find((file) => file.id === entry.id), { folderId: target.id, title: entry.title });
+        return result(moved.map((entry) => ({ id: String(entry.id) })));
       }
       if (text.startsWith("insert into public.audit_logs")) {
         state.audits.push({ action: params[1], entityId: params[2], newValues: JSON.parse(params[4]), userId: params[0] });
@@ -222,6 +235,47 @@ test("aplicar: un proyecto con error se revierte entero y no afecta a los demás
   assert.deepEqual(run.results.map((result) => [result.projectId, result.outcome]), [[1, "error"], [2, "applied"]]);
   assert.equal(client.state.folders.filter((folder) => folder.projectId === 1 && NEW_KEYS.includes(folder.systemKey)).length, 0, "sin carpetas a medias");
   assert.equal(client.state.files.find((file) => file.id === 21).folderId !== null, true);
+});
+
+test("homónimos: los adjuntos entran en «Archivos del cliente» con un nombre lógico con sufijo, auditado e idempotente", async () => {
+  const client = createDatabase();
+  const clientFiles = client.state.folders.find((folder) => folder.projectId === 1 && folder.systemKey === "client_files").id;
+  // Mismo nombre (otras mayúsculas) ya ubicado en el destino, y tres adjuntos homónimos sin carpeta en el proyecto 2.
+  client.state.files.push(
+    { category: "image", folderId: clientFiles, id: 30, projectId: 1, requestId: null, title: "FACHADA CLIENTE.jpg" },
+    { category: "document", folderId: null, id: 22, projectId: 2, requestId: 71, title: "escritura.PDF" },
+    { category: "document", folderId: null, id: 23, projectId: 2, requestId: 71, title: "Escritura.pdf" },
+  );
+  const { plan, planSha256 } = await reviewedPlan(client);
+  const [quinta, apartamento] = plan.projects;
+  assert.deepEqual(quinta.classify.map((file) => [file.fileId, file.title, file.logicalTitle]), [[11, "Fachada cliente.jpg", "Fachada cliente (2).jpg"]]);
+  assert.deepEqual(apartamento.classify.map((file) => [file.fileId, file.logicalTitle ?? null]), [[21, null], [22, "escritura (2).PDF"], [23, "Escritura (3).pdf"]]);
+  assert.equal([...quinta.pending, ...apartamento.pending].some((file) => file.reason === "TARGET_NAME_CONFLICT"), false, "ya no quedan pendientes por nombre");
+
+  await applyFolderSyncPlan(client, { operatorUserId: 9, plan, planSha256, target: "arca@test" });
+  const file = (id) => client.state.files.find((candidate) => candidate.id === id);
+  assert.deepEqual([file(11).folderId, file(11).title], [clientFiles, "Fachada cliente (2).jpg"]);
+  assert.deepEqual([21, 22, 23].map((id) => file(id).title), ["Escritura.pdf", "escritura (2).PDF", "Escritura (3).pdf"]);
+  assert.deepEqual(client.state.audits.find((audit) => audit.entityId === 1).newValues.renamedFiles, [{ fileId: 11, originalTitle: "Fachada cliente.jpg", title: "Fachada cliente (2).jpg" }]);
+  assert.equal(client.state.files.length, 10, "ningún archivo se duplica");
+
+  // Idempotente: repetir el plan no crea nombres nuevos y la verificación no deja nada aplicable.
+  const titles = client.state.files.map((candidate) => candidate.title);
+  await applyFolderSyncPlan(client, { operatorUserId: 9, plan, planSha256, target: "arca@test" });
+  assert.deepEqual(client.state.files.map((candidate) => candidate.title), titles);
+  assert.equal((await verifyFolderSync(client, { target: "arca@test" })).ok, true);
+});
+
+test("un plan desactualizado que chocaría con un archivo ya ubicado lo omite en lugar de duplicar el nombre", async () => {
+  const client = createDatabase();
+  const clientFiles = client.state.folders.find((folder) => folder.projectId === 1 && folder.systemKey === "client_files").id;
+  const { plan } = await reviewedPlan(client);
+  // Después de planificar, alguien ubica otro archivo con el mismo nombre en el destino.
+  client.state.files.push({ category: "image", folderId: clientFiles, id: 31, projectId: 1, requestId: null, title: "fachada CLIENTE.jpg" });
+  const text = serializeFolderSyncPlan(plan);
+  const run = await applyFolderSyncPlan(client, { operatorUserId: 9, plan: readFolderSyncPlan(text, sha256(text)), planSha256: sha256(text), target: "arca@test" });
+  assert.equal(run.results.find((result) => result.projectId === 1).skippedFiles, 1);
+  assert.deepEqual([client.state.files.find((file) => file.id === 11).folderId, client.state.files.find((file) => file.id === 11).title], [null, "Fachada cliente.jpg"]);
 });
 
 test("aplicar exige el plan revisado, su destino y un administrador activo", async () => {

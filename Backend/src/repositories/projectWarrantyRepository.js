@@ -1,5 +1,6 @@
 import { query } from "../config/db.js";
 import { buildVisibleFileVersionSql } from "../utils/projectFileAudienceSql.js";
+import { projectFileVersionNameSql } from "../utils/projectFileNameSql.js";
 
 // Garantías y sus documentos (Fase 1.2, B8): consultas de PostgreSQL. Las escrituras se llaman dentro
 // de una transacción con el proyecto ya bloqueado (FOR UPDATE), el mismo orden (proyecto → archivo)
@@ -223,7 +224,7 @@ export async function listWarrantiesWithVisibleDocuments({ projectId, user }) {
     ),
     query(
       `select link.warranty_id, link.linked_at, file.id as file_id, version.id as version_id, version.version_number,
-         coalesce(version.original_name, file.title) as name, version.file_extension, version.file_size,
+         ${projectFileVersionNameSql("file", "version")} as name, version.file_extension, version.file_size,
          ${audience.fileTypeSql} as content_type
        from public.project_warranty_documents link
        inner join public.project_warranties warranty on warranty.id = link.warranty_id and warranty.deleted_at is null

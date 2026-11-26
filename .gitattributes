@@ -8,3 +8,4 @@ Backend/prisma/migrations/20261117120000_project_folder_system_keys/migration.sq
 Backend/prisma/migrations/20261118120000_project_file_review_audience_expand/migration.sql text eol=lf
 Backend/prisma/migrations/20261119120000_project_comment_version_points/migration.sql text eol=lf
 Backend/prisma/migrations/20261124120000_quote_version_restorations/migration.sql text eol=lf
+Backend/prisma/migrations/20261126120000_project_files_folder_title_unique/migration.sql text eol=lf
