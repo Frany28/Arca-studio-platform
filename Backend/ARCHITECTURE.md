@@ -200,8 +200,80 @@ Dominio puro. El catálogo de carpetas participa en las altas de proyectos (ver 
 - Lo que depende de una decisión abierta se devuelve como `pending_decision` con su identificador (`FOLDER_PENDING_DECISIONS`): D2 («Antes») y D13 (mover carpetas personalizadas). D1, D6, D7 y D14 están resueltas:
   - **D7**: se crean carpetas personalizadas y se suben archivos en la raíz del proyecto.
   - **D14**: la ubicación no restringe el contenido. Cualquier carpeta admite archivos de cualquier formato admitido por la subida y subcarpetas, incluidas las predeterminadas («Cotizaciones», «Imágenes», «Videos», «Panorámicas», «Archivos del cliente»). La ubicación elegida se conserva: no se reubica por extensión. Única excepción: la portada (Figma), una sola imagen JPG/PNG y sin subcarpetas.
-- Pruebas: `tests/fileContexts.test.js` (contrasta políticas y prefijos con el código actual) y `tests/projectFolderCatalog.test.js` (árbol, «Panorámicas», «Garantías», coherencia, inmutabilidad, protección, nombre visible y decisiones pendientes).
+- **Reglas de ubicación vigentes (D7 y D14 cerradas)**:
 
+  | Pregunta | Regla | Dónde se aplica |
+  |---|---|---|
+  | ¿Dónde se crean carpetas? | Raíz del proyecto y dentro de cualquier carpeta (predeterminada, «Cotizaciones» o personalizada), hasta `MAX_FOLDER_DEPTH` (12). Excepción: la portada | `evaluateFolderOperation("create_child")`, `createFileManagerFolder` |
+  | ¿Dónde se suben archivos? | Raíz y cualquier carpeta; la seleccionada es el destino por defecto y se conserva | `evaluateManagedUpload`, `storeFileManagerFile`, `AdminFileUploadDialog` |
+  | ¿Qué restricciones quedan? | Formatos y tamaño de la subida de documentos (PDF, DOCX, XLSX, JPG/JPEG, PNG, MP4; 50 MiB), nombre de archivo único por carpeta (ver «Unicidad del nombre de archivo por carpeta»), nombre de carpeta único entre hermanas (1–120), proyecto no archivado ni finalizado, portada con una sola imagen JPG/PNG | `fileUploadService`, `uq_project_folders_sibling_name`, `assertOperationallyMutableProjectState` |
+  | ¿Qué carpetas están protegidas? | Toda carpeta con `system_key` (las 22 del catálogo y las claves retiradas): no se renombra, retira ni mueve. Mover personalizadas sigue pendiente (D13) | `evaluateFolderOperation`, `chk_project_folders_system_not_deleted` |
+  | ¿Archivos de otros módulos? | Los PDF de Cotizaciones son filas virtuales de `quote_pdf_documents`: se consultan en «Documentos › Cotizaciones» y solo se gestionan (descarga, versiones, restauración) desde las rutas de Cotizaciones. Una subida manual en esa carpeta crea su propio archivo y nunca los reemplaza | `getFolderManagingModule`, `fileManagerRepository` (lectura de `quote_pdf_documents`) |
+  | ¿Cómo se clasifica? | Por la carpeta elegida (la sección se hereda de la predeterminada más cercana) o por el origen (`documentClassification.js`); nunca por la extensión. Solo la categoría técnica `panorama` depende de la carpeta «Panorámicas» | `resolveFolderClassification`, `resolveManagedFileCategory` |
+  | ¿Seguridad? | Solo el administrador (rutas `/admin/files`); la carpeta destino se busca con `project_id` (una de otro proyecto responde 404); el proyecto se bloquea al registrar; la v1 nace pendiente también para el administrador; los objetos siguen en el bucket privado | `findFolderUploadTarget`, `findProjectFolder`, `uploadProjectFile` |
+
+- Pruebas: `tests/fileContexts.test.js` (contrasta políticas y prefijos con el código actual), `tests/projectFolderCatalog.test.js` (árbol, «Panorámicas», «Garantías», coherencia, inmutabilidad, protección, nombre visible y decisiones pendientes) y `tests/fileManagerLocations.test.js` (creación en cada ubicación, madre de otro proyecto, permisos y destino y categoría de la subida en cada ubicación).
+
+### Unicidad del nombre de archivo por carpeta
+
+**Regla.** Dos archivos independientes de un proyecto pueden llamarse igual si están en carpetas distintas (`Planos/plano.pdf`, `Propuesta inicial/plano.pdf`, una personalizada y la raíz). Dentro de una misma ubicación, incluida la raíz, no puede haber dos con el mismo nombre lógico. Sustituye a la regla anterior, que exigía el nombre único en todo el proyecto.
+
+**Nombre original y nombre lógico** (`domain/projectFileNames.js`):
+
+| | Dónde | Cambia | Quién lo muestra |
+|---|---|---|---|
+| **Nombre original** | `file_versions.original_name` de cada versión: el nombre con el que se subió | Nunca (historial) | Detalle de la solicitud de origen, historial de versiones y nombre de la descarga |
+| **Nombre lógico** | `files.title`: identifica el archivo en su carpeta, único en ella | Solo al incorporarse a una carpeta donde su nombre ya está usado, con sufijo determinista `nombre (2).ext` | Vistas del proyecto (administrador de archivos, configuración del borrador, garantías) para la v1; las versiones posteriores conservan su nombre de subida (`utils/projectFileNameSql.js`) |
+
+- Casi siempre coinciden. Difieren solo en adjuntos homónimos de una solicitud: `plano.pdf`, `plano (2).pdf`, `plano (3).pdf`.
+- Sufijos (`assignUniqueFileNames`):
+  - en orden de id, el primero conserva su nombre y los siguientes reciben el menor `(n)` libre, con n ≥ 2, en la carpeta y en el lote;
+  - un sufijo nunca pisa un nombre real; si hiciera falta, se recorta la base para respetar `VARCHAR(255)`;
+  - recalcular con el resultado no cambia nada (idempotente).
+- **Comparación sin distinguir mayúsculas.** Se usa `lower()` de PostgreSQL, igual en la aplicación y en el índice. Depende del `LC_CTYPE` de la base:
+  - con `C`, solo pliega ASCII («Á» ≠ «á»);
+  - con un locale UTF-8, también tildes.
+
+  El preflight muestra el `LC_CTYPE`. El cálculo de sufijos usa `toLowerCase` de JavaScript, que es igual o más estricto, así que nunca produce un nombre que el índice rechace.
+- **Identidad.** El archivo se identifica siempre por `files.id`:
+  - versiones, contenido, reemplazo, aprobación y restauración (`versionId` del mismo `file_id`);
+  - comentarios, audiencias, garantías y auditoría.
+
+  Ninguna operación busca un archivo por su nombre.
+- **Conflicto.** Una carga a una ubicación con un homónimo responde 409 `DUPLICATE_PROJECT_FILE` y **nunca** se convierte en versión del existente. Para añadir una versión se usa «Reemplazar archivo».
+
+**Dónde se aplica:**
+
+| Operación | Tratamiento |
+|---|---|
+| Subidas (administrador, configuración del borrador, cliente), una o varias | `findExistingProjectFile` en el destino final, antes de transferir y otra vez con el proyecto bloqueado (`FOR UPDATE`): las cargas simultáneas con el mismo nombre y destino se serializan; la segunda recibe 409 y su objeto se compensa |
+| Mover en la configuración del borrador | `hasFolderNameConflictForFile` con el proyecto bloqueado: 409 sin mover |
+| Conversión de una solicitud en proyecto | La solicitud solo exige nombres únicos por autor (`uq_files_project_request_user_title`). Todos los adjuntos van a «Archivos del cliente»: se bloquean, los homónimos reciben sufijo y la decisión audita `renamedAttachments` (`fileId`, `originalTitle`, `title`). No toca versiones ni objetos. Repetir la aprobación responde 409 sin cambios |
+| Sincronización (`project-folder-sync`, plan v2) | Los adjuntos heredados sin carpeta se ubican en «Archivos del cliente» con sufijo si su nombre ya está usado (`logicalTitle` en el plan, `renamedFiles` en la auditoría). Un plan desactualizado que chocara omite ese archivo en lugar de duplicar el nombre. Los planes v1 se rechazan |
+| Reemplazar, aprobar, rechazar y restaurar | No cambian nombre ni ubicación |
+
+**PostgreSQL: `uq_files_project_folder_title`** (migración `20261126120000_project_files_folder_title_unique`, pendiente de aplicar en entornos compartidos).
+
+- Definición: índice único parcial sobre `(project_id, coalesce(folder_id, 0), lower(title))` `WHERE project_id IS NOT NULL AND deleted_at IS NULL AND status <> 'deleted'`.
+- La raíz: `coalesce` la convierte en una ubicación comparable; un UNIQUE con NULL admitiría duplicados.
+- Fuera del índice: los borrados lógicos, los retirados y los adjuntos de solicitudes (`project_id` NULL).
+- No modifica filas, versiones ni cotizaciones.
+- Es la garantía final frente a cualquier vía de escritura (scripts, SQL directo); la aplicación sigue comprobando primero con su mensaje.
+- **Errores.** `normalizeError` traduce su violación (23505 con ese `constraint`) a 409 `DUPLICATE_PROJECT_FILE` sin exponer la clave; las subidas ya traducían 23505 a ese código.
+- **Concurrencia.** Las rutas serializan por el bloqueo del proyecto. Fuera de ellas, dos inserciones simultáneas: la segunda espera al COMMIT de la primera y recibe 23505.
+- **Conflictos previos.** Si ya hay homónimos en una ubicación, la migración aborta sin cambios con un mensaje sin datos, y el preflight los enumera por ids. Prisma muestra entonces `current transaction is aborted` (25P02) en lugar del motivo, porque reutiliza la transacción abortada: el diagnóstico es el preflight. Se resuelven renombrando por decisión humana; la migración nunca renombra.
+- **Riesgos que no bloquean:**
+  - archivos heredados en la raíz con nombres distintos;
+  - solicitudes pendientes con homónimos de autores distintos, que la conversión resuelve con sufijo.
+
+**Cotizaciones.** Sus PDF son filas de `quote_pdf_documents`, sin fila en `files`, así que no participan: un PDF manual puede llamarse como el de una cotización. Dos manuales iguales en «Cotizaciones» sí chocan entre sí.
+
+- Pruebas, unitarias: `tests/projectFileNames.test.js` (sufijos, determinismo, idempotencia, longitud y 409), `tests/projectFolderSync.test.js` y `tests/documentClassification.test.js`.
+- Pruebas de integración sobre PostgreSQL real:
+  - `tests/projectFilesFolderTitleUnique.integration.test.js`: aborto con conflictos, preflight y postcheck, huella, carpetas, raíz, mayúsculas, borrados lógicos, mover, concurrencia y 409;
+  - `tests/fileManagerUpload.integration.test.js`: subidas, concurrencia, versiones, descargas, otro proyecto, Cotizaciones y mover;
+  - `tests/projectRequestLifecycle.integration.test.js`: tres homónimos con un sufijo ya ocupado, nombres originales, auditoría, descargas y aprobación repetida;
+  - `tests/projectFolderSync.integration.test.js`: sufijos, auditoría e idempotencia.
 ### Dominio de archivos: conservación, revisión, versiones y audiencias (B2, Fase 1.2)
 
 Dominio puro, sin PostgreSQL ni almacenamiento. La conservación ya se aplica (`storedUpload` y `storedFileRetentionService` consultan la regla); revisión, versiones, audiencias y garantías todavía no los usa ningún flujo y no cambian comportamiento. Clasificación (carpeta), aprobación (versión) y visibilidad (audiencias) son independientes.
@@ -335,8 +407,8 @@ Organización de los documentos en su carpeta según su **origen** y su **catego
 - **Reglas centralizadas** (`domain/documentClassification.js`, `resolveDocumentLocation`):
   - Cotización (`quote_pdf`): `documents.quotes`.
   - Adjunto de la solicitud de origen (`request_attachment`, `origin_project_request_id`): `client_files`. La conversión de una solicitud en proyecto (`projectRequestWorkflowRepository`) lo aplica en la misma transacción, sin pisar una carpeta ya asignada.
-  - Archivo adicional del cliente (`client_upload`, «Subir archivos» del proyecto, sin carpeta elegida): `client_files`, resuelto con el proyecto bloqueado al registrar la v1 (que queda pendiente de revisión). Si el proyecto aún no tiene esa carpeta, queda sin carpeta. Una subida del equipo sin carpeta sigue pendiente de clasificación.
-  - Subida a una carpeta (`folder_upload`): la elegida por el usuario, que ya es su clasificación. El administrador y la configuración del borrador exigen elegirla (la categoría se pide en la subida). Las imágenes de «Panorámicas» se registran como `panorama` por su carpeta (`resolveManagedFileCategory`), separadas de las fotografías.
+  - Archivo adicional del cliente (`client_upload`, «Subir archivos» del proyecto, sin carpeta elegida): `client_files`, resuelto con el proyecto bloqueado al registrar la v1 (que queda pendiente de revisión). Si el proyecto aún no tiene esa carpeta, queda sin carpeta. Una subida del equipo sin carpeta queda en la raíz del proyecto (`folder_id` NULL, D7): no se reubica automáticamente y, como no tiene categoría documental, la sincronización la informa como pendiente de clasificación.
+  - Subida a una carpeta (`folder_upload`): la elegida por el usuario, que ya es su clasificación. El administrador y la configuración del borrador proponen la carpeta seleccionada como destino y permiten la raíz (D7); el formato nunca cambia la ubicación (D14). Las imágenes de «Panorámicas» se registran como `panorama` por su carpeta (`resolveManagedFileCategory`), separadas de las fotografías.
   - Archivo heredado sin carpeta (`legacy_upload`): **pendiente de clasificación**. No hay dato que indique su fase ni su tipo documental, así que no se asigna arbitrariamente: el reporte sugiere la carpeta de su categoría (imagen → Imágenes, panorámica → Panorámicas, video → Videos, documento → Documentos) para revisión humana. Mientras tanto sigue visible a nivel de proyecto.
 - **Sincronización de proyectos existentes** (`scripts/project-folder-sync.mjs`, `services/projectFolderSyncService.js`, `repositories/projectFolderSyncRepository.js`). Mismo protocolo que la compatibilidad B9: `--env-file` fuera del repositorio y `--confirm-database <base@host>`.
   1. `--plan --out <plan.json>`: simulación de solo lectura con huella SHA-256. Incluye carpetas que faltan por proyecto, conflictos de nombre, archivos ubicables por categoría y destino, pendientes con motivo y sugerencia, y la carpeta en que se verán las cotizaciones.

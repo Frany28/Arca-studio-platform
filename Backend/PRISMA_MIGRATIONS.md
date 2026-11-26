@@ -227,6 +227,44 @@ Orden seguro (cada escritura requiere autorización expresa):
 
 El backend publicado anterior funciona con la migración aplicada (sus INSERT nombran columnas explícitas y las nuevas quedan NULL). Reversión (solo con el backend anterior publicado y respaldo previo; con restauraciones reales se pierde su trazabilidad), en una transacción: retirar `uq_quote_versions_restore_request`, `fk_quote_versions_restored_from` y `chk_quote_versions_restoration`, las tres columnas y la fila de `_prisma_migrations`; ensayada en `quoteVersionRestorationsMigration.integration.test.js`.
 
+## 20261126120000_project_files_folder_title_unique (unicidad del nombre por carpeta; pendiente de aplicar)
+
+**No aplicada en ningún entorno compartido.** Crea `uq_files_project_folder_title`, un índice único parcial sobre `public.files (project_id, coalesce(folder_id, 0), lower(title)) WHERE project_id IS NOT NULL AND deleted_at IS NULL AND status <> 'deleted'`.
+
+- Garantiza en PostgreSQL la regla de la aplicación: el mismo nombre en carpetas distintas sí; dos iguales en la misma carpeta o en la raíz, no (sin distinguir mayúsculas según el `LC_CTYPE` de la base). Ver `Backend/ARCHITECTURE.md`, «Unicidad del nombre de archivo por carpeta».
+- No modifica filas, versiones, objetos ni tablas de Cotizaciones.
+- Fija `lock_timeout = 3s` y `statement_timeout = 60s` en su transacción. `CREATE INDEX` toma SHARE sobre `files` hasta el COMMIT: bloquea escrituras de archivos, no lecturas.
+- Si hay homónimos vigentes en una misma ubicación, aborta sin cambios con un mensaje que no contiene datos. Prisma muestra entonces `current transaction is aborted` (25P02): el motivo lo da el preflight.
+- Checksum que registra Prisma (LF, fijado en `.gitattributes`): `b574e68fb487e8a44ec2a6fe66188c216a4a6e4954d7a06bbb7d2788b468fc8a`.
+
+**Ensayo local (26/11/2026).** PostgreSQL 17.5 desechable (`embedded-postgres`, UTF-8, locale `C`) con el historial hasta `20261124120000` y la CLI de Prisma desde este árbol (`DATABASE_URL` y `DIRECT_URL` a la base desechable, `.env` neutralizado y destino confirmado con `migrate status`).
+
+1. Con dos homónimos en la raíz, `migrate deploy` falló sin cambios: sin índice, archivos intactos y la migración marcada como fallida.
+2. Tras renombrar uno y ejecutar `prisma migrate resolve --rolled-back 20261126120000_project_files_folder_title_unique`, el redespliegue fue correcto y `migrate status` respondió `Database schema is up to date!`.
+3. Postcheck: todos los `ok_*` verdaderos y el checksum registrado igual al del archivo.
+
+Pruebas en `tests/projectFilesFolderTitleUnique.integration.test.js`, con `ARCA_FILE_MANAGER_DB_TESTS=1` y `ARCA_FILE_MANAGER_TEST_DATABASE_URL` locales.
+
+**Precauciones.**
+- Las escrituras directas que dupliquen un nombre en una ubicación fallarán con 23505. Afecta a scripts antiguos de carga como `upload-project-images-and-clear-comments.mjs` y `upload-project-videos.mjs`; es el comportamiento esperado.
+- Desplegar antes o junto con el backend que asigna sufijos en la conversión de solicitudes y en la sincronización. Con el backend anterior, aprobar una solicitud con adjuntos homónimos de autores distintos fallaría por el índice, porque los ponía juntos en «Archivos del cliente».
+
+Orden seguro (cada escritura requiere autorización expresa):
+
+1. Confirmar destino, `migrate status` con **solo esta** pendiente y el SHA-256 del archivo (`b574e68f…`).
+2. Respaldo verificado fuera del repositorio.
+3. Publicar el backend que incluye la regla por carpeta y los sufijos.
+4. Pausar cargas y movimientos de archivos hasta el postcheck.
+5. Ejecutar `psql -X -f prisma/checks/20261126120000_project_files_folder_title_unique/preflight.sql`. Deben cumplirse:
+   - todos los `ok_*` verdaderos;
+   - el detalle de conflictos vacío;
+   - `other_open_transactions = 0`.
+
+   Anotar `database_ctype` y `folds_accented_letters`, y guardar la salida (con huellas) fuera del repositorio. Si hay conflictos, se resuelven renombrando por decisión humana, nunca desde la migración.
+6. `pnpm db:migrate:deploy` una sola vez. Si falla (25P02 por conflictos, 55P03 por `lock_timeout` o un tiempo de sentencia agotado), no se aplicó nada: ejecutar `prisma migrate resolve --rolled-back 20261126120000_project_files_folder_title_unique`, repetir el paso 5 y reintentar.
+7. `psql -X -f prisma/checks/20261126120000_project_files_folder_title_unique/postcheck.sql`: todos los `ok_*` verdaderos y la huella de `files` idéntica a la del preflight. Después, reanudar las escrituras.
+
+Reversión (solo si hace falta): `DROP INDEX public.uq_files_project_folder_title;` y retirar su fila de `_prisma_migrations`. La regla sigue aplicándose desde la aplicación.
 ## Flujo para un cambio nuevo
 
 1. Modificar `prisma/schema.prisma` para cambios que Prisma pueda representar.

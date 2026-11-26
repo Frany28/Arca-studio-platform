@@ -1126,6 +1126,10 @@ Validación, capturas y diferencias respecto a Figma:
     MP4 (extensión y tipo), 50 MB, nombre ≤150; portada, solo JPEG/PNG. Un archivo inválido se
     muestra con su motivo y no se transfiere. Las cargas van de una en una
     (`useAdminFileUploadQueue`).
+  - El nombre es único por carpeta (la raíz incluida): el mismo nombre se sube sin problema a otra
+    carpeta. Un nombre repetido en el destino deja la tarjeta con su error, que nombra la ubicación
+    («Proyecto › Ruta» o la raíz). No reemplaza nada: el usuario cancela o usa «Reemplazar archivo»
+    sobre el existente. No hay modal propio: se reutiliza el error de la tarjeta.
   - Errores definitivos (nombre repetido, carpeta llena, permisos, proyecto de solo lectura) sin
     reintento; transitorios (red, 5xx, 429) con «Intenta de nuevo». Cancelar una carga en curso o
     perder la respuesta deja el resultado incierto: se consulta lo guardado y, si se registró, se
