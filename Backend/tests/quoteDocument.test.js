@@ -134,7 +134,7 @@ for (const [count, expectedPages] of [[9, 1], [10, 1], [11, 2], [20, 2], [21, 3]
   });
 }
 
-test("PDF: recuperar la revisión 1 conserva el binario original al introducir el límite de diez", async () => {
+test("PDF: recuperar la revisión 1 conserva el binario original al cambiar la maquetación", async () => {
   const items = Array.from({ length: 21 }, (_, index) => ({
     ...item(`Servicio ${index + 1}`, "1.000", "10.00", "10.00"), unit: { label: "proy." },
   }));
@@ -147,6 +147,8 @@ test("PDF: recuperar la revisión 1 conserva el binario original al introducir e
   // Huella tomada antes de cambiar el renderer: protege documentos ya persistidos en S3.
   assert.equal(createHash("sha256").update(legacy).digest("hex"), "839d5581361f27dd1bf794d194a741bf20295067a2218dbead1e0ee32eb5d8a6");
   assert.equal((legacy.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 2);
+  const previous = await readAll(renderQuotePdf(model, assets, { layoutRevision: 2 }));
   const current = await readAll(renderQuotePdf(model, assets));
+  assert.notDeepEqual(current, previous, "La tercera revisión aplica el nuevo espaciado");
   assert.equal((current.toString("latin1").match(/\/Type \/Page\b/g) || []).length, 3);
 });

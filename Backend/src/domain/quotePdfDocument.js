@@ -5,11 +5,12 @@ import { formatGeneratedQuoteCode } from "./quote.js";
 
 export const QUOTE_PDF_TIME_ZONE = "America/Caracas";
 export const QUOTE_PDF_MAX_BYTES = 8 * 1024 * 1024;
-export const QUOTE_PDF_LAYOUT_REVISION = 2;
-// La revisión 1 se conserva para reproducir exactamente los documentos históricos recuperables.
+export const QUOTE_PDF_LAYOUT_REVISION = 3;
+// Las revisiones 1 y 2 se conservan para reproducir exactamente los documentos históricos recuperables.
 export const QUOTE_PDF_LAYOUTS = Object.freeze({
-  1: Object.freeze({ servicesPerPage: Infinity }),
-  2: Object.freeze({ servicesPerPage: 10 }),
+  1: Object.freeze({ servicesPerPage: Infinity, sectionGap: 48, blockGap: 16 }),
+  2: Object.freeze({ servicesPerPage: 10, sectionGap: 48, blockGap: 16 }),
+  3: Object.freeze({ servicesPerPage: 10, sectionGap: 24, blockGap: 8 }),
 });
 
 /**
