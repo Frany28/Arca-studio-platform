@@ -15,19 +15,15 @@ const denominationText = z.string({ error: "Es obligatorio." })
     .refine((value) => !/\p{Cc}/u.test(value), "No admite caracteres de control."));
 
 /**
- * Comprueba que un cursor de denominaciones contenga el orden de la unidad base (entero no
- * negativo), el texto de la denominación y el id del último elemento de la página anterior.
+ * Comprueba la fecha de creación y el id del último registro de la página anterior.
  *
  * @param {string|undefined} value - Cursor opaco recibido.
  * @returns {boolean} true si el cursor está ausente o es válido.
  */
 function isValidDenominationCursor(value) {
   if (!value) return true;
-  const decoded = decodeCursor(value, 3);
-  return Boolean(decoded
-    && Number.isInteger(decoded[0]) && decoded[0] >= 0
-    && typeof decoded[1] === "string" && decoded[1].length <= DENOMINATION_MAX_LENGTH
-    && /^\d+$/.test(String(decoded[2])));
+  const decoded = decodeCursor(value);
+  return Boolean(decoded && z.iso.datetime().safeParse(decoded[0]).success && /^\d+$/.test(String(decoded[1])));
 }
 
 const denominationIdParams = z.object({ denominationId: positiveId });

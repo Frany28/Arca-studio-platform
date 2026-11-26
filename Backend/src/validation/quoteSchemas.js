@@ -113,7 +113,7 @@ function assertSingleProjectSelection(body, context) {
 /**
  * Comprueba que el cursor del listado corresponda al orden solicitado: por código lleva
  * `[id, id]` (el código deriva del id) y por total `["123.45", id]`, ambos con el id del
- * último registro de la página anterior.
+ * último registro de la página anterior. Por fecha lleva el instante ISO y el id.
  *
  * @param {{ cursor?: string, sort?: string }} query - Consulta recibida.
  * @param {import("zod").RefinementCtx} context - Contexto de Zod para registrar el error.
@@ -127,7 +127,7 @@ function assertQuoteCursorMatchesSort(query, context) {
   const validId = typeof id === "string" && /^\d+$/.test(id);
   const validKey = query.sort === QUOTE_SORT_FIELDS.TOTAL
     ? typeof key === "string" && /^\d+(\.\d+)?$/.test(key)
-    : key === id;
+    : query.sort === QUOTE_SORT_FIELDS.CREATED ? instant.safeParse(key).success : key === id;
   if (!decoded || !validId || !validKey) context.addIssue({ code: "custom", message: "Cursor inválido.", path: ["cursor"] });
 }
 
@@ -150,10 +150,10 @@ export const quoteListSchema = z.object({
     createdBefore: instant.optional(),
     createdFrom: instant.optional(),
     cursor: z.string().optional(),
-    direction: z.enum([QUOTE_SORT_DIRECTIONS.ASC, QUOTE_SORT_DIRECTIONS.DESC]).optional().default(QUOTE_SORT_DIRECTIONS.ASC),
+    direction: z.enum([QUOTE_SORT_DIRECTIONS.ASC, QUOTE_SORT_DIRECTIONS.DESC]).optional().default(QUOTE_SORT_DIRECTIONS.DESC),
     limit: pageLimit,
     search: searchText,
-    sort: z.enum([QUOTE_SORT_FIELDS.CODE, QUOTE_SORT_FIELDS.TOTAL]).optional().default(QUOTE_SORT_FIELDS.CODE),
+    sort: z.enum([QUOTE_SORT_FIELDS.CODE, QUOTE_SORT_FIELDS.CREATED, QUOTE_SORT_FIELDS.TOTAL]).optional().default(QUOTE_SORT_FIELDS.CREATED),
   }).passthrough().superRefine((query, context) => {
     assertCreatedRange(query, context);
     assertQuoteCursorMatchesSort(query, context);

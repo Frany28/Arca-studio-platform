@@ -14,6 +14,7 @@ import {
 import { formatDecimalMoney } from "../src/pages/admin-services-quotes/utils/moneyFormat.js";
 import {
   formatQuoteDate,
+  DEFAULT_QUOTE_SORT,
   getColumnSortDirection,
   toCreatedRange,
   toggleQuoteSort,
@@ -57,6 +58,7 @@ test("filtro por fecha: días locales a instantes, con el último día incluido 
 });
 
 test("orden: otra columna empieza en ascendente y la misma alterna; aria-sort coherente", () => {
+  assert.deepEqual(DEFAULT_QUOTE_SORT, { direction: "desc", sort: "createdAt" });
   assert.deepEqual(toggleQuoteSort({ direction: "asc", sort: "code" }, "code"), { direction: "desc", sort: "code" });
   assert.deepEqual(toggleQuoteSort({ direction: "desc", sort: "code" }, "total"), { direction: "asc", sort: "total" });
   assert.equal(getColumnSortDirection({ direction: "desc", sort: "total" }, "total"), "descending");

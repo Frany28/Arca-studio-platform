@@ -34,7 +34,7 @@ const SERVICE_NOT_FOUND_MESSAGE = "El servicio seleccionado no existe.";
 const SERVICE_MODALITY_IN_USE_MESSAGE = "La modalidad no se puede modificar porque este servicio ya está incluido en una cotización.";
 
 /**
- * Obtiene una página del catálogo con filtros y paginación por cursor (sort_order, id).
+ * Obtiene una página del catálogo con filtros y paginación por cursor (fecha de creación, id).
  * Incluye servicios inactivos salvo que se filtre por estado, porque el catálogo
  * administrativo también los consulta. No usa caché: los datos cambian por edición directa.
  *
@@ -52,7 +52,8 @@ export async function getServicesPage(filters = {}) {
     search: filters.search,
     unitDenominationId: filters.unitDenominationId,
   });
-  const page = pageResult(rows, limit, (service) => service, (service) => [service.sortOrder, String(service.id)]);
+  const page = pageResult(rows, limit, ({ cursorCreatedAt, ...item }) => item,
+    (item) => [item.cursorCreatedAt, String(item.id)]);
   return { nextCursor: page.nextCursor, services: page.items };
 }
 

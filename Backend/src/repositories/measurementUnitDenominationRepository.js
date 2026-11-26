@@ -1,3 +1,4 @@
+import { preciseCursorTimestampSql } from "../utils/pagination.js";
 import { query } from "../config/db.js";
 import { formatUnitLabel } from "../domain/measurementUnitLabel.js";
 import { toContainsPattern } from "../utils/sqlPatterns.js";
@@ -48,12 +49,12 @@ function toDenomination(row) {
 }
 
 /**
- * Lista denominaciones en orden estable (orden de la unidad base, texto, id) con cursor.
+ * Lista denominaciones en orden descendente de creación (fecha e id) con cursor.
  * Pide un elemento adicional para que el servicio determine si existe otra página. Busca
  * literalmente en el código público, la denominación y la abreviatura de la base.
  *
  * @param {object} options - Filtros y paginación.
- * @param {Array<unknown>|null} options.cursor - [sortOrder, denominación, id] del último elemento visto.
+ * @param {Array<unknown>|null} options.cursor - [fecha de creación, id] del último elemento visto.
  * @param {number} options.limit - Tamaño de página.
  * @param {number} [options.measurementUnitId] - Filtra por unidad base.
  * @param {boolean} [options.isActive] - Filtra por estado.
@@ -62,26 +63,25 @@ function toDenomination(row) {
  */
 export async function listDenominations({ cursor, isActive, limit, measurementUnitId, search }) {
   const result = await query(
-    `select ${DENOMINATION_COLUMNS}
+    `select ${DENOMINATION_COLUMNS}, ${preciseCursorTimestampSql("d.created_at")} as created_at_cursor
      ${DENOMINATION_FROM}
      where ($1::bigint is null or d.measurement_unit_id = $1)
        and ($2::boolean is null or d.is_active = $2)
        and ($3::text is null or d.public_code ilike $3 escape '\\' or d.denomination ilike $3 escape '\\'
          or u.symbol ilike $3 escape '\\')
-       and ($4::integer is null or (u.sort_order, d.denomination, d.id) > ($4, $5::text, $6::bigint))
-     order by u.sort_order, d.denomination, d.id
-     limit $7`,
+       and ($4::timestamptz is null or (d.created_at, d.id) < ($4::timestamptz, $5::bigint))
+     order by d.created_at desc, d.id desc
+     limit $6`,
     [
       measurementUnitId ?? null,
       isActive ?? null,
       search ? toContainsPattern(search) : null,
       cursor?.[0] ?? null,
       cursor?.[1] ?? null,
-      cursor?.[2] ?? null,
       limit + 1,
     ],
   );
-  return result.rows.map(toDenomination);
+  return result.rows.map((row) => ({ ...toDenomination(row), cursorCreatedAt: row.created_at_cursor }));
 }
 
 /**

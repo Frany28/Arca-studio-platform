@@ -35,7 +35,7 @@ export async function getMeasurementUnits(filters = {}) {
 
 /**
  * Obtiene una página de denominaciones con filtros y paginación por cursor.
- * El cursor combina el orden de la unidad base, el texto y el id para un orden estable.
+ * El cursor combina la fecha de creación y el id para un orden estable.
  *
  * @param {object} [filters] - Consulta validada por denominationListSchema.
  * @returns {Promise<{ unitDenominations: Array<object>, nextCursor: string|null }>} Página.
@@ -43,13 +43,14 @@ export async function getMeasurementUnits(filters = {}) {
 export async function getDenominationsPage(filters = {}) {
   const limit = parsePageLimit(filters.limit);
   const rows = await listDenominations({
-    cursor: decodeCursor(filters.cursor, 3),
+    cursor: decodeCursor(filters.cursor),
     isActive: filters.status ? filters.status === "active" : undefined,
     limit,
     measurementUnitId: filters.measurementUnitId,
     search: filters.search,
   });
-  const page = pageResult(rows, limit, (item) => item, (item) => [item.measurementUnit.sortOrder, item.denomination, String(item.id)]);
+  const page = pageResult(rows, limit, ({ cursorCreatedAt, ...item }) => item,
+    (item) => [item.cursorCreatedAt, String(item.id)]);
   return { nextCursor: page.nextCursor, unitDenominations: page.items };
 }
 

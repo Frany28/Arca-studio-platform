@@ -147,6 +147,15 @@ test("listado: orden por total con cursor estable y filtro por intervalo de fech
   } while (cursor);
   assert.deepEqual(seen, [...seen].sort((left, right) => Number(right) - Number(left)), "Orden descendente por total");
   assert.equal(seen.length, (await quotes.getQuoteSummary()).total, "El cursor recorre todas las cotizaciones una vez");
+  const byCreation = await rows("select id::int from public.quotes order by created_at desc, id desc");
+  const creationIds = [];
+  do {
+    const page = await quotes.getQuotesPage({ cursor, direction: "desc", limit: 2, sort: "createdAt" });
+    creationIds.push(...page.quotes.map((quote) => quote.id));
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+  assert.deepEqual(creationIds, byCreation.map((quote) => quote.id));
+
   const future = await quotes.getQuotesPage({ createdFrom: new Date(Date.now() + 86_400_000).toISOString(), direction: "asc", sort: "code" });
   assert.deepEqual(future.quotes, []);
 });

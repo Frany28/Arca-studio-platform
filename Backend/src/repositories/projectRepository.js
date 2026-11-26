@@ -1,7 +1,7 @@
 import { query } from "../config/db.js";
 import { toPublicProjectView } from "../domain/projectPublicView.js";
 import { normalizeProjectStatus, PROJECT_STATUS } from "../domain/projectStatus.js";
-import { pageResult } from "../utils/pagination.js";
+import { pageResult, preciseCursorTimestampSql } from "../utils/pagination.js";
 import { nonDraftProjectCondition } from "../utils/projectDraftVisibility.js";
 import { buildVisibleFileVersionSql } from "../utils/projectFileAudienceSql.js";
 
@@ -400,6 +400,7 @@ export async function listProjectsForUser(
         p.progress,
         p.created_at,
         p.updated_at,
+        ${preciseCursorTimestampSql("p.created_at")} as created_at_cursor,
         p.project_type,
         p.location,
         p.city,
@@ -444,8 +445,8 @@ export async function listProjectsForUser(
       where p.deleted_at is null
         and c.deleted_at is null
         and (${accessCondition})
-        and ($${cursorDateParam}::timestamptz is null or (p.updated_at, p.id) < ($${cursorDateParam}::timestamptz, $${cursorIdParam}::bigint))
-      order by p.updated_at desc, p.id desc
+        and ($${cursorDateParam}::timestamptz is null or (p.created_at, p.id) < ($${cursorDateParam}::timestamptz, $${cursorIdParam}::bigint))
+      order by p.created_at desc, p.id desc
       limit $${limitParam}
     `,
     [...params, cursor?.[0] || null, cursor?.[1] || null, limit + 1, ...thumbnail.params],
@@ -455,7 +456,7 @@ export async function listProjectsForUser(
     result.rows,
     limit,
     (row) => presentProjectRow(row, user),
-    (row) => [row.updated_at, String(row.id)],
+    (row) => [row.created_at_cursor, String(row.id)],
   );
 }
 

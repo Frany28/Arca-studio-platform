@@ -66,7 +66,7 @@ function QuotesTable({ actionsDisabled, items, onDownload, onEdit, onSort, onVie
               <th scope="col" className="px-[24px] py-[16px]">Cliente</th>
               <th scope="col" className="px-[24px] py-[16px]">Proyecto</th>
               {/* El intervalo de fechas se elige en la barra; el icono indica que la columna admite filtro. */}
-              <th scope="col" className="px-[24px] py-[16px]"><TableHeaderLabel filter>Fecha</TableHeaderLabel></th>
+              <th scope="col" className="px-[24px] py-[16px]" aria-sort={sort.sort === QUOTE_SORT_FIELDS.CREATED ? getColumnSortDirection(sort, QUOTE_SORT_FIELDS.CREATED) : undefined}><TableHeaderLabel filter>Fecha</TableHeaderLabel></th>
               <SortableHeader field={QUOTE_SORT_FIELDS.TOTAL} label="Total" sort={sort} disabled={actionsDisabled} onSort={onSort} />
               <th scope="col" className="px-[24px] py-[16px]">Acciones</th>
             </tr>
