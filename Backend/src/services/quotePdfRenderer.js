@@ -10,7 +10,7 @@ import { QUOTE_PDF_LAYOUT_REVISION, QUOTE_PDF_LAYOUTS } from "../domain/quotePdf
  */
 
 const PX_TO_PT = 0.75;
-const PAGE = Object.freeze({ width: 816.378, height: 1054.488, padding: 48, sectionGap: 48, blockGap: 16 });
+const PAGE = Object.freeze({ width: 816.378, height: 1054.488, padding: 48 });
 const CONTENT_WIDTH = PAGE.width - PAGE.padding * 2;
 // Límite inferior del contenido: deja 24 px sobre el número de página (Figma 5831:359383).
 const CONTENT_BOTTOM = PAGE.height - 37.49 - 24 - 14 - 24;
@@ -219,9 +219,10 @@ function drawVector(doc, vector, box) {
  * @param {PDFKit.PDFDocument} doc - Documento.
  * @param {object} model - Modelo del documento.
  * @param {object} vectors - Vectores del logo.
+ * @param {number} sectionGap - Separación en px de la revisión activa.
  * @returns {number} Posición vertical en px donde comienza el contenido siguiente.
  */
-function drawHeading(doc, model, vectors) {
+function drawHeading(doc, model, vectors, sectionGap) {
   const top = PAGE.padding;
   for (const part of LOGO_PARTS) {
     drawVector(doc, vectors[part.name], { height: part.height, width: part.width, x: PAGE.padding + part.x, y: top + part.y });
@@ -231,7 +232,7 @@ function drawHeading(doc, model, vectors) {
   const right = { align: "right", width: CONTENT_WIDTH };
   drawLine(doc, `N.° ${model.code}`, PAGE.padding, blockTop, TEXT.code, right);
   drawLine(doc, model.date, PAGE.padding, blockTop + TEXT.code.lineHeight + 8, TEXT.date, right);
-  return top + LOGO_HEIGHT + PAGE.sectionGap;
+  return top + LOGO_HEIGHT + sectionGap;
 }
 
 /**
@@ -242,15 +243,16 @@ function drawHeading(doc, model, vectors) {
  * @param {string} title - Título.
  * @param {number} y - Posición superior en px.
  * @param {boolean} divider - Dibuja la línea bajo el título.
+ * @param {number} blockGap - Separación en px de la revisión activa.
  * @returns {number} Posición vertical siguiente en px.
  */
-function drawSectionTitle(doc, title, y, divider) {
+function drawSectionTitle(doc, title, y, divider, blockGap) {
   drawLine(doc, title, PAGE.padding, y, TEXT.sectionTitle);
-  let next = y + TEXT.sectionTitle.lineHeight + PAGE.blockGap;
+  let next = y + TEXT.sectionTitle.lineHeight + blockGap;
   if (divider) {
     doc.save().lineWidth(pt(1)).strokeColor(COLORS.border)
       .moveTo(pt(PAGE.padding), pt(next)).lineTo(pt(PAGE.padding + CONTENT_WIDTH), pt(next)).stroke().restore();
-    next += PAGE.blockGap;
+    next += blockGap;
   }
   return next;
 }
@@ -263,11 +265,12 @@ function drawSectionTitle(doc, title, y, divider) {
  * @param {string} label - Etiqueta en mayúsculas.
  * @param {object} labelStyle - Estilo de la etiqueta.
  * @param {string} value - Valor.
+ * @param {number} blockGap - Separación en px de la revisión activa.
  * @returns {{ label: string, labelStyle: object, labelWidth: number, lines: Array<string>, width: number, height: number }} Medidas.
  */
-function measureField(doc, label, labelStyle, value) {
+function measureField(doc, label, labelStyle, value, blockGap) {
   const labelWidth = textWidth(doc, label, labelStyle);
-  const valueWidth = CONTENT_WIDTH - labelWidth - PAGE.blockGap;
+  const valueWidth = CONTENT_WIDTH - labelWidth - blockGap;
   const lines = wrapTextLines(doc, value, valueWidth, TEXT.fieldValue);
   const widest = Math.max(...lines.map((line) => textWidth(doc, line, TEXT.fieldValue)));
   return {
@@ -276,7 +279,7 @@ function measureField(doc, label, labelStyle, value) {
     labelStyle,
     labelWidth,
     lines,
-    width: labelWidth + PAGE.blockGap + widest,
+    width: labelWidth + blockGap + widest,
   };
 }
 
@@ -289,13 +292,14 @@ function measureField(doc, label, labelStyle, value) {
  * @param {number} x - Borde izquierdo en px.
  * @param {number} y - Borde superior en px.
  * @param {number} rowHeight - Alto de la fila en px.
+ * @param {number} blockGap - Separación en px de la revisión activa.
  * @returns {void}
  */
-function drawField(doc, field, x, y, rowHeight) {
+function drawField(doc, field, x, y, rowHeight, blockGap) {
   drawLine(doc, field.label, x, y + (rowHeight - field.labelStyle.lineHeight) / 2, field.labelStyle);
   const valueTop = y + (rowHeight - field.lines.length * TEXT.fieldValue.lineHeight) / 2;
   field.lines.forEach((line, index) => {
-    drawLine(doc, line, x + field.labelWidth + PAGE.blockGap, valueTop + index * TEXT.fieldValue.lineHeight, TEXT.fieldValue);
+    drawLine(doc, line, x + field.labelWidth + blockGap, valueTop + index * TEXT.fieldValue.lineHeight, TEXT.fieldValue);
   });
 }
 
@@ -306,23 +310,24 @@ function drawField(doc, field, x, y, rowHeight) {
  * @param {PDFKit.PDFDocument} doc - Documento.
  * @param {object} model - Modelo del documento.
  * @param {number} y - Posición superior en px.
+ * @param {{ blockGap: number, sectionGap: number }} layout - Separaciones de la revisión activa.
  * @returns {number} Posición vertical siguiente en px.
  */
-function drawGeneralData(doc, model, y) {
-  const top = drawSectionTitle(doc, "Datos generales", y, true);
+function drawGeneralData(doc, model, y, { blockGap, sectionGap }) {
+  const top = drawSectionTitle(doc, "Datos generales", y, true, blockGap);
   const fieldGap = 56;
-  const client = measureField(doc, "CLIENTE:", TEXT.clientLabel, model.clientName);
-  const project = measureField(doc, "PROYECTO:", TEXT.projectLabel, model.projectName);
+  const client = measureField(doc, "CLIENTE:", TEXT.clientLabel, model.clientName, blockGap);
+  const project = measureField(doc, "PROYECTO:", TEXT.projectLabel, model.projectName, blockGap);
   if (client.width + fieldGap + project.width <= CONTENT_WIDTH) {
     const rowHeight = Math.max(client.height, project.height);
-    drawField(doc, client, PAGE.padding, top, rowHeight);
-    drawField(doc, project, PAGE.padding + client.width + fieldGap, top, rowHeight);
-    return top + rowHeight + PAGE.sectionGap;
+    drawField(doc, client, PAGE.padding, top, rowHeight, blockGap);
+    drawField(doc, project, PAGE.padding + client.width + fieldGap, top, rowHeight, blockGap);
+    return top + rowHeight + sectionGap;
   }
-  drawField(doc, client, PAGE.padding, top, client.height);
+  drawField(doc, client, PAGE.padding, top, client.height, blockGap);
   const projectTop = top + client.height + fieldGap;
-  drawField(doc, project, PAGE.padding, projectTop, project.height);
-  return projectTop + project.height + PAGE.sectionGap;
+  drawField(doc, project, PAGE.padding, projectTop, project.height, blockGap);
+  return projectTop + project.height + sectionGap;
 }
 
 /**
@@ -452,6 +457,7 @@ function drawPageFooter(doc, vectors, pageNumber) {
 export function renderQuotePdf(model, { fonts, vectors }, { layoutRevision = QUOTE_PDF_LAYOUT_REVISION } = {}) {
   const layout = QUOTE_PDF_LAYOUTS[layoutRevision];
   if (!layout) throw new RangeError("Revisión de maquetación PDF no soportada.");
+  const { blockGap, sectionGap } = layout;
   const doc = new PDFDocument({
     autoFirstPage: false,
     // Las fechas fijas hacen reproducible el binario al recuperar un objeto perdido.
@@ -475,40 +481,40 @@ export function renderQuotePdf(model, { fonts, vectors }, { layoutRevision = QUO
     doc.addPage({ margin: 0, size: "LETTER" });
     pageNumber += 1;
     servicesOnPage = 0;
-    return drawHeading(doc, model, vectors);
+    return drawHeading(doc, model, vectors, sectionGap);
   };
 
-  let y = drawGeneralData(doc, model, startPage());
+  let y = drawGeneralData(doc, model, startPage(), layout);
 
-  const tableStart = TEXT.sectionTitle.lineHeight + PAGE.blockGap + HEADER_ROW_HEIGHT;
+  const tableStart = TEXT.sectionTitle.lineHeight + blockGap + HEADER_ROW_HEIGHT;
   const rows = model.items.map((item) => measureItemRow(doc, item));
   if (y + tableStart + (rows[0]?.height ?? 0) > CONTENT_BOTTOM) y = startPage();
-  y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", y, false));
+  y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", y, false, blockGap));
   rows.forEach((row, index) => {
     if (servicesOnPage >= layout.servicesPerPage || y + row.height > CONTENT_BOTTOM) {
-      y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", startPage(), false));
+      y = drawTableHeader(doc, drawSectionTitle(doc, "Detalle de servicios", startPage(), false, blockGap));
     }
     y = drawItemRow(doc, row, y, index < rows.length - 1);
     servicesOnPage += 1;
   });
 
-  const totalHeight = PAGE.blockGap + TEXT.totalValue.lineHeight;
-  if (y + totalHeight > CONTENT_BOTTOM) y = startPage() - PAGE.blockGap;
-  const totalTop = y + PAGE.blockGap;
+  const totalHeight = blockGap + TEXT.totalValue.lineHeight;
+  if (y + totalHeight > CONTENT_BOTTOM) y = startPage() - blockGap;
+  const totalTop = y + blockGap;
   const valueWidth = textWidth(doc, model.total, TEXT.totalValue);
   drawLine(doc, model.total, PAGE.padding, totalTop, TEXT.totalValue, { align: "right", width: CONTENT_WIDTH });
   // Figma alinea etiqueta e importe por su borde inferior (items-end).
   drawLine(doc, `TOTAL ${model.currency}`, PAGE.padding, totalTop + TEXT.totalValue.lineHeight - TEXT.totalLabel.lineHeight, TEXT.totalLabel, {
     align: "right",
-    width: CONTENT_WIDTH - valueWidth - PAGE.blockGap,
+    width: CONTENT_WIDTH - valueWidth - blockGap,
   });
-  y = totalTop + TEXT.totalValue.lineHeight + PAGE.sectionGap;
+  y = totalTop + TEXT.totalValue.lineHeight + sectionGap;
 
   if (model.notes) {
     const lines = wrapTextLines(doc, model.notes, CONTENT_WIDTH, TEXT.notes);
-    const titleHeight = TEXT.sectionTitle.lineHeight + PAGE.blockGap * 2;
+    const titleHeight = TEXT.sectionTitle.lineHeight + blockGap * 2;
     if (y + titleHeight + TEXT.notes.lineHeight > CONTENT_BOTTOM) y = startPage();
-    y = drawSectionTitle(doc, "Observaciones", y, true);
+    y = drawSectionTitle(doc, "Observaciones", y, true, blockGap);
     for (const line of lines) {
       if (y + TEXT.notes.lineHeight > CONTENT_BOTTOM) y = startPage();
       drawLine(doc, line, PAGE.padding, y, TEXT.notes);
