@@ -2,8 +2,8 @@ import { useId, useState } from "react";
 
 import { api } from "../../../api/http.js";
 import Button from "../../../components/ui/Button/Button.jsx";
-import DropdownMenu from "../../../components/ui/DropdownMenu/DropdownMenu.jsx";
-import { getUploadDestinations } from "../utils/adminFilesPresentation.js";
+import { getFolderDestinationPath } from "../utils/adminFilesPresentation.js";
+import AdminFileDestinationPath from "./AdminFileDestinationPath.jsx";
 import FileUploadSection from "../../../components/ui/FileUploadSection/FileUploadSection.jsx";
 import Input from "../../../components/ui/Input/Input.jsx";
 import Modal, { ModalCloseButton } from "../../../components/ui/Modal/Modal.jsx";
@@ -60,8 +60,8 @@ const CHANGE_NOTE_PLACEHOLDER = "Ej. “Falta firma del cliente, Datos actualiza
  *
  * @param {Object} props - Modo, destino y callbacks.
  * @param {"upload"|"replace"} props.mode - Operación.
- * @param {{ project: Object, folder: Object|null }} [props.target] - Destino inicial de «Nuevo archivo» (null:
- *   raíz del proyecto); el selector «Destino» permite cambiarlo antes de confirmar.
+ * @param {{ project: Object, folder: Object|null }} [props.target] - Destino fijo de «Nuevo archivo»: la
+ *   ubicación abierta al abrir el diálogo (`folder` null: raíz del proyecto). No se puede cambiar.
  * @param {{ projectId: number, fileId: number, name: string, folderSystemKey: string|null }} [props.file] - Archivo a reemplazar.
  * @param {(result: Object, meta: Object) => void} props.onUploaded - Carga confirmada.
  * @param {() => void} props.onClose - Cierra el diálogo.
@@ -73,25 +73,22 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
   const formId = useId();
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState("");
-  // Destino de una subida nueva: la raíz del proyecto o cualquier carpeta (D7 y D14 resueltas). Se
-  // propone la selección del árbol y se conserva la ubicación elegida (no se reubica por formato).
-  const destinations = replacing ? [] : getUploadDestinations(target.project);
-  const [destinationId, setDestinationId] = useState(() => (replacing || !target.folder ? "root" : `folder-${target.folder.id}`));
-  const destination = destinations.find((candidate) => candidate.id === destinationId) ?? destinations[0] ?? null;
-  const destinationFolder = destination?.folder ?? null;
+  // Destino de una subida nueva: la ubicación abierta en el árbol (la raíz del proyecto o la carpeta
+  // abierta), fijada por la página al abrir el diálogo en `target`. No hay selector: el diálogo no
+  // la cambia, un cambio posterior del árbol no la altera y nunca se reubica por formato.
+  const destinationFolder = replacing ? null : target.folder ?? null;
+  // «Proyecto/Carpeta/Subcarpeta»: la misma ruta que muestra el diálogo (AdminFileDestinationPath).
+  const destinationPath = replacing ? "" : getFolderDestinationPath(target.project, destinationFolder);
   const folder = replacing ? { systemKey: file.folderSystemKey } : destinationFolder;
   const projectId = replacing ? file.projectId : target.project.id;
-  const location = replacing
-    ? `Archivo: ${file.name}`
-    : `Dentro de: ${target.project.name}${destinationFolder ? ` › ${destination.label}` : " (raíz del proyecto)"}`;
 
   const queue = useAdminFileUploadQueue({
-    // El nombre es único por carpeta: un conflicto se explica con la ubicación elegida.
-    location: replacing ? "" : destinationFolder ? `«${target.project.name} › ${destination.label}»` : `la raíz de «${target.project.name}»`,
-    // `destination`: ubicación elegida al confirmar («Proyecto › Ruta» o la raíz del proyecto).
+    // El nombre es único por carpeta: un conflicto se explica con la ubicación de destino.
+    location: replacing ? "" : destinationFolder ? `«${destinationPath}»` : `la raíz de «${target.project.name}»`,
+    // `destination`: ubicación de destino para el aviso (la ruta o la raíz del proyecto).
     onUploaded: (result, uploaded, meta) => onUploaded(result, {
       ...meta,
-      destination: destinationFolder ? `${target.project.name} › ${destination.label}` : `${target?.project?.name ?? ""} (raíz del proyecto)`,
+      destination: destinationFolder ? destinationPath : `${target?.project?.name ?? ""} (raíz del proyecto)`,
       file: uploaded,
     }),
     reconcile: replacing ? reconcileReplacement : reconcileUpload,
@@ -174,30 +171,10 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
           <div className="flex flex-col gap-[4px] pr-[28px]">
             <h2 id={`${formId}-title`} className="text-heading-6 m-0 text-[var(--color-text-300)]">{copy.title}</h2>
             {/* Figma 3727:683111 no muestra el archivo reemplazado: queda en la descripción accesible. */}
-            <p id={`${formId}-location`} className={replacing ? "sr-only" : "text-body-4 m-0 [overflow-wrap:anywhere] text-[var(--color-text-100)]"}>{location}</p>
+            {replacing
+              ? <p id={`${formId}-location`} className="sr-only">{`Archivo: ${file.name}`}</p>
+              : <AdminFileDestinationPath id={`${formId}-location`} project={target.project} folder={destinationFolder} />}
           </div>
-          {replacing ? null : (
-            <DropdownMenu
-              portal
-              type="Text"
-              label={destination?.label ?? "Raíz del proyecto"}
-              supportingText=""
-              items={destinations.map(({ id, label }) => ({ id, label }))}
-              selectedItemId={destinationId}
-              interactive
-              truncateTriggerLabel
-              truncateItemLabels
-              disabled={queue.busy}
-              showContainer
-              rowHeightClassName="h-[35px]"
-              itemHeight={35}
-              maxVisibleItems={6}
-              contentPaddingClassName="px-[4px] py-[8px]"
-              className="w-full"
-              aria-label={`Destino: ${destination?.label ?? "Raíz del proyecto"}`}
-              onItemSelect={(item) => setDestinationId(String(item.id))}
-            />
-          )}
           <FileUploadSection
             className="w-full"
             // Sin `disabled`: deshabilitaría también el botón que cancela la carga en curso. Lo que se

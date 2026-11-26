@@ -14,7 +14,7 @@ import {
   formatFolderPath,
   getFolderCapabilities,
   getFolderDepth,
-  getUploadDestinations,
+  getFolderDestinationPath,
   MAX_FOLDER_DEPTH,
   getUploadDisabledReason,
   QUOTES_FOLDER_KEY,
@@ -89,14 +89,17 @@ test("folder capabilities: root of a selected project, any folder (Cotizaciones 
   assert.equal(getUploadDisabledReason({ status: "in_progress" }, { fileCount: 0, systemKey: "documents.plans" }), "");
 });
 
-test("upload destinations: project root first, then every folder with its readable path", () => {
-  const destinations = getUploadDestinations({ folders: [{ id: 10, name: "Documentos", parentId: null }, { id: 11, name: "Cotizaciones", parentId: 10 }, { id: 12, name: "Borradores", parentId: 11 }], name: "Casa" });
-  assert.deepEqual(destinations.map(({ id, label }) => [id, label]), [
-    ["root", "Raíz del proyecto"], ["folder-10", "Documentos"], ["folder-11", "Documentos › Cotizaciones"], ["folder-12", "Documentos › Cotizaciones › Borradores"],
-  ]);
-  assert.equal(destinations[0].folder, null);
+test("ruta de destino «Proyecto/Carpeta/Subcarpeta» con la ubicación abierta; en la raíz, «Proyecto/»", () => {
+  const folders = [{ id: 10, name: "Imágenes", parentId: null }, { id: 11, name: "Renders", parentId: 10 }, { id: 12, name: "Fachada norte", parentId: 11 }];
+  const project = { folders, name: "Casa en las Nubes" };
+  assert.equal(getFolderDestinationPath(project, null), "Casa en las Nubes/");
+  assert.equal(getFolderDestinationPath(project, folders[0]), "Casa en las Nubes/Imágenes");
+  assert.equal(getFolderDestinationPath(project, folders[1]), "Casa en las Nubes/Imágenes/Renders");
+  assert.equal(getFolderDestinationPath(project, folders[2]), "Casa en las Nubes/Imágenes/Renders/Fachada norte", "la subcarpeta abierta, nunca su madre");
+  assert.equal(getFolderDestinationPath({ name: "Casa" }, { id: 9, name: "Suelta", parentId: 99 }), "Casa/Suelta", "sin el resto del árbol, al menos la carpeta");
+  const cycle = [{ id: 1, name: "A", parentId: 2 }, { id: 2, name: "B", parentId: 1 }];
+  assert.ok(getFolderDestinationPath({ folders: cycle, name: "P" }, cycle[0]).split("/").length <= 65, "un ciclo heredado no la vuelve infinita");
 });
-
 test("formats keep visible names readable", () => {
   assert.equal(formatExtension("pdf"), ".PDF");
   assert.equal(formatExtension(".docx"), ".DOCX");

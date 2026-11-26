@@ -6,6 +6,7 @@ import Input from "../../../components/ui/Input/Input.jsx";
 import Modal, { ModalCloseButton } from "../../../components/ui/Modal/Modal.jsx";
 import { useDialogKeyboard } from "../../../hooks/useDialogKeyboard.js";
 import { useInvalidFieldFocus } from "../../../hooks/useInvalidFieldFocus.js";
+import AdminFileDestinationPath from "./AdminFileDestinationPath.jsx";
 
 // Mismo límite que la API (validation/fileManagerSchemas.js).
 export const FOLDER_NAME_MAX_LENGTH = 120;
@@ -35,8 +36,8 @@ function AdminFileFolderDialog({ dialog, onClose, onSubmit }) {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const focusInvalidField = useInvalidFieldFocus({ getContainer: () => document.getElementById(FORM_ID) });
-  // Sin madre, la carpeta nueva va a la raíz del proyecto.
-  const location = renaming || !dialog.parent ? dialog.project.name : `${dialog.project.name} › ${dialog.parent.name}`;
+  // Destino fijo: la ubicación abierta en el árbol cuando se abrió el diálogo (`dialog.parent`, null en
+  // la raíz del proyecto). No hay selector y un cambio posterior del árbol no lo altera.
 
   useDialogKeyboard({
     open: true,
@@ -93,9 +94,13 @@ function AdminFileFolderDialog({ dialog, onClose, onSubmit }) {
           </div>
           <div className="flex flex-col gap-[4px] pr-[28px]">
             <h2 id="admin-file-folder-title" className="text-heading-6 m-0 text-[var(--color-text-300)]">{copy.title}</h2>
-            <p id="admin-file-folder-location" className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={location}>
-              {renaming ? `Proyecto: ${location}` : dialog.parent ? `Dentro de: ${location}` : `Dentro de: ${location} (raíz del proyecto)`}
-            </p>
+            {renaming ? (
+              <p id="admin-file-folder-location" className="text-body-4 m-0 wrap-anywhere text-[var(--color-text-100)]">
+                {`Proyecto: ${dialog.project.name}`}
+              </p>
+            ) : (
+              <AdminFileDestinationPath id="admin-file-folder-location" project={dialog.project} folder={dialog.parent} />
+            )}
           </div>
           <Input
             type="Default input"

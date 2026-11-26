@@ -105,24 +105,22 @@ export function getFolderCapabilities(folder, { project = null } = {}) {
 }
 
 /**
- * Destinos de una subida: la raíz del proyecto y cada carpeta (en el orden del árbol) con su ruta
- * legible, para el selector «Destino» del diálogo.
+ * Ruta de destino de los diálogos de creación con la ubicación abierta en el árbol: el proyecto y
+ * sus carpetas desde la raíz hasta la abierta, separados por «/» («Casa/Imágenes/Renders»); en la
+ * raíz, solo el proyecto con la barra final («Casa/»). Usa las carpetas que el árbol ya tiene
+ * cargadas y sigue las madres con un tope, así un ciclo heredado no la vuelve infinita.
  *
- * @param {{ name: string, folders?: Array<{ id: number, parentId: number|null, name: string }> }} project - Proyecto.
- * @returns {Array<{ id: string, label: string, folder: Object|null }>} Opciones (`root` o `folder-<id>`).
+ * @param {{ name: string, folders?: Array<{ id: number, parentId: number|null, name: string }> }|null} project - Proyecto.
+ * @param {{ id: number, parentId: number|null, name: string }|null} folder - Carpeta abierta (null: raíz).
+ * @returns {string} Ruta con los nombres reales.
  */
-export function getUploadDestinations(project) {
-  const folders = project?.folders || [];
-  const byId = new Map(folders.map((folder) => [folder.id, folder]));
-  const pathOf = (folder) => {
-    const names = [];
-    for (let current = folder; current && names.length < 64; current = byId.get(current.parentId)) names.unshift(current.name);
-    return names.join(" › ");
-  };
-  return [
-    { folder: null, id: "root", label: "Raíz del proyecto" },
-    ...folders.map((folder) => ({ folder, id: `folder-${folder.id}`, label: pathOf(folder) })),
-  ];
+export function getFolderDestinationPath(project, folder) {
+  const projectName = project?.name ?? "";
+  if (!folder) return `${projectName}/`;
+  const byId = new Map((project?.folders || []).map((candidate) => [candidate.id, candidate]));
+  const names = [];
+  for (let current = folder; current && names.length < 64; current = byId.get(current.parentId)) names.unshift(current.name);
+  return [projectName, ...names].join("/");
 }
 
 /**

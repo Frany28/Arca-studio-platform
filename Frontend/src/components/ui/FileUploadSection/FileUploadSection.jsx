@@ -120,6 +120,9 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
   const isPending = file.status === "pending";
   const validationMessage = file.validationMessage || "";
   const messageId = validationMessage ? ids.message : undefined;
+  // El motivo de un fallo describe las acciones de la tarjeta (quitar o reintentar) para lectores de pantalla.
+  const errorId = isFailed && file.errorMessage ? ids.error : undefined;
+  const describedBy = [messageId, errorId].filter(Boolean).join(" ") || undefined;
   // El nombre del archivo identifica qué se quita cuando hay varias tarjetas.
   const removeLabel = file.name ? `Eliminar archivo ${file.name}` : "Eliminar archivo";
   // En la tarjeta fallida, el botón de texto ejecuta `file.onRemove` cuando el archivo no tiene
@@ -141,16 +144,21 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
 
       <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
         <div className="flex w-full flex-col items-start leading-none tracking-[-0.5px]">
-          <span className="w-full text-[14px] leading-[17px] font-medium text-[var(--color-text-300)]">
+          <span className="w-full text-[14px] leading-[17px] font-medium text-[var(--color-text-300)] wrap-anywhere">
             {getFileDisplayName(file.name)}
           </span>
 
           {isFailed ? (
-            <div className="flex w-full items-center gap-[4px] text-[14px] leading-[17px] font-normal text-[var(--color-text-100)]">
-              <span className="truncate">{file.errorMessage}</span>
-              <span aria-hidden="true">&bull;</span>
-              <span className="shrink-0 text-[12px] leading-[14px] text-[var(--color-danger-100)]">
-                Fallido
+            // El motivo se lee completo (p. ej. un conflicto con la ruta de su carpeta): ocupa las
+            // líneas necesarias y corta rutas o palabras largas antes de desbordar; «• Fallido» va
+            // agrupado y pasa a la línea siguiente si no cabe.
+            <div className="flex w-full flex-wrap items-baseline gap-x-[4px] gap-y-[2px] text-[14px] leading-[17px] font-normal text-[var(--color-text-100)]">
+              <span id={errorId} className="min-w-0 wrap-anywhere">{file.errorMessage}</span>
+              <span className="inline-flex shrink-0 items-baseline gap-[4px]">
+                <span aria-hidden="true">&bull;</span>
+                <span className="text-[12px] leading-[14px] text-[var(--color-danger-100)]">
+                  Fallido
+                </span>
               </span>
             </div>
           ) : (
@@ -187,7 +195,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
             showRightIcon={false}
             disabled={disabled}
             id={failedButtonRemoves ? ids.remove : undefined}
-            aria-describedby={failedButtonRemoves ? messageId : undefined}
+            aria-describedby={describedBy}
             onClick={file.onRetryUpload || file.onRemove || onRetryUpload}
           >
             {file.onRetryUpload || onRetryUpload ? "Intenta de nuevo" : "Eliminar"}
@@ -228,7 +236,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
           // El tooltip visible conserva el texto de Figma; el nombre accesible añade el archivo.
           tooltip="Eliminar archivo"
           aria-label={removeLabel}
-          aria-describedby={messageId}
+          aria-describedby={describedBy}
           disabled={disabled}
           onClick={file.onRemove}
         />

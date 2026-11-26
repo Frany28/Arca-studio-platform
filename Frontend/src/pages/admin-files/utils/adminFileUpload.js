@@ -97,7 +97,7 @@ const FINAL_UPLOAD_ERRORS = Object.freeze({
   PROJECT_FINALIZED: "El proyecto está finalizado: no admite archivos nuevos.",
   PROJECT_FOLDER_FILE_TYPE_NOT_ACCEPTED: "La portada solo admite imágenes JPEG o PNG.",
   PROJECT_FOLDER_FULL: "La portada admite una sola imagen: reemplaza la existente.",
-  PROJECT_FOLDER_NOT_FOUND: "La carpeta ya no existe. Elige otra carpeta.",
+  PROJECT_FOLDER_NOT_FOUND: "La carpeta de destino ya no existe: el archivo no se subió. Cierra y abre otra carpeta para subirlo.",
   UNSUPPORTED_FILE_TYPE: "Formato no admitido. Usa PDF, DOCX, XLSX, JPEG, PNG o MP4.",
 });
 

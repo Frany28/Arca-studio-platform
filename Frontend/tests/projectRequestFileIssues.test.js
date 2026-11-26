@@ -57,6 +57,7 @@ test("reparto de errores: por archivo (id estable) y de sección, solo con los m
 test("ids de tarjeta estables por id de archivo y válidos como id del DOM", () => {
   assert.deepEqual(getFileUploadCardIds("attachments", "project-request-file-3"), {
     card: "attachments-file-project-request-file-3",
+    error: "attachments-file-project-request-file-3-error",
     message: "attachments-file-project-request-file-3-message",
     remove: "attachments-file-project-request-file-3-remove",
   });

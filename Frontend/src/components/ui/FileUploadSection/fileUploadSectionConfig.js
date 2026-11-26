@@ -45,12 +45,12 @@ export const FILE_UPLOAD_SECTION_DEFAULT_PROPS = {
  *
  * @param {string} idPrefix - Prefijo de la sección (prop `idPrefix`).
  * @param {string|number} fileId - `id` de la tarjeta.
- * @returns {{card: string, remove: string, message: string}} Ids de la tarjeta, de su botón para
+ * @returns {{card: string, error: string, remove: string, message: string}} Ids de la tarjeta, de su motivo de fallo, de su botón para
  * quitarla y de su mensaje de validación.
  */
 export function getFileUploadCardIds(idPrefix, fileId) {
   const card = `${idPrefix}-file-${String(fileId).replace(/[^\w-]/g, "_")}`;
-  return { card, message: `${card}-message`, remove: `${card}-remove` };
+  return { card, error: `${card}-error`, message: `${card}-message`, remove: `${card}-remove` };
 }
 
 export function createFileUploadSectionProps(overrides = {}) {

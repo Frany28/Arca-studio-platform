@@ -651,7 +651,7 @@ test("el árbol acota la tabla, busca carpetas y gestiona carpetas personalizada
 
   await create.click();
   const dialog = page.getByRole("dialog", { name: "Nueva carpeta" });
-  await dialog.getByText("Dentro de: Quinta Bella Vista › Garantías").waitFor();
+  await dialog.getByText("Destino: Quinta Bella Vista/Documentos/Garantías", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "Crear" }).click();
   await dialog.getByText("Escribe el nombre de la carpeta.").waitFor();
   await dialog.getByLabel("Nombre de la carpeta").fill("Certificados");
@@ -1262,8 +1262,8 @@ test("U3 · «+ Nuevo» sube a la carpeta elegida, valida antes de transferir y 
   await nuevo.click();
 
   const dialog = uploadDialog(page);
-  await dialog.getByText("Dentro de: Quinta Bella Vista › Documentos › Garantías").waitFor();
-  assert.equal(await dialog.getByRole("button", { name: "Destino: Documentos › Garantías" }).count(), 1, "propone la carpeta seleccionada");
+  await dialog.getByText("Destino: Quinta Bella Vista/Documentos/Garantías", { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: /^Destino/ }).count(), 0, "el destino es la carpeta abierta, sin selector");
   await dialog.getByText("Formatos PDF, DOCX, XLSX, JPEG, PNG y MP4, hasta 50 MB.").waitFor();
   const input = dialog.locator("input[type='file']");
   await input.setInputFiles([{ buffer: Buffer.from("hola"), mimeType: "text/plain", name: "notas.txt" }]);
@@ -1276,7 +1276,7 @@ test("U3 · «+ Nuevo» sube a la carpeta elegida, valida antes de transferir y 
   const treeBefore = treeReads();
   await dialog.getByRole("button", { name: "Confirmar" }).click();
   await dialog.waitFor({ state: "detached" });
-  await page.getByText("«Certificado techo.pdf» se subió a Quinta Bella Vista › Documentos › Garantías. Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
+  await page.getByText("«Certificado techo.pdf» se subió a Quinta Bella Vista/Documentos/Garantías. Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
   const uploadRequest = backend.requests.find((request) => request.method === "POST" && request.path === "/api/admin/files/projects/1/files");
   assert.deepEqual(uploadRequest.search, { folderId: "104" });
   await waitUntil(() => metricsReads(backend) > metricsBefore && treeReads() > treeBefore);
@@ -1308,7 +1308,7 @@ test("U3 · arrastrar y soltar, nombre repetido sin reintento, fallo temporal co
   await dialog.getByText("Garantía impermeabilización", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "Confirmar" }).click();
   // El conflicto nombra la carpeta destino y no reemplaza nada; la tarjeta se conserva con su error.
-  await dialog.getByText(/Ya existe un archivo con ese nombre en «Quinta Bella Vista › .*Garantías»\. No se reemplazó nada/).waitFor();
+  await dialog.getByText(/Ya existe un archivo con ese nombre en «Quinta Bella Vista\/.*Garantías»\. No se reemplazó nada/).waitFor();
   await dialog.getByText("Almacenamiento no disponible.").waitFor();
   assert.equal(await dialog.getByRole("button", { name: "Intenta de nuevo" }).count(), 1, "solo el fallo temporal se reintenta");
   await dialog.getByRole("button", { name: "Intenta de nuevo" }).click();
@@ -1354,7 +1354,7 @@ test("U3 · cancelar una carga en curso reconcilia con lo guardado: sin registro
   await dialog.locator("form").getByText("Subiendo...").waitFor();
   await dialog.getByRole("button", { name: "Eliminar archivo Registrado.pdf" }).click();
   await dialog.waitFor({ state: "detached" });
-  await page.getByText(/«Registrado\.pdf» se subió a Quinta Bella Vista › Documentos › Garantías\. Queda pendiente de revisión/).waitFor();
+  await page.getByText(/«Registrado\.pdf» se subió a Quinta Bella Vista\/Documentos\/Garantías\. Queda pendiente de revisión/).waitFor();
   assert.equal(backend.items.filter((entry) => entry.name === "Registrado.pdf").length, 1, "la carga registrada se conserva una sola vez");
 });
 
@@ -1812,89 +1812,123 @@ for (const [theme, width] of [["dark", 1440], ["light", 375], ["dark", 375]]) {
   });
 }
 
-test("D7 y D14 · carpetas y archivos en la raíz y en «Cotizaciones», con selector de destino", async (context) => {
+test("ubicación abierta · carpetas y archivos se crean en la raíz, en la carpeta o en la subcarpeta abierta, sin selector", async (context) => {
   const backend = createBackend({ quotes: true });
   const page = await openFiles(context, backend);
   const tree = page.getByRole("complementary", { name: "Proyectos" });
   const nuevo = page.getByRole("button", { exact: true, name: "Nuevo archivo" });
+  const lastPost = (pattern) => backend.requests.filter((request) => request.method === "POST" && pattern.test(request.path)).at(-1);
 
-  // Carpeta en la raíz del proyecto.
+  // Raíz del proyecto: carpeta y archivo sin carpeta madre ni `folderId`.
   await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
   await tree.getByRole("button", { name: "Nueva carpeta en Quinta Bella Vista" }).click();
   const folderDialog = page.getByRole("dialog", { name: "Nueva carpeta" });
-  await folderDialog.getByText("Dentro de: Quinta Bella Vista (raíz del proyecto)").waitFor();
+  await folderDialog.getByText("Destino: Quinta Bella Vista/", { exact: true }).waitFor();
   await folderDialog.getByLabel("Nombre de la carpeta").fill("Contratos");
   await folderDialog.getByRole("button", { name: "Crear" }).click();
   await folderDialog.waitFor({ state: "detached" });
   await tree.getByRole("button", { exact: true, name: "Contratos" }).waitFor();
-  assert.deepEqual(backend.requests.filter((request) => request.method === "POST").at(-1).body, { name: "Contratos", parentId: null });
-
-  // Archivo en la raíz (la creación conserva la selección del proyecto): sin `folderId`.
+  assert.deepEqual(lastPost(/\/projects\/1\/folders$/).body, { name: "Contratos", parentId: null });
   await nuevo.click();
   let dialog = uploadDialog(page);
-  await dialog.getByText("Dentro de: Quinta Bella Vista (raíz del proyecto)").waitFor();
-  await dialog.getByRole("button", { name: "Destino: Raíz del proyecto" }).waitFor();
+  await dialog.getByText("Destino: Quinta Bella Vista/", { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: /^Destino/ }).count(), 0, "sin selector de destino");
+  assert.equal(await dialog.getByRole("combobox").count(), 0, "sin selector de destino");
   await dialog.locator("input[type='file']").setInputFiles([pdfFile("Acta de inicio.pdf")]);
   await dialog.getByRole("button", { name: "Confirmar" }).click();
   await dialog.waitFor({ state: "detached" });
   await page.getByText("«Acta de inicio.pdf» se subió a Quinta Bella Vista (raíz del proyecto). Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
-  const rootUpload = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/files/projects/1/files").at(-1);
-  assert.deepEqual(rootUpload.search, {}, "la raíz no envía carpeta");
+  assert.deepEqual(lastPost(/\/projects\/1\/files$/).search, {}, "la raíz no envía carpeta");
 
-  // Subcarpeta dentro de «Cotizaciones» y subida elegida desde el selector.
+  // Carpeta abierta («Cotizaciones»): la subcarpeta nueva cuelga de ella.
   await tree.getByRole("button", { name: "Mostrar carpetas de Casa Cotizada" }).click();
   await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).last().click();
   await tree.getByRole("button", { exact: true, name: "Cotizaciones" }).click();
   await tree.getByRole("button", { name: "Nueva carpeta en Cotizaciones" }).click();
-  await folderDialog.getByText("Dentro de: Casa Cotizada › Cotizaciones").waitFor();
+  await folderDialog.getByText("Destino: Casa Cotizada/Documentos/Cotizaciones", { exact: true }).waitFor();
   await folderDialog.getByLabel("Nombre de la carpeta").fill("Borradores");
   await folderDialog.getByRole("button", { name: "Crear" }).click();
   await folderDialog.waitFor({ state: "detached" });
-  const created = backend.requests.filter((request) => request.method === "POST" && /\/folders$/.test(request.path)).at(-1);
-  assert.deepEqual(created.body, { name: "Borradores", parentId: 510 });
-  await tree.getByRole("button", { exact: true, name: "Borradores" }).waitFor();
+  assert.deepEqual(lastPost(/\/projects\/3\/folders$/).body, { name: "Borradores", parentId: 510 });
+  const borradores = tree.getByRole("button", { exact: true, name: "Borradores" });
+  await borradores.waitFor();
+  assert.equal(await tree.getByRole("button", { exact: true, name: "Cotizaciones" }).getAttribute("aria-current"), "true", "crear no cambia la carpeta abierta");
 
-  // La selección sigue en «Cotizaciones»: el diálogo la propone y el selector cambia el destino.
+  // Desplegar otra carpeta sin abrirla no cambia el destino: sigue «Cotizaciones».
+  await tree.getByRole("button", { name: "Mostrar carpetas de Renders e imágenes" }).last().click();
   await nuevo.click();
   dialog = uploadDialog(page);
-  await dialog.getByText("Dentro de: Casa Cotizada › Documentos › Cotizaciones").waitFor();
-  await dialog.getByRole("button", { name: "Destino: Documentos › Cotizaciones" }).click();
-  await page.getByRole("menuitem", { name: "Documentos › Cotizaciones › Borradores" }).click();
-  await dialog.getByText("Dentro de: Casa Cotizada › Documentos › Cotizaciones › Borradores").waitFor();
+  await dialog.getByText("Destino: Casa Cotizada/Documentos/Cotizaciones", { exact: true }).waitFor();
+  await dialog.getByRole("button", { exact: true, name: "Cerrar" }).click();
+  await dialog.waitFor({ state: "detached" });
+
+  // Subcarpeta abierta: se usa su id, no el de su madre ni el de la categoría.
+  await borradores.click();
+  const borradoresId = backend.projects.find((project) => project.id === 3).folders.find((folder) => folder.name === "Borradores").id;
+  await nuevo.click();
+  dialog = uploadDialog(page);
+  await dialog.getByText("Destino: Casa Cotizada/Documentos/Cotizaciones/Borradores", { exact: true }).waitFor();
   await dialog.locator("input[type='file']").setInputFiles([pdfFile("Propuesta comercial.pdf")]);
+  // Un cambio de navegación con el diálogo abierto (aquí, un clic programático en otra carpeta del
+  // árbol) no altera el destino ya fijado.
+  await page.evaluate(() => [...document.querySelectorAll("aside button")].find((button) => button.textContent.trim() === "Quinta Bella Vista").click());
+  await dialog.getByText("Destino: Casa Cotizada/Documentos/Cotizaciones/Borradores", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "Confirmar" }).click();
   await dialog.waitFor({ state: "detached" });
-  const quoteUpload = backend.requests.filter((request) => request.method === "POST" && request.path === "/api/admin/files/projects/3/files").at(-1);
-  const borradoresId = backend.projects.find((project) => project.id === 3).folders.find((folder) => folder.name === "Borradores").id;
-  assert.deepEqual(quoteUpload.search, { folderId: String(borradoresId) });
-  assert.notEqual(quoteUpload.search.folderId, "510", "se respeta el destino elegido, no la carpeta seleccionada");
+  assert.deepEqual(lastPost(/\/projects\/3\/files$/).search, { folderId: String(borradoresId) });
+  await page.getByText("«Propuesta comercial.pdf» se subió a Casa Cotizada/Documentos/Cotizaciones/Borradores. Queda pendiente de revisión en «Pendientes por aprobación».").waitFor();
 });
 
 for (const theme of ["light", "dark"]) {
-  for (const width of [375, 768, 1440]) {
-    test(`selector de destino de «Nuevo archivo» cabe en el diálogo (${theme}, ${width} px)`, async (context) => {
+  for (const width of [360, 375, 390, 768, 1440, 1920]) {
+    test(`ubicación abierta · la ruta «Proyecto/Carpeta/Subcarpeta» se lee completa y sin selector en ambos diálogos (${theme}, ${width} px)`, async (context) => {
       const backend = createBackend();
-      const page = await openFiles(context, backend, { theme, viewport: { height: 900, width } });
-      const tree = page.getByRole("complementary", { name: "Proyectos" });
-      await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
-      await tree.getByRole("button", { name: "Mostrar carpetas de Documentos" }).click();
-      await tree.getByRole("button", { exact: true, name: "Garantías" }).click();
+      backend.projects.find((project) => project.id === 1).folders.push(
+        { fileCount: 0, id: 160, name: LONG_FOLDER, parentId: 150, systemKey: null },
+        { fileCount: 0, id: 161, name: UNBROKEN_FOLDER, parentId: 160, systemKey: null },
+      );
+      const page = await openFiles(context, backend, { theme, viewport: { height: width < 800 ? 740 : 900, width } });
+      await selectQuintaFolder(page, ["Documentos", "Planos de obra", LONG_FOLDER, UNBROKEN_FOLDER]);
+      const expected = `Destino: Quinta Bella Vista/Documentos/Planos de obra/${LONG_FOLDER}/${UNBROKEN_FOLDER}`;
+      /**
+       * Comprueba que la etiqueta del diálogo abierto se lee completa y cabe sin desbordar.
+       *
+       * @param {string} selector - Diálogo.
+       * @returns {Promise<void>}
+       */
+      const assertLocation = async (selector) => {
+        await page.waitForTimeout(300);
+        const layout = await page.evaluate((root) => {
+          const dialogElement = document.querySelector(root);
+          const label = dialogElement.querySelector("[data-admin-file-destination] > span");
+          const style = getComputedStyle(label);
+          const box = dialogElement.getBoundingClientRect();
+          const labelBox = label.getBoundingClientRect();
+          const destination = dialogElement.querySelector("[data-admin-file-destination]");
+          return {
+            controls: destination.querySelectorAll("input, button, select, [role='combobox'], [contenteditable='true']").length, icon: Boolean(destination.querySelector("svg[aria-hidden='true']")),
+            clipped: label.scrollWidth > label.clientWidth + 1, ellipsis: style.textOverflow === "ellipsis", inside: labelBox.left >= box.left && labelBox.right <= box.right,
+            nowrap: style.whiteSpace === "nowrap", overflow: document.documentElement.scrollWidth - innerWidth, right: box.right, text: label.textContent, width: innerWidth,
+          };
+        }, selector);
+        assert.equal(layout.text, expected);
+        assert.deepEqual([layout.icon, layout.controls], [true, 0], "icono de carpeta del árbol y ruta solo informativa");
+        assert.deepEqual([layout.clipped, layout.ellipsis, layout.nowrap], [false, false, false], JSON.stringify(layout));
+        assert.ok(layout.inside && layout.overflow <= 0 && layout.right <= layout.width, JSON.stringify(layout));
+      };
       await page.getByRole("button", { exact: true, name: "Nuevo archivo" }).click();
       const dialog = uploadDialog(page);
-      const trigger = dialog.getByRole("button", { name: "Destino: Documentos › Garantías" });
-      await trigger.waitFor();
-      await page.waitForTimeout(300);
-      const layout = await page.evaluate(() => {
-        const box = document.querySelector("[data-admin-file-upload='upload']").getBoundingClientRect();
-        const select = [...document.querySelectorAll("[data-admin-file-upload='upload'] button")].find((button) => button.getAttribute("aria-label")?.startsWith("Destino:")).getBoundingClientRect();
-        return { dialog: { left: box.left, right: box.right }, overflow: document.documentElement.scrollWidth - innerWidth, select: { left: select.left, right: select.right }, width: innerWidth };
-      });
-      assert.ok(layout.overflow <= 0, `la página no desborda (${layout.overflow} px)`);
-      assert.ok(layout.dialog.left >= 0 && layout.dialog.right <= layout.width, "el diálogo cabe en el viewport");
-      assert.ok(layout.select.left >= layout.dialog.left && layout.select.right <= layout.dialog.right, "el selector cabe en el diálogo");
-      await trigger.click();
-      await page.getByRole("menuitem", { name: "Raíz del proyecto" }).waitFor();
-      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/upload-destination-${theme}-${width}.png` });
+      await dialog.getByText(expected, { exact: true }).waitFor();
+      assert.equal(await dialog.getByRole("button", { name: /^Destino/ }).count(), 0, "sin selector de destino");
+      await assertLocation("[data-admin-file-upload='upload']");
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/location-upload-${theme}-${width}.png` });
+      await dialog.getByRole("button", { exact: true, name: "Cerrar" }).click();
+      await dialog.waitFor({ state: "detached" });
+      await page.getByRole("complementary", { name: "Proyectos" }).getByRole("button", { name: /^Nueva carpeta en / }).click();
+      const folderDialog = page.getByRole("dialog", { name: "Nueva carpeta" });
+      await folderDialog.getByText(expected, { exact: true }).waitFor();
+      await assertLocation("[data-admin-file-folder-dialog]");
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/location-folder-${theme}-${width}.png` });
     });
   }
 }
@@ -1906,7 +1940,7 @@ test("nombre único por carpeta · el mismo nombre que un archivo de «Garantía
   await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
   await page.getByRole("button", { name: /^Nuevo archivo/ }).click();
   const dialog = uploadDialog(page);
-  await dialog.getByText("Dentro de: Quinta Bella Vista (raíz del proyecto)").waitFor();
+  await dialog.getByText("Destino: Quinta Bella Vista/", { exact: true }).waitFor();
   await dialog.locator("input[type='file']").setInputFiles([pdfFile("Garantía impermeabilización.pdf")]);
   await dialog.getByRole("button", { name: "Confirmar" }).click();
   await dialog.waitFor({ state: "detached" });
@@ -1916,3 +1950,78 @@ test("nombre único por carpeta · el mismo nombre que un archivo de «Garantía
   assert.equal(homonyms.size, 2, "dos archivos independientes");
   assert.equal(new Set(homonyms.values()).size, 2, "en ubicaciones distintas: «Garantías» y la raíz");
 });
+// ---------------------------------------------------------------------------------------------
+// Conflicto de nombre (409) con rutas largas: el motivo se lee completo en la tarjeta, sin «…».
+
+const LONG_FOLDER = "Carpeta de documentación técnica con un nombre deliberadamente largo para el ajuste de línea";
+const UNBROKEN_FOLDER = "Expediente_definitivo_sin_espacios_para_forzar_el_corte_de_palabras_en_moviles_2026";
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [360, 375, 390, 768, 1440, 1920]) {
+    test(`409 · el conflicto se lee completo con rutas largas y varias tarjetas (${theme}, ${width} px)`, async (context) => {
+      const backend = createBackend();
+      const quinta = backend.projects.find((project) => project.id === 1);
+      quinta.folders.push(
+        { fileCount: 0, id: 160, name: LONG_FOLDER, parentId: 150, systemKey: null },
+        { fileCount: 0, id: 161, name: UNBROKEN_FOLDER, parentId: 160, systemKey: null },
+      );
+      // Todos los archivos ya existen en el destino: la API responde 409 como el backend real.
+      backend.uploadHook = async ({ route }) => {
+        await route.fulfill({ body: JSON.stringify({ code: "DUPLICATE_PROJECT_FILE", message: "Ya existe un archivo con ese nombre en esta carpeta." }), contentType: "application/json", status: 409 });
+        return true;
+      };
+      const page = await openFiles(context, backend, { theme, viewport: { height: width < 800 ? 740 : 900, width } });
+      await selectQuintaFolder(page, ["Documentos", "Planos de obra", LONG_FOLDER, UNBROKEN_FOLDER]);
+      await page.getByRole("button", { name: "Nuevo archivo" }).click();
+      const dialog = uploadDialog(page);
+      await dialog.locator("input[type='file']").setInputFiles([pdfFile("plano.pdf"), pdfFile("memoria.pdf"), pdfFile("acta-de-inicio.pdf")]);
+      await dialog.getByRole("button", { name: "Confirmar" }).click();
+      await dialog.getByText("Fallido").nth(2).waitFor();
+      await page.waitForTimeout(350);
+
+      const layout = await page.evaluate(() => {
+        const root = document.querySelector("[data-admin-file-upload]");
+        const dialogBox = root.getBoundingClientRect();
+        const errors = [...root.querySelectorAll("[id$='-error']")];
+        return {
+          cards: errors.map((error) => {
+            const card = document.getElementById(error.id.replace(/-error$/, ""));
+            const style = getComputedStyle(error);
+            const button = [...card.querySelectorAll("button")].find((candidate) => candidate.textContent.trim() === "Eliminar");
+            const box = card.getBoundingClientRect();
+            const buttonBox = button.getBoundingClientRect();
+            return {
+              bottom: box.bottom, buttonInside: buttonBox.left >= box.left && buttonBox.right <= box.right && buttonBox.top >= box.top && buttonBox.bottom <= box.bottom,
+              clipped: error.scrollWidth > error.clientWidth + 1, describedBy: (button.getAttribute("aria-describedby") || "").split(" ").includes(error.id),
+              ellipsis: style.textOverflow === "ellipsis", inDialog: box.left >= dialogBox.left && box.right <= dialogBox.right, nowrap: style.whiteSpace === "nowrap",
+              text: error.textContent, top: box.top,
+            };
+          }),
+          dialog: { left: dialogBox.left, right: dialogBox.right },
+          pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+          viewport: window.innerWidth,
+        };
+      });
+      const detail = JSON.stringify(layout);
+      assert.equal(layout.cards.length, 3, `las tres tarjetas se conservan: ${detail}`);
+      assert.ok(layout.pageOverflow <= 0 && layout.dialog.left >= 0 && layout.dialog.right <= layout.viewport, `sin desbordamiento: ${detail}`);
+      for (const card of layout.cards) {
+        assert.ok(card.text.includes(`Quinta Bella Vista/Documentos/Planos de obra/${LONG_FOLDER}/${UNBROKEN_FOLDER}`), "la ruta completa, con nombres largos");
+        assert.ok(card.text.endsWith("No se reemplazó nada: cancela o usa «Reemplazar archivo» en ese archivo para subir una versión nueva."), "el mensaje termina completo");
+        assert.deepEqual([card.ellipsis, card.nowrap, card.clipped], [false, false, false], `sin recorte: ${detail}`);
+        assert.ok(card.inDialog && card.buttonInside, `tarjeta y acción dentro de su contenedor: ${detail}`);
+        assert.equal(card.describedBy, true, "el motivo describe el botón «Eliminar»");
+      }
+      const sorted = [...layout.cards].sort((left, right) => left.top - right.top);
+      for (let index = 1; index < sorted.length; index += 1) assert.ok(sorted[index].top >= sorted[index - 1].bottom - 0.5, `las tarjetas no se superponen: ${detail}`);
+      assert.equal(await dialog.getByRole("button", { name: "Intenta de nuevo" }).count(), 0, "un conflicto no ofrece reintento");
+      // Con varias tarjetas el área se desplaza: cada acción y el pie del diálogo siguen alcanzables.
+      for (const button of await dialog.getByRole("button", { exact: true, name: "Eliminar" }).all()) {
+        await button.scrollIntoViewIfNeeded();
+        assert.equal(await button.isVisible(), true);
+      }
+      assert.equal(await dialog.getByRole("button", { exact: true, name: "Cerrar" }).isVisible(), true);
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/conflict-${theme}-${width}.png` });
+    });
+  }
+}
