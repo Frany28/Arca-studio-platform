@@ -1,3 +1,4 @@
+import { blurInputOnEnter } from "../../utils/blurInputOnEnter.js";
 import { useId, useMemo, useRef, useState } from "react";
 import { Buildings, Sms, User } from "iconsax-react";
 
@@ -296,7 +297,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
 
         {!editing || editStep === "details" ? (
           <>
-            <form id={`${mode}-admin-user-form`} className="min-h-0 overflow-y-auto" onSubmit={handleDetailsSubmit} noValidate>
+            <form id={`${mode}-admin-user-form`} className="min-h-0 overflow-y-auto" onKeyDown={editing ? blurInputOnEnter : undefined} onSubmit={handleDetailsSubmit} noValidate>
               <fieldset disabled={submitting} className="flex flex-col p-[16px]">
                 <div className="grid grid-cols-1 gap-[16px] border-b border-[var(--color-neutral-200)] pb-[16px] sm:grid-cols-2 sm:gap-[24px]">
                   <Input {...textInputProps("fullName")} label="Nombre" placeholder="John Doe" required showLabel showLabelInfo={false} showLeftIcon leftIcon={<User size="20" color="currentColor" />} showRightIcon={false} className="max-w-none" autoComplete="name" />
@@ -328,7 +329,7 @@ function AdminUserFormModal({ mode = "create", onClose, onSubmit, open, roles = 
           </>
         ) : (
           <>
-            <form id="edit-admin-user-password-form" className="min-h-0 overflow-y-auto" onSubmit={handlePasswordSubmit} noValidate>
+            <form id="edit-admin-user-password-form" className="min-h-0 overflow-y-auto" onKeyDown={blurInputOnEnter} onSubmit={handlePasswordSubmit} noValidate>
               <fieldset disabled={submitting} className="grid grid-cols-1 items-start gap-[16px] p-[16px] sm:grid-cols-2 sm:gap-[24px]">
                 <Input
                   label="Cambiar contraseña"

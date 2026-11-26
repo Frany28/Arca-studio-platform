@@ -1,3 +1,4 @@
+import { blurInputOnEnter } from "../../../utils/blurInputOnEnter.js";
 import { useMemo, useRef, useState } from "react";
 
 import AlertToast from "../../../components/ui/AlertToast/AlertToast.jsx";
@@ -108,7 +109,7 @@ function AdminProjectRequestEditForm({ onCancel, onReload, onSaved, projectReque
 
       <FormDivider />
 
-      <form ref={formRef} noValidate className="flex w-full flex-col items-center gap-[48px]" onSubmit={handleSubmit} aria-busy={saver.saving || undefined}>
+      <form ref={formRef} noValidate className="flex w-full flex-col items-center gap-[48px]" onKeyDown={blurInputOnEnter} onSubmit={handleSubmit} aria-busy={saver.saving || undefined}>
         <ProjectRequestFormSections
           attachments={{
             completedLabel: ADMIN_EDIT_ATTACHMENT_LABEL,

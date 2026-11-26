@@ -1,3 +1,4 @@
+import { blurInputOnEnter } from "../../../../utils/blurInputOnEnter.js";
 import { useMemo, useRef, useState } from "react";
 
 import { api } from "../../../../api/http.js";
@@ -212,7 +213,7 @@ function QuoteEditorForm({ catalog, initialDraft, mode, onExit, onReloadQuote, o
   }
 
   return (
-    <form ref={formRef} className="flex flex-col gap-[48px]" noValidate onSubmit={handleSubmit} aria-busy={submitting || undefined}>
+    <form ref={formRef} className="flex flex-col gap-[48px]" noValidate onKeyDown={blurInputOnEnter} onSubmit={handleSubmit} aria-busy={submitting || undefined}>
       <SectionDivider />
       <QuoteGeneralDataSection
         client={draft.client}
