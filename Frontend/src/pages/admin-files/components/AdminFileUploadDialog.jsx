@@ -86,6 +86,8 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
     : `Dentro de: ${target.project.name}${destinationFolder ? ` › ${destination.label}` : " (raíz del proyecto)"}`;
 
   const queue = useAdminFileUploadQueue({
+    // El nombre es único por carpeta: un conflicto se explica con la ubicación elegida.
+    location: replacing ? "" : destinationFolder ? `«${target.project.name} › ${destination.label}»` : `la raíz de «${target.project.name}»`,
     // `destination`: ubicación elegida al confirmar («Proyecto › Ruta» o la raíz del proyecto).
     onUploaded: (result, uploaded, meta) => onUploaded(result, {
       ...meta,

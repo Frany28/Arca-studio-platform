@@ -49,6 +49,15 @@ test("replacement is blocked for legacy files and while a version is pending", (
   assert.equal(getReplaceAvailability({ review: { status: "rejected" } }, []).allowed, true, "rechazada sin pendientes: admite otra versión");
 });
 
+test("nombre repetido en la carpeta destino: definitivo, nombra la ubicación y remite a «Reemplazar archivo»", () => {
+  const generic = describeUploadError({ code: "DUPLICATE_PROJECT_FILE", status: 409 });
+  assert.match(generic.message, /en esta carpeta\. No se reemplazó nada/);
+  const located = describeUploadError({ code: "DUPLICATE_PROJECT_FILE", status: 409 }, { location: "«Quinta › Documentos › Planos»" });
+  assert.equal(located.message, "Ya existe un archivo con ese nombre en «Quinta › Documentos › Planos». No se reemplazó nada: cancela o usa «Reemplazar archivo» en ese archivo para subir una versión nueva.");
+  assert.deepEqual([located.retryable, located.uncertain], [false, false], "no se reintenta ni se reconcilia como si se hubiera guardado");
+  assert.match(describeUploadError({ code: "PROJECT_FOLDER_FULL", status: 409 }, { location: "la raíz" }).message, /reemplaza la existente/, "la ubicación solo cambia el conflicto de nombre");
+});
+
 test("upload errors separate final answers, transient failures and uncertain outcomes", () => {
   assert.deepEqual(describeUploadError({ code: "DUPLICATE_PROJECT_FILE", status: 409 }).retryable, false);
   assert.match(describeUploadError({ code: "PROJECT_FOLDER_FULL", status: 409 }).message, /reemplaza la existente/);

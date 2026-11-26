@@ -437,8 +437,9 @@ function createBackend({ enabled = true, failures = {}, media = [], quotes = fal
         if (handled) return handled;
       }
       if (params.folderId && !folder) return json(route, 404, { code: "PROJECT_FOLDER_NOT_FOUND", message: "Carpeta no encontrada." });
-      if (state.items.some((candidate) => candidate.project.id === project.id && candidate.name.toLowerCase() === name.toLowerCase())) {
-        return json(route, 409, { code: "DUPLICATE_PROJECT_FILE", message: "Ese archivo ya existe en este proyecto." });
+      // Unicidad del nombre por carpeta (la raíz incluida), como el backend.
+      if (state.items.some((candidate) => candidate.project.id === project.id && (candidate.folder?.id ?? null) === (folder?.id ?? null) && candidate.name.toLowerCase() === name.toLowerCase())) {
+        return json(route, 409, { code: "DUPLICATE_PROJECT_FILE", message: "Ya existe un archivo con ese nombre en esta carpeta." });
       }
       if (folder?.systemKey === "cover" && folder.fileCount >= 1) return json(route, 409, { code: "PROJECT_FOLDER_FULL", message: "La portada admite una sola imagen: reemplaza la existente." });
       return json(route, 201, { file: recordUpload(project, folder, name, request) });
@@ -1306,7 +1307,8 @@ test("U3 · arrastrar y soltar, nombre repetido sin reintento, fallo temporal co
   await dialog.getByText("Arrastra y suelta").dispatchEvent("drop", { dataTransfer });
   await dialog.getByText("Garantía impermeabilización", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "Confirmar" }).click();
-  await dialog.getByText(/Ya existe un archivo con ese nombre en el proyecto/).waitFor();
+  // El conflicto nombra la carpeta destino y no reemplaza nada; la tarjeta se conserva con su error.
+  await dialog.getByText(/Ya existe un archivo con ese nombre en «Quinta Bella Vista › .*Garantías»\. No se reemplazó nada/).waitFor();
   await dialog.getByText("Almacenamiento no disponible.").waitFor();
   assert.equal(await dialog.getByRole("button", { name: "Intenta de nuevo" }).count(), 1, "solo el fallo temporal se reintenta");
   await dialog.getByRole("button", { name: "Intenta de nuevo" }).click();
@@ -1896,3 +1898,21 @@ for (const theme of ["light", "dark"]) {
     });
   }
 }
+
+test("nombre único por carpeta · el mismo nombre que un archivo de «Garantías» se sube a la raíz del proyecto", async (context) => {
+  const backend = createBackend();
+  const page = await openFiles(context, backend);
+  const tree = page.getByRole("complementary", { name: "Proyectos" });
+  await tree.getByRole("button", { exact: true, name: "Quinta Bella Vista" }).click();
+  await page.getByRole("button", { name: /^Nuevo archivo/ }).click();
+  const dialog = uploadDialog(page);
+  await dialog.getByText("Dentro de: Quinta Bella Vista (raíz del proyecto)").waitFor();
+  await dialog.locator("input[type='file']").setInputFiles([pdfFile("Garantía impermeabilización.pdf")]);
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByText(/«Garantía impermeabilización\.pdf» se subió a Quinta Bella Vista \(raíz del proyecto\)/).waitFor();
+  // Los elementos son versiones: se agrupan por archivo.
+  const homonyms = new Map(backend.items.filter((item) => item.project.id === 1 && item.name === "Garantía impermeabilización.pdf").map((item) => [item.fileId, item.folder?.id ?? null]));
+  assert.equal(homonyms.size, 2, "dos archivos independientes");
+  assert.equal(new Set(homonyms.values()).size, 2, "en ubicaciones distintas: «Garantías» y la raíz");
+});

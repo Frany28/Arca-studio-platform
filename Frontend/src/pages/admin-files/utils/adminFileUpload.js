@@ -31,8 +31,8 @@ export function getUploadExtension(name) {
 }
 
 /**
- * Formatos que admite una carpeta: la portada, solo JPG o PNG; el resto, los de la subida de
- * documentos (su contenido por carpeta sigue pendiente de D14).
+ * Formatos que admite una carpeta: la portada, solo JPG o PNG; el resto de carpetas y la raíz,
+ * todos los de la subida de documentos (D14 resuelta: la ubicación no restringe el formato).
  *
  * @param {{ systemKey?: string|null }|null} folder - Carpeta destino.
  * @returns {string[]} Extensiones admitidas.
@@ -88,7 +88,7 @@ export function validateUploadFile(file, { folder = null, takenNames = [] } = {}
 
 // Respuestas de la API que no mejoran al repetir la carga: se muestran sin reintento.
 const FINAL_UPLOAD_ERRORS = Object.freeze({
-  DUPLICATE_PROJECT_FILE: "Ya existe un archivo con ese nombre en el proyecto. Usa «Reemplazar archivo» para subir una versión nueva.",
+  DUPLICATE_PROJECT_FILE: "Ya existe un archivo con ese nombre en esta carpeta. No se reemplazó nada: cancela o usa «Reemplazar archivo» en ese archivo para subir una versión nueva.",
   FILE_TOO_LARGE: "El archivo supera el tamaño máximo que admite el servidor.",
   FILE_VERSION_PENDING_REVIEW: "El archivo ya tiene una versión pendiente de revisión. Revísala antes de subir otra.",
   FILE_VERSIONING_UNAVAILABLE: "Este archivo heredado todavía no admite versiones.",
@@ -106,14 +106,28 @@ const FINAL_UPLOAD_ERRORS = Object.freeze({
  * servidor no disponible); `uncertain` indica que la carga pudo registrarse aunque la respuesta no
  * llegó (fallo de red o cancelación tras enviar los datos) y hay que reconciliar con lo guardado.
  *
+ * El nombre lógico es único por carpeta (la raíz incluida): un homónimo en el destino responde
+ * DUPLICATE_PROJECT_FILE y, con `location`, el mensaje nombra esa ubicación. Nunca se reemplaza: el
+ * usuario cancela o usa «Reemplazar archivo» sobre el existente.
+ *
  * @param {Object} error - Error de uploadRawFile (`code`, `status`, `message`).
+ * @param {{ location?: string }} [context] - Ubicación destino legible («Proyecto › Ruta» o la raíz).
  * @returns {{ message: string, retryable: boolean, uncertain: boolean, cancelled: boolean, fieldError: string }} Diagnóstico.
  */
-export function describeUploadError(error) {
+export function describeUploadError(error, { location = "" } = {}) {
   const code = error?.code || "";
   const fields = error?.fields || {};
   const fieldError = fields["headers.x-change-note"] || "";
   if (code === "UPLOAD_ABORTED") return { cancelled: true, fieldError: "", message: "Carga cancelada.", retryable: true, uncertain: true };
+  if (code === "DUPLICATE_PROJECT_FILE" && location) {
+    return {
+      cancelled: false,
+      fieldError: "",
+      message: `Ya existe un archivo con ese nombre en ${location}. No se reemplazó nada: cancela o usa «Reemplazar archivo» en ese archivo para subir una versión nueva.`,
+      retryable: false,
+      uncertain: false,
+    };
+  }
   if (FINAL_UPLOAD_ERRORS[code]) return { cancelled: false, fieldError: "", message: FINAL_UPLOAD_ERRORS[code], retryable: false, uncertain: false };
   if (fieldError) return { cancelled: false, fieldError: Array.isArray(fieldError) ? fieldError[0] : fieldError, message: "", retryable: false, uncertain: false };
   const network = code === "NETWORK_ERROR" || !error?.status;

@@ -25,16 +25,17 @@ let nextItemId = 0;
  * @param {(file: File) => Promise<Object|null>} params.reconcile - Resultado guardado o null.
  * @param {(result: Object, file: File, meta: {reconciled: boolean}) => void} params.onUploaded - Carga confirmada.
  * @param {boolean} [params.single=false] - Un solo archivo por diálogo.
+ * @param {string} [params.location] - Ubicación destino legible, para nombrarla en un conflicto de nombre.
  * @returns {Object} Elementos, estado y acciones (`add`, `start`, `retry`, `remove`, `abort`).
  */
-export function useAdminFileUploadQueue({ onUploaded, reconcile, single = false, upload, validate }) {
+export function useAdminFileUploadQueue({ location = "", onUploaded, reconcile, single = false, upload, validate }) {
   const [items, setItems] = useState([]);
   const itemsRef = useRef(items);
   const activeRef = useRef(null);
   const runningRef = useRef(false);
-  const callbacks = useRef({ onUploaded, reconcile, upload, validate });
+  const callbacks = useRef({ location, onUploaded, reconcile, upload, validate });
   useEffect(() => {
-    callbacks.current = { onUploaded, reconcile, upload, validate };
+    callbacks.current = { location, onUploaded, reconcile, upload, validate };
   });
   useEffect(() => () => activeRef.current?.controller.abort(), []);
 
@@ -101,7 +102,7 @@ export function useAdminFileUploadQueue({ onUploaded, reconcile, single = false,
       callbacks.current.onUploaded(result, item.file, { reconciled: false });
     } catch (error) {
       const userCancelled = activeRef.current?.userCancelled;
-      const described = describeUploadError(error);
+      const described = describeUploadError(error, { location: callbacks.current.location });
       if (!described.uncertain) {
         patch(item.id, { error: described.message || described.fieldError, retryable: described.retryable, status: "failed" });
         return;
