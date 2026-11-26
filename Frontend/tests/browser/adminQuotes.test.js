@@ -462,7 +462,7 @@ test("seleccionar servicios: cinco filas visibles con ScrollBar vertical, sin pa
   await search.fill("");
   await scrollBar.waitFor();
   assert.equal(await viewport.evaluate((node) => node.scrollTop), 0);
-  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+  await search.press("Enter");
   for (const n of ["02", "10", "11", "12"]) {
     await page.getByRole("textbox", { name: `Cantidad de Servicio de lista ${n}` }).waitFor();
   }
@@ -484,7 +484,7 @@ test("una unidad por servicio: cada forma de cobro es un concepto con su unidad 
     await picker.getByRole("checkbox", { name: `Seleccionar ${service.name}` }).click();
   }
   assert.equal(await picker.getByText(/pendiente de validación comercial/).count(), 0);
-  await picker.getByRole("button", { name: "Agregar seleccionados" }).click();
+  await picker.getByRole("checkbox", { name: `Seleccionar ${VARIANT_SERVICES.at(-1).name}` }).press("Enter");
 
   // En la tabla de incluidos la unidad es fija (sin desplegable) y la tarifa base se propone editable.
   for (const service of VARIANT_SERVICES) {

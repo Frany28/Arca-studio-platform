@@ -69,6 +69,34 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   const someSelected = selectable.some((service) => selectedIds.has(service.id));
 
   /**
+   * Agrega la selección actual y la limpia al confirmar por botón o por teclado.
+   *
+   * @returns {void}
+   */
+  function addSelected() {
+    if (disabled || !selected.length) return;
+    onAdd(selected);
+    setSelectedIds(new Set());
+  }
+
+  /**
+   * Confirma con Enter desde el buscador o una casilla. Los demás botones
+   * mantienen su acción de teclado y el formulario no recibe un envío implícito.
+   *
+   * @param {import("react").KeyboardEvent<HTMLElement>} event - Pulsación en el selector.
+   * @returns {void}
+   */
+  function handleKeyDown(event) {
+    if (event.key !== "Enter" || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    if (disabled || !selected.length) return;
+    const target = event.target;
+    if (!target.matches(`#${QUOTE_SERVICE_SEARCH_ID}, button[role="checkbox"]`)) return;
+
+    event.preventDefault();
+    addSelected();
+  }
+
+  /**
    * Marca o desmarca un servicio seleccionable.
    *
    * @param {number} serviceId - Servicio.
@@ -187,7 +215,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
   }
 
   return (
-    <section className="flex flex-col gap-[24px]" aria-labelledby="quote-service-picker-title">
+    <section className="flex flex-col gap-[24px]" aria-labelledby="quote-service-picker-title" onKeyDown={handleKeyDown}>
       <div className="flex flex-wrap items-center justify-between gap-y-[12px]">
         <h2 id="quote-service-picker-title" className="text-heading-5 text-[var(--color-text-300)]">Seleccionar servicios</h2>
         <div className="w-[320px] max-[767px]:w-full">
@@ -232,10 +260,7 @@ function QuoteServicePicker({ disabled, error, includedIds, loading, onAdd, onRe
             showRightIcon={false}
             disabled={disabled || !selected.length}
             className="max-[767px]:flex-1"
-            onClick={() => {
-              onAdd(selected);
-              setSelectedIds(new Set());
-            }}
+            onClick={addSelected}
           >
             Agregar seleccionados
           </Button>
