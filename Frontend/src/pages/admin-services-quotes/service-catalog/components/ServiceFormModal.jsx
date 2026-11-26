@@ -1,3 +1,4 @@
+import { blurInputOnEnter } from "../../../../utils/blurInputOnEnter.js";
 import { Add } from "iconsax-react";
 import { useEffect } from "react";
 
@@ -117,7 +118,7 @@ function ServiceFormModal({
         className="flex max-h-[calc(100dvh-32px)] w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <form id="service-form" className="relative flex min-h-0 flex-col gap-[16px] overflow-y-auto p-[16px]" onSubmit={handleSubmit} noValidate>
+        <form id="service-form" className="relative flex min-h-0 flex-col gap-[16px] overflow-y-auto p-[16px]" onKeyDown={blurInputOnEnter} onSubmit={handleSubmit} noValidate>
           <div className="absolute right-0 top-0">
             <ModalCloseButton disabled={submitting} ariaLabel={copy.close} onClick={onCancel} />
           </div>
