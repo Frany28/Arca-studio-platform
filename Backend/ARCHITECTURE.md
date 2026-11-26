@@ -252,7 +252,7 @@ Dominio puro. El catálogo de carpetas participa en las altas de proyectos (ver 
 | Sincronización (`project-folder-sync`, plan v2) | Los adjuntos heredados sin carpeta se ubican en «Archivos del cliente» con sufijo si su nombre ya está usado (`logicalTitle` en el plan, `renamedFiles` en la auditoría). Un plan desactualizado que chocara omite ese archivo en lugar de duplicar el nombre. Los planes v1 se rechazan |
 | Reemplazar, aprobar, rechazar y restaurar | No cambian nombre ni ubicación |
 
-**PostgreSQL: `uq_files_project_folder_title`** (migración `20261126120000_project_files_folder_title_unique`, pendiente de aplicar en entornos compartidos).
+**PostgreSQL: `uq_files_project_folder_title`** (migración `20261126120000_project_files_folder_title_unique`, aplicada en staging el 26/11/2026; ver PRISMA_MIGRATIONS.md).
 
 - Definición: índice único parcial sobre `(project_id, coalesce(folder_id, 0), lower(title))` `WHERE project_id IS NOT NULL AND deleted_at IS NULL AND status <> 'deleted'`.
 - La raíz: `coalesce` la convierte en una ubicación comparable; un UNIQUE con NULL admitiría duplicados.

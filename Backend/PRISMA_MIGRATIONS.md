@@ -227,9 +227,28 @@ Orden seguro (cada escritura requiere autorización expresa):
 
 El backend publicado anterior funciona con la migración aplicada (sus INSERT nombran columnas explícitas y las nuevas quedan NULL). Reversión (solo con el backend anterior publicado y respaldo previo; con restauraciones reales se pierde su trazabilidad), en una transacción: retirar `uq_quote_versions_restore_request`, `fk_quote_versions_restored_from` y `chk_quote_versions_restoration`, las tres columnas y la fila de `_prisma_migrations`; ensayada en `quoteVersionRestorationsMigration.integration.test.js`.
 
-## 20261126120000_project_files_folder_title_unique (unicidad del nombre por carpeta; pendiente de aplicar)
+## 20261126120000_project_files_folder_title_unique (unicidad del nombre por carpeta)
 
-**No aplicada en ningún entorno compartido.** Crea `uq_files_project_folder_title`, un índice único parcial sobre `public.files (project_id, coalesce(folder_id, 0), lower(title)) WHERE project_id IS NOT NULL AND deleted_at IS NULL AND status <> 'deleted'`.
+**Aplicada en Supabase de desarrollo/staging el 26/11/2026 (17:58 UTC)** con `pnpm db:migrate:deploy`, tras autorización expresa (solo esta migración; ≈9 s con el arranque de la CLI).
+
+- **Destino:** proyecto `iragryaxvrtucpbolcey`, pooler de sesión 5432, PostgreSQL 17.6. TLS `verify-full` con la CA «Supabase Root 2021»; una CA ajena se rechazó.
+- **Publicación previa:** el backend que la necesita (`b61da084`) y después el frontend y la documentación (`98e2fd54`). El backend nuevo estaba activo en Vercel antes de aplicarla, comprobado con una sonda por la API pública: el mensaje del 409.
+- **Respaldo previo:** `public` con `pg_dump` 17.6 (formato custom, 312 346 bytes, SHA-256 `6f399495035a9f25bd55775ef00e4a33d3066eeacdbe249cbe8ad97df3e0b984`) en `C:/Users/Franciely/ARCA_PRIVATE_BACKUPS/files-title-unique-deploy-20261126/backup/`.
+  - `pg_restore --list`: 614 entradas, con datos de 46 tablas.
+  - Restaurado en PostgreSQL 17.10 desechable con TLS: recuentos de las 46 tablas (1202 filas) y huellas de Cotizaciones idénticos.
+- **Preflight inmediato:** todos los `ok_*` verdaderos, 0 conflictos, `other_open_transactions = 0`, `en_US.UTF-8` (pliega tildes), 8 archivos heredados sin carpeta (sin homónimos) y 0 solicitudes con adjuntos homónimos. Huella de `files`: 22 filas, `c50a04bb8a7d721002d8f358c0aa1d61`, igual en la copia restaurada.
+- **Postcheck:** todos los `ok_*` verdaderos (índice válido con la definición exacta), checksum registrado `b574e68f…`, la misma huella de `files` y `Database schema is up to date!`.
+  - `file_versions` (22), los adjuntos de solicitudes (13), `quote_pdf_documents` (23), `quote_versions` (23) y las carpetas (418) tienen huellas idénticas al respaldo previo.
+  - Fuera del nuevo índice, los índices y restricciones de `files` no cambiaron.
+- **Pruebas funcionales** con la cuenta demo, en el proyecto de prueba `[PRUEBA] Unicidad por carpeta 2026-11-26` (id 20, cliente de prueba 4):
+  - `plano.pdf` en Planos, Propuesta inicial, una carpeta personalizada y la raíz (archivos 35–38);
+  - 409 con otras mayúsculas en Planos y en la raíz;
+  - v2 de un homónimo sin afectar al otro, con descargas y versiones correctas;
+  - en la interfaz publicada: el árbol, el conflicto con la ubicación y la tarjeta conservada, en temas claro y oscuro a 1440 y 375 px, sin desbordamiento.
+
+  Los datos de prueba se conservan en staging. Evidencias en la carpeta del respaldo.
+
+Crea `uq_files_project_folder_title`, un índice único parcial sobre `public.files (project_id, coalesce(folder_id, 0), lower(title)) WHERE project_id IS NOT NULL AND deleted_at IS NULL AND status <> 'deleted'`.
 
 - Garantiza en PostgreSQL la regla de la aplicación: el mismo nombre en carpetas distintas sí; dos iguales en la misma carpeta o en la raíz, no (sin distinguir mayúsculas según el `LC_CTYPE` de la base). Ver `Backend/ARCHITECTURE.md`, «Unicidad del nombre de archivo por carpeta».
 - No modifica filas, versiones, objetos ni tablas de Cotizaciones.
