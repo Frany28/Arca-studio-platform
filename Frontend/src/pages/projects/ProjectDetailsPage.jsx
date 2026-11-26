@@ -152,6 +152,7 @@ export default function ProjectDetailsPage({
       clearFocusedRenderComment={clearFocusedRenderComment}
       filesSynchronizedAt={filesSynchronizedAt}
       infoProps={infoProps}
+      manualFileUpload={currentUser.roleCode === "client"}
       openRecentDocument={openRecentDocument}
       presentedProject={presentedProject}
       refreshProjectFiles={refreshProjectFiles}

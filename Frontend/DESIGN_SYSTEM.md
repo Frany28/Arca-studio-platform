@@ -354,6 +354,20 @@ El formato relativo compacto destinado a espacios restringidos constituye una va
 - Los responsables y contenidos existentes se conservan como historial. Si se necesita acceso posterior, debe resolverse con un flujo administrativo específico y no alterando el equipo finalizado.
 - El frontend debe comunicar el cierre y el backend debe rechazar las mutaciones operativas con `PROJECT_FINALIZED`.
 
+### Subir archivos en el detalle del proyecto
+
+- `ProjectUploadFilesPanel` sigue Figma `3727:545416`: encabezado y ayuda a la izquierda,
+  `FileUploadSection` de hasta 512 px a la derecha. Con menos espacio se apilan. La zona admite
+  elegir o arrastrar JPEG, PNG, PDF y MP4 de hasta 50 MB.
+- Para el cliente, la selección crea tarjetas pendientes. «Subir archivos» usa el mismo selector
+  cuando la cola está vacía y envía los pendientes cuando hay archivos válidos. La papelera Ghost S
+  (`2061:23990`) quita la selección local o cancela una transferencia; una carga confirmada se
+  conserva. Los usos internos del panel mantienen el envío al seleccionar.
+- El éxito confirmado muestra `Notification` mediante `AuthToast` (`3727:545435`), con nube,
+  tiempo real transcurrido y autoocultado. Un fallo usa `AlertToast` Danger y deja la tarjeta con su
+  error, papelera y reintento. Los proyectos con cargas bloqueadas deshabilitan la selección y el envío.
+  En oscuro, el panel y el aviso usan `neutral-600` para conservar el contraste del texto secundario.
+
 ### Solicitudes de proyecto
 
 - El flujo usa los estados `draft`, `pending_verification`, `pending_review`, `changes_requested`, `rejected` y `converted`.

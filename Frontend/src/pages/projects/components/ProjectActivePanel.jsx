@@ -38,6 +38,7 @@ function ActivePanel({
   clearFocusedRenderComment,
   filesSynchronizedAt,
   infoProps,
+  manualFileUpload,
   openRecentDocument,
   presentedProject,
   refreshProjectFiles,
@@ -83,6 +84,8 @@ function ActivePanel({
   if (activeProjectTabIndex === 5) {
     return (
       <ProjectUploadFilesPanel
+        key={resolvedProjectId}
+        manualUpload={manualFileUpload}
         projectId={resolvedProjectId}
         onFilesChanged={refreshProjectFiles}
       />

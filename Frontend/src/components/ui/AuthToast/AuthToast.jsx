@@ -1,5 +1,6 @@
 /* Muestra notificaciones temporales relacionadas con autenticación y actualiza su tiempo transcurrido. */
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import Notification from "../Notification/Notification.jsx";
 
@@ -25,12 +26,15 @@ function buildElapsedLabel(timestamp) {
   return `Hace ${hours} h`;
 }
 
-// Coordina montaje, animación, autoocultado y contador temporal del toast.
+// Coordina montaje, animación, autoocultado y contador temporal. viewport conserva la posición
+// fija cuando el aviso se activa dentro de un panel que anima su transform.
 function AuthToast({
   trigger = null,
   title,
   description,
   leading,
+  containerClassName = "z-20 sm:w-[375px]",
+  mount = "contained",
   autoHideMs = 4200,
   startDelayMs = 20,
   onDismiss,
@@ -115,8 +119,8 @@ function AuthToast({
     return null;
   }
 
-  return (
-    <div className="pointer-events-none fixed right-0 top-0 z-20 flex w-full justify-center p-[24px] sm:w-[375px]">
+  const toast = (
+    <div className={`pointer-events-none fixed right-0 top-0 flex w-full justify-center p-[24px] ${containerClassName}`}>
       <Notification
         title={title}
         timestamp={elapsedLabel}
@@ -131,6 +135,7 @@ function AuthToast({
       />
     </div>
   );
+  return mount === "viewport" ? createPortal(toast, document.body) : toast;
 }
 
 // Icono reutilizable para notificaciones relacionadas con correo.

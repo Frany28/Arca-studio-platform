@@ -69,7 +69,7 @@ test("FileUploadSection: las nuevas props son opcionales y el resto de consumido
   const source = await readFile(new URL("../src/components/ui/FileUploadSection/FileUploadSection.jsx", import.meta.url), "utf8");
   assert.match(source, /idPrefix,\s*\n\s*dropzoneSupportingContent = null,/);
   assert.match(source, /if \(!validationMessage\) return card;/, "Sin motivo, la tarjeta es la de siempre");
-  assert.match(source, /tooltip="Eliminar archivo"/, "El tooltip visible no cambia");
+  assert.match(source, /tooltip=\{file\.removeTooltip \|\| "Eliminar archivo"\}/, "El tooltip predeterminado no cambia");
   for (const consumer of [
     "../src/pages/projects/panels/ProjectUploadFilesPanel.jsx",
     "../src/pages/settings/panels/SupportPanel.jsx",

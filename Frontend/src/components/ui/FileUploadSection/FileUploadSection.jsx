@@ -5,6 +5,7 @@ import * as IconsaxIcons from "iconsax-react";
 import Button from "../Button/Button.jsx";
 import FileAttachmentIcons from "../FileAttachmentIcons.jsx";
 import HintText from "../HintText/HintText.jsx";
+import IconContainer from "../IconContainer/IconContainer.jsx";
 import ScrollBar from "../ScrollBar.jsx";
 import {
   FILE_UPLOAD_SECTION_DEFAULT_FILES,
@@ -103,7 +104,8 @@ function getFileAttachmentType(file) {
  * Una tarjeta completada muestra «Añadir archivo»; con `file.removeWhenCompleted` y `file.onRemove`
  * muestra en su lugar «Eliminar archivo», para adjuntos ya guardados que el flujo permite quitar.
  * Opcionales por archivo (sin ellos la tarjeta no cambia): `file.completedLabel` sustituye
- * «Completado» y `file.removeWhenFailed` añade la papelera a una tarjeta fallida con reintento.
+ * «Completado», `file.removeWhenFailed` ofrece la papelera en fallos y
+ * `file.hideCompletedAction` oculta la acción de añadir en la tarjeta completada.
  *
  * @param {Object} props - Archivo, ids y acciones.
  * @param {boolean} [props.disabled=false] - Bloquea las acciones.
@@ -127,8 +129,13 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
   const removeLabel = file.name ? `Eliminar archivo ${file.name}` : "Eliminar archivo";
   // En la tarjeta fallida, el botón de texto ejecuta `file.onRemove` cuando el archivo no tiene
   // reintento propio (mismo orden que su onClick).
+  const hasRetry = Boolean(file.onRetryUpload || onRetryUpload);
   const failedButtonRemoves = !file.onRetryUpload && Boolean(file.onRemove);
-  const showsAddAction = isCompleted && !(file.removeWhenCompleted && file.onRemove);
+  const iconOnlyRemoval = isFailed && file.removeWhenFailed && !hasRetry && Boolean(file.onRemove);
+  const showsAddAction = isCompleted && !file.hideCompletedAction && !(file.removeWhenCompleted && file.onRemove);
+  const showsRemoveAction = Boolean(file.onRemove) && (
+    isCompleted ? file.removeWhenCompleted : !isFailed || iconOnlyRemoval || (file.removeWhenFailed && !failedButtonRemoves)
+  );
 
   const card = (
     <div
@@ -186,7 +193,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
         </div>
 
         {isFailed ? (
-          <Button
+          !iconOnlyRemoval && <Button
             theme="Danger"
             type="Outline"
             size="S"
@@ -198,12 +205,12 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
             aria-describedby={describedBy}
             onClick={file.onRetryUpload || file.onRemove || onRetryUpload}
           >
-            {file.onRetryUpload || onRetryUpload ? "Intenta de nuevo" : "Eliminar"}
+            {hasRetry ? "Intenta de nuevo" : "Eliminar"}
           </Button>
         ) : (
           <FileUploadProgress
             progress={file.progress}
-            showValue={isCompleted || isUploading}
+            showValue={isCompleted || (isUploading && file.showUploadPercentage !== false)}
           />
         )}
       </div>
@@ -222,7 +229,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
           disabled={disabled}
           onClick={onAddFile}
         />
-      ) : (!isFailed || (file.removeWhenFailed && !failedButtonRemoves)) && file.onRemove ? (
+      ) : showsRemoveAction ? (
         <Button
           theme="Primary"
           type="Ghost"
@@ -234,7 +241,7 @@ function FileUploadCard({ disabled = false, file, ids, onAddFile, onRetryUpload 
           className="shrink-0"
           id={ids.remove}
           // El tooltip visible conserva el texto de Figma; el nombre accesible añade el archivo.
-          tooltip="Eliminar archivo"
+          tooltip={file.removeTooltip || "Eliminar archivo"}
           aria-label={removeLabel}
           aria-describedby={describedBy}
           disabled={disabled}
@@ -268,6 +275,9 @@ function FileUploadSection({
   viewportHeight = FILE_UPLOAD_SECTION_DEFAULT_PROPS.viewportHeight,
   fileListViewportHeight = null,
   fileInputAccept,
+  dropzoneVariant = "default",
+  // Sin un manejador de envío, la acción usa el mismo selector que «Elige un archivo».
+  uploadAction,
   onRetryUpload,
   onFilesSelected,
   // Opcionales: prefijo de los ids de las tarjetas (getFileUploadCardIds) para que el consumidor
@@ -282,11 +292,13 @@ function FileUploadSection({
   const resolvedIdPrefix = idPrefix ?? `file-upload-${generatedIdPrefix.replace(/[^\w-]/g, "")}`;
   const filesViewportRef = useRef(null);
   const fileInputRef = useRef(null);
+  const chooseButtonRef = useRef(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const [scrollState, setScrollState] = useState({
     length: 1,
     position: 0,
   });
+  const projectDropzone = dropzoneVariant === "project";
   const resolvedFiles = Array.isArray(files)
     ? files
     : FILE_UPLOAD_SECTION_DEFAULT_FILES;
@@ -360,6 +372,22 @@ function FileUploadSection({
     if (!disabled) fileInputRef.current?.click();
   }, [disabled]);
 
+  /**
+   * En la cola de envío explícito, mueve el foco al siguiente archivo que se pueda quitar
+   * o al selector antes de desmontar la tarjeta que contiene el botón activo.
+   * @param {Object} file - Tarjeta que se quita de la lista.
+   * @param {number} index - Posición de la tarjeta.
+   */
+  function removeFromQueue(file, index) {
+    if (document.activeElement?.id === getFileUploadCardIds(resolvedIdPrefix, file.id).remove) {
+      const neighbour = resolvedFiles.slice(index + 1).find((item) => item.onRemove)
+        ?? resolvedFiles.slice(0, index).findLast((item) => item.onRemove);
+      const next = neighbour && document.getElementById(getFileUploadCardIds(resolvedIdPrefix, neighbour.id).remove);
+      (next || chooseButtonRef.current)?.focus({ preventScroll: true });
+    }
+    file.onRemove();
+  }
+
   return (
     <section
       className={clsx(
@@ -390,7 +418,9 @@ function FileUploadSection({
       >
         <div
           className={clsx(
-            "flex w-full flex-col items-center gap-[12px] rounded-[12px] border bg-[var(--color-neutral-100)] px-[24px] py-[32px] transition-colors duration-200",
+            "flex w-full flex-col items-center gap-[12px] rounded-[var(--radius-3)] border bg-[var(--color-neutral-100)] px-[24px] transition-colors duration-200",
+            // Figma cuenta el borde dentro de los 32 px de padding vertical.
+            projectDropzone ? "py-[31px]" : "py-[32px]",
             disabled
               ? "cursor-not-allowed opacity-60"
               : "hover:border-[var(--color-neutral-600)] dark:hover:border-[var(--color-neutral-600)]",
@@ -414,16 +444,20 @@ function FileUploadSection({
             setIsDragActive(false);
             if (!disabled) onFilesSelected?.(event.dataTransfer.files);
           }}
+          data-file-upload-dropzone
         >
-          <div className="rounded-[8px] border border-[var(--color-neutral-200)] shadow-[0px_0px_5px_0px_rgba(0,0,0,0.05)] dark:border-[var(--color-neutral-300)]">
-            <div className="flex size-[40px] items-center justify-center rounded-[8px] bg-[var(--color-neutral-100)] p-[8px] text-[var(--color-text-300)]">
-              <CloudUploadIcon />
+          {projectDropzone ? <IconContainer size="M" type="Outline" /> : (
+            <div className="rounded-[8px] border border-[var(--color-neutral-200)] shadow-[0px_0px_5px_0px_rgba(0,0,0,0.05)] dark:border-[var(--color-neutral-300)]">
+              <div className="flex size-[40px] items-center justify-center rounded-[8px] bg-[var(--color-neutral-100)] p-[8px] text-[var(--color-text-300)]">
+                <CloudUploadIcon />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex w-full flex-col items-center gap-[8px]">
             <div className="flex w-full flex-wrap items-center justify-center gap-[8px] text-center">
               <Button
+                ref={chooseButtonRef}
                 theme="Primary"
                 type="Link"
                 size="S"
@@ -431,6 +465,7 @@ function FileUploadSection({
                 showLeftIcon={false}
                 showRightIcon={false}
                 disabled={disabled}
+                className={projectDropzone ? "[&>span]:font-normal" : undefined}
                 onClick={handleChooseFiles}
               >
                 {chooseFileLabel}
@@ -442,6 +477,7 @@ function FileUploadSection({
                 disabled={disabled}
                 accept={fileInputAccept}
                 className="sr-only"
+                tabIndex={projectDropzone ? -1 : undefined}
                 onChange={(event) => {
                   onFilesSelected?.(event.target.files);
                   event.target.value = "";
@@ -478,17 +514,34 @@ function FileUploadSection({
             }
             onScroll={shouldConstrainFileList ? syncScrollState : undefined}
           >
-            {resolvedFiles.map((file) => (
+            {resolvedFiles.map((file, index) => (
               <FileUploadCard
                 key={file.id}
                 disabled={disabled}
-                file={file}
+                file={uploadAction && file.onRemove ? { ...file, onRemove: () => removeFromQueue(file, index) } : file}
                 ids={getFileUploadCardIds(resolvedIdPrefix, file.id)}
                 onAddFile={handleChooseFiles}
                 onRetryUpload={onRetryUpload}
               />
             ))}
           </div>
+        ) : null}
+
+        {uploadAction ? (
+          <Button
+            theme="Primary"
+            type="Solid"
+            size="M"
+            fitContent
+            showLeftIcon={false}
+            showRightIcon={false}
+            className="w-full self-end sm:w-fit"
+            disabled={disabled || uploadAction.busy}
+            aria-busy={uploadAction.busy || undefined}
+            onClick={uploadAction.onUpload || handleChooseFiles}
+          >
+            {uploadAction.busy ? "Subiendo archivos…" : "Subir archivos"}
+          </Button>
         ) : null}
       </div>
 
