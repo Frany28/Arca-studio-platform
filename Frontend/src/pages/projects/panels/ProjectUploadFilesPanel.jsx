@@ -87,8 +87,10 @@ export default function ProjectUploadFilesPanel({ manualUpload = false, onFilesC
         mount="viewport"
         containerClassName="z-[var(--z-tooltip)] sm:w-[395px] dark:[--color-text-100:var(--color-neutral-600)] dark:[--color-text-200:var(--color-neutral-600)]"
         leading={<IconContainer size="M" type="Outline" />}
-        title="Tus archivos se están subiendo"
-        description="Nuestro equipo procederá a verificar la información para garantizar su seguridad; en breve estará disponible para su visualización."
+        title={manualUpload ? "Carga recibida" : "Tus archivos se están subiendo"}
+        description={manualUpload
+          ? "Los archivos recibidos quedan pendientes de revisión administrativa."
+          : "Nuestro equipo procederá a verificar la información para garantizar su seguridad; en breve estará disponible para su visualización."}
       />
       <AlertToast
         trigger={uploadError}

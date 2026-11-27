@@ -37,10 +37,10 @@ const pdf = (name) => ({ name, mimeType: "application/pdf", buffer: Buffer.from(
  * Abre la pestaña «Subir archivos» con la API simulada y registra subidas y recargas del proyecto.
  *
  * @param {import("node:test").TestContext} context - Prueba propietaria.
- * @param {(uploadNumber: number) => Promise<Object|null>|Object|null} [respondUpload] - Respuesta de
+ * @param {(uploadNumber: number, name: string) => Promise<Object|null>|Object|null} [respondUpload] - Respuesta de
  * cada subida: objeto JSON, `null` para un error 503, o una promesa que no se resuelve (subida en curso).
  * @param {Object} [options] - Rol, proyecto, tema y ancho de viewport.
- * @returns {Promise<{page: import("playwright").Page, refreshes: () => number, uploads: string[]}>} Página y registros.
+ * @returns {Promise<{page: import("playwright").Page, refreshes: () => number, uploads: string[], registered: Map<number, Object>}>} Página y registros.
  */
 async function openUploadTab(context, respondUpload = (number) => ({ file: { id: 900 + number } }), {
   project = PROJECT, role = "client", theme = "light", width = 1440,
@@ -52,6 +52,9 @@ async function openUploadTab(context, respondUpload = (number) => ({ file: { id:
   await page.addInitScript((value) => localStorage.setItem("arca-theme", value), theme);
   const uploads = [];
   const projectReads = [];
+  const registered = new Map();
+  const deletions = [];
+  context.after(() => assert.deepEqual(deletions, [], "limpiar la cola no pide borrar archivos"));
   await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
@@ -62,10 +65,17 @@ async function openUploadTab(context, respondUpload = (number) => ({ file: { id:
     if (pathname.endsWith("/comments")) return route.fulfill({ json: { comments: [], nextCursor: null } });
     if (pathname === "/api/projects") return route.fulfill({ json: { projects: [project], nextCursor: null } });
     if (pathname === UPLOAD_PATH && request.method() === "POST") {
-      uploads.push(decodeURIComponent(request.headers()["x-file-name"] || ""));
-      const body = await respondUpload(uploads.length);
+      const name = decodeURIComponent(request.headers()["x-file-name"] || "");
+      uploads.push(name);
+      const body = await respondUpload(uploads.length, name);
       if (body === null) return route.fulfill({ status: 503, json: { code: "UNAVAILABLE", message: "Servicio no disponible" } });
+      registered.set(body.file.id, { projectId: project.id, name, reviewStatus: "pending" });
       return route.fulfill({ status: 201, json: body });
+    }
+    if (pathname.startsWith(`${UPLOAD_PATH}/`) && request.method() === "DELETE") {
+      deletions.push(pathname);
+      registered.delete(Number(pathname.split("/").at(-1)));
+      return route.fulfill({ status: 204 });
     }
     if (/^\/api\/projects\/[^/]+$/.test(pathname)) {
       projectReads.push(pathname);
@@ -77,7 +87,7 @@ async function openUploadTab(context, respondUpload = (number) => ({ file: { id:
   await page.getByRole("heading", { level: 1, name: PROJECT.name }).waitFor({ timeout: NAVIGATION_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Subir archivos" }).click();
   await page.locator('input[type="file"]').first().waitFor({ state: "attached" });
-  return { page, refreshes: () => projectReads.filter((path) => path === PROJECT_BY_ID).length, uploads };
+  return { page, refreshes: () => projectReads.filter((path) => path === PROJECT_BY_ID).length, uploads, registered };
 }
 
 function selectFiles(page, files) {
@@ -85,15 +95,19 @@ function selectFiles(page, files) {
 }
 
 const sendButton = (page) => page.getByRole("button", { name: "Subir archivos", exact: true });
-const successCard = (page) => page.getByRole("status").filter({ hasText: "Tus archivos se están subiendo" });
+const uploadRegion = (page) => page.getByRole("region", { name: "Selección de archivos del proyecto" });
+const successCard = (page, title = "Carga recibida") => page.getByRole("status").filter({ hasText: title });
 
-test("el cliente abre el mismo selector, quita una selección con papelera y envía la restante", async (context) => {
-  const { page, uploads } = await openUploadTab(context);
+test("el cliente solo puede enviar cuando tiene archivos válidos pendientes", async (context) => {
+  const { page, uploads, registered } = await openUploadTab(context);
   await page.getByRole("heading", { name: "Subir imágenes o documentos" }).waitFor();
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), sendButton(page).click()]);
+  assert.equal(await sendButton(page).isDisabled(), true);
+  const chooseFile = page.getByRole("button", { name: "Elige un archivo" });
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), chooseFile.click()]);
   await chooser.setFiles([pdf("Quitar.pdf"), pdf("Conservar.pdf")]);
   const remove = page.getByRole("button", { name: "Eliminar archivo Quitar.pdf" });
   await remove.waitFor();
+  assert.equal(await sendButton(page).isEnabled(), true);
   assert.equal(await remove.locator("svg").getAttribute("width"), "20");
   await remove.click();
   await remove.waitFor({ state: "detached" });
@@ -103,27 +117,44 @@ test("el cliente abre el mismo selector, quita una selección con papelera y env
   assert.equal(await successCard(page).count(), 0);
   await sendButton(page).click();
   const status = successCard(page);
-  await status.getByText("Tus archivos se están subiendo", { exact: true }).waitFor();
+  await status.getByText("Los archivos recibidos quedan pendientes de revisión administrativa.").waitFor();
   assert.equal(await status.count(), 1);
   assert.equal(await status.locator("svg").getAttribute("width"), "20");
   assert.equal(await status.getAttribute("aria-live"), "polite");
   assert.equal(await page.getByRole("dialog").count(), 0);
-  await page.getByRole("region", { name: "Selección de archivos del proyecto" }).getByText("Completado", { exact: true }).waitFor();
+  await uploadRegion(page).getByText("Conservar", { exact: true }).waitFor({ state: "detached" });
+  assert.equal(await uploadRegion(page).getByText("Completado", { exact: true }).count(), 0);
   assert.deepEqual(uploads, ["Conservar.pdf"]);
+  assert.deepEqual(registered.get(901), { name: "Conservar.pdf", projectId: PROJECT.id, reviewStatus: "pending" });
+  assert.equal(await sendButton(page).isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "Eliminar archivo Conservar.pdf" }).count(), 0);
+  await selectFiles(page, [pdf("Temporal.pdf")]);
+  assert.equal(await sendButton(page).isEnabled(), true);
+  await page.getByRole("button", { name: "Eliminar archivo Temporal.pdf" }).click();
+  assert.equal(await sendButton(page).isDisabled(), true);
   await status.waitFor({ state: "detached" });
+
+  await selectFiles(page, [pdf("Otro archivo.pdf")]);
+  await sendButton(page).click();
+  await status.waitFor();
+  assert.deepEqual(uploads, ["Conservar.pdf", "Otro archivo.pdf"]);
+  assert.equal(registered.size, 2);
 });
 
 test("la cola del cliente envía cada archivo válido una sola vez y excluye los inválidos", async (context) => {
   const { page, refreshes, uploads } = await openUploadTab(context);
 
-  await selectFiles(page, [pdf("Plano A.pdf"), pdf("Plano B.pdf"), { name: "notas.txt", mimeType: "text/plain", buffer: Buffer.from("texto") }]);
+  await selectFiles(page, [{ name: "notas.txt", mimeType: "text/plain", buffer: Buffer.from("texto") }]);
   await page.getByText("Solo se permiten archivos JPEG, PNG, PDF y MP4").first().waitFor();
   assert.equal(await page.getByRole("button", { name: "Intenta de nuevo" }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Eliminar archivo notas.txt" }).count(), 1);
+  assert.equal(await sendButton(page).isDisabled(), true, "un archivo inválido no habilita el envío");
+  await selectFiles(page, [pdf("Plano A.pdf"), pdf("Plano B.pdf")]);
   assert.deepEqual(uploads, [], "elegir archivos solo llena la cola");
   await sendButton(page).click();
-  await page.getByText("Completado", { exact: true }).last().waitFor();
+  await uploadRegion(page).getByText("Plano A", { exact: true }).waitFor({ state: "detached" });
+  await uploadRegion(page).getByText("Plano B", { exact: true }).waitFor({ state: "detached" });
+  await uploadRegion(page).getByText("Solo se permiten archivos JPEG, PNG, PDF y MP4").waitFor();
   await successCard(page).waitFor();
 
   assert.equal(uploads.length, 2, "una subida por archivo válido, sin duplicados de StrictMode");
@@ -146,23 +177,65 @@ test("un archivo con el mismo nombre que otro ya seleccionado se rechaza sin sub
 });
 
 test("«Intenta de nuevo» repite solo la subida fallida y actualiza el proyecto al completarse", async (context) => {
-  const { page, refreshes, uploads } = await openUploadTab(context, (number) => (number === 1 ? null : { file: { id: 950 } }));
+  const { page, refreshes, uploads, registered } = await openUploadTab(context, (number) => (number === 1 ? null : { file: { id: 950 } }));
 
   await selectFiles(page, [pdf("Plano A.pdf")]);
   await sendButton(page).click();
   const error = page.getByRole("alert", { name: "Error de subida" });
   await error.getByText("No se pudo subir el archivo. Inténtalo de nuevo.", { exact: true }).waitFor();
   assert.equal(await successCard(page).count(), 0);
+  assert.equal(registered.size, 0);
+  await uploadRegion(page).getByText("No se pudo subir el archivo. Inténtalo de nuevo.", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Intenta de nuevo" }).click();
   await successCard(page).waitFor();
+  await uploadRegion(page).getByText("Plano A", { exact: true }).waitFor({ state: "detached" });
 
   assert.equal(uploads.length, 2, "la subida inicial fallida y un único reintento");
   assert.equal(refreshes(), 1, "solo la subida completada actualiza el proyecto");
 });
 
+test("un lote mixto limpia solo lo confirmado y anuncia el éxito una vez", async (context) => {
+  const first = Promise.withResolvers();
+  const failed = Promise.withResolvers();
+  const last = Promise.withResolvers();
+  const responses = new Map([
+    ["Primero.pdf", first.promise],
+    ["Fallido.pdf", failed.promise],
+    ["En curso.pdf", last.promise],
+  ]);
+  const { page, uploads, registered } = await openUploadTab(context, (_, name) => responses.get(name));
+  const region = uploadRegion(page);
+  await selectFiles(page, [...responses.keys()].map(pdf));
+  await sendButton(page).click();
+  await region.getByText("Subiendo...", { exact: true }).nth(2).waitFor();
+  assert.equal(await region.getByText(/\d+KB de \d+KB/).count(), 3, "las cargas en curso conservan su lectura de progreso");
+  assert.equal(await successCard(page).count(), 0);
+
+  first.resolve({ file: { id: 901 } });
+  await successCard(page).waitFor();
+  await region.getByText("Primero", { exact: true }).waitFor({ state: "detached" });
+  assert.equal(await region.getByText("Subiendo...", { exact: true }).count(), 2);
+  assert.equal(await successCard(page).count(), 1);
+
+  failed.resolve(null);
+  await region.getByText("No se pudo subir el archivo. Inténtalo de nuevo.", { exact: true }).waitFor();
+  assert.equal(await region.getByText("Subiendo...", { exact: true }).count(), 1);
+  assert.equal(await region.getByText("En curso", { exact: true }).count(), 1);
+  await successCard(page).waitFor({ state: "detached" });
+
+  last.resolve({ file: { id: 903 } });
+  await region.getByText("En curso", { exact: true }).waitFor({ state: "detached" });
+  assert.equal(await region.getByRole("button", { name: "Intenta de nuevo" }).count(), 1);
+  assert.equal(await sendButton(page).isDisabled(), true);
+  assert.equal(await region.getByRole("button", { name: "Elige un archivo" }).isEnabled(), true);
+  assert.deepEqual([...registered.values()].map((item) => item.name), ["Primero.pdf", "En curso.pdf"]);
+  assert.equal(uploads.length, 3);
+  await assert.rejects(successCard(page).waitFor({ timeout: 400 }), { name: "TimeoutError" });
+});
+
 test("cancelar un archivo durante la subida la aborta y conserva los archivos ya guardados", async (context) => {
   // La primera subida no termina (sigue en curso); las siguientes se guardan.
-  const { page, refreshes, uploads } = await openUploadTab(context, (number) => (number === 1 ? new Promise(() => {}) : { file: { id: 900 + number } }));
+  const { page, refreshes, uploads, registered } = await openUploadTab(context, (number) => (number === 1 ? new Promise(() => {}) : { file: { id: 900 + number } }));
 
   await selectFiles(page, [pdf("Plano A.pdf")]);
   await sendButton(page).click();
@@ -178,11 +251,12 @@ test("cancelar un archivo durante la subida la aborta y conserva los archivos ya
   await page.waitForTimeout(300);
   assert.equal(refreshes(), 1, "la cancelación recarga el proyecto una sola vez");
 
-  // Un archivo ya guardado sigue disponible: se muestra completado y no ofrece eliminarse.
+  // El siguiente envío se registra aunque su tarjeta temporal desaparezca.
   await selectFiles(page, [pdf("Plano B.pdf")]);
   await sendButton(page).click();
-  const savedCard = page.locator("div[id*='-file-']:not([id$='-remove']):not([id$='-message'])").filter({ has: page.getByText("Plano B", { exact: true }) });
-  await savedCard.getByText("Completado", { exact: true }).waitFor();
+  await successCard(page).waitFor();
+  await uploadRegion(page).getByText("Plano B", { exact: true }).waitFor({ state: "detached" });
+  assert.equal(registered.get(902)?.name, "Plano B.pdf");
   assert.equal(await page.getByRole("button", { name: "Eliminar archivo Plano B.pdf" }).count(), 0, "un archivo guardado no ofrece eliminarse");
   assert.equal(uploads.length, 2);
   assert.equal(refreshes(), 2, "la subida completada actualiza el proyecto");
@@ -214,7 +288,8 @@ test("el panel de un proyecto archivado conserva el bloqueo de selección y env�
 test("el administrador conserva la subida automática del detalle del proyecto", async (context) => {
   const { page, uploads } = await openUploadTab(context, undefined, { role: "admin" });
   await selectFiles(page, [pdf("Plano A.pdf")]);
-  await successCard(page).waitFor();
+  await successCard(page, "Tus archivos se están subiendo").waitFor();
+  await uploadRegion(page).getByText("Completado", { exact: true }).waitFor();
   assert.deepEqual(uploads, ["Plano A.pdf"]);
 });
 
@@ -252,6 +327,8 @@ for (const theme of ["light", "dark"]) {
       await sendButton(page).click();
       const status = successCard(page);
       await status.and(page.locator(".auth-toast--visible")).waitFor();
+      await remove.waitFor({ state: "detached" });
+      assert.equal(await sendButton(page).isDisabled(), true);
       if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/complete-${theme}-${width}.png`, animations: "disabled" });
       const geometry = await status.evaluate(async (node) => {
         await Promise.all(node.getAnimations().map((animation) => animation.finished));

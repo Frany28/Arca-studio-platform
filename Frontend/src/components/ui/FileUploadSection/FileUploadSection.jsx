@@ -276,7 +276,7 @@ function FileUploadSection({
   fileListViewportHeight = null,
   fileInputAccept,
   dropzoneVariant = "default",
-  // Sin un manejador de envío, la acción usa el mismo selector que «Elige un archivo».
+  // Omitir onUpload deshabilita el envío cuando no hay archivos pendientes.
   uploadAction,
   onRetryUpload,
   onFilesSelected,
@@ -536,9 +536,9 @@ function FileUploadSection({
             showLeftIcon={false}
             showRightIcon={false}
             className="w-full self-end sm:w-fit"
-            disabled={disabled || uploadAction.busy}
+            disabled={disabled || uploadAction.busy || !uploadAction.onUpload}
             aria-busy={uploadAction.busy || undefined}
-            onClick={uploadAction.onUpload || handleChooseFiles}
+            onClick={uploadAction.onUpload}
           >
             {uploadAction.busy ? "Subiendo archivos…" : "Subir archivos"}
           </Button>

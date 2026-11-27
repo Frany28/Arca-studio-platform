@@ -359,12 +359,15 @@ El formato relativo compacto destinado a espacios restringidos constituye una va
 - `ProjectUploadFilesPanel` sigue Figma `3727:545416`: encabezado y ayuda a la izquierda,
   `FileUploadSection` de hasta 512 px a la derecha. Con menos espacio se apilan. La zona admite
   elegir o arrastrar JPEG, PNG, PDF y MP4 de hasta 50 MB.
-- Para el cliente, la selección crea tarjetas pendientes. «Subir archivos» usa el mismo selector
-  cuando la cola está vacía y envía los pendientes cuando hay archivos válidos. La papelera Ghost S
-  (`2061:23990`) quita la selección local o cancela una transferencia; una carga confirmada se
-  conserva. Los usos internos del panel mantienen el envío al seleccionar.
-- El éxito confirmado muestra `Notification` mediante `AuthToast` (`3727:545435`), con nube,
-  tiempo real transcurrido y autoocultado. Un fallo usa `AlertToast` Danger y deja la tarjeta con su
+- Para el cliente, la selección crea tarjetas pendientes. «Subir archivos» se habilita cuando hay
+  al menos un archivo válido pendiente. La selección se hace con «Elige un archivo» o arrastrando. La papelera Ghost S
+  (`2061:23990`) quita la selección local o cancela una transferencia. Tras confirmarse una carga
+  del cliente, se retira solo su tarjeta de la cola y el archivo queda registrado en el proyecto.
+  Los usos internos del panel mantienen el envío al seleccionar.
+- La primera confirmación del lote de un cliente muestra una sola `Notification` mediante
+  `AuthToast` (`3727:545435`), con nube, tiempo real transcurrido y autoocultado. El aviso indica
+  que los archivos recibidos quedan pendientes de revisión administrativa. Un fallo usa
+  `AlertToast` Danger y deja la tarjeta con su
   error, papelera y reintento. Los proyectos con cargas bloqueadas deshabilitan la selección y el envío.
   En oscuro, el panel y el aviso usan `neutral-600` para conservar el contraste del texto secundario.
 

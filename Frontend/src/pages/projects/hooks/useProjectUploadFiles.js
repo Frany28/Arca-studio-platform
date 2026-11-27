@@ -55,12 +55,13 @@ export function useProjectUploadFiles({ projectId, manualUpload, readOnly, readO
 
   /**
    * Envía un archivo una sola vez por intento y descarta respuestas de transferencias canceladas.
-   * La subida confirmada actualiza el proyecto y es la única que emite el aviso de éxito.
+   * La subida confirmada actualiza el proyecto y, para el cliente, retira su tarjeta local.
    *
    * @param {string} id - Identificador local del archivo.
+   * @param {() => void} [notifySuccess=onSuccess] - Aviso del intento o del lote que lo inició.
    * @returns {Promise<void>} Termina al resolverse el intento.
    */
-  async function uploadFile(id) {
+  async function uploadFile(id, notifySuccess = onSuccess) {
     const item = filesRef.current.find((candidate) => candidate.id === id);
     const controllers = controllersRef.current;
     if (readOnly || !item || item.validationError || item.status === "completed" || controllers.has(id)) return;
@@ -92,8 +93,12 @@ export function useProjectUploadFiles({ projectId, manualUpload, readOnly, readO
     }
 
     if (controller.signal.aborted) return;
-    patch({ loadedBytes: item.file.size, progress: 100, status: "completed" });
-    onSuccess();
+    if (manualUpload) {
+      updateFiles(filesRef.current.filter((candidate) => candidate.id !== id));
+    } else {
+      patch({ loadedBytes: item.file.size, progress: 100, status: "completed" });
+    }
+    notifySuccess();
     onFilesChanged?.();
   }
 
@@ -124,12 +129,18 @@ export function useProjectUploadFiles({ projectId, manualUpload, readOnly, readO
   }
 
   /**
-   * Inicia las transferencias válidas que siguen pendientes. Las fallidas tienen reintento
-   * individual y las completadas quedan fuera de la cola de envío.
+   * Inicia las transferencias válidas que siguen pendientes. La primera confirmación del lote
+   * emite el único aviso; cada confirmación posterior limpia su tarjeta de forma independiente.
    */
   function uploadPending() {
     if (controllersRef.current.size) return;
-    filesRef.current.filter((item) => item.status === "pending").forEach((item) => uploadFile(item.id));
+    let notified = false;
+    const notifyBatchSuccess = () => {
+      if (notified) return;
+      notified = true;
+      onSuccess();
+    };
+    filesRef.current.filter((item) => item.status === "pending").forEach((item) => uploadFile(item.id, notifyBatchSuccess));
   }
 
   /**
