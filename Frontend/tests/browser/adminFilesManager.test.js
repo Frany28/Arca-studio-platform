@@ -594,10 +594,162 @@ test("métricas, pestañas, orden, búsqueda, tipos y paginación por cursor con
 
   await page.getByRole("tab", { name: "Rechazados" }).click();
   await page.getByRole("rowheader", { name: /Contrato rechazado/ }).waitFor();
-  await page.getByText("Motivo: Falta la firma del cliente.").waitFor();
+  assert.equal(await page.getByText(/Motivo: Falta la firma/).count(), 0, "el motivo está en el historial del visor");
   assert.equal(itemRequests(backend).at(-1).search.tab, "rejected");
   assert.equal(await page.getByRole("button", { name: /Eliminar/ }).count(), 0, "Los archivos guardados no se eliminan");
 });
+
+/**
+ * Añade versiones rechazadas de dos proyectos y dos formatos al backend de prueba.
+ * @param {Object} backend - Estado del simulador.
+ */
+function seedRejectedPage(backend) {
+  for (let index = 0; index < 10; index += 1) {
+    const extension = index === 0 ? "png" : "pdf";
+    backend.items.push(item(1000 + index, {
+      day: index + 1,
+      extension,
+      name: `Documento devuelto ${index + 1}.${extension}`,
+      project: backend.projects[index % 2],
+      isCurrent: false,
+      size: (index + 1) * 1024 * 1024,
+      status: "rejected",
+    }));
+  }
+}
+
+test("Rechazados · geometría Figma, búsqueda, tipos, orden y paginación entre proyectos", async (context) => {
+  const backend = createBackend();
+  seedRejectedPage(backend);
+  const page = await openFiles(context, backend, { viewport: { width: 1920, height: 1280 } });
+  await page.getByRole("tab", { name: "Rechazados" }).click();
+  const row = page.getByRole("row", { name: /Contrato rechazado\.pdf/ });
+  await row.waitFor();
+  const table = page.locator("[data-admin-files-table]");
+  assert.deepEqual(await table.getByRole("columnheader").allInnerTexts(), ["Nombre", "Versión", "Proyecto", "Tipo", "Peso", "Fecha", "Subido por", "Acciones"]);
+  assert.deepEqual((await row.getByRole("cell").allInnerTexts()).slice(0, 6), ["v1", "Quinta Bella Vista", ".PDF", "8 KB", "23 mar 2026", "Arq. Armando"]);
+  assert.equal(await row.getByRole("button").count(), 1);
+  assert.equal(await page.getByRole("complementary", { name: "Proyectos" }).count(), 0);
+  const dimensions = await table.evaluate((frame) => ({
+    width: frame.getBoundingClientRect().width,
+    columns: [...frame.querySelectorAll("th[scope=col]")].map((cell) => cell.getBoundingClientRect().width),
+    header: frame.querySelector("thead tr").getBoundingClientRect().height,
+    row: frame.querySelector("tbody tr").getBoundingClientRect().height,
+  }));
+  assert.equal(dimensions.width, 1104);
+  assert.equal(dimensions.columns[0], 160);
+  assert.ok(dimensions.columns.slice(1).every((value) => Math.abs(value - (1104 - 160) / 7) < 1));
+  assert.deepEqual([Math.round(dimensions.header), Math.round(dimensions.row)], [49, 68]);
+  const search = page.getByLabel("Buscar archivos por nombre");
+  const searchBox = await page.locator("[data-admin-files-toolbar] [data-input-shell]").boundingBox();
+  assert.deepEqual([searchBox.width, searchBox.height], [320, 40]);
+  if (SCREENSHOT_DIR) {
+    await page.evaluate(() => document.fonts.ready);
+    await page.locator("[data-admin-files-toolbar]").locator("xpath=..").screenshot({ path: `${SCREENSHOT_DIR}/reference-desktop.png`, animations: "disabled" });
+  }
+
+  await page.getByRole("button", { name: "Siguiente pág." }).click();
+  await page.getByRole("rowheader", { name: "Documento devuelto 1.png" }).waitFor();
+  assert.ok(itemRequests(backend).at(-1).search.cursor);
+  await page.getByRole("button", { name: "Ordenar por Peso" }).click();
+  await waitUntil(() => itemRequests(backend).at(-1).search.sort === "size");
+  await page.getByRole("rowheader", { name: "Documento devuelto 10.pdf" }).waitFor();
+  assert.equal(itemRequests(backend).at(-1).search.cursor, undefined);
+  assert.equal(await page.getByRole("columnheader", { name: /Peso/ }).getAttribute("aria-sort"), "descending");
+
+  const filter = page.getByRole("button", { name: /^Filtrar archivos por tipo/ });
+  await filter.press("Enter");
+  const docx = page.getByRole("menuitemcheckbox", { name: ".DOCX" });
+  await docx.and(page.locator(":focus")).waitFor();
+  await docx.press("Space");
+  await waitUntil(() => itemRequests(backend).at(-1).search.extensions === "docx");
+  await page.getByText("No hay coincidencias", { exact: true }).waitFor();
+  const png = page.getByRole("menuitemcheckbox", { name: ".PNG" });
+  await png.click();
+  await page.getByRole("rowheader", { name: "Documento devuelto 1.png" }).waitFor();
+  assert.equal(itemRequests(backend).at(-1).search.extensions, "docx,png");
+  await png.press("Escape");
+  await filter.and(page.locator(":focus")).waitFor();
+  await search.fill("Contrato");
+  await waitUntil(() => itemRequests(backend).at(-1).search.search === "Contrato");
+  await page.getByText("No hay coincidencias", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Quitar filtros" }).click();
+  await row.waitFor();
+  assert.equal(itemRequests(backend).at(-1).search.extensions, undefined);
+
+  await page.getByRole("tab", { name: "Aprobados" }).click();
+  await page.getByRole("complementary", { name: "Proyectos" }).waitFor();
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).click();
+  await page.getByRole("button", { name: "Revisar Propuesta pendiente.pdf, versión 2" }).waitFor();
+  assert.equal(itemRequests(backend).at(-1).search.extensions, undefined);
+});
+
+test("Rechazados · Ver conserva motivo, historial y descarga de la versión", async (context) => {
+  const backend = createBackend();
+  const record = backend.items.find((entry) => entry.fileId === 60);
+  record.review.reason = "Falta la firma del cliente. La última página tampoco incluye el nombre de la persona responsable y requiere una nueva copia legible.";
+  const page = await openFiles(context, backend);
+  await page.getByRole("tab", { name: "Rechazados" }).click();
+  const open = page.getByRole("button", { name: "Ver Contrato rechazado.pdf, versión 1" });
+  await open.click();
+  const viewer = page.locator("[data-admin-file-viewer]");
+  const history = viewer.getByRole("list", { name: "Versiones del archivo" });
+  const reason = history.getByText(`Motivo del rechazo: ${record.review.reason}`, { exact: true });
+  await reason.waitFor();
+  assert.ok(await reason.evaluate((node) => node.clientHeight > 20), "el motivo se puede leer en varias líneas");
+  assert.equal(await viewer.getByRole("button", { name: /^(Revisar|Aprobar|Rechazar)$/ }).count(), 0);
+  await history.getByRole("button", { name: "Opciones de la versión 1" }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Descargar", exact: true }).click();
+  assert.equal((await download).suggestedFilename(), "acta-v600.pdf");
+  assert.ok(backend.requests.some((request) => request.path === "/api/projects/1/files/60/content" && request.search.versionId === "600"));
+  await page.keyboard.press("Escape");
+  await open.and(page.locator(":focus")).waitFor();
+});
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [360, 375, 390, 768, 1024, 1440, 1920]) {
+    test(`Rechazados · responsive ${width} px (${theme})`, async (context) => {
+      const backend = createBackend();
+      const page = await openFiles(context, backend, { theme, viewport: { width, height: 1050 } });
+      await page.getByRole("tab", { name: "Rechazados" }).click();
+      const eye = page.getByRole("button", { name: "Ver Contrato rechazado.pdf, versión 1" });
+      await eye.waitFor();
+      const viewport = page.locator("[data-admin-files-table] [data-horizontal-scroll-viewport]");
+      const layout = await viewport.evaluate((node) => ({
+        scrollable: node.scrollWidth > node.clientWidth,
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+        dark: document.documentElement.classList.contains("dark"),
+      }));
+      assert.equal(layout.dark, theme === "dark");
+      assert.ok(layout.overflow <= 0);
+      assert.equal(layout.scrollable, width < 1440);
+      const eyeBox = await eye.boundingBox();
+      assert.ok(eyeBox.x >= 0 && eyeBox.x + eyeBox.width <= width);
+      assert.equal(await page.getByLabel("Buscar archivos por nombre").isEditable(), true);
+      if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/rejected-${theme}-${width}.png`, animations: "disabled" });
+      const filter = page.getByRole("button", { name: /^Filtrar archivos por tipo/ });
+      if (layout.scrollable) {
+        const scrollbar = page.getByRole("scrollbar", { name: "Desplazar tabla de archivos horizontalmente" });
+        const bar = await scrollbar.boundingBox();
+        await scrollbar.click({ position: { x: bar.width - 2, y: bar.height / 2 } });
+        assert.ok(await viewport.evaluate((node) => node.scrollLeft > 0));
+        // Posiciona el encabezado en la zona visible a la izquierda de la acción fija.
+        await filter.evaluate((button) => {
+          const scroll = button.closest("[data-horizontal-scroll-viewport]");
+          scroll.scrollLeft += button.getBoundingClientRect().left - scroll.getBoundingClientRect().left;
+        });
+      }
+      await filter.click();
+      const choice = page.getByRole("menuitemcheckbox", { name: ".PDF" });
+      await choice.scrollIntoViewIfNeeded();
+      await choice.click();
+      await waitUntil(() => itemRequests(backend).at(-1).search.extensions === "pdf");
+      await choice.press("Escape");
+      await eye.click({ trial: true });
+    });
+  }
+}
 
 test("el árbol acota la tabla, busca carpetas y gestiona carpetas personalizadas", async (context) => {
   const backend = createBackend();
@@ -1017,7 +1169,7 @@ test("U2 · rechazar exige motivo, lo envía y conserva la versión rechazada", 
   assert.deepEqual(reviewRequests(backend, "reject")[0].body, { reason: "Falta la firma del cliente." });
   await waitUntil(() => metricsReads(backend) > metricsBefore);
   await page.getByRole("tab", { name: "Rechazados" }).click();
-  await page.getByRole("rowheader", { name: /Propuesta pendiente\.pdf/ }).getByText("Motivo: Falta la firma del cliente.").waitFor();
+  await page.getByRole("rowheader", { name: "Propuesta pendiente.pdf" }).waitFor();
   await page.getByRole("button", { name: "Ver Propuesta pendiente.pdf, versión 2" }).click();
   await viewer.getByRole("list", { name: "Versiones del archivo" }).getByText("Motivo del rechazo: Falta la firma del cliente.").waitFor();
 });

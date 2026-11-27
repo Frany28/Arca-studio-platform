@@ -53,6 +53,8 @@ export function useAdminFilesItems() {
     setFilter("tab", tab);
     setFilter("projectId", scoped ? scope.projectId : null);
     setFilter("folderId", scoped ? scope.folderId : null);
+    // El filtro de tipo vive en la cabecera de Rechazados y no afecta las otras pestañas.
+    if (tab !== "rejected") setFilter("extensions", null);
   }
 
   /**

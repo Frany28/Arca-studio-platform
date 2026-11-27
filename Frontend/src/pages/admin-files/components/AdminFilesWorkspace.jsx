@@ -169,39 +169,23 @@ function AdminFilesWorkspace({ onMetricsStale }) {
   }
 
   const filtered = items.hasFilters || (showTree && Boolean(selection.projectId));
-  let content;
+  const rejected = tab === "rejected";
+  const emptyFrame = rejected ? "" : "rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]";
+  let tableState = null;
   if (items.loading) {
-    content = <Loader preset="adminFilesTable" variant={showTree ? undefined : tab === "pending" ? "review" : "withProject"} count={items.items.length || ADMIN_FILES_PAGE_SIZE} label="Cargando archivos" />;
+    tableState = <Loader preset="adminFilesTable" variant={rejected ? "rejectedRows" : tab === "pending" ? "review" : undefined} count={items.items.length || ADMIN_FILES_PAGE_SIZE} label="Cargando archivos" />;
   } else if (items.error) {
-    content = (
-      <div className="rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
+    tableState = (
+      <div className={emptyFrame}>
         <EmptyState title="No se pudieron cargar los archivos" description={items.error} size="S" showFeaturedIcon={false} showActions showSecondaryAction={false} primaryActionLabel="Reintentar" onPrimaryAction={items.reload} />
       </div>
     );
-  } else if (items.items.length) {
-    content = (
-      <AdminFilesTable
-        items={items.items}
-        tab={tab}
-        sort={items.sort}
-        actionsDisabled={operationInProgress || items.loading}
-        downloadingVersionId={downloads.downloadingVersionId}
-        downloadingQuoteKey={quoteDownloads.downloadingKey}
-        onSort={items.toggleSort}
-        onDownload={(item) => (isQuoteItem(item)
-          ? quoteDownloads.download({ name: item.name, quoteId: item.quote.id, versionNumber: item.versionNumber })
-          : downloads.download({ fileId: item.fileId, name: item.name, projectId: item.project.id, versionId: item.versionId }))}
-        onOpen={(item, trigger) => setViewer({ item, trigger })}
-        onWarranties={setWarrantyItem}
-        onReplace={(item) => setUploadDialog({ file: { fileId: item.fileId, folderSystemKey: item.folder?.section === "cover" ? "cover" : null, name: item.name, projectId: item.project.id }, mode: "replace" })}
-      />
-    );
-  } else {
+  } else if (!items.items.length) {
     const copy = items.pagination.hasPrevious
       ? { description: "Esta página ya no tiene archivos. Vuelve a la página anterior.", title: "No hay más archivos" }
       : getItemsEmptyCopy(tab, filtered);
-    content = (
-      <div className="rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)]">
+    tableState = (
+      <div className={emptyFrame}>
         <EmptyState
           title={copy.title}
           description={copy.description}
@@ -217,6 +201,28 @@ function AdminFilesWorkspace({ onMetricsStale }) {
     );
   }
 
+  // Rechazados conserva el encabezado para poder modificar el filtro aun sin resultados.
+  const content = rejected || !tableState ? (
+    <AdminFilesTable
+      items={tableState ? [] : items.items}
+      tab={tab}
+      sort={items.sort}
+      bodyFallback={tableState}
+      extensions={items.extensions}
+      onExtensionsChange={items.setExtensions}
+      actionsDisabled={operationInProgress || items.loading}
+      downloadingVersionId={downloads.downloadingVersionId}
+      downloadingQuoteKey={quoteDownloads.downloadingKey}
+      onSort={items.toggleSort}
+      onDownload={(item) => (isQuoteItem(item)
+        ? quoteDownloads.download({ name: item.name, quoteId: item.quote.id, versionNumber: item.versionNumber })
+        : downloads.download({ fileId: item.fileId, name: item.name, projectId: item.project.id, versionId: item.versionId }))}
+      onOpen={(item, trigger) => setViewer({ item, trigger })}
+      onWarranties={setWarrantyItem}
+      onReplace={(item) => setUploadDialog({ file: { fileId: item.fileId, folderSystemKey: item.folder?.section === "cover" ? "cover" : null, name: item.name, projectId: item.project.id }, mode: "replace" })}
+    />
+  ) : tableState;
+
   const tablePanel = (
     <div className="flex min-w-0 flex-col gap-[24px]">
       <h2 className="sr-only">{ADMIN_FILES_TABS[tabIndex].label}</h2>
@@ -224,11 +230,12 @@ function AdminFilesWorkspace({ onMetricsStale }) {
         query={items.search.query}
         onQueryChange={items.search.setQuery}
         newAction={newAction}
+        rejected={rejected}
       />
       <div aria-busy={items.loading || undefined}>{content}</div>
       {!items.loading && !items.error && (items.items.length || items.pagination.hasPrevious) ? (
-        <footer className="flex flex-wrap items-center justify-between gap-x-[24px] gap-y-[12px]" aria-label="Paginación de archivos">
-          <span className="text-heading-8 text-[var(--color-text-300)]" aria-live="polite">
+        <footer className={`flex flex-wrap items-center gap-x-[24px] gap-y-[12px] ${rejected ? "justify-end" : "justify-between"}`} aria-label="Paginación de archivos">
+          <span className={rejected ? "sr-only" : "text-heading-8 text-[var(--color-text-300)]"} aria-live="polite">
             {items.items.length} {items.items.length === 1 ? "archivo" : "archivos"} en esta página
           </span>
           <CursorPaginationNav ariaLabel="Páginas de archivos" buttonGeometry={FOOTER_BUTTON_GEOMETRY} pagination={items.pagination} />

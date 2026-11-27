@@ -993,7 +993,7 @@ Validación, capturas y diferencias respecto a Figma:
 ### Gestión de archivos (administrador)
 
 - Referencia: Figma `3727:682730` (escritorio `3727:683873`, tablet `3727:683881`, móvil
-  `3727:683883`; Pendientes `3727:683877`; Rechazados `3727:683880`/`4273:683806`). Ruta
+  `3727:683883`; Pendientes `3727:683877`; Rechazados `3727:683752`). Ruta
   `/archivos`, solo administradores; `pages/admin-files/AdminFilesPage.jsx` dentro de
   `InternalDashboardLayout` (`activeItemId="files"`).
 - Datos reales de `GET /admin/files/*` (`api.fileManager`, contrato B7); nunca cifras ni filas de
@@ -1002,8 +1002,14 @@ Validación, capturas y diferencias respecto a Figma:
   como no disponible (`EmptyState`), sin datos de demostración (`useAdminFilesMetrics`).
 - Pestañas `HorizontalTabMenu` `Underlined` solo con texto (Aprobados, Pendientes por aprobación,
   Rechazados) dentro de `TabPanel`. El árbol «Proyectos» solo aparece en Aprobados; Pendientes y
-  Rechazados listan todos los proyectos y añaden la columna Proyecto. Rechazados muestra el motivo
-  bajo el nombre.
+  Rechazados listan todos los proyectos y añaden la columna Proyecto.
+- Rechazados usa 160 px para Nombre y siete columnas iguales en los 1104 px de referencia, con
+  Versión centrada y autor como `Tag`. El buscador de escritorio mide 320 × 40 px. El embudo de
+  Tipo abre un `DropdownMenu` de selección múltiple que queda disponible incluso sin resultados.
+  El filtro se retira al salir de la pestaña. El pie alinea «Anterior» y «Siguiente pág.» a la
+  derecha; el recuento se anuncia a lectores de pantalla. La única acción visible por fila es
+  «Ver», fija a la derecha si la tabla se desplaza. Desde el historial se puede leer el motivo
+  completo y descargar la versión según sus permisos.
 - Árbol (Figma `3727:683873`): superficies de 36 px cada 48 px, margen horizontal de 8 px,
   sangría de 17 px por nivel, icono `Folder2` y chevron. El proyecto de la carpeta seleccionada
   conserva el fondo de contexto; solo la ubicación seleccionada lleva `aria-current`.
@@ -1022,14 +1028,14 @@ Validación, capturas y diferencias respecto a Figma:
   la página nunca desborda.
 - Tabla: geometría en `config/adminFilesTable.js`, compartida con el skeleton (`Loader`
   `adminFilesTable`, variante `withProject`; el árbol usa `adminFilesTree`). Orden real por
-  Nombre, Peso y Fecha (`aria-sort`); el embudo de Tipo remite al filtro múltiple de la barra.
+  Nombre, Peso y Fecha (`aria-sort`); en Rechazados, Tipo activa el filtro múltiple del encabezado.
   Paginación por cursor de 10 filas (el cursor pertenece a la pestaña y el orden). Sin columna de
   selección: no hay acciones masivas. Encabezados y celdas en Inter Medium 14 (`th` con
   `font-medium` explícito frente a la negrita del navegador); filas de 68 px sin divisores, también
   en el skeleton. La descarga de la fila usa `ExportCurve` (icono `export` de Figma). El orden usa
   `ArrowSwapVertical` de `TableHeaderLabel`, compartido con las demás tablas del administrador;
-  Figma dibuja `arrow-3` (`ArrangeVertical`), pendiente de unificar en todas ellas a la vez porque su
-  variante Bold no distingue el orden aplicado.
+  Rechazados usa `arrow-3` (`ArrangeVertical`) en Peso y Fecha, como en Figma, y conserva el
+  orden por Nombre desde el encabezado sin icono.
 - Carpetas: «+» crea una carpeta en la ubicación abierta en el árbol: la raíz del proyecto (D7) o
   cualquier carpeta, también «Cotizaciones» (D14). Está deshabilitado sin proyecto, en la portada y
   al llegar a 12 niveles. «Nueva carpeta» y «Nuevo archivo» **no tienen selector de ubicación**:
@@ -1044,11 +1050,9 @@ Validación, capturas y diferencias respecto a Figma:
   personalizadas ofrecen «Renombrar» y «Retirar carpeta» (solo vacías, lo comprueba el backend);
   las predeterminadas («Panorámicas», «Documentos › Garantías», etc.) no tienen acciones. No se
   ofrece mover carpetas (D13). El formulario reutiliza el patrón Modal + Input (Figma no lo diseña).
-- Conservación: los archivos guardados y sus versiones no se eliminan, así que la acción
-  «Eliminar» de Figma no se ofrece. Cada fila ofrece «Revisar» (Pendientes) o el ojo (consulta),
-  la descarga de su versión y «Más opciones» con «Historial de versiones» y, en «Documentos ›
-  Garantías» y sus subcarpetas (`folder.section === "warranties"`), «Garantías». La columna
-  Acciones mide 176 px. «Más opciones» incluye también «Reemplazar archivo» (U3).
+- Conservación: los archivos guardados y sus versiones se conservan. Pendientes ofrece «Revisar».
+  Aprobados muestra el ojo, la descarga y «Más opciones» con el historial, «Reemplazar archivo»
+  (U3) y, en «Documentos › Garantías» y sus subcarpetas, «Garantías». Su columna Acciones mide 176 px.
 - PDF de cotizaciones en el visor (`AdminQuotePdfViewerDialog`): el drawer reutiliza
   `AdminFileVersionHistory` con «Ver», «Restaurar versión» (solo versiones históricas; la vigente
   la muestra deshabilitada con su motivo) y «Descargar». Restaurar abre `AdminFileReasonDialog`

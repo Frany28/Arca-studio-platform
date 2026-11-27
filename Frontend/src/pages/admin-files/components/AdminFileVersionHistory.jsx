@@ -63,7 +63,7 @@ function VersionStep({ actionsDisabled, displayed, getActions, isLast, onSelect,
           <p className={clsx("text-body-4 m-0 truncate", current ? "text-[var(--color-text-100)]" : "text-[var(--color-neutral-400)]")}>
             <time dateTime={version.createdAt} title={formatFileDate(version.createdAt)}>{formatHumanDate(version.createdAt)}</time> | Por {author}
           </p>
-          {note ? <p className="text-body-4 m-0 truncate text-[var(--color-text-100)]" title={note}>{note}</p> : null}
+          {note ? <p className={clsx("text-body-4 m-0", version.review?.status === "rejected" ? "wrap-anywhere text-[var(--color-text-200)] dark:text-[var(--color-text-300)]" : "truncate text-[var(--color-text-100)]")} title={note}>{note}</p> : null}
         </div>
       </div>
       <ActionMenu

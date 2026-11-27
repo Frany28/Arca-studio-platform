@@ -15,11 +15,12 @@ import Input from "../../../components/ui/Input/Input.jsx";
  * @param {string} props.query - Texto escrito en la búsqueda.
  * @param {(value: string) => void} props.onQueryChange - Cambia la búsqueda.
  * @param {{ disabledReason: string, onClick: () => void }|null} [props.newAction] - «+ Nuevo» o null para ocultarlo.
+ * @param {boolean} [props.rejected=false] - Usa el alto exterior de 40 px de Rechazados.
  * @returns {import("react").ReactElement} Barra de herramientas.
  */
-function AdminFilesToolbar({ newAction = null, onQueryChange, query }) {
+function AdminFilesToolbar({ newAction = null, onQueryChange, query, rejected = false }) {
   return (
-    <div className="-my-[2px] flex flex-wrap items-center gap-x-[12px] gap-y-[16px]" data-admin-files-toolbar>
+    <div className={`flex flex-wrap items-center gap-x-[12px] gap-y-[16px] ${rejected ? "" : "-my-[2px]"}`} data-admin-files-toolbar>
       <div className="min-w-[200px] max-w-[320px] flex-1 max-[767px]:max-w-none max-[767px]:basis-full">
         <Input
           type="Default input"
@@ -32,7 +33,7 @@ function AdminFilesToolbar({ newAction = null, onQueryChange, query }) {
           showRightIcon={false}
           required={false}
           leftIcon={<SearchNormal1 size="20" color="currentColor" />}
-          className="w-full max-[767px]:max-w-none"
+          className={`w-full max-[767px]:max-w-none ${rejected ? "[&_[data-input-shell]]:h-[40px]" : ""}`}
           aria-label="Buscar archivos por nombre"
           onChange={(event) => onQueryChange(event.target.value)}
         />

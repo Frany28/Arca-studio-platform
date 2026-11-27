@@ -138,6 +138,10 @@ test("table geometry adds Proyecto only outside the approved tree view", () => {
   assert.deepEqual(getAdminFilesColumns({ review: true, showProject: true }).map((column) => column.id), ["name", "version", "project", "type", "size", "date", "uploadedBy", "actions"]);
   assert.ok(getAdminFilesTableMinWidth({ review: true, showProject: true }) <= 1032);
   assert.equal(getAdminFilesColumns({ review: true, showProject: true }).at(-1).width, 128);
+  const rejected = { rejected: true, showProject: true };
+  assert.deepEqual(getAdminFilesColumns(rejected).map((column) => column.id), ["name", "version", "project", "type", "size", "date", "uploadedBy", "actions"]);
+  assert.deepEqual(getAdminFilesColumns(rejected).map((column) => column.width), [160, null, null, null, null, null, null, null]);
+  assert.equal(getAdminFilesTableMinWidth(rejected), 1028);
 });
 
 test("the file manager API builds the documented admin routes", async () => {

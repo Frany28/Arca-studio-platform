@@ -14,15 +14,16 @@ const SORT_LABELS = Object.freeze({ ascending: "ascendente", descending: "descen
  * @param {"ascending"|"descending"|"none"} [props.sortDirection] - Orden aplicado a esta columna.
  * @param {() => void} [props.onSort] - Alterna el orden de la columna.
  * @param {boolean} [props.disabled=false] - Bloquea el cambio de orden (por ejemplo, durante la carga).
+ * @param {import("react").ComponentType|null} [props.sortIcon] - Icono alternativo; null lo oculta.
  * @returns {import("react").ReactElement} Contenido del encabezado.
  */
-function TableHeaderLabel({ children, disabled = false, filter = false, onSort, sortDirection = "none" }) {
-  const Icon = filter ? Filter : ArrowSwapVertical;
+function TableHeaderLabel({ children, disabled = false, filter = false, onSort, sortDirection = "none", sortIcon = ArrowSwapVertical }) {
+  const Icon = filter ? Filter : sortIcon;
   if (!onSort) {
     return (
       <span className="flex items-center gap-[8px] whitespace-nowrap">
         {children}
-        <Icon size="16" variant="Linear" color="currentColor" aria-hidden="true" />
+        {Icon ? <Icon size="16" variant="Linear" color="currentColor" aria-hidden="true" /> : null}
       </span>
     );
   }
@@ -36,7 +37,7 @@ function TableHeaderLabel({ children, disabled = false, filter = false, onSort, 
       onClick={onSort}
     >
       {children}
-      <Icon size="16" variant={sortDirection === "none" ? "Linear" : "Bold"} color="currentColor" aria-hidden="true" />
+      {Icon ? <Icon size="16" variant={sortDirection === "none" || sortIcon !== ArrowSwapVertical ? "Linear" : "Bold"} color="currentColor" aria-hidden="true" /> : null}
     </button>
   );
 }

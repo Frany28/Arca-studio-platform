@@ -430,6 +430,8 @@ function renderMenuItemLeading(
  * @param {number} [props.itemHeight] - Alto en px de cada opción (el de `rowHeightClassName`),
  * necesario para calcular el alto visible con `maxVisibleItems`.
  * @param {boolean} [props.truncateItemLabels=false] - Recorta las etiquetas largas de las opciones.
+ * @param {import("react").ReactNode} [props.triggerIcon] - Icono final alternativo del disparador.
+ * @param {boolean} [props.focusItemsOnOpen=false] - Enfoca la primera opción al abrir el menú.
  * @returns {import("react").ReactElement} Disparador con su menú.
  */
 function DropdownMenu({
@@ -439,6 +441,8 @@ function DropdownMenu({
   truncateItemLabels = false,
   className,
   triggerClassName,
+  triggerIcon,
+  focusItemsOnOpen = false,
   triggerWrapperClassName,
   contentClassName,
   itemClassName,
@@ -658,6 +662,14 @@ function DropdownMenu({
     return observeAnchorLayout({ anchor, getPanel: () => contentRef.current, onChange: updatePosition });
   }, [portal, resolvedOpen]);
 
+  useEffect(() => {
+    if (!resolvedOpen || !focusItemsOnOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      contentRef.current?.querySelector("button")?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusItemsOnOpen, resolvedOpen]);
+
   const setMenuOpen = (nextOpen) => {
     if (!isOpenControlled) {
       setInternalOpen(nextOpen);
@@ -828,14 +840,14 @@ function DropdownMenu({
             </div>
           </div>
 
-          <span
+          {triggerIcon ?? <span
             className={clsx(
               "inline-flex size-5 shrink-0 items-center justify-center",
               triggerTextClasses.arrow,
             )}
           >
             <ArrowDownIcon className="size-5" />
-          </span>
+          </span>}
         </button>
       </div>
 

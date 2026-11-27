@@ -280,13 +280,13 @@ function AdminUserTableSkeleton() {
 // Tabla del administrador de archivos (Figma 3727:683873): nombre, versión, proyecto (solo en
 // pendientes y rechazados), tipo, peso, fecha, autor y acciones. Usa la geometría de la tabla
 // (config/adminFilesTable.js) para no saltar al terminar la carga.
-function AdminFilesTableSkeleton({ review = false, rows, showProject }) {
-  const options = { review, showProject };
+function AdminFilesTableSkeleton({ review = false, rejected = false, rows, showProject }) {
+  const options = { review, rejected, showProject };
   return (
-    <div className="w-full overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]">
-      <div className="w-full overflow-x-auto">
+    <div className={`w-full overflow-hidden ${rejected ? "" : "rounded-[var(--radius-3)] border border-[var(--color-neutral-200)]"}`}>
+      <div className={`w-full ${rejected ? "overflow-hidden" : "overflow-x-auto"}`}>
         <div style={{ minWidth: getAdminFilesTableMinWidth(options) }}>
-          <SkeletonBlock className="h-[49px] w-full rounded-none" />
+          {rejected ? null : <SkeletonBlock className="h-[49px] w-full rounded-none" />}
           {Array.from({ length: rows }, (_, rowIndex) => (
             <div key={rowIndex} className="grid h-[68px] items-center" style={{ gridTemplateColumns: getAdminFilesGridTemplate(options) }}>
               <SkeletonBlock className="mx-[24px] h-[17px] w-[75%] rounded-[var(--radius-1)]" delay={rowIndex * 35} tone="text" />
@@ -913,7 +913,7 @@ function Loader({ className, count = 1, label = "Cargando contenido", preset = "
   } else if (preset === "adminUserTable") {
     content = <AdminUserTableSkeleton />;
   } else if (preset === "adminFilesTable") {
-    content = <AdminFilesTableSkeleton rows={itemCount} showProject={variant === "withProject" || variant === "review"} review={variant === "review"} />;
+    content = <AdminFilesTableSkeleton rows={itemCount} showProject={["withProject", "review", "rejectedRows"].includes(variant)} review={variant === "review"} rejected={variant === "rejectedRows"} />;
   } else if (preset === "adminFilesTree") {
     content = <AdminFilesTreeSkeleton rows={itemCount} />;
   } else if (preset === "measurementUnitTable") {
