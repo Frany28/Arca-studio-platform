@@ -55,11 +55,13 @@ export function getUploadAccept(folder) {
  * Texto de formatos bajo la zona de carga (Figma: «Formatos JPEG, PNG, PDF, hasta 50 MB.»).
  *
  * @param {{ systemKey?: string|null }|null} folder - Carpeta destino.
+ * @param {{ compact?: boolean }} [options] - Texto breve para el modal de reemplazo.
  * @returns {string} Texto.
  */
-export function getFormatsLabel(folder) {
+export function getFormatsLabel(folder, { compact = false } = {}) {
   if (folder?.systemKey === "cover") return "Una sola imagen JPEG o PNG, hasta 50 MB.";
-  return "Formatos PDF, DOCX, XLSX, JPEG, PNG y MP4, hasta 50 MB.";
+  const formats = "PDF, DOCX, XLSX, JPEG, PNG y MP4";
+  return compact ? `${formats} · Hasta 50 MB` : `Formatos ${formats}, hasta 50 MB.`;
 }
 
 /**
@@ -89,6 +91,7 @@ export function validateUploadFile(file, { folder = null, takenNames = [] } = {}
 // Respuestas de la API que no mejoran al repetir la carga: se muestran sin reintento.
 const FINAL_UPLOAD_ERRORS = Object.freeze({
   DUPLICATE_PROJECT_FILE: "Ya existe un archivo con ese nombre en esta carpeta. No se reemplazó nada: cancela o usa «Reemplazar archivo» en ese archivo para subir una versión nueva.",
+  FILE_NOT_FOUND: "El archivo ya no está disponible en este proyecto.",
   FILE_TOO_LARGE: "El archivo supera el tamaño máximo que admite el servidor.",
   FILE_VERSION_PENDING_REVIEW: "El archivo ya tiene una versión pendiente de revisión. Revísala antes de subir otra.",
   FILE_VERSIONING_UNAVAILABLE: "Este archivo heredado todavía no admite versiones.",

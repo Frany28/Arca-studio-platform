@@ -42,11 +42,14 @@ test("«+ Nuevo» needs a project; root and any folder are valid; read-only proj
   assert.equal(getUploadDisabledReason({ status: "draft" }, { fileCount: 3, systemKey: "documents" }), "", "el administrador prepara borradores");
 });
 
-test("replacement is blocked for legacy files and while a version is pending", () => {
+test("replacement is blocked for legacy files, pending versions and read-only projects", () => {
   assert.deepEqual(getReplaceAvailability({ review: { status: "approved" } }, []), { allowed: true, reason: "" });
   assert.match(getReplaceAvailability({ review: { status: "legacy" } }, []).reason, /heredado/);
   assert.match(getReplaceAvailability({ review: { status: "approved" } }, [{ review: { status: "pending" } }]).reason, /pendiente/);
   assert.equal(getReplaceAvailability({ review: { status: "rejected" } }, []).allowed, true, "rechazada sin pendientes: admite otra versión");
+  assert.match(getReplaceAvailability({ review: { status: "approved" }, project: { status: "archived" } }, []).reason, /Desarchiva/);
+  assert.match(getReplaceAvailability({ review: { status: "approved" } }, [], { status: "finished" }).reason, /finalizado/);
+  assert.equal(getReplaceAvailability({ review: { status: "approved" } }, [], { status: "draft" }).allowed, true);
 });
 
 test("nombre repetido en la carpeta destino: definitivo, nombra la ubicación y remite a «Reemplazar archivo»", () => {

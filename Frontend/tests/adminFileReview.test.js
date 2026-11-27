@@ -88,11 +88,12 @@ test("history labels and restore availability follow the backend rules", () => {
   assert.match(getRestoreAvailability(approvedOld, [pending, current, approvedOld]).reason, /pendiente/);
 });
 
-test("review alerts describe completed actions without promising sharing", () => {
+test("review results describe confirmed actions without promising sharing or notifications", () => {
   const approved = describeReviewResult("approve");
   assert.equal(approved.title, "Archivo aprobado correctamente");
-  assert.equal(approved.description, "El archivo fue aprobado y está disponible según los permisos del proyecto.");
-  assert.doesNotMatch(approved.description, /compart|cliente|públic/i);
+  assert.match(approved.description, /disponible en el proyecto según los permisos vigentes/);
+  assert.match(approved.description, /El acceso del cliente se gestiona por separado/);
+  assert.doesNotMatch(approved.description, /notific/);
   const rejected = describeReviewResult("reject");
   assert.equal(rejected.title, "Archivo rechazado correctamente");
   assert.equal(rejected.description, "El motivo del rechazo quedó guardado en el historial de versiones.");

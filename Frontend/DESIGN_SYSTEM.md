@@ -1118,8 +1118,9 @@ Validación, capturas y diferencias respecto a Figma:
     muestran fuera del TextArea: su ayuda desaparece con el foco y, al reaparecer, desplazaba el pie
     entre `mousedown` y `mouseup` y el clic en «Enviar» se perdía.
   - Tras una aprobación o un rechazo confirmados por la API, se cierra el visor, se recargan la
-    tabla y las métricas y el foco vuelve a la pestaña activa. El `AlertToast` de Gestión de
-    archivos muestra el resultado (`describeReviewResult`, tema Success) sin pedir confirmación.
+    tabla y las métricas y se abre el `ModalDialog` de resultado (Figma `3795:579327` y
+    `3795:579509`). «Cancelar», «Aceptar», X y Escape cierran el aviso y devuelven el foco a la
+    pestaña activa. La operación se confirma una sola vez en el visor.
     El historial vuelve a leerse al abrir el visor. La aprobación hace vigente la versión según
     los permisos del proyecto; compartirla con el cliente sigue siendo una acción aparte (DA3).
   - Historial: de la más reciente a la más antigua, 10 por página con «Mostrar más versiones»;
@@ -1149,8 +1150,9 @@ Validación, capturas y diferencias respecto a Figma:
   - «+ Nuevo» está a la derecha de la barra en Aprobados y sube a la carpeta seleccionada en el
     árbol; deshabilitado con su motivo sin carpeta, en la raíz del proyecto, en proyectos archivados
     o finalizados y con la portada ya ocupada. «Reemplazar» está en el pie del visor y en «Más
-    opciones» de la fila (no en Pendientes); deshabilitado en archivos heredados o con una versión
-    pendiente.
+    opciones» de la fila (no en Pendientes); deshabilitado en archivos heredados, con una versión
+    pendiente o en proyectos archivados o finalizados. El visor y el «+» esperan el historial
+    para verificar si el archivo admite otra versión.
   - Las reglas (`utils/adminFileUpload.js`) son las del backend: PDF, DOCX, XLSX, JPEG/JPG, PNG y
     MP4 (extensión y tipo), 50 MB, nombre ≤150; portada, solo JPEG/PNG. Un archivo inválido se
     muestra con su motivo y no se transfiere. Las cargas van de una en una

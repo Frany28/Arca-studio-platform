@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { api } from "../../../api/http.js";
 import DocumentFileCard from "../../../components/document-viewer/DocumentFileCard.jsx";
@@ -94,6 +94,7 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
   // otra versión (cambio rápido) nunca ajusta el escenario de la actual.
   const [mediaSize, setMediaSize] = useState(null);
   const [replaceOpen, setReplaceOpen] = useState(false);
+  const replaceTrigger = useRef(null);
   const operations = useAdminFileReviewOperations({
     onStale: () => {
       history.reload();
@@ -109,8 +110,14 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
   const view = views[displayed.id] || DEFAULT_VIEW;
   const pending = displayed.review?.status === "pending";
   const busy = Boolean(operations.pending);
-  // El historial cargado decide si hay otra versión pendiente; mientras carga, se usa la fila.
-  const replaceAvailability = getReplaceAvailability(displayed, history.versions);
+  // La fila no indica si otra versión está pendiente. Espera al historial antes de habilitar «+».
+  const versionEligibility = getReplaceAvailability(displayed, history.versions, item.project);
+  let replaceAvailability = versionEligibility;
+  if (versionEligibility.allowed && history.loading) {
+    replaceAvailability = { allowed: false, reason: "Se está comprobando el historial de versiones." };
+  } else if (versionEligibility.allowed && !history.versions.length) {
+    replaceAvailability = { allowed: false, reason: "No se pudo verificar el historial del archivo." };
+  }
   const downloading = downloads.downloadingVersionId === displayed.id;
   const displayName = displayed.originalName || item.name;
 
@@ -120,9 +127,24 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
     onEscape: () => {
       if (!busy) onClose();
     },
-    getInitialFocus: (elements) => elements.find((element) => ["Aprobar", "Cerrar"].includes(element.textContent?.trim())),
+    getInitialFocus: (elements) => {
+      const trigger = replaceTrigger.current;
+      replaceTrigger.current = null;
+      return elements.includes(trigger) ? trigger : elements.find((element) => ["Aprobar", "Cerrar"].includes(element.textContent?.trim()));
+    },
     getReturnFocus: returnFocusTo ? () => returnFocusTo : undefined,
   });
+
+  /**
+   * Abre el reemplazo y recuerda el control del visor para devolverle el foco al cerrar.
+   *
+   * @param {import("react").MouseEvent} event - Clic en el botón del historial o del visor.
+   * @returns {void}
+   */
+  function openReplacement(event) {
+    replaceTrigger.current = event.currentTarget;
+    setReplaceOpen(true);
+  }
 
   /**
    * Descarga una versión: la mostrada reutiliza los bytes ya recibidos.
@@ -239,7 +261,7 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
       history={history}
       displayedVersionId={displayed.id}
       actionsDisabled={busy}
-      addVersion={{ ...replaceAvailability, onClick: () => setReplaceOpen(true) }}
+      addVersion={{ ...replaceAvailability, onClick: openReplacement }}
       onView={(version) => setDisplayedVersionId(version.id)}
       onDownload={downloadVersion}
       onRestore={(version) => setReasonDialog({ kind: "restore", version })}
@@ -342,7 +364,7 @@ function AdminFileViewerDialog({ downloads, feedback, item, onChanged, onClose, 
                           tooltip={replaceAvailability.allowed ? "Subir una versión nueva" : replaceAvailability.reason}
                           aria-label={replaceAvailability.allowed ? "Reemplazar" : `Reemplazar. ${replaceAvailability.reason}`}
                           className="h-[41px] min-w-[140px] flex-1"
-                          onClick={() => setReplaceOpen(true)}
+                          onClick={openReplacement}
                         >
                           Reemplazar
                         </Button>

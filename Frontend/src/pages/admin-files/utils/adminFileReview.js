@@ -2,6 +2,8 @@
 // puras: deciden el visor de cada versión, redactan los avisos a partir de lo que confirma la API y
 // traducen sus conflictos. El backend sigue siendo la autoridad de cada regla.
 
+import { getProjectReadOnlyMessage, isProjectPreparationLocked } from "../../../utils/projectReadOnly.js";
+
 // Límites del contrato (docs/API_CONTRACT.md, B4): motivo de rechazo 1–500 y de restauración 1–255.
 export const REJECT_REASON_MAX_LENGTH = 500;
 export const RESTORE_NOTE_MAX_LENGTH = 255;
@@ -146,11 +148,13 @@ export function getRestoreAvailability(version, versions) {
  * Indica si un archivo admite una versión nueva (B4, U3): no los heredados (sin versiones hasta su
  * conversión) ni los que ya tienen una pendiente (PR1). El motivo lo exige el diálogo y la API.
  *
- * @param {{ review?: { status?: string } }} version - Versión mostrada o fila de la tabla.
+ * @param {{ review?: { status?: string }, project?: Object }} version - Versión mostrada o fila de la tabla.
  * @param {Array<Object>} versions - Versiones conocidas del archivo (vacío si no se cargaron).
+ * @param {{ status?: string }} [project] - Estado del proyecto si la versión proviene del historial.
  * @returns {{ allowed: boolean, reason: string }} Resultado y motivo si no procede.
  */
-export function getReplaceAvailability(version, versions) {
+export function getReplaceAvailability(version, versions, project = version?.project) {
+  if (isProjectPreparationLocked(project)) return { allowed: false, reason: getProjectReadOnlyMessage(project) };
   if (version?.review?.status === "legacy") return { allowed: false, reason: "Este archivo heredado todavía no admite versiones." };
   if (version?.review?.status === "pending" || (versions || []).some((candidate) => candidate.review?.status === "pending")) {
     return { allowed: false, reason: "El archivo ya tiene una versión pendiente de revisión." };
@@ -159,16 +163,16 @@ export function getReplaceAvailability(version, versions) {
 }
 
 /**
- * Textos de la alerta que aparece cuando la API confirma una revisión. La aprobación hace
+ * Textos del modal que aparece cuando la API confirma una revisión. La aprobación hace
  * vigente la versión según los permisos del proyecto; compartirla es una acción aparte.
  *
  * @param {"approve"|"reject"} action - Acción confirmada.
- * @returns {{ title: string, description: string }} Textos de la alerta.
+ * @returns {{ title: string, description: string }} Textos del modal.
  */
 export function describeReviewResult(action) {
   if (action === "approve") {
     return {
-      description: "El archivo fue aprobado y está disponible según los permisos del proyecto.",
+      description: "El archivo se ha aprobado y esta versión está disponible en el proyecto según los permisos vigentes. El acceso del cliente se gestiona por separado.",
       title: "Archivo aprobado correctamente",
     };
   }

@@ -7,6 +7,7 @@ import AdminFileDestinationPath from "./AdminFileDestinationPath.jsx";
 import FileUploadSection from "../../../components/ui/FileUploadSection/FileUploadSection.jsx";
 import Input from "../../../components/ui/Input/Input.jsx";
 import Modal, { ModalCloseButton } from "../../../components/ui/Modal/Modal.jsx";
+import { MODAL_DARK_CONTRAST, MODAL_INSET_BORDER, MODAL_INSET_DIVIDER } from "../../../components/ui/Modal/modalConfig.js";
 import { useDialogKeyboard } from "../../../hooks/useDialogKeyboard.js";
 import { formatStorage } from "../../../utils/fileMetrics.js";
 import { useAdminFileUploadQueue } from "../hooks/useAdminFileUploadQueue.js";
@@ -22,9 +23,10 @@ const COPY = Object.freeze({
  *
  * @param {Object} item - Elemento de useAdminFileUploadQueue.
  * @param {Object} queue - Cola (acciones).
+ * @param {() => void} [closeAfterRetry] - Cierra el reemplazo si se confirma en el reintento.
  * @returns {Object} Tarjeta.
  */
-function toCard(item, queue) {
+function toCard(item, queue, closeAfterRetry) {
   const status = item.status === "failed" ? "failed" : item.status;
   return {
     completedLabel: item.notice || "Subido · Pendiente de revisión",
@@ -33,7 +35,9 @@ function toCard(item, queue) {
     id: item.id,
     name: item.file.name,
     onRemove: item.status === "completed" ? undefined : () => queue.remove(item.id),
-    onRetryUpload: item.status === "failed" && item.retryable ? () => queue.retry(item.id) : undefined,
+    onRetryUpload: item.status === "failed" && item.retryable ? async () => {
+      if (await queue.retry(item.id)) closeAfterRetry?.();
+    } : undefined,
     progress: item.progress,
     removeWhenFailed: true,
     status: status === "uploading" ? "uploading" : status,
@@ -112,15 +116,18 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
   }
 
   /**
-   * Comprueba si la versión nueva quedó registrada: la más reciente, pendiente y con este motivo.
+   * Comprueba si la versión más reciente y pendiente coincide con el archivo y el motivo.
    * Antes de la carga el archivo no tenía otra pendiente (la API la habría rechazado con 409).
    *
+   * @param {File} chosen - Archivo de la transferencia que perdió la respuesta.
    * @returns {Promise<Object|null>} `{version}` o null.
    */
-  async function reconcileReplacement() {
+  async function reconcileReplacement(chosen) {
     const page = await api.fileManager.listVersions({ fileId: file.fileId, limit: 1, projectId });
     const latest = page?.versions?.[0];
-    return latest?.review?.status === "pending" && latest.changeNote === note.trim() ? { version: latest } : null;
+    const matches = latest?.review?.status === "pending" && latest.changeNote === note.trim()
+      && latest.originalName === chosen.name.trim() && latest.size === chosen.size;
+    return matches ? { version: latest } : null;
   }
 
   useDialogKeyboard({
@@ -149,11 +156,11 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
     if (await queue.start()) onClose();
   }
 
-  const cards = queue.items.map((item) => toCard(item, queue));
+  const cards = queue.items.map((item) => toCard(item, queue, replacing ? onClose : undefined));
   const done = queue.items.length > 0 && queue.items.every((item) => item.status === "completed");
 
   return (
-    <Modal mount="viewport" visible onClose={queue.busy ? undefined : onClose} className="z-[110]">
+    <Modal mount="viewport" visible onClose={queue.busy ? undefined : onClose} className="z-[110]" dialogShellClassName={replacing ? "!pb-0" : undefined}>
       <div
         role="dialog"
         aria-modal="true"
@@ -161,12 +168,14 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
         aria-describedby={`${formId}-location`}
         aria-busy={queue.busy || undefined}
         data-admin-file-upload={mode}
-        className="flex max-h-[calc(100dvh-32px)] w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]"
+        className={`flex max-h-[calc(100dvh-32px)] w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)] ${replacing
+          ? `${MODAL_INSET_BORDER} ${MODAL_DARK_CONTRAST}`
+          : "border border-[var(--color-neutral-200)]"}`}
         onClick={(event) => event.stopPropagation()}
       >
         <form id={formId} className={`relative flex min-h-0 flex-col overflow-y-auto p-[16px] ${replacing ? "gap-[4px]" : "gap-[12px]"}`} onSubmit={handleSubmit} noValidate>
           <div className="absolute right-0 top-0">
-            <ModalCloseButton disabled={queue.busy} ariaLabel={copy.close} onClick={onClose} />
+            <ModalCloseButton className={replacing ? "[&>svg]:size-[18px]" : undefined} disabled={queue.busy} ariaLabel={copy.close} onClick={onClose} />
           </div>
           <div className="flex flex-col gap-[4px] pr-[28px]">
             <h2 id={`${formId}-title`} className="text-heading-6 m-0 text-[var(--color-text-300)]">{copy.title}</h2>
@@ -176,7 +185,7 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
               : <AdminFileDestinationPath id={`${formId}-location`} project={target.project} folder={destinationFolder} />}
           </div>
           <FileUploadSection
-            className="w-full"
+            className={replacing ? "w-full shrink-0 [&_[data-file-upload-dropzone]]:pt-[30px]" : "w-full"}
             // Sin `disabled`: deshabilitaría también el botón que cancela la carga en curso. Lo que se
             // añade durante una carga entra en la misma cola (el reemplazo admite un solo archivo).
             files={cards}
@@ -184,10 +193,13 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
             chooseFileLabel="Elige un archivo"
             separatorLabel="O"
             dropLabel="Arrastra y suelta"
-            formatsLabel={getFormatsLabel(folder)}
+            formatsLabel={getFormatsLabel(folder, { compact: replacing })}
             fileInputAccept={getUploadAccept(folder)}
+            singleFile={replacing}
+            fitContent={replacing}
+            dropzoneVariant={replacing ? "project" : undefined}
             viewportHeight={null}
-            fileListViewportHeight={220}
+            fileListViewportHeight={replacing ? null : 220}
             showUploadedFiles={cards.length > 0}
             onFilesSelected={queue.add}
             aria-label={replacing ? "Elegir el archivo de la versión nueva" : "Elegir archivos para subir"}
@@ -210,7 +222,8 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
                 state={noteError ? "Error" : "Default"}
                 disabled={queue.busy}
                 maxLength={CHANGE_NOTE_MAX_LENGTH}
-                className="w-full max-w-none"
+                // El campo de Figma mide 35 px. El borde interior de Input cuenta dentro de su padding.
+                className="w-full max-w-none [&_[data-input-shell]]:min-h-0 [&_[data-input-shell]>div]:min-h-0 [&_[data-input-shell]>div]:py-[7px]"
                 aria-invalid={noteError ? true : undefined}
                 aria-describedby={noteError ? `${formId}-note-error` : undefined}
                 onChange={(event) => {
@@ -223,7 +236,7 @@ function AdminFileUploadDialog({ file, mode, onClose, onUploaded, target }) {
             </div>
           ) : null}
         </form>
-        <footer className="flex items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
+        <footer className={`flex shrink-0 items-center gap-[16px] p-[16px] ${replacing ? MODAL_INSET_DIVIDER : "border-t border-[var(--color-neutral-200)]"}`}>
           <Button theme="Primary" type="Outline" size="M" showLeftIcon={false} showRightIcon={false} disabled={queue.busy} className="!h-[41px] !w-full min-w-0 flex-1" onClick={onClose}>
             {done ? "Listo" : copy.dismiss}
           </Button>

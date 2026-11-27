@@ -176,11 +176,13 @@ export function useAdminFileUploadQueue({ location = "", onUploaded, reconcile, 
      * Vuelve a transferir un elemento fallido con error transitorio.
      *
      * @param {number} id - Elemento.
-     * @returns {void}
+     * @returns {Promise<boolean>} Si todos los elementos quedaron guardados.
      */
-    retry(id) {
+    async retry(id) {
+      const item = itemsRef.current.find((candidate) => candidate.id === id);
+      if (runningRef.current || item?.status !== "failed" || !item.retryable) return false;
       patch(id, { error: "", status: "pending" });
-      start();
+      return start();
     },
     start,
     uploadable: items.some((item) => item.status === "pending" && !item.validationMessage),

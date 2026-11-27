@@ -8,6 +8,8 @@ import ModalOverlay from "./ModalOverlay.jsx";
 import {
   MODAL_ALIGNMENTS,
   MODAL_DEFAULT_PROPS,
+  MODAL_INSET_BORDER,
+  MODAL_INSET_DIVIDER,
   MODAL_MOUNTS,
   MODAL_OVERLAY_VARIANTS,
   MODAL_TRANSITION_PRESETS,
@@ -72,6 +74,8 @@ function ModalCloseButton({
  *
  * @param {Object} props - Alineación, textos, icono, acciones y callbacks.
  * @param {"Left"|"Centered"|"Horizontal split"} [props.alignment="Left"] - Variante de Figma.
+ * @param {string} [props.bodyClassName] - Clases del cuerpo, por ejemplo para permitir su desplazamiento.
+ * @param {boolean} [props.insetBorders=false] - Dibuja bordes y separador dentro de las dimensiones del diseño.
  * @param {string} [props.closeButtonAriaLabel] - Nombre accesible de la X.
  * @param {import("react").Ref<HTMLDivElement>} [props.dialogRef] - Ref del contenedor del diálogo.
  * @returns {import("react").ReactElement} Diálogo de 400 px.
@@ -79,12 +83,14 @@ function ModalCloseButton({
 function ModalDialog({
   actionsDisabled = false,
   alignment = MODAL_DEFAULT_PROPS.alignment,
+  bodyClassName,
   checkboxLabel = MODAL_DEFAULT_PROPS.checkboxLabel,
   className,
   closeButtonAriaLabel,
   description = MODAL_DEFAULT_PROPS.description,
   dialogRef,
   icon = null,
+  insetBorders = false,
   onClose,
   onPrimaryAction,
   onSecondaryAction,
@@ -115,7 +121,8 @@ function ModalDialog({
     <div
       ref={dialogRef}
       className={clsx(
-        "relative flex w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] border border-[var(--color-neutral-200)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]",
+        "relative flex w-full max-w-[400px] flex-col overflow-hidden rounded-[var(--radius-3)] bg-[var(--color-neutral-100)] shadow-[var(--shadow-e2)]",
+        insetBorders ? MODAL_INSET_BORDER : "border border-[var(--color-neutral-200)]",
         className,
       )}
       onClick={(event) => event.stopPropagation()}
@@ -135,6 +142,7 @@ function ModalDialog({
           "flex w-[400px] max-w-full gap-[16px] px-[16px] pt-[16px] pb-[16px]",
           contentLayoutClassName,
           dialogAlignmentClassName,
+          bodyClassName,
         )}
       >
         <IconContainer size="M" type="Outline" icon={icon} />
@@ -151,7 +159,7 @@ function ModalDialog({
         </div>
       </div>
 
-      <div className="flex w-full items-center gap-[16px] border-t border-[var(--color-neutral-200)] p-[16px]">
+      <div className={clsx("flex w-full shrink-0 items-center gap-[16px] p-[16px]", insetBorders ? MODAL_INSET_DIVIDER : "border-t border-[var(--color-neutral-200)]")}>
         {isHorizontalSplit ? (
           <div className="flex h-[17px] w-[168px] items-center gap-[12px]">
             <Checkbox checked="No" size="S" interactive={false} />

@@ -1024,6 +1024,7 @@ const viewerDialog = (page) => page.locator("[data-admin-file-viewer]");
 const viewerHeader = (viewer) => viewer.locator("[data-admin-file-modal] article");
 const reviewRequests = (backend, action) => backend.requests.filter((request) => request.method === "POST" && request.path.endsWith(`/${action}`));
 const metricsReads = (backend) => backend.requests.filter((request) => request.path === "/api/admin/files/metrics").length;
+const reviewResult = (page, action) => page.locator(action ? `[data-admin-file-review-result="${action}"]` : "[data-admin-file-review-result]");
 const reviewAlert = (page) => page.getByRole("alert", { name: "Gestión de archivos actualizada" });
 const reviewErrorAlert = (page) => page.getByRole("alert", { name: "Error en la gestión de archivos" });
 
@@ -1059,7 +1060,7 @@ test("U2 · «Revisar» abre el PDF con historial; aprobar confirma lo que devue
     await route.fallback();
   });
   await viewer.getByRole("button", { name: "Aprobar" }).click();
-  const result = reviewAlert(page);
+  const result = reviewResult(page, "approve");
   try {
     const busy = viewer.getByRole("button", { name: "Aprobando..." });
     await busy.waitFor();
@@ -1070,15 +1071,25 @@ test("U2 · «Revisar» abre el PDF con historial; aprobar confirma lo que devue
     release();
   }
   await result.getByText("Archivo aprobado correctamente").waitFor();
-  await result.getByText("El archivo fue aprobado y está disponible según los permisos del proyecto.").waitFor();
+  await result.getByText(/disponible en el proyecto según los permisos vigentes/).waitFor();
   assert.equal(await result.count(), 1);
-  assert.equal(await result.getAttribute("aria-live"), "assertive");
-  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(await page.getByRole("dialog", { name: "Archivo aprobado correctamente" }).count(), 1);
+  assert.equal(await reviewAlert(page).count(), 0);
   assert.equal(reviewRequests(backend, "approve").length, 1);
   assert.equal(await viewerDialog(page).count(), 0, "el visor se cierra tras aprobar");
   await page.getByText("No hay archivos pendientes").waitFor();
   assert.ok(metricsReads(backend) > metricsBefore, "las métricas se vuelven a leer");
   const pendingTab = page.getByRole("tab", { name: "Pendientes por aprobación" });
+  const accept = result.getByRole("button", { name: "Aceptar" });
+  const close = result.getByRole("button", { name: "Cerrar resultado de revisión" });
+  await accept.and(page.locator(":focus")).waitFor();
+  await page.keyboard.press("Tab");
+  await close.and(page.locator(":focus")).waitFor();
+  await page.keyboard.press("Shift+Tab");
+  await accept.and(page.locator(":focus")).waitFor();
+  await accept.press("Enter");
+  await result.waitFor({ state: "detached" });
+  assert.equal(reviewRequests(backend, "approve").length, 1, "Aceptar solo cierra el resultado");
   await pendingTab.and(page.locator(":focus")).waitFor();
   await pendingTab.press("ArrowLeft");
   await page.getByRole("button", { name: "Ver Propuesta pendiente.pdf, versión 2" }).click();
@@ -1160,14 +1171,20 @@ test("U2 · rechazar exige motivo, lo envía y conserva la versión rechazada", 
   await reasonField.fill("  Falta la firma del cliente.  ");
   const metricsBefore = metricsReads(backend);
   await reason.getByRole("button", { name: "Enviar" }).click();
-  const result = reviewAlert(page);
+  const result = reviewResult(page, "reject");
   await result.getByText("Archivo rechazado correctamente").waitFor();
   await result.getByText("El motivo del rechazo quedó guardado en el historial de versiones.").waitFor();
   assert.equal(await result.count(), 1);
-  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(await page.getByRole("dialog", { name: "Archivo rechazado correctamente" }).count(), 1);
+  assert.equal(await reason.count(), 0);
+  assert.equal(await reviewAlert(page).count(), 0);
   assert.equal(reviewRequests(backend, "reject").length, 1);
   assert.deepEqual(reviewRequests(backend, "reject")[0].body, { reason: "Falta la firma del cliente." });
   await waitUntil(() => metricsReads(backend) > metricsBefore);
+  await result.getByRole("button", { name: "Cancelar" }).click();
+  await result.waitFor({ state: "detached" });
+  await page.getByRole("tab", { name: "Pendientes por aprobación" }).and(page.locator(":focus")).waitFor();
+  assert.equal(reviewRequests(backend, "reject").length, 1, "Cancelar solo cierra el resultado");
   await page.getByRole("tab", { name: "Rechazados" }).click();
   await page.getByRole("rowheader", { name: "Propuesta pendiente.pdf" }).waitFor();
   await page.getByRole("button", { name: "Ver Propuesta pendiente.pdf, versión 2" }).click();
@@ -1190,6 +1207,7 @@ test("U2 · un 409 de versión ya revisada se informa sin cerrar el visor y reca
   assert.equal(await viewerDialog(page).count(), 1, "el visor sigue abierto con la versión mostrada");
   await viewerHeader(viewer).getByText("V2 · Pendiente de revisión").waitFor();
   assert.equal(await reviewAlert(page).count(), 0);
+  assert.equal(await reviewResult(page).count(), 0);
   assert.equal(await page.getByRole("dialog").count(), 1);
 });
 
@@ -1213,6 +1231,7 @@ test("U2 · error al rechazar conserva el motivo y permite reintentar con una so
   await dialog.getByRole("alert").getByText("Revisa el motivo del rechazo.").waitFor();
   assert.equal(await field.inputValue(), "Falta firmar el archivo.");
   assert.equal(await reviewErrorAlert(page).count(), 0, "la validación se indica junto al campo");
+  assert.equal(await reviewResult(page).count(), 0);
 
   failures[operation] = { body: { code: "INTERNAL_ERROR", message: "Detalle interno del servidor" }, status: 500 };
   await field.fill("Falta la firma del cliente.");
@@ -1224,63 +1243,151 @@ test("U2 · error al rechazar conserva el motivo y permite reintentar con una so
   assert.equal(await dialog.getByRole("alert").count(), 0, "el error general solo se anuncia una vez");
   assert.equal(await page.getByText("Detalle interno del servidor").count(), 0);
   assert.equal(await reviewAlert(page).count(), 0);
+  assert.equal(await reviewResult(page).count(), 0);
   assert.equal(await field.inputValue(), "Falta la firma del cliente.");
 
   delete failures[operation];
   await send.click();
-  await reviewAlert(page).getByText("Archivo rechazado correctamente").waitFor();
+  await reviewResult(page, "reject").getByText("Archivo rechazado correctamente").waitFor();
   assert.deepEqual(reviewRequests(backend, "reject").map((request) => request.body), [
     { reason: "Falta firmar el archivo." },
     { reason: "Falta la firma del cliente." },
     { reason: "Falta la firma del cliente." },
   ]);
-  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(await page.getByRole("dialog").count(), 1);
+  assert.equal(await dialog.count(), 0);
+  assert.equal(await reviewAlert(page).count(), 0);
   assert.equal(await reviewErrorAlert(page).count(), 0);
 });
 
 for (const theme of ["light", "dark"]) {
-  for (const width of [375, 768, 1440]) {
-    test(`U2 · alertas de revisión responsive (${theme}, ${width} px)`, async (context) => {
-      const operation = "POST /api/projects/:id/files/:id/versions/:id/approve";
-      const failures = { [operation]: { body: { code: "INTERNAL_ERROR" }, status: 503 } };
-      const backend = createBackend({ failures });
+  for (const width of [360, 375, 390, 768, 1024, 1440, 1920]) {
+    test(`U2/U3 · aprobación, rechazo y reemplazo centrados (${theme}, ${width} px)`, async (context) => {
+      const backend = createBackend();
+      // Dos archivos pendientes en la misma sesión para recorrer ambos resultados.
+      backend.items.find((entry) => entry.name === "Contrato rechazado.pdf").review.status = "pending";
       const page = await openFiles(context, backend, { theme, viewport: { height: 900, width } });
       const viewer = await openPendingReview(page);
-      const approve = viewer.getByRole("button", { name: "Aprobar", exact: true });
-      await approve.click();
-      await reviewErrorAlert(page).getByText("No se pudo aprobar el archivo").waitFor();
+      await viewer.getByRole("button", { name: "Aprobar", exact: true }).click();
+      const approved = reviewResult(page, "approve");
+      await checkReviewModalGeometry(approved, { kind: "approve", theme, width });
+      if (width === 375) {
+        await page.setViewportSize({ height: 200, width });
+        await assertScrollableModal(approved, "Aceptar", ":scope > div:first-of-type");
+        await page.setViewportSize({ height: 900, width });
+      }
+      await approved.getByRole("button", { name: "Cerrar resultado de revisión" }).click();
+      await approved.waitFor({ state: "detached" });
+      const tab = page.getByRole("tab", { name: "Pendientes por aprobación" });
+      await tab.and(page.locator(":focus")).waitFor();
+
+      await page.getByRole("button", { name: "Revisar Contrato rechazado.pdf, versión 1" }).click();
+      await viewer.getByRole("button", { name: "Rechazar" }).click();
+      const reason = page.locator("[data-admin-file-reason='reject']");
+      await reason.getByRole("textbox", { name: "Motivo del rechazo" }).fill("Falta la firma.");
+      await reason.getByRole("button", { name: "Enviar" }).click();
+      const rejected = reviewResult(page, "reject");
+      await checkReviewModalGeometry(rejected, { kind: "reject", theme, width });
+      await page.keyboard.press("Escape");
+      await rejected.waitFor({ state: "detached" });
+      await tab.and(page.locator(":focus")).waitFor();
+      assert.equal(reviewRequests(backend, "approve").length, 1);
+      assert.equal(reviewRequests(backend, "reject").length, 1);
       assert.equal(await reviewAlert(page).count(), 0);
 
-      for (const [alert, color, state] of [
-        [reviewErrorAlert(page), "--color-danger-200", "error"],
-        [reviewAlert(page), "--color-success-200", "success"],
-      ]) {
-        if (state === "success") {
-          delete failures[operation];
-          await approve.click();
-        }
-        await alert.and(page.locator(".auth-toast--visible")).waitFor();
-        const geometry = await alert.evaluate(async (node, token) => {
-          await Promise.all(node.getAnimations().map((animation) => animation.finished));
-          const probe = document.createElement("span");
-          node.append(probe);
-          probe.style.color = `var(${token})`;
-          const expectedBorder = getComputedStyle(probe).color;
-          probe.remove();
-          const { left, right, top, bottom } = node.getBoundingClientRect();
-          const style = getComputedStyle(node);
-          return { left, right, top, bottom, border: style.borderTopColor, expectedBorder };
-        }, color);
-        const margin = width < 640 ? 16 : 24;
-        assert.ok(geometry.left >= margin - 1 && geometry.right <= width - margin + 1 && geometry.top >= 0);
-        assert.ok(Math.abs(geometry.bottom - (900 - margin)) <= 1);
-        assert.equal(geometry.border, geometry.expectedBorder);
-        assert.equal(await alert.getByRole("button", { name: "Cerrar alerta" }).count(), 1);
-        if (SCREENSHOT_DIR) await page.screenshot({ path: `${SCREENSHOT_DIR}/review-alert-${state}-${theme}-${width}.png` });
+      await page.getByRole("tab", { name: "Rechazados" }).click();
+      await page.getByRole("button", { name: "Ver Contrato rechazado.pdf, versión 1" }).click();
+      const add = viewer.getByRole("button", { name: "Subir una versión nueva", exact: true });
+      await add.click();
+      const replacement = uploadDialog(page, "replace");
+      await checkReviewModalGeometry(replacement, { kind: "replace", theme, width });
+      if (width === 375) {
+        await page.setViewportSize({ height: 300, width });
+        await replacement.locator("input[type='file']").setInputFiles(pdfFile("Contrato actualizado.pdf"));
+        await replacement.getByText("Contrato actualizado", { exact: true }).waitFor();
+        await assertScrollableModal(replacement, "Confirmar", "form");
+        await replacement.getByRole("textbox", { name: /Motivo del cambio/ }).fill("Contrato con firma.");
+        await page.setViewportSize({ height: 900, width });
       }
-      assert.equal(await page.getByRole("dialog").count(), 0);
-      assert.equal(reviewRequests(backend, "approve").length, 2);
+      await replacement.getByRole("button", { name: "Cancelar" }).click();
+      await replacement.waitFor({ state: "detached" });
+      await add.and(page.locator(":focus")).waitFor();
     });
+  }
+}
+
+async function assertScrollableModal(dialog, actionLabel, bodySelector) {
+  const body = dialog.locator(bodySelector);
+  assert.equal(await body.evaluate((node) => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === "auto"), true);
+  const button = dialog.getByRole("button", { name: actionLabel });
+  assert.equal(await button.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    return box.top >= 0 && box.bottom <= window.innerHeight;
+  }), true, "el pie conserva la acción principal visible");
+}
+
+async function checkReviewModalGeometry(dialog, { kind, theme, width }) {
+  await dialog.waitFor();
+  await dialog.page().evaluate(() => document.fonts.ready);
+  const geometry = await dialog.evaluate(async (node) => {
+    // El contenedor del modal anima escala y opacidad al abrir.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.all(node.parentElement.getAnimations().map((animation) => animation.finished));
+    const box = node.getBoundingClientRect();
+    const buttons = [...node.querySelectorAll("button")];
+    const [left, right] = buttons.slice(-2);
+    const closeBox = buttons[0].getBoundingClientRect();
+    const leftBox = left.getBoundingClientRect();
+    const rightBox = right.getBoundingClientRect();
+    const css = getComputedStyle(node);
+    const title = node.querySelector("h2") ?? document.getElementById(node.getAttribute("aria-labelledby"));
+    return {
+      background: css.backgroundColor,
+      border: getComputedStyle(node, "::after").borderTopWidth,
+      buttonGap: rightBox.left - leftBox.right,
+      buttonHeight: rightBox.height,
+      buttonWidthDifference: Math.abs(leftBox.width - rightBox.width),
+      centerX: box.x + box.width / 2,
+      centerY: box.y + box.height / 2,
+      closeRight: box.right - closeBox.right,
+      closeTop: closeBox.top - box.top,
+      divider: getComputedStyle(right.parentElement, "::before").height,
+      dropzoneHeight: node.querySelector("[data-file-upload-dropzone]")?.getBoundingClientRect().height,
+      fontSize: getComputedStyle(title).fontSize,
+      height: box.height,
+      inputHeight: node.querySelector("[data-input-shell]")?.getBoundingClientRect().height,
+      labelHeight: node.querySelector("label")?.getBoundingClientRect().height,
+      overflow: node.scrollWidth - node.clientWidth,
+      radius: css.borderRadius,
+      secondaryColor: getComputedStyle(left).color,
+      supportingColor: getComputedStyle(node.querySelector("[data-file-upload-dropzone] p") ?? document.getElementById(node.getAttribute("aria-describedby"))).color,
+      width: box.width,
+    };
+  });
+  if (SCREENSHOT_DIR) await dialog.screenshot({ path: `${SCREENSHOT_DIR}/file-modal-${kind}-${theme}-${width}.png` });
+  assert.ok(Math.abs(geometry.width - Math.min(400, width - 32)) < 1, JSON.stringify(geometry));
+  assert.ok(Math.abs(geometry.centerX - width / 2) < 1 && Math.abs(geometry.centerY - 450) < 1, JSON.stringify(geometry));
+  assert.ok(geometry.overflow <= 0);
+  assert.equal(geometry.background, theme === "light" ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)");
+  assert.equal(geometry.border, "1px");
+  assert.equal(geometry.divider, "1px");
+  assert.equal(geometry.radius, "12px");
+  assert.equal(geometry.fontSize, "18px");
+  if (theme === "dark") {
+    assert.equal(geometry.secondaryColor, "rgb(142, 142, 142)");
+    assert.equal(geometry.supportingColor, "rgb(142, 142, 142)");
+  }
+  assert.ok(geometry.closeTop <= 1 && geometry.closeRight <= 1);
+  assert.ok(Math.abs(geometry.buttonGap - 16) < 1 && geometry.buttonWidthDifference < 1);
+  assert.ok(Math.abs(geometry.buttonHeight - 41) < 1);
+  if (width >= 768) {
+    const referenceHeight = { approve: 238, reject: 221, replace: 370 }[kind];
+    assert.ok(Math.abs(geometry.height - referenceHeight) <= 2, JSON.stringify(geometry));
+    if (kind === "replace") {
+      assert.equal(geometry.dropzoneHeight, 176);
+      assert.equal(geometry.inputHeight, 35);
+      assert.equal(geometry.labelHeight, 17);
+    }
   }
 }
 
@@ -1657,8 +1764,7 @@ test("U3 · arrastrar y soltar, nombre repetido sin reintento, fallo temporal co
   assert.equal(attempts, 2);
   assert.equal(await dialog.count(), 1, "con un error definitivo el diálogo sigue abierto");
   await page.getByText(/«Inestable\.pdf» se subió/).waitFor();
-  // Una tarjeta con error definitivo se retira con su botón de texto «Eliminar».
-  await dialog.getByRole("button", { exact: true, name: "Eliminar" }).click();
+  await dialog.getByRole("button", { exact: true, name: "Eliminar archivo Garantía impermeabilización.pdf" }).click();
   await dialog.getByRole("button", { name: "Listo" }).click();
   await dialog.waitFor({ state: "detached" });
 
@@ -1734,13 +1840,21 @@ test("U3 · «Reemplazar» desde el visor exige motivo, crea la versión pendien
 
 test("«+» del historial abre «Reemplazar archivo» (Figma 3727:683111): valida, crea una sola versión con su motivo y actualiza el drawer", async (context) => {
   const backend = createBackend();
+  backend.items = backend.items.filter((entry) => entry.fileId !== 30 || entry.versionNumber <= 3);
+  backend.items.find((entry) => entry.fileId === 30 && entry.versionNumber === 3).isCurrent = true;
+  const originalVersions = structuredClone(backend.items.filter((entry) => entry.fileId === 30));
   const page = await openFiles(context, backend);
-  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 3" }).click();
   const viewer = viewerDialog(page);
   await viewer.locator("canvas").first().waitFor();
   const drawer = viewer.locator("[data-admin-file-history-drawer]");
   const add = drawer.getByRole("button", { name: "Subir una versión nueva" });
   const versionPosts = () => backend.requests.filter((request) => request.method === "POST" && request.path === "/api/projects/1/files/30/versions").length;
+
+  // El origen sigue siendo el archivo lógico aunque se esté viendo una versión histórica.
+  await drawer.getByRole("button", { name: "Opciones de la versión 1" }).click();
+  await page.getByRole("menuitem", { name: "Ver", exact: true }).click();
+  await viewerHeader(viewer).getByText("V1 · Aprobada").waitFor();
 
   // Dos clics seguidos abren un solo modal, con el documento gestionado en su descripción.
   await add.click();
@@ -1801,18 +1915,80 @@ test("«+» del historial abre «Reemplazar archivo» (Figma 3727:683111): valid
 
   // Confirmar (doble clic) crea una sola versión con su motivo y el drawer la muestra.
   await note.fill("Datos actualizados desde el historial.");
+  const metricsBefore = metricsReads(backend);
   await dialog.getByRole("button", { name: "Confirmar" }).dblclick();
   await dialog.waitFor({ state: "detached" });
   assert.equal(versionPosts(), 1, "una sola subida");
-  await page.getByText("Se creó la V13 de «Garantía impermeabilización.pdf». Queda pendiente de revisión: la versión vigente no cambia hasta aprobarla.").waitFor();
+  await page.getByText("Se creó la V4 de «Garantía impermeabilización.pdf». Queda pendiente de revisión: la versión vigente no cambia hasta aprobarla.").waitFor();
   const history = drawer.getByRole("list", { name: "Versiones del archivo" });
-  await history.locator("li[data-version-number='13']").getByText("V13 · Pendiente de revisión").waitFor();
-  await history.locator("li[data-version-number='13']").getByText("Motivo: Datos actualizados desde el historial.").waitFor();
-  await history.locator("li[data-version-number='12']").getByText("Versión actual", { exact: true }).waitFor();
-  assert.equal(await history.locator("li").count(), 11, "la página visible añade la nueva y conserva las anteriores");
+  const created = history.locator("li[data-version-number='4']");
+  await created.getByText("V4 · Pendiente de revisión").waitFor();
+  await created.getByText("Motivo: Datos actualizados desde el historial.").waitFor();
+  await created.getByText(/Por Ana Admin/).waitFor();
+  await viewerHeader(viewer).getByText("V4 · Pendiente de revisión").waitFor();
+  await history.locator("li[data-version-number='3']").getByText("Versión actual", { exact: true }).waitFor();
+  assert.deepEqual(await history.locator("li").evaluateAll((rows) => rows.map((row) => row.dataset.versionNumber)), ["4", "3", "2", "1"]);
+  assert.deepEqual(backend.items.filter((entry) => entry.fileId === 30 && entry.versionNumber < 4), originalVersions);
+  await waitUntil(() => metricsReads(backend) > metricsBefore);
   // Con una versión pendiente, el «+» queda deshabilitado con su motivo.
   assert.equal(await add.isDisabled(), true);
   assert.match(await add.getAttribute("aria-label"), /ya tiene una versión pendiente/);
+});
+
+test("reemplazo · historial no disponible, permisos y reintento por pérdida de conexión conservan archivo y motivo", async (context) => {
+  const listing = "GET /api/projects/:id/files/:id/versions";
+  const upload = "POST /api/projects/:id/files/:id/versions";
+  const failures = { [listing]: { body: { code: "FILE_NOT_FOUND" }, status: 404 } };
+  const backend = createBackend({ failures });
+  const page = await openFiles(context, backend);
+  await page.getByRole("button", { name: "Ver Garantía impermeabilización.pdf, versión 12" }).click();
+  const viewer = viewerDialog(page);
+  const unavailable = viewer.getByRole("button", { name: /Subir una versión nueva\. No se pudo verificar el historial/ });
+  await unavailable.waitFor();
+  assert.equal(await unavailable.isDisabled(), true);
+  assert.equal(await uploadDialog(page, "replace").count(), 0);
+  delete failures[listing];
+  await viewer.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await viewer.getByRole("button", { name: "Subir una versión nueva", exact: true }).click();
+
+  const dialog = uploadDialog(page, "replace");
+  const input = dialog.locator("input[type='file']");
+  const note = dialog.getByRole("textbox", { name: /Motivo del cambio/ });
+  const submit = dialog.getByRole("button", { name: "Confirmar" });
+  const filename = "Garantía revisada.pdf";
+  const draft = "Se incorporó la firma.";
+  assert.equal(await input.getAttribute("multiple"), null);
+  await input.setInputFiles(pdfFile(filename));
+  await note.fill(draft);
+  failures[upload] = { body: { code: "FORBIDDEN", message: "No tienes permisos para realizar esta acción." }, status: 403 };
+  await submit.click();
+  await dialog.getByText("No tienes permisos para realizar esta acción.").waitFor();
+  assert.equal(await note.inputValue(), draft);
+  await dialog.getByText("Garantía revisada", { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole("button", { name: "Intenta de nuevo" }).count(), 0);
+  assert.equal(await reviewAlert(page).count(), 0);
+
+  await input.setInputFiles(pdfFile(filename));
+  failures[upload] = { body: { code: "NETWORK_ERROR" }, status: 503 };
+  await submit.click();
+  await dialog.getByText("Se perdió la conexión durante la carga.").waitFor();
+  assert.equal(await note.inputValue(), draft);
+  await dialog.getByText("Garantía revisada", { exact: true }).waitFor();
+  assert.equal(await reviewAlert(page).count(), 0);
+  delete failures[upload];
+  // El reintento se registra, pero la respuesta se pierde. La consulta de historial lo reconcilia.
+  await page.route((url) => url.pathname === "/api/projects/1/files/30/versions", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return backend.handle({
+      request: () => route.request(),
+      fulfill: () => route.fulfill({ status: 503, json: { code: "NETWORK_ERROR" } }),
+    });
+  });
+  await dialog.getByRole("button", { name: "Intenta de nuevo" }).dblclick();
+  await dialog.waitFor({ state: "detached" });
+  await reviewAlert(page).getByText(/Se creó la V13/).waitFor();
+  assert.equal(backend.items.filter((entry) => entry.fileId === 30 && entry.review.status === "pending").length, 1);
+  assert.equal(backend.requests.filter((request) => request.method === "POST" && request.path === "/api/projects/1/files/30/versions").length, 3);
 });
 
 test("U3 · «Reemplazar archivo» desde la tabla (no en Pendientes) y restaurar la vigente aprobada (B4)", async (context) => {

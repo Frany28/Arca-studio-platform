@@ -274,7 +274,9 @@ function FileUploadSection({
   showUploadedFiles = FILE_UPLOAD_SECTION_DEFAULT_PROPS.showUploadedFiles,
   viewportHeight = FILE_UPLOAD_SECTION_DEFAULT_PROPS.viewportHeight,
   fileListViewportHeight = null,
+  fitContent = false,
   fileInputAccept,
+  singleFile = false,
   dropzoneVariant = "default",
   // Omitir onUpload deshabilita el envío cuando no hay archivos pendientes.
   uploadAction,
@@ -391,7 +393,8 @@ function FileUploadSection({
   return (
     <section
       className={clsx(
-        "flex h-full w-full max-w-full justify-center",
+        "flex w-full max-w-full justify-center",
+        !fitContent && "h-full",
         shouldConstrainFileList ? "items-end" : "items-stretch",
         className,
       )}
@@ -411,7 +414,7 @@ function FileUploadSection({
         style={
           shouldConstrainWholeSection
             ? { height: `${viewportHeight}px` }
-            : { height: "100%" }
+            : fitContent ? undefined : { height: "100%" }
         }
         ref={shouldConstrainWholeSection ? filesViewportRef : null}
         onScroll={syncScrollState}
@@ -427,7 +430,7 @@ function FileUploadSection({
             isDragActive
               ? "border-[var(--color-neutral-600)]"
               : "border-[var(--color-neutral-200)] dark:border-[var(--color-neutral-300)]",
-            !showUploadedFiles ? "min-h-full justify-center" : null,
+            !showUploadedFiles && !fitContent ? "min-h-full justify-center" : null,
           )}
           onDragOver={(event) => {
             event.preventDefault();
@@ -473,7 +476,7 @@ function FileUploadSection({
               <input
                 ref={fileInputRef}
                 type="file"
-                multiple
+                multiple={!singleFile}
                 disabled={disabled}
                 accept={fileInputAccept}
                 className="sr-only"
